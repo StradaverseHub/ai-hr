@@ -48,6 +48,8 @@ export type SigningRoutingMeta = {
   /** Last owner fallback: the case owner named by the subject adapter (for Probation, the PBP). */
   caseOwnerId: string | null;
   fallbackGroupId?: string | null;
+  /** Contract merge fields stay live until first signature. Text revisions still invalidate every receipt. */
+  liveMergeReviews?: boolean;
 };
 export type SigningDocument = {
   tenantId: string; companyId: string; subjectId: string; subjectType: string;
@@ -85,7 +87,9 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
     if (owner.holderId && independent.every(s=>s.holderId!==null&&(s.holderId===owner.holderId||Boolean(owner.holderPersonId)&&s.holderPersonId===owner.holderPersonId))) invalid('The approving person must be different from the submitting manager.');
   }
 }
-const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash;
+const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&(
+ action.contentHash===document.contentHash||document.subjectType==='contract'&&document.routing?.liveMergeReviews===true&&action.signature===null&&['reviewed','approved','returned','resent'].includes(action.action)
+);
 /** Actions of the current round: current content, after the latest re-send of that content. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;
@@ -94,6 +98,11 @@ export function currentRoundActions(document: SigningDocument): SigningAction[] 
 }
 /** The send-back that currently holds the document with its owner, or null. */
 export function signingSendBack(document: SigningDocument): SigningAction | null {
+  // Editing a returned Contract letter changes its content revision, but sending it round again stays explicit.
+  if(document.subjectType==='contract'&&document.routing?.liveMergeReviews){
+    const marker=[...document.actions].reverse().find(action=>action.action==='returned'||action.action==='resent');
+    if(marker?.action==='returned')return marker;
+  }
   return currentRoundActions(document).find(action=>action.action==='returned')??null;
 }
 function actionFulfilsStep(action:SigningAction,step:SigningStep):boolean{
@@ -190,7 +199,7 @@ export function replacePendingSigner(document: SigningDocument, rules: SigningGu
 export function signingDocumentOwner(document: SigningDocument): {stepId: string | null; userId: string | null} {
   const flagged=document.route.steps.find(step=>step.owner);
   if(flagged)return{stepId:flagged.id,userId:flagged.holderId};
-  const review=document.route.steps.map((step,index)=>({step,index})).filter(x=>x.step.kind==='review').sort((a,b)=>a.step.stage-b.step.stage||a.index-b.index)[0]?.step;
+  const review=document.route.steps.map((step,index)=>({step,index})).filter(x=>x.step.kind==='review'||document.subjectType==='contract'&&x.step.kind==='approve').sort((a,b)=>a.step.stage-b.step.stage||a.index-b.index)[0]?.step;
   if(review)return{stepId:review.id,userId:review.holderId};
   return{stepId:null,userId:document.routing?.caseOwnerId??null};
 }

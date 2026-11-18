@@ -18,13 +18,14 @@ describe('ordinary v3/v4 admission and exact assignment keep unrelated detail lo
         // Managed resignation is another assignment source, not a role promotion or an excuse to load
         // unrelated queues on an exact Attendance focus. It also prevents a mixed inbox becoming Attendance-only.
         expect(admission).toContain("!focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset})");
+        expect(admission).toContain("!focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset})");
         const redirect=admission.match(/if\(([^;\n]+)\)redirect\('\/'\);/);
         expect(redirect, 'ordinary unassigned readers still leave the inbox').not.toBeNull();
         expect(redirect![1].replace(/\s+/g,'').split('&&')).toEqual([
-            '!focus','!admin','!manager','!resignationWork.total','!rewardReviews.length',
+            '!focus','!admin','!manager','!resignationWork.total','!contractWork.total','!rewardReviews.length',
             '!probationApprovals.items.length','!assignedAttendance','!assignedTasks.length',
         ]);
-        expect(admission).toContain("const attendanceOnly=!admin&&!manager&&!resignationWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');");
+        expect(admission).toContain("const attendanceOnly=!admin&&!manager&&!resignationWork.total&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');");
         expect(page).toContain("const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');");
         const loaders=section('const [leave, leaveCancellations, replacementRequests, loadedCorrections','const corrections = attendanceOnly');
         expect(loaders).toContain("attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests");

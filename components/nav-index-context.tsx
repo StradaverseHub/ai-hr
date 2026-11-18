@@ -5,8 +5,8 @@ import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 
 /**
  * Atelier round 1 — THE NAV INDEX: the destinations the rail is showing THIS viewer, published by
- * components/sidebar.tsx for the two consumers that need them outside the rail: the command bar's "Go to"
- * list (components/command-bar.tsx) and the Atelier breadcrumb (components/shell-top-line.tsx).
+ * components/sidebar.tsx for consumers outside the rail: the command bar's "Go to" list, the
+ * breadcrumb and permission-filtered Contract module tabs.
  *
  * ONE SOURCE. The rail already resolves which rows exist (role gates, module entitlements, onboarding
  * access) from the layout's props; this context carries that RESULT, never a second filter. So the palette

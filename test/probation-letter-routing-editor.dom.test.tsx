@@ -71,6 +71,9 @@ describe('signing and review routing editor',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Find'}));
   fireEvent.click(await screen.findByRole('button',{name:'Add Fictional Named Signatory'}));
   expect(latest.routing[0].who).toEqual({kind:'people',userIds:['u-named']});
+  expect(step(1).getByText('Fictional Named Signatory',{exact:true})).toBeVisible();
+  expect(screen.queryByText('Step 1: a chosen person can no longer be found.')).toBeNull();
+  expect(step(1).getByRole('button',{name:'Remove Fictional Named Signatory'})).toBeEnabled();
  });
  it('is read-only when the version cannot be edited',()=>{
   show(<Harness editable={false} initial={[{id:'a',order:1,action:'sign',who:{kind:'employee'},owner:true}]}/>);

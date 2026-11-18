@@ -31,6 +31,7 @@ vi.mock('next/navigation',()=>({useRouter:()=>({push:S.push}),usePathname:()=>'/
 vi.mock('@/components/today/today-page',()=>({GreetingWithName:async()=>'Good morning, Zen'}));
 vi.mock('@/db/client',async importOriginal=>({...await importOriginal<Record<string,unknown>>(),withBackgroundReadWork:async(_tenant:string,run:()=>unknown)=>run(),withSharedReadSnapshot:async(_s:unknown,work:()=>unknown)=>work()}));
 // The Performance block has its own tests (test/p1-wpa2-performance-home.dom.test.tsx); here a marker proves the page mounts it.
+vi.mock('@/components/today/contract-slot',()=>({TodayContracts:()=> <section data-contract-home>Contract signatures</section>}));
 vi.mock('@/components/performance-home/performance-home',()=>({PerformanceHomeSlot:async()=><section data-performance-home>Performance</section>}));
 // A panel that throws while it renders is replaced by its own boundary's note; the rest of the page stays.
 vi.mock('@/components/today/admin/panels',async()=>{
@@ -111,6 +112,7 @@ async function show(page:'admin'|'manager',all=false,extra:{employmentId?:string
  const props={session:page==='admin'?ADMIN:MANAGER,scopeIds:['co-a','co-b'],allCompanies:true,now:NOW,all,...extra};
  const tree=await resolveServerTree(page==='admin'?await AdminTodayPage(props):await ManagerTodayPage(props));
  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{tree}</NextIntlClientProvider>);
+ expect(view.container.querySelectorAll('[data-contract-home]')).toHaveLength(1);
  const panel=(id:string)=>view.container.querySelector(`[data-today-panel="${id}"]`);
  return {...view,panel};
 }

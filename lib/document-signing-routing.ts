@@ -18,7 +18,7 @@
  * step and the step records who it was meant for (`meantFor`); with no fallback member the step has no holder and blocks,
  * as a missing holder does today.
  */
-import {resolveRoutingRow,type Routing,type RoutingFacts} from './automation/routing';
+import {resolveRoutingTarget,type Routing,type RoutingFacts} from './automation/routing';
 import type {SigningRoute,SigningStep} from './document-signing-model';
 
 export const DOCUMENT_ROUTING_ACTIONS = ['review', 'approve', 'sign'] as const;
@@ -53,7 +53,7 @@ export function signatureBlockStepId(block: DocumentRoutingBlock): string | null
 const position = (routing: DocumentRouting, step: DocumentRoutingStep) => sortedDocumentRouting(routing).indexOf(step) + 1;
 
 /** Blocking problems for saving or publishing a routing. Empty means valid. An empty routing is valid (today's behaviour). */
-export function documentRoutingProblems(routing: DocumentRouting, refs: DocumentRoutingReferences, options: {requireSign?: boolean} = {}): string[] {
+export function documentRoutingProblems(routing: DocumentRouting, refs: DocumentRoutingReferences, policy: {requireSign?: boolean; requireOwner?: boolean} = {}): string[] {
   const problems: string[] = [];
   if (!routing.length) return problems;
   if (routing.length > MAX_DOCUMENT_ROUTING_STEPS) problems.push(`Use at most ${MAX_DOCUMENT_ROUTING_STEPS} steps.`);
@@ -74,8 +74,9 @@ export function documentRoutingProblems(routing: DocumentRouting, refs: Document
       else if (who.userIds.some(id => !refs.personExists(id))) problems.push(at + 'a chosen person can no longer be found.');
     }
   });
-  if (options.requireSign !== false && !routing.some(step => step.action === 'sign')) problems.push('At least one step must be a Sign step, or nobody signs the document.');
+  if (policy.requireSign !== false && !routing.some(step => step.action === 'sign')) problems.push('At least one step must be a Sign step, or nobody signs the document.');
   if (routing.filter(step => step.owner).length > 1) problems.push('Only one step can own the document. Untick the others.');
+  if (policy.requireOwner && routing.filter(step => step.owner).length === 0) problems.push('Tick the step that owns the document. Send-backs return to this step.');
   return problems;
 }
 
@@ -107,6 +108,9 @@ export type DocumentRoutingResolveContext = {
   fallback: {groupId: string; members: readonly string[]} | null;
   /** Plain description of a "who", recorded when the fallback takes a step. */
   describe: (who: DocumentRoutingWho) => string;
+  /** Contract never delegates the employee's signature. Existing modules retain their own fallback policy. */
+  holdMissingEmployee?: boolean;
+  routingDefaultOnEmpty?:boolean;
 };
 export type DocumentRoutingUnresolved = {stepId: string; meantFor: string; reason: string; fallbackGroupId: string | null; holderId: string | null};
 
@@ -119,10 +123,9 @@ function candidatesFor(who: DocumentRoutingWho, ctx: DocumentRoutingResolveConte
   if (who.kind === 'group') return groupMembers(who.groupId);
   const routing = ctx.routing(who.routingId);
   if (!routing) return {userIds: [], groupId: null, reason: 'The routing no longer exists.'};
-  const match = resolveRoutingRow(routing, ctx.facts);
-  if (!match) return {userIds: [], groupId: null, reason: `No row of “${routing.name}” matches this employee.`};
-  if (match.row.assignTo.kind === 'people') return {userIds: [...new Set(match.row.assignTo.userIds)], groupId: null, reason: match.row.assignTo.userIds.length ? null : `“${routing.name}” names nobody for this employee.`};
-  return groupMembers(match.row.assignTo.groupId);
+  const match=resolveRoutingTarget(routing,ctx.facts,ctx.groupMembers,{defaultOnEmpty:ctx.routingDefaultOnEmpty});
+  if(match.groupId&&!ctx.routingDefaultOnEmpty)return groupMembers(match.groupId);
+  return {userIds:match.userIds,groupId:match.groupId,reason:match.missing};
 }
 
 /**
@@ -140,8 +143,9 @@ export function resolveDocumentRouting(routing: DocumentRouting, ctx: DocumentRo
     if (!holderId) {
       meantFor = ctx.describe(step.who);
       const reason = candidates.reason ?? (candidates.userIds.length ? ctx.choiceProblem?.() : null) ?? 'Nobody available could take this step.';
-      holderId = ctx.fallback?.members.length ? ctx.choose(ctx.fallback.members, rule, ctx.fallback.groupId) : null;
-      unresolved.push({stepId: step.id, meantFor, reason, fallbackGroupId: ctx.fallback?.groupId ?? null, holderId});
+      const heldEmployee = ctx.holdMissingEmployee && step.who.kind === 'employee';
+      holderId = !heldEmployee && ctx.fallback?.members.length ? ctx.choose(ctx.fallback.members, rule, ctx.fallback.groupId) : null;
+      unresolved.push({stepId: step.id, meantFor, reason, fallbackGroupId: heldEmployee ? null : ctx.fallback?.groupId ?? null, holderId});
     }
     const role = step.who.kind === 'employee' ? 'employee' : step.who.kind === 'directSuperior' ? 'lm' : step.who.kind === 'routing' ? `routing:${step.who.routingId}` : step.who.kind === 'group' ? `group:${step.who.groupId}` : 'people';
     return {id: step.id, role, kind: step.action, stage: step.order, holderId, required: true, ...(step.owner ? {owner: true} : {}), ...(meantFor ? {meantFor} : {})};

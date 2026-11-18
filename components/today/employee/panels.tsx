@@ -11,6 +11,7 @@ import {buildMonthCalendar,CALENDAR_MARKS,type CalendarFact,type CalendarMark} f
 import {calendarComingUp,comingUp,isAllClear,nextStepsFrom,orderRequests,paydayView,trackSteps,waitingDays,weekHours,weekOf,
  type ModuleState,type NextStep,type TrackedRequest} from '@/lib/today/employee';
 import {AskChips,type AskChip} from './ask-chips';
+import {readTodayContractWork,type TodayContractWork} from '../contract-read';
 import {BUTTON,EYEBROW,LINK,Panel,PanelLink,PanelNote,hrDay} from './panel';
 import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,readOwnNotices,readOwnPayHints,readOwnReadiness,readOwnRequests,readOwnTimeOff,readOwnWeek,readWaitingForYou} from './reads';
 
@@ -20,6 +21,7 @@ import {readAskAllowed,readManagersAway,readOwnCalendar,readOwnPassportCards,rea
  * employment readOwnContext proved, and shows only what its owner returned. */
 
 export type PanelContext=Readonly<{session:SessionContext;employmentId:string;locale:string;today:string;
+ contractWork?:Promise<TodayContractWork>;
  modules:Readonly<{payroll:ModuleState;leave:ModuleState;attendance:ModuleState;claims:ModuleState}>}>;
 type T=Awaited<ReturnType<typeof getTranslations>>;
 const attempt=async<V,>(read:()=>Promise<V>):Promise<{ok:true;value:V}|{ok:false}>=>{try{return {ok:true,value:await read()};}catch{return {ok:false};}};
@@ -41,13 +43,17 @@ const decider=(t:T,step:NextStep)=>step.decider==='hr'?t('deciderHr'):step.decid
 const dueLine=(t:T,locale:string,step:NextStep)=>step.due?t('dueOn',{date:hrDay(locale,step.due,'long')}):t('noDue');
 
 export async function NextStepPanel(p:PanelContext){
- const [t,tr,readiness,passports]=await Promise.all([getTranslations('today.employee'),getTranslations('payrollReadiness'),
-  attempt(()=>readOwnReadiness(p.session,p.employmentId,p.locale,p.today)),attempt(()=>readOwnPassportCards(p.session,p.today))]);
+ const [t,tr,readiness,passports,contracts]=await Promise.all([getTranslations('today.employee'),getTranslations('payrollReadiness'),
+  attempt(()=>readOwnReadiness(p.session,p.employmentId,p.locale,p.today)),attempt(()=>readOwnPassportCards(p.session,p.today)),p.contractWork??readTodayContractWork(p.session)]);
  const items=readiness.ok?readiness.value?.items??[]:[];
  const steps=nextStepsFrom(items,passports.ok?passports.value:[]);
  const failed=!readiness.ok||!passports.ok||(readiness.ok&&!!readiness.value?.failed);
  const cutOff=readiness.ok?readiness.value?.period.cutOff??null:null;
- if(isAllClear({steps,failed}))return <AllClearPanel {...p} t={t} cutOff={cutOff}/>;
+ // Contract work has its own card above. Unknown work must never become a global all-clear claim.
+ if(isAllClear({steps,failed})){
+  if(contracts.status==='unavailable'||(contracts.status==='ready'&&contracts.page.taskTotal>0))return null;
+  return <AllClearPanel {...p} t={t} cutOff={cutOff}/>;
+ }
  const [first,...rest]=steps;
  const later=rest.slice(0,3);
  return <Panel id="today-next-step" tone="lead" className="lg:col-span-5 lg:row-span-2" title={first?t('nextStepOf',{n:1,total:steps.length}):t('nextStep')}>

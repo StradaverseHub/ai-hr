@@ -40,7 +40,7 @@ function CompanyEditor() {
   return <><WorkspaceSettings activeTab="shared" config={config} options={{ companies: [{ id: 'company', name: 'Fictional company', registrationNo: 'SOURCE-001', address: 'Source address' }], users: [{ id: 'hr', name: 'Fictional HR' }], employees: [] }} editable edit={change => setConfig(old => { const next = structuredClone(old); change(next); return next; })}/><output data-testid="company-settings">{JSON.stringify(config.companies)}</output></>;
 }
 it('starts letterhead settings from company facts and retains independent signatory and presentation edits', () => {
-  render(<CompanyEditor/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><CompanyEditor/></NextIntlClientProvider>);
   expect(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' })).toHaveValue('SOURCE-001');
   fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Registration no.' }), { target: { value: 'FORMATTED-001' } });
   fireEvent.change(screen.getByRole('textbox', { name: 'Fictional company · Address' }), { target: { value: 'Printed address\nSecond line' } });

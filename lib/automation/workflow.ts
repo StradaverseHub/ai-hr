@@ -31,6 +31,8 @@ export const MAX_WORKFLOW_STEPS = 40;
 export const MAX_WORKFLOW_CONDITIONS = 20;
 export const MAX_STEP_RECIPIENTS = 20;
 export const MAX_TRIGGER_DAYS = 3660;
+/** Contract's authored reminder window; other modules retain the shared engine's established range. */
+export function automationTriggerDayLimit(module:AutomationModule):number{return module==='contract_staff'?365:MAX_TRIGGER_DAYS;}
 const MERGE_TOKEN = /\{\{\s*([^{}\s]+)\s*\}\}/g;
 
 function recipientProblems(where: string, list: readonly AutomationRecipient[], catalogue: AutomationModuleCatalogue, refs: AutomationReferences): string[] {
@@ -70,7 +72,7 @@ export function automationWorkflowProblems(workflow: AutomationWorkflow, catalog
   if (workflow.name.length > 200) problems.push('Use a name of at most 200 characters.');
   const trigger = catalogue.triggers.find(t => t.id === workflow.trigger.event);
   if (!trigger) problems.push('Choose what starts this workflow.');
-  else if (trigger.dated) { if (!Number.isInteger(workflow.trigger.days) || workflow.trigger.days < 0 || workflow.trigger.days > MAX_TRIGGER_DAYS) problems.push(`Enter between 0 and ${MAX_TRIGGER_DAYS} days.`); }
+  else if (trigger.dated) { const limit=automationTriggerDayLimit(workflow.module);if (!Number.isInteger(workflow.trigger.days) || workflow.trigger.days < 0 || workflow.trigger.days > limit) problems.push(`Enter between 0 and ${limit} days.`); }
   else if (workflow.trigger.days !== 0 || workflow.trigger.workdays || workflow.trigger.repeat) problems.push('Days, working days and repeat apply only to date-based triggers.');
   if (!catalogue.skipWhen.some(s => s.id === workflow.skipWhen)) problems.push('Choose when to skip.');
   problems.push(...conditionListProblems('Condition', workflow.conditions, workflow.trigger.event, catalogue));

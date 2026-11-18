@@ -73,7 +73,7 @@ export type AutomationStepContext = {run: AutomationRun; step: AutomationStep; i
 export type AutomationStepOutcome =
   | {status: 'done'; message?: string; recipients?: string[]; unresolved?: AutomationUnresolvedRecipient[]}
   | {status: 'skipped'; reason: string}
-  | {status: 'wait'; documentId: string; message?: string}
+  | {status: 'wait'; documentId: string; message?: string; retryStep?:true}
   | {status: 'failed'; reason: string};
 export type AutomationStepExecutor = (context: AutomationStepContext) => Promise<AutomationStepOutcome>;
 /**
@@ -199,6 +199,9 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
     if (outcome.status === 'skipped') { append(run, {...entry, kind: 'stepSkipped', message: `Skipped: ${outcome.reason}`}); continue; }
     if (outcome.status === 'wait') {
       run.status = 'waiting'; run.waitingFor = outcome.documentId;
+      // Some effects must retry the same frozen step after their prerequisite becomes ready.
+      // Generated letters keep their existing advance-then-wait behaviour.
+      if(outcome.retryStep){run.remaining.unshift(next);run.cursor=index;}
       append(run, {...entry, kind: 'waiting', message: outcome.message ?? 'Waiting until the document is signed and released.'});
       return run;
     }
@@ -296,6 +299,8 @@ export type AutomationRecipientContext = {
   /** The configured fallback group (Probation default: GBS People Ops). */
   fallback: {groupId: string; members: readonly string[]} | null;
   describe: (recipient: AutomationRecipient) => string;
+  /** Opt-in module policy: an empty matched target tries the routing's explicit default before module fallback. */
+  routingDefaultOnEmpty?: boolean;
 };
 export type AutomationRecipientResolution = {userIds: string[]; unresolved: (AutomationUnresolvedRecipient & {recipient: AutomationRecipient})[]; fallbackUsed: boolean};
 /**
@@ -309,7 +314,7 @@ export function resolveAutomationRecipients(list: readonly AutomationRecipient[]
     if (recipient.kind === 'role') { const ids = ctx.role(recipient.role); found = ids ?? []; reason = ids === null ? 'This module has no such recipient.' : ids.length ? null : 'Nobody holds this role for the case.'; }
     else if (recipient.kind === 'person') { found = ctx.person(recipient.userId) ? [recipient.userId] : []; reason = found.length ? null : 'This person can no longer be found.'; }
     else if (recipient.kind === 'group') { const members = ctx.groupMembers(recipient.groupId); found = members ?? []; reason = !members ? 'The assignment group no longer exists.' : members.length ? null : 'The assignment group has no members.'; }
-    else if (recipient.kind === 'routing') { const routing = ctx.routing(recipient.routingId); if (!routing) reason = 'The routing no longer exists.'; else { const r = routingRecipients(routing, ctx.facts, ctx.groupMembers); found = r.userIds; reason = r.missing; } }
+    else if (recipient.kind === 'routing') { const routing = ctx.routing(recipient.routingId); if (!routing) reason = 'The routing no longer exists.'; else { const r = routingRecipients(routing, ctx.facts, ctx.groupMembers, {defaultOnEmpty: ctx.routingDefaultOnEmpty}); found = r.userIds; reason = r.missing; } }
     else { const pending = ctx.pending(); found = pending?.userIds ?? []; reason = found.length ? null : 'Nobody’s step is pending.'; }
     if (found.length) users.push(...found);
     else unresolved.push({recipient, meantFor: ctx.describe(recipient), reason: reason ?? 'Nobody was found.'});

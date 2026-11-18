@@ -32,11 +32,11 @@ export const recipientsFromKeys = (keys: readonly string[]) => keys.flatMap(key 
 export function recipientOptions(catalogue: AutomationModuleCatalogue, choices: RecipientChoices, labels: { routing: (name: string) => string; group: (name: string) => string }) {
   const kinds = new Set(catalogue.recipients.map(r => r.kind));
   return [
-    ...catalogue.recipients.filter(r => r.kind === 'role').map(r => ({ value: 'role:' + r.id, label: r.label })),
-    ...catalogue.recipients.filter(r => r.kind === 'pending').map(r => ({ value: 'pending', label: r.label })),
-    ...(kinds.has('routing') ? choices.routings.filter(r => !r.retired).map(r => ({ value: 'routing:' + r.id, label: labels.routing(r.name) })) : []),
-    ...(kinds.has('group') ? choices.groups.map(g => ({ value: 'group:' + g.id, label: labels.group(g.name) })) : []),
-    ...(kinds.has('person') ? choices.people.map(p => ({ value: 'person:' + p.id, label: p.name })) : []),
+    ...catalogue.recipients.filter(r => r.kind === 'role').map(r => ({ group:'Roles', value: 'role:' + r.id, label: r.label })),
+    ...catalogue.recipients.filter(r => r.kind === 'pending').map(r => ({ group:'Pending step', value: 'pending', label: r.label })),
+    ...(kinds.has('routing') ? choices.routings.filter(r => !r.retired).map(r => ({ group:'Routings', value: 'routing:' + r.id, label: labels.routing(r.name) })) : []),
+    ...(kinds.has('group') ? choices.groups.map(g => ({ group:'Assignment groups', value: 'group:' + g.id, label: labels.group(g.name) })) : []),
+    ...(kinds.has('person') ? choices.people.map(p => ({ group:'Named people', value: 'person:' + p.id, label: p.name })) : []),
   ];
 }
 

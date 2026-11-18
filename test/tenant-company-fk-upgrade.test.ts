@@ -1,5 +1,6 @@
 import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
-import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade} from './helpers/approved-upgrade';
+import contractIntent from './fixtures/contract-upgrade-acl-intent.json';
+import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade,withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
  * the ledger untouched; once that row is resolved the upgrade validates every key, rewrites no row and
@@ -20,6 +21,141 @@ const TAIL=[
  {idx:1348,version:'7',when:1793330001501,tag:'2101_company_tenant_fk_not_valid',breakpoints:true},
  {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true},
 ];
+
+// Frozen Contract member identities; forward allocation updates these literals with their SQL hashes.
+const APPROVED_CONTRACT_TAGS=[
+ '5800_contract_shared_access',
+ '5801_contract_shared_flows',
+ '5802_contract_shared_builders',
+ '5803_shared_document_templates',
+ '5804_shared_email_rich_body',
+ '5805_native_contract_counter_and_cutover',
+ '5806_contract_shared_projections',
+ '5807_contract_shared_commands',
+ '5808_contract_shared_signing',
+ '5809_contract_shared_decision_identity',
+ '5810_contract_shared_execution_adapters',
+ '5811_contract_shared_worker_binding',
+ '5812_contract_shared_identity_context',
+ '5813_contract_shared_email_notifications',
+ '5814_contract_shared_personnel_postings',
+ '5815_contract_posting_movement_authority',
+ '5816_contract_posting_projections',
+ '5817_contract_posting_receipts_and_tasks',
+ '5818_contract_shared_tracker',
+ '5819_contract_shared_period_open',
+ '5820_contract_shared_case_workspace',
+ '5821_contract_shared_assigned_work',
+ '5822_contract_shared_ending_handoff',
+ '5823_contract_shared_decline',
+ '5824_contract_shared_offboarding',
+ '5825_contract_shared_email_document_lifecycle',
+ '5826_automation_shared_assignment_groups',
+ '5827_shared_automation_email_assets',
+ '5828_automation_email_test_self',
+ '5829_shared_automation_email_asset_delivery',
+ '5830_contract_shared_tracker_choices',
+ '5832_contract_shared_starting_setup',
+ '5833_contract_shared_tracker_retained_cases',
+ '5835_contract_shared_review_wording',
+ '5836_contract_shared_ending_actions',
+ '5837_contract_shared_email_self_binding',
+ '5838_contract_shared_email_task_projection',
+ '5840_shared_email_test_asset_source',
+ '5841_shared_email_case_file_pages',
+ '5842_probation_shared_email_asset_proof',
+ '5844_shared_groups_preserve_members',
+ '5845_shared_groups_member_identity',
+ '5846_email_test_current_human',
+ '5847_email_test_authority_utf8',
+ '5848_contract_shared_virtual_period',
+ '5849_contract_shared_case_references',
+ '5896_contract_shared_directory_and_signer_caption',
+ '5897_contract_shared_period_history',
+ '5898_contract_shared_work_page',
+ '5899_contract_shared_legacy_inbox_cutover',
+ '5900_contract_shared_manual_workflows',
+ '5901_contract_shared_release_evidence',
+ '5904_contract_shared_native_intake_guard',
+ '5905_contract_shared_body_identity',
+ '5910_contract_shared_work_page_null_guards',
+ '5911_contract_posting_canonical_assignment_receipt',
+ '5912_contract_posting_source_projection',
+ '5913_contract_posting_native_completion',
+ '5915_contract_posting_durable_job_readiness',
+ '5916_contract_ordinary_signing_company_gate',
+ '5917_contract_work_exact_document_join',
+ '5918_contract_tracker_scheduled_period',
+ '5919_contract_work_case_source_anchor',
+ '5920_contract_case_progress_explanations',
+ '5921_contract_case_fallback_receipts',
+ '5922_contract_email_assigned_work',
+ '5923_contract_letter_purpose_guidance',
+ '5925_contract_template_lifecycle',
+ '5926_contract_template_draft_publication',
+ '5927_contract_routing_check_names',
+ '5930_contract_tracker_attention_summary',
+ '5931_contract_starting_setup_completion',
+ '5932_contract_native_system_kernel',
+ '5933_contract_system_period_events',
+ '5934_contract_system_mail_digest',
+ '5935_contract_system_provenance_rechecks',
+ '5936_contract_accept_no_matching_workflow',
+ '5937_contract_digest_queue_capability',
+ '5938_contract_system_private_row_security',
+ '5940_contract_form_response_owner',
+ '5941_country_owned_document_sources',
+ '5942_contract_form_response_actions',
+ '5943_contract_email_document_readiness',
+ '5944_contract_letterhead_fallback_evidence',
+ '5945_contract_retrospective_ending_legacy_owner',
+ '5946_contract_snapshot_native_binding',
+ '5947_contract_email_document_identity',
+ '5948_contract_form_current_proof',
+ '5949_contract_published_form_email_source',
+ '5955_shared_email_materialization_start',
+ '5957_shared_email_explicit_tenant_start',
+ '5960_contract_email_prerequisite_recovery',
+ '5961_contract_manual_attention_reconciliation',
+ '5962_contract_email_required_files',
+ '5964_shared_email_guard_preservation',
+ '5966_contract_canonical_form_readiness',
+ '5967_contract_intake_paged_read',
+ '5968_contract_email_recovery_guard_identity',
+ '5969_contract_email_recovery_callback_identity',
+ '5970_contract_live_form_source_owner',
+ '5971_contract_email_prerequisite_state_binding',
+ '5972_contract_unsigned_email_form_sources',
+ '5973_contract_original_email_readiness_recheck',
+ '5974_contract_form_native_field_parity',
+ '5975_contract_setup_ending_email_readiness',
+ '5976_contract_setup_preserved_definition_review',
+ '5977_contract_email_current_set_source',
+ '5978_contract_email_work_archived_company',
+ '5979_contract_email_current_explicit_tenant',
+ '5989_contract_email_actual_upload_signal_identity',
+ '5990_contract_shared_mail_native_compatibility',
+ '5991_contract_configuration_directory',
+ '6000_contract_historical_email_recovery',
+ '6001_contract_posting_protected_job_foundation',
+ '6002_contract_posting_recorded_replay_frames',
+ '6003_contract_posting_prepared_target_source',
+ '6004_contract_posting_bound_target_completion',
+ '6005_contract_posting_finish_and_commit_guard',
+ '6006_contract_posting_first_producer_readiness',
+ '6007_contract_posting_admission_and_status_ports',
+ '6008_contract_posting_application_metadata',
+ '6009_contract_posting_reconciliation_and_authority',
+ '6010_contract_email_document_hr_notices',
+ '6011_contract_posting_org_snapshot_owner',
+ '6012_contract_shared_navigation_access',
+ '6013_contract_email_form_binding_order',
+ '6014_contract_empty_opening_technical_finish',
+ '6015_automation_offboarding_configuration_compatibility',
+ '6016_contract_setup_fingerprint_setwise',
+ '6017_contract_completed_email_child_context',
+ '6018_contract_setup_membership_fold',
+] as const;
 
 // Approved but not yet installed forward tail; this fixture independently pins journal identity.
 const APPROVED_BOARD_TAIL:Entry[]=[
@@ -63,7 +199,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
  // same way: unset on every company that predates it.
  const withoutImportMarker=(rows:Record<string,unknown>)=>Object.fromEntries(Object.entries(rows).map(([table,list])=>[table,
   (list as {row:Record<string,unknown>}[]).map(({row})=>{
-   const rest={...row};
+   const rest={...withoutCombinedReleaseNulls(table,row)};
    for(const column of ['import_pending_attempt_id',...(table==='company'?['leave_team_minimum_present']:[]),...(table==='employment'?['rehired_from_employment_id']:[])]){
     if(!(column in rest))continue;
     expect(rest[column],table+'.'+column+' on a retained row').toBeNull();
@@ -346,6 +482,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5886_resignation_letter_fields',
    '5887_resignation_case_communications',
    ...APPROVED_BOARD_TAIL.map(row=>row.tag),
+   ...APPROVED_CONTRACT_TAGS,
   ]);
   expect(journal.entries.slice(-APPROVED_BOARD_TAIL.length)).toEqual(APPROVED_BOARD_TAIL);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
@@ -373,6 +510,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const afterPerformancePrivileges=await privileges();
   // The exact signed resignation construction changes only this invoker trigger's
   // subject lookup branch; its identity, owner-only ACL and other callers remain.
+  // Contract source admission preserves this native invoker trigger identity,
+  // owner-only ACL and all existing callers.
   const [v9Integrity]=await storage.client`select prosecdef as security_definer,
    has_function_privilege('ai_hr_app',oid,'EXECUTE') as app_execute,
    exists(select 1 from aclexplode(coalesce(proacl,acldefault('f',proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
@@ -382,6 +521,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   ...contractIntent.functionsAdded.filter(fn=>!fn.appExecute).map(fn=>fn.signature),
    // Movement5777: shared metadata implementation is private; only the validated public wrappers execute it.
    'app.preserve_payroll_metadata(uuid,boolean)',
    // 5850–5877: Recruitment owner-only helpers and definers (careers, portal, sweeps), not executable by ai_hr_app.
@@ -906,6 +1046,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   ];
   addedFunctions.push(...approvedFunctions.map(row=>row.fn));
   privateFunctions.push(...approvedFunctions.filter(row=>!row.app).map(row=>row.fn));
+  // Frozen literal Contract intent; never an observed-database allowlist.
+  expect(contractIntent.functionsAdded.every(fn=>!fn.publicExecute)).toBe(true);
+  const sharedContractDirectory='app.contract_configuration_directory(uuid[],text,uuid[])';
+  expect(contractIntent.functionsAdded.filter(fn=>addedFunctions.includes(fn.signature)).map(fn=>fn.signature)).toEqual([sharedContractDirectory]);
+  addedFunctions.push(...contractIntent.functionsAdded.filter(fn=>fn.signature!==sharedContractDirectory).map(fn=>fn.signature));
+  expect(new Set(addedFunctions).size).toBe(addedFunctions.length);
   addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -914,6 +1060,45 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
    expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:publicFunctions.includes(fn)});
+  }
+  // Replacement bodies retain their native ACL unless a reviewed literal says otherwise.
+  // Every selected new function has only owner EXECUTE plus its explicit app grant.
+  // Check the full ACL as a set: another grantee or grant option must fail too.
+  const [{owner_role:ownerRole}]=await storage.client<{owner_role:string}[]>`select current_user as owner_role`;
+  // Pin intended ownership before any ACL normalization. A different owner cannot
+  // excuse itself merely by reissuing the same grants under its own identity.
+  const contractFunctionOwners=await storage.client`select p.oid::regprocedure::text as fn,p.proowner::regrole::text as owner
+   from pg_proc p where p.oid::regprocedure::text=any(${contractIntent.functionsAdded.map(fn=>fn.signature)}::text[]) order by 1`;
+  expect(contractFunctionOwners).toHaveLength(contractIntent.functionsAdded.length);
+  for(const expected of contractIntent.functionsAdded){
+   const intendedOwner=expected.owner==='MIGRATION_OWNER'?ownerRole:expected.owner;
+   expect(contractFunctionOwners.find(row=>row.fn===expected.signature)?.owner,expected.signature+' owner').toBe(intendedOwner);
+  }
+  const contractTableOwners=await storage.client`select c.oid::regclass::text as rel,c.relowner::regrole::text as owner
+   from pg_class c where c.oid::regclass::text=any(${contractIntent.tablesAdded.map(table=>table.table.replace(/^public\./,''))}::text[]) order by 1`;
+  expect(contractTableOwners).toHaveLength(contractIntent.tablesAdded.length);
+  for(const expected of contractIntent.tablesAdded){
+   const rel=expected.table.replace(/^public\./,''),intendedOwner=expected.owner==='MIGRATION_OWNER'?ownerRole:expected.owner;
+   expect(contractTableOwners.find(row=>row.rel===rel)?.owner,rel+' owner').toBe(intendedOwner);
+  }
+  const contractFunctionAcls=await storage.client`select p.oid::regprocedure::text as fn,
+   jsonb_agg(jsonb_build_object('grantee',case when a.grantee=p.proowner then 'OWNER' when a.grantee=0 then 'PUBLIC' else a.grantee::regrole::text end,
+    'grantor',case when a.grantor=p.proowner then 'OWNER' else a.grantor::regrole::text end,
+    'privilege',a.privilege_type,'grantable',a.is_grantable) order by case when a.grantee=p.proowner then 0 else 1 end,a.grantee::regrole::text,a.privilege_type) as acl
+   from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a
+   where p.oid::regprocedure::text=any(${contractIntent.functionsAdded.map(fn=>fn.signature)}::text[])
+   group by p.oid,p.proowner order by p.oid::regprocedure::text`;
+  expect(contractFunctionAcls).toHaveLength(contractIntent.functionsAdded.length);
+  for(const expected of contractIntent.functionsAdded){
+   const acl=[{grantee:'OWNER',grantor:'OWNER',privilege:'EXECUTE',grantable:false},...(expected.appExecute?[{grantee:'ai_hr_app',grantor:'OWNER',privilege:'EXECUTE',grantable:false}]:[])];
+   expect(contractFunctionAcls.find(row=>row.fn===expected.signature)?.acl,expected.signature).toEqual(acl);
+  }
+
+  for(const expected of contractIntent.existingFunctionsTouched){
+   const [actual]=await storage.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app_execute,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+    from pg_proc p where p.oid=to_regprocedure(${expected.signature})`;
+   expect(actual,expected.signature).toEqual({app_execute:expected.appExecute,public_execute:expected.publicExecute});
   }
   // Independently parse both reviewed Claim expressions against this table. No broad policy
   // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
@@ -1059,7 +1244,6 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   }
   // The combined release block (5000-5090): every relation, column grant and policy it adds, reviewed here and then
   // left out of the comparison of pre-existing privileges below. The owner role's name is normalised.
-  const [{owner_role:ownerRole}]=await storage.client<{owner_role:string}[]>`select current_user as owner_role`;
   const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
   const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
@@ -1188,6 +1372,19 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Board release block 5400-5600 (12-13 November 2026, docs/MIGRATION-ALLOCATION.md): the seven new tables, the 66 row
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
+  // Explicit intended grants. The physical migration owner always retains its native ACL;
+  // literal ai_hr_owner grants collapse into OWNER only when that is the actual owner role.
+  const contractAcl=(literal:Record<string,readonly string[]|undefined>)=>{
+   const grants=new Map<string,Set<string>>([['OWNER',new Set(['INSERT','SELECT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'])]]);
+   for(const [grantee,privileges]of Object.entries(literal)){
+    const role=grantee===ownerRole?'OWNER':grantee;
+    if(!privileges?.length)continue;
+    const merged=grants.get(role)??new Set<string>();for(const privilege of privileges)merged.add(privilege);grants.set(role,merged);
+   }
+   const codes=[['INSERT','a'],['SELECT','r'],['UPDATE','w'],['DELETE','d'],['TRUNCATE','D'],['REFERENCES','x'],['TRIGGER','t']];
+   return '{'+[...grants].map(([role,privileges])=>role+'='+codes.filter(([privilege])=>privileges.has(privilege!)).map(([,code])=>code).join('')+'/OWNER').join(',')+'}';
+  };
+  const contractRelations=Object.fromEntries(contractIntent.tablesAdded.map(table=>[table.table.replace(/^public\./,''),{rls:table.rls,force:table.force,acl:contractAcl(table.explicitRolePrivileges)}]));
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
    // Actor-only test receipts remain owner-only and forced-RLS.
    'resignation_communication_test':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -1198,6 +1395,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.resignation_runtime_verifier':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.resignation_runtime_state':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.resignation_notification_receipt':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   ...contractRelations,
    'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    // Probation reshape (5740, 5741, 5743; 16 November 2026): four append-only tables, read-only to the application.
    'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -1313,6 +1511,29 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'reward_unit_setup',policyname:'reward_unit_setup_pat_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'f11a21eee98956088c3be9e2f59ebb19',with_check:'f11a21eee98956088c3be9e2f59ebb19'},
    {schemaname:'public',tablename:'reward_uploaded_award',policyname:'reward_uploaded_award_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'4094f5ce20f217ddbff264f02f20fd45',with_check:null},
   ];
+  // 5802 intentionally replaces only the two shared definition read predicates.
+  // Parse reviewed literal SQL independently; observed policy rows never define expected access.
+  const sharedDefinitionReadPolicies=[
+   {table:'automation_email_template_version',name:'automation_email_template_read',using:"tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates')"},
+   {table:'automation_workflow_version',name:'automation_workflow_read',using:"tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'workflows')"},
+  ];
+  const sharedDefinitionReadQuals=await storage.client.begin(async tx=>{
+   const parsed:(string|null)[]=[];
+   for(const policy of sharedDefinitionReadPolicies){
+    await tx.unsafe('create policy upgrade_expected_shared_definition_read on public.'+policy.table+' for select to ai_hr_app using ('+policy.using+')');
+    const [row]=await tx<{qual:string|null}[]>`select qual from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='upgrade_expected_shared_definition_read'`;
+    parsed.push(row.qual);
+    await tx.unsafe('drop policy upgrade_expected_shared_definition_read on public.'+policy.table);
+   }
+   return parsed;
+  });
+  sharedDefinitionReadPolicies.forEach((policy,index)=>{
+   const expected=boardPolicies.find(row=>row.schemaname==='public'&&row.tablename===policy.table&&row.policyname===policy.name)!;
+   // Preserve the independently pinned 5740/5743 source predicate before its reviewed replacement.
+   expect(expected.qual,policy.name+' original source').toBe('bac4a95592bbda57aed591f6db313641');
+   expect(sharedDefinitionReadQuals[index],policy.name+' parsed replacement').not.toBeNull();
+   expected.qual=digest(sharedDefinitionReadQuals[index]);
+  });
   const boardRetiredPolicies=[
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},
   ];
@@ -2063,15 +2284,67 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    const actual=afterPerformancePrivileges.policies.find(row=>row.schemaname===policy.schema&&row.tablename===policy.table&&row.policyname===policy.name);
    expect(actual,policy.schema+'.'+policy.table+'.'+policy.name).toEqual({schemaname:policy.schema,tablename:policy.table,policyname:policy.name,permissive:'PERMISSIVE',roles:'{'+policy.roles+'}',cmd:policy.cmd,qual:resignationRendered[index].qual,with_check:resignationRendered[index].with_check});
   });
+  // Every new Contract policy has an exact table/name/role/command and independently
+  // parsed literal predicate. A prefix is never permission to omit an unexpected policy.
+  const contractPolicies=contractIntent.policiesAdded;
+  const isContractPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>contractPolicies.some(policy=>policy.schema===row.schemaname&&policy.table===row.tablename&&policy.name===row.policyname);
+  expect(beforePerformancePrivileges.policies.filter(isContractPolicy)).toEqual([]);
+  const contractRendered=await storage.client.begin(async tx=>{
+   const reviewed=[];
+   for(const policy of contractPolicies){
+    const qualified=policy.schema+'.'+policy.table;
+    await tx.unsafe('create policy upgrade_expected_contract on '+qualified+' for '+policy.cmd+' to '+policy.roles+(policy.using?' using ('+policy.using+')':'')+(policy.check?' with check ('+policy.check+')':''));
+    const [row]=await tx`select qual,with_check from pg_policies where schemaname=${policy.schema} and tablename=${policy.table} and policyname='upgrade_expected_contract'`;
+    reviewed.push(row);await tx.unsafe('drop policy upgrade_expected_contract on '+qualified);
+   }
+   return reviewed;
+  });
+  expect(afterPerformancePrivileges.policies.filter(isContractPolicy)).toHaveLength(contractPolicies.length);
+  contractPolicies.forEach((policy,index)=>{
+   const actual=afterPerformancePrivileges.policies.find(row=>row.schemaname===policy.schema&&row.tablename===policy.table&&row.policyname===policy.name);
+   expect(actual,policy.schema+'.'+policy.table+'.'+policy.name).toEqual({schemaname:policy.schema,tablename:policy.table,policyname:policy.name,permissive:'PERMISSIVE',roles:'{'+policy.roles+'}',cmd:policy.cmd,qual:contractRendered[index].qual,with_check:contractRendered[index].with_check});
+  });
+  // 5842 narrows only legacy On/Off asset reads/inserts to rows outside shared automation.
+  // Independently parse both 0715 and 5842 literals, then pin every before/after policy field.
+  const legacyEmailAssetPolicies=[
+   {name:'lc_v9_email_asset_insert',cmd:'INSERT',using:null,check:'tenant_id=app.current_tenant_id() AND app.is_group_admin() AND uploaded_by=app.current_user_id()'},
+   {name:'lc_v9_email_asset_read',cmd:'SELECT',using:'tenant_id=app.current_tenant_id() AND app.current_user_id() IS NOT NULL AND (app.is_admin() OR app.is_group_admin())',check:null},
+  ];
+  type LegacyAssetPredicate={qual:string|null;with_check:string|null};
+  const legacyEmailAssetPredicates=await storage.client.begin(async tx=>{
+   const reviewed:{before:LegacyAssetPredicate;after:LegacyAssetPredicate}[]=[];
+   for(const policy of legacyEmailAssetPolicies){
+    const versions:LegacyAssetPredicate[]=[];
+    for(const sharedBoundary of [false,true]){
+     const prefix=sharedBoundary?'automation_module IS NULL AND ':'';
+     await tx.unsafe('create policy upgrade_expected_legacy_email_asset on public.lc_v9_email_asset for '+policy.cmd+' to public'+(policy.using?' using ('+prefix+policy.using+')':'')+(policy.check?' with check ('+prefix+policy.check+')':''));
+     const [row]=await tx<LegacyAssetPredicate[]>`select qual,with_check from pg_policies where schemaname='public' and tablename='lc_v9_email_asset' and policyname='upgrade_expected_legacy_email_asset'`;
+     versions.push(row);
+     await tx.unsafe('drop policy upgrade_expected_legacy_email_asset on public.lc_v9_email_asset');
+    }
+    reviewed.push({before:versions[0],after:versions[1]});
+   }
+   return reviewed;
+  });
+  const legacyEmailAssetIndex=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='lc_v9_email_asset'?legacyEmailAssetPolicies.findIndex(policy=>policy.name===row.policyname):-1;
+  legacyEmailAssetPolicies.forEach((policy,index)=>{
+   const identity={schemaname:'public',tablename:'lc_v9_email_asset',policyname:policy.name,permissive:'PERMISSIVE',roles:'{public}',cmd:policy.cmd};
+   expect(beforePerformancePrivileges.policies.filter(row=>legacyEmailAssetIndex(row)===index),policy.name+' original source').toEqual([{...identity,...legacyEmailAssetPredicates[index].before}]);
+   expect(afterPerformancePrivileges.policies.filter(row=>legacyEmailAssetIndex(row)===index),policy.name+' reviewed narrowing').toEqual([{...identity,...legacyEmailAssetPredicates[index].after}]);
+  });
+  const originalLegacyEmailAssetPredicate=(row:(typeof afterPerformancePrivileges.policies)[number])=>{
+   const index=legacyEmailAssetIndex(row);
+   return index<0?row:{...row,...legacyEmailAssetPredicates[index].before};
+  };
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isResignationPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
-      isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:row),
+      isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
   };
   expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);

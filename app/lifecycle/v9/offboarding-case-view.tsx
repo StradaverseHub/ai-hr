@@ -1,6 +1,8 @@
 'use client';
 import {useLocale,useTranslations} from 'next-intl';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
+import {useContractSharedCopy} from '@/lib/contract-shared-copy';
+import {useContractReasonLabel} from '@/lib/contract-reason-copy';
 import {lazy,Suspense,useEffect,useState} from 'react';
 const ResignationCaseCommunications=lazy(()=>import('@/components/resignation/case-communications').then(module=>({default:module.ResignationCaseCommunications})));
 const ResignationOffboardingDocuments=lazy(()=>import('@/components/resignation/offboarding-documents').then(module=>({default:module.ResignationOffboardingDocuments})));
@@ -30,11 +32,11 @@ import {readV9Case} from './actions';
 
 const date=(value:string)=>M.validDate(value)?value.split('-').reverse().join('/'):'—';
 export {caseTasksByDue} from '@/components/lifecycle-v9/case-layout';
-export function OffboardingCaseView({c, config, users, actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true,canConfigure=false, today=todayInKualaLumpur()}: {
- c:M.Case;config:M.Config;users:Workspace['options']['users'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
+export function OffboardingCaseView({c, config, users,terminationReasonLabels=[], actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true,canConfigure=false, today=todayInKualaLumpur()}: {
+ c:M.Case;config:M.Config;users:Workspace['options']['users'];terminationReasonLabels?:Workspace['options']['terminationReasonLabels'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
  command:(value:Command)=>Promise<{ok:boolean;error?:string}>;onDocument:(document:M.Document)=>void;onReason:(type:'cancel'|'reopen')=>void;onOpenWorkflow:(id:string)=>void;onBack:()=>void;canOpenTasks?:boolean;canConfigure?:boolean;today?:string;
 }){
- const copy=useOnboardingCopy(),locale=useLocale(),t=useTranslations('resignationJourney');
+ const copy=useOnboardingCopy(),contractCopy=useContractSharedCopy(),locale=useLocale(),reasonLabel=useContractReasonLabel(),t=useTranslations('resignationJourney');
  const managedResignation='resignationSourceCaseId' in c&&typeof c.resignationSourceCaseId==='string'&&!!c.resignationSourceCaseId;
  const [detail,setDetail]=useState<LifecycleV9CaseDetail|null>(null),[detailError,setDetailError]=useState(''),[detailLoaded,setDetailLoaded]=useState(false),[detailAttempt,setDetailAttempt]=useState(0),[manualTemplate,setManualTemplate]=useState('');
  useEffect(()=>{let active=true;setDetail(previous=>managedResignation&&previous?.case.id===c.id?previous:null);setDetailError('');setDetailLoaded(false);void readV9Case(c.id).then(result=>{if(!active)return;if(result?.ok)setDetail(result.detail);else{setDetail(null);setDetailError(result?.error??t('failed'));}}).catch(()=>{if(active){setDetail(null);setDetailError(t('failed'));}}).finally(()=>{if(active)setDetailLoaded(true);});return()=>{active=false;};},[c.id,c.revision,detailAttempt,t,managedResignation]);
@@ -61,8 +63,10 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
    {c.state==='cleared'&&<Button variant="outline" onClick={()=>onReason('reopen')}>{copy('Reopen case')}</Button>}
    {['pending','submitted'].includes(c.state)&&!editing&&<Button variant="outline" onClick={()=>setEditing(true)}>{copy('Edit details')}</Button>}
   </>}/>
+  {c.contractSharedSourceCaseId&&c.contractSharedNoticeReviewRequired&&<div className="v9-notice v9-warning" role="status"><strong>{copy('Needs HR review')}</strong><p>{contractCopy("The released letter notice date is after the last working day. People Ops must review these dates before recording termination in Personnel Management.")}</p></div>}
+  {c.contractSharedSourceCaseId&&<div className="v9-notice" role="status"><strong>{contractCopy('Contract Management handoff')}</strong><p>{contractCopy(c.state==='cleared'?'Offboarding clearance completed.':'Offboarding clearance pending.')} {contractCopy('People Ops records termination manually in Personnel Management. Contract Management does not end employment automatically.')}</p>{c.contractSharedTerminationReason&&<p>{contractCopy('Reason')}: {reasonLabel(c.contractSharedTerminationReason,terminationReasonLabels.find(reason=>reason.code===c.contractSharedTerminationReason)?.label)}</p>}<Link href={`/lifecycle/contracts/${encodeURIComponent(c.contractSharedSourceCaseId)}`}>{contractCopy('Open source Contract case')}</Link></div>}
   <CaseSummaryCards>
-   <CaseSummaryCard label={copy('Last working day')} value={date(c.facts.lastDay)} detail={<>{onboardingRelative(c.facts.lastDay,today,locale)} · Access revoked {date(c.revokeDate)}</>}/>
+   <CaseSummaryCard label={copy('Last working day')} value={date(c.facts.lastDay)} detail={<>{onboardingRelative(c.facts.lastDay,today,locale)} · {c.contractSharedSourceCaseId?contractCopy('Access revocation date'):'Access revoked'} {date(c.revokeDate)}</>}/>
    <CaseSummaryCard label={copy('Case status')} value={<OnboardingBadge tone={tone}>{copy(status)}</OnboardingBadge>} detail={first?<>{first.detail} · {onboardingTimestamp(first.at)}</>:'Source not recorded'}/>
    <CaseSummaryCard label={copy('Overall progress')} value={c.state==='pending'?copy('Not started'):`${state.percent}%`} detail={<><progress value={state.done} max={state.total||1} aria-label={copy('Overall progress')}/>{c.state==='pending'?'Review the preview below':`${state.done} of ${state.total} done`}</>}/>
    <CaseSummaryCard label={copy('Next step')} value={c.state==='pending'?'Submit the offboarding case':c.state==='cancelled'||c.state==='cleared'?copy('No further action'):next?.name??'Review clearance'} detail={next&&c.state==='submitted'?`Due ${date(next.dueOn)} · ${userName(next.assignee)}`:undefined}/>

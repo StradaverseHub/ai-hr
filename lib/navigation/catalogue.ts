@@ -166,6 +166,7 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "rewards/rewardsAccess": {"id": "shell.rewardsAccess", "sourceOwner": "packs/rewards/index.ts", "sourceKey": "shell-slot:rewardsAccess", "status": "declared"},
   "scoped/probation/probationTracker": {"id": "shell.probationTracker", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationTracker", "status": "declared"},
   "scoped/contracts/contractManagement": {"id": "shell.contractManagement", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractManagement", "status": "declared"},
+  "scoped/contracts/contractPersonnelPostings": {"id": "shell.contractPersonnelPostings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractPersonnelPostings", "status": "declared"},
   "scoped/probation/probationSettings": {"id": "shell.probationSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationSettings", "status": "declared"},
   "scoped/probation/probationForms": {"id": "shell.probationForms", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationForms", "status": "declared"},
   "offboarding/postings": {"id":"shell.offboardingPostings","sourceOwner":"lib/navigation/shell-inventory.ts","sourceKey":"shell-slot:offboardingPostings","status":"declared"},

@@ -113,10 +113,11 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
     const admission = approvalsPage.match(/if\(([^;\n]+)\)redirect\('\/'\);/);
     expect(admission, 'the unassigned-reader redirect guard exists').not.toBeNull();
     expect(admission![1].replace(/\s+/g, '').split('&&')).toEqual([
-      '!focus', '!admin', '!manager', '!resignationWork.total', '!rewardReviews.length',
+      '!focus', '!admin', '!manager', '!resignationWork.total','!contractWork.total', '!rewardReviews.length',
       '!probationApprovals.items.length', '!assignedAttendance', '!assignedTasks.length',
     ]);
     expect(approvalsPage).toContain("!focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset})");
+        expect(approvalsPage).toContain("!focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset})");
     expect(approvalsPage).toContain("isModuleEnabledOrFalse(s,'rewards')");
   });
 });

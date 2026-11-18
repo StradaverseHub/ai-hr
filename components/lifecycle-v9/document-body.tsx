@@ -5,11 +5,13 @@ import type { ReactNode } from 'react';
 import { merge, type Document, type Field } from '@/lib/lifecycle-v9-model';
 
 export function DocumentBody({ document, values = document.values, editableBy, editableFieldIds, disabled = false, change }: {
-  document: Document; values?: Record<string, string>; editableBy?: 'employee' | 'hr'; editableFieldIds?:readonly string[]; disabled?: boolean;
+  document: Document; values?: Record<string, string>; editableBy?: 'employee' | 'hr'; editableFieldIds?:readonly string[]|ReadonlySet<string>; disabled?: boolean;
   change?: (id: string, value: string) => void;
+  /** An authorised owner may provide exact editable IDs; legacy owner-role behavior is unchanged. */
 }) {
   // Optional native-authorized field scope; existing modules retain their owner-based editing rule.
-  const fieldDisabled=(field:Field)=>disabled||(editableFieldIds===undefined?editableBy!==field.owner:!editableFieldIds.includes(field.id)||field.owner==='pmLocked'||!!field.pmKey);
+  const editableIds=editableFieldIds===undefined?undefined:new Set(editableFieldIds);
+  const fieldDisabled=(field:Field)=>disabled||(editableIds===undefined?editableBy!==field.owner:!editableIds.has(field.id)||field.owner==='pmLocked'||!!field.pmKey);
   return <article className="v9-document v9-document-grid">{document.blocks.map(block => {
     const text = merge(document.edits[block.id] ?? block.text, { ...document.mergeValues, ...values }, undefined, true).text;
     let content: ReactNode;

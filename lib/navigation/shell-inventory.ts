@@ -516,13 +516,14 @@ export type ScopedLifecycleNavigationItem = ChildItem & {
    * `admin`: Probation Access (app.probation_access_admin) for a viewer who does not configure Probation. Viewers who
    * configure Probation reach Access inside Probation settings, as the prototype draws it (lane M3).
    */
-  access: 'page' | 'configure' | 'configureOrIntake' | 'intake' | 'admin';
+  access: 'page' | 'configure' | 'configureOrIntake' | 'intake' | 'admin' | 'postings';
 };
 export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem[] = [
   {module:'probation',access:'page',href:'/lifecycle/probation',labelKey:'probationTracker',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation']},
   // ADR 2026-11-15-probation-shared-automation, decision 4: postings approved by the posting-approver group (page fact).
   {module:'probation',access:'page',href:'/lifecycle/probation/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation/postings']},
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
+  {module:'contracts',access:'postings',href:'/lifecycle/contracts/postings',labelKey:'contractPersonnelPostings',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts/postings']},
   // Handoff B1: Probation Confirmation › Configuration › Probation settings (with Access inside), Form editor, Intake and
   // activation. The Access row stays for access administrators who do not configure Probation.
   {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer,submenuKey:'sectionConfiguration'},

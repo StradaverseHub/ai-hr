@@ -27,7 +27,7 @@ export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan',
  'recruitmentBackgroundCheckAuthorisation','recruitmentBackgroundCheckOverdue',
  // Probation (core/probation.ts pendingProbationTasks): Approve steps, and every other Probation task (employee, Line
  // Manager, PBP and GBS tasks, letter Sign steps). Both open the case view.
- 'probationApproval','probationTask'] as const;
+ 'probationApproval','probationTask','contractApproval','contractLetter','contractPosting','contractPay'] as const;
 /** The Recruitment kinds above. Only surfaces that ask for them (core/approvals-inbox.ts InboxModulesWithRecruitment) get them. */
 export const RECRUITMENT_TASK_KINDS=['recruitmentRequisitionApproval','recruitmentOfferApproval','recruitmentFeedback','recruitmentAgencyReview','recruitmentContractExpiry','recruitmentScreening','recruitmentBackgroundCheckAuthorisation','recruitmentBackgroundCheckOverdue'] as const satisfies readonly PackTaskKind[];
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];

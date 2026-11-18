@@ -34,6 +34,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {lockEmploymentStatutoryOwnerTx} from './org';
+import {assertContractPostingHistoryWriteTx,withContractPostingAssignmentOrgTx} from './contract-posting-history-source';
 
 export const MOVEMENT_HISTORY_EVENT='employment.history.recorded';
 export const MOVEMENT_HISTORY_REVERTED_EVENT='employment.history.reverted';
@@ -440,7 +441,12 @@ function liveOf(id:string,events:readonly BoundaryEvent[]){
  for(const e of events){const p=(e.payload??{}) as {assignment?:{supersededId?:string;replacementId?:string}[]};for(const r of Array.isArray(p.assignment)?p.assignment:[])if(r?.supersededId&&r?.replacementId)forward.set(r.supersededId,r.replacementId);}
  let cur=id;const seen=new Set<string>();while(forward.has(cur)&&!seen.has(cur)){seen.add(cur);cur=forward.get(cur)!;}return cur;
 }
-export async function liftCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string):Promise<LiftedBoundaries|null>{
+export function liftCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string){return liftCorrectionBoundariesBodyTx(tx,ctx,employmentId,date);}
+export async function replayContractPostingLiftBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string){
+ await assertContractPostingHistoryWriteTx(tx,employmentId);
+ return liftCorrectionBoundariesBodyTx(tx,ctx,employmentId,date,true);
+}
+async function liftCorrectionBoundariesBodyTx(tx:Tx,ctx:SessionContext,employmentId:string,date:string,contractHistory=false):Promise<LiftedBoundaries|null>{
  const probe=await datedVersionsTx(tx,employmentId);
  if(!probe.some(v=>v.validFrom>date))return null;
  const rows=await datedVersionsTx(tx,employmentId,true);
@@ -482,13 +488,19 @@ export async function liftCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employ
  const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  // The movement is judged against the record on its own date, company included.
  if(emp&&cover.companyId&&emp.companyId!==cover.companyId){
-  await assertWorkforceCompanyTx(tx,ctx,cover.companyId,'maintain');
+  if(contractHistory)await assertContractPostingHistoryWriteTx(tx,employmentId);
+  else await assertWorkforceCompanyTx(tx,ctx,cover.companyId,'maintain');
   await tx.update(employment).set({companyId:cover.companyId}).where(eq(employment.id,employmentId));
  }
  return{movementDate:date,boundaries,companyBefore:emp?.companyId??null};
 }
 /** Puts each lifted correction boundary back on its own date, over whatever the movement wrote. */
-export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,lifted:LiftedBoundaries){
+export function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,lifted:LiftedBoundaries){return reapplyCorrectionBoundariesBodyTx(tx,ctx,employmentId,lifted);}
+export async function replayContractPostingReapplyBoundariesTx(tx:Tx,ctx:SessionContext,employmentId:string,lifted:LiftedBoundaries){
+ await assertContractPostingHistoryWriteTx(tx,employmentId);
+ return reapplyCorrectionBoundariesBodyTx(tx,ctx,employmentId,lifted,true);
+}
+async function reapplyCorrectionBoundariesBodyTx(tx:Tx,ctx:SessionContext,employmentId:string,lifted:LiftedBoundaries,contractHistory=false){
  const placed:{date:string;fields:string[];splitId:string;insertedId:string;liftedId:string}[]=[];
  for(const boundary of [...lifted.boundaries].sort((a,b)=>a.date.localeCompare(b.date))){
   const rows=await datedVersionsTx(tx,employmentId,true);
@@ -504,8 +516,11 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
    if(next.locationId&&changed.includes('companyId')){const [loc]=await tx.select({companyId:location.companyId}).from(location).where(eq(location.id,next.locationId)).limit(1);if(!loc||loc.companyId!==company)throw new MovementHistoryError(`movement_correction_boundary_label:${boundary.date}`);}
   }
   const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=cover;
-  await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
-  const [row]=await tx.insert(assignment).values({...copy,...(boundary.values as Partial<typeof assignment.$inferInsert>),validFrom:boundary.date}).returning({id:assignment.id});
+  const values={...copy,...(boundary.values as Partial<typeof assignment.$inferInsert>),validFrom:boundary.date};
+  const row=await withContractPostingAssignmentOrgTx(tx,{sourceAssignmentId:id,retainedAssignmentId:boundary.liftedId,values},async()=>{
+   await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
+   const [inserted]=await tx.insert(assignment).values(values).returning({id:assignment.id});return inserted;
+  });
   placed.push({date:boundary.date,fields:changed,splitId:id,insertedId:row.id,liftedId:boundary.liftedId});
  }
  // employment.company_id follows the record with the latest Effective Date.
@@ -513,7 +528,8 @@ export async function reapplyCorrectionBoundariesTx(tx:Tx,ctx:SessionContext,emp
  const open=rows.find(v=>v.validTo===null);
  const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
  if(open?.companyId&&emp&&emp.companyId!==open.companyId){
-  await assertWorkforceCompanyTx(tx,ctx,open.companyId,'maintain');
+  if(contractHistory)await assertContractPostingHistoryWriteTx(tx,employmentId);
+  else await assertWorkforceCompanyTx(tx,ctx,open.companyId,'maintain');
   await tx.update(employment).set({companyId:open.companyId}).where(eq(employment.id,employmentId));
  }
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:INFORMATION_BOUNDARY_REAPPLIED_EVENT,actor:actorOf(ctx),subjectEmploymentId:employmentId,

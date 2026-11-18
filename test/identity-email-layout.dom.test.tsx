@@ -27,7 +27,7 @@ vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSumm
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
-vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({count:m.lifecycleCount,items:[]})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]})}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
 // this no-database shell test sent it to the closed CI port, and postgres.js's shared reconnect backoff made each
 // later Layout call wait longer, up to the 5 s timeout (run 41626195537). The owner's rule has its own DB tests.

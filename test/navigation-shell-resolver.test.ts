@@ -110,19 +110,27 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('resolves visible native descriptors in order while retaining legacy builder identities', () => {
     const rows = resolve({isAdmin:true,enabledModules:[],probationAccess:{page:true,configure:true,intake:true,access:true},
-      contractStaffAccess:{page:true,configure:true,intake:true}}).destinations.filter(row=>
+      contractStaffAccess:{page:true,configure:true,intake:true,postings:true}}).destinations.filter(row=>
         row.href.startsWith('/lifecycle/probation') || row.href.startsWith('/lifecycle/contracts'));
-    // The Access row is the eleventh descriptor; a configurer reaches Access inside Probation settings instead (lane M3).
+    // Posting access is independent; a configurer reaches Probation Access inside its settings (lane M3).
     expect(rows.map(row=>row.href)).toEqual([
-      '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/probation/settings','/lifecycle/probation/forms',
+      '/lifecycle/probation','/lifecycle/probation/postings','/lifecycle/contracts','/lifecycle/contracts/postings','/lifecycle/probation/settings','/lifecycle/probation/forms',
       '/lifecycle/probation/intake','/lifecycle/contracts/intake','/lifecycle/contracts/settings',
     ]);
-    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
+    expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
     const declared=SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.href!=='/lifecycle/probation/access'&&!['contractWorkflows','contractTemplates'].includes(row.labelKey));
     rows.forEach((row,index)=>expect(row).toBe(declared[index]));
     expect(SCOPED_LIFECYCLE_NAVIGATION.filter(row=>row.access==='configureOrIntake').map(row=>row.href)).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({probationAccess:{page:false,configure:false,intake:true}},'/lifecycle/probation')).toEqual(['/lifecycle/probation/intake']);
     expect(inFamily({contractStaffAccess:{page:false,configure:false,intake:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/intake']);
+  });
+
+  it('exposes Contract Personnel postings only from its independent posting-group fact', () => {
+    expect(inFamily({contractStaffAccess:{page:false,configure:false,postings:true}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts/postings']);
+    expect(inFamily({contractStaffAccess:{page:true,configure:false,postings:false}},'/lifecycle/contracts')).toEqual(['/lifecycle/contracts']);
+    expect(inFamily({contractStaffAccess:{page:false,configure:false,postings:false}},'/lifecycle/contracts')).toEqual([]);
+    const row=resolve({contractStaffAccess:{page:false,configure:false,postings:true}}).destinations.find(row=>row.href==='/lifecycle/contracts/postings');
+    expect(row).toBe(SCOPED_LIFECYCLE_NAVIGATION.find(row=>row.labelKey==='contractPersonnelPostings'));
   });
 
   it('mounts settings once through native administration, never through its former pack row',()=>{

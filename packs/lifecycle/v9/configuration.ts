@@ -11,6 +11,7 @@ export async function v9Configuration(ctx:SessionContext):Promise<{config:Config
   const[access]=await tx.execute<{allowed:boolean;editable:boolean;offboardingEditable:boolean}>(sql`select app.is_group_admin() or app.is_admin() and (app.onboarding_page_access() or app.lc_v9_off_access()) as allowed,app.is_group_admin() as editable,app.automation_can_configure('off') as "offboardingEditable"`);
   if(!access?.allowed)throw new Error('You cannot open lifecycle configuration.');
   const[row]=await tx.execute<{data:Config}>(sql`select data from lc_v9_config where tenant_id=app.current_tenant_id()`);
+  if(row)Reflect.deleteProperty(row.data,'bpRules');
   const[shared]=await tx.execute<{revision:number;groups:Group[]}>(sql`select revision,data->'groups' as groups from lc_onboarding_config where tenant_id=app.current_tenant_id()`);
   const wanted=new Set<string>(ctx.userId?[ctx.userId]:[]);
   for(const group of shared?.groups??[])for(const id of group.members)wanted.add(id);

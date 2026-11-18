@@ -33,6 +33,8 @@ export type MovementTag = {
    *  before/after has to come from the sibling `employment.info.updated` event of the SAME movement.
    *  Absent on legacy events and on single-leg writes made outside the Movement module. */
   groupId?: string;
+  /** Fixed Contract posting provenance; emitted only by the source-bound canonical Movement port. */
+  contractPostingId?: string;
 };
 
 export type AppendEventArgs = {

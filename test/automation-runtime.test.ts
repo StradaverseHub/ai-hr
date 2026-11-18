@@ -25,6 +25,28 @@ function harness(){
 }
 const live=(wf:AutomationWorkflow,revision=1):LiveAutomationWorkflow=>({workflow:wf,revision});
 
+describe('an effect awaiting its own prerequisite',()=>{
+ it('retries the frozen email step only after its matching readiness event without early posting or duplicate mail',async()=>{
+  const h=harness();let ready=false;
+  h.executors.sendEmail=async({step})=>{
+   expect(step.params.emailTemplateId).toBe('original-email');h.calls.push('prepare-email');
+   if(!ready)return {status:'wait',documentId:'hr-prereview',retryStep:true,message:'Waiting for HR before inviting the employee.'};
+   h.calls.push('queue-email');return {status:'done'};
+  };
+  const wf=workflow({steps:[step('email','sendEmail',{params:{emailTemplateId:'original-email'}}),step('posting','createPosting')]});
+  const first=await runAutomationEvent({catalogue,workflows:[live(wf)],event:event(),...h});
+  expect(first.runs[0]).toMatchObject({status:'waiting',cursor:0,waitingFor:'hr-prereview'});
+  expect(first.runs[0].remaining.map(item=>item.step.id)).toEqual(['email','posting']);expect(h.calls).toEqual(['prepare-email']);
+  wf.steps[0].params.emailTemplateId='later-definition';
+  expect(await resumeAutomationRuns({module:'probation',subjectId:'case-1',documentId:'unrelated',store:h.store,executors:h.executors,read:event().read,now:h.now})).toEqual([]);
+  ready=true;
+  const [done]=await resumeAutomationRuns({module:'probation',subjectId:'case-1',documentId:'hr-prereview',store:h.store,executors:h.executors,read:event().read,now:h.now});
+  expect(done.status).toBe('done');expect(h.calls).toEqual(['prepare-email','prepare-email','queue-email','createPosting:posting']);
+  expect(await resumeAutomationRuns({module:'probation',subjectId:'case-1',documentId:'hr-prereview',store:h.store,executors:h.executors,read:event().read,now:h.now})).toEqual([]);
+  expect(h.calls.filter(item=>item==='queue-email')).toHaveLength(1);expect(h.failures).toEqual([]);
+ });
+});
+
 describe('deciding which workflows run',()=>{
  it('matches trigger and conditions, records skip-when, ignores other triggers and reports no match',()=>{
   const confirm=workflow(),extend=workflow({id:'wf-extend',conditions:[{field:'outcome',op:'is',values:['Extend']}]}),other=workflow({id:'wf-other',trigger:{event:'caseOpened',days:0,workdays:false,repeat:false}});

@@ -8,8 +8,9 @@ describe('composed application navigation declarations, not permission or execut
  it('preserves every existing shell identity and composes published owner references',()=>{
   const app=declaredApplicationNavigationCatalogue(),shell=declaredNavigationCatalogue();
   // Common baseline 221 + Offboarding postings + Recruitment + employee referrals: retain every durable identity.
-  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(224);
+  expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(225);
   expect(app.declarations.slice(0,shell.declarations.length)).toEqual(shell.declarations);
+  expect(app.declarations.find(row=>row.id==='shell.contractPersonnelPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:contractPersonnelPostings',declaredHref:'/lifecycle/contracts/postings'});
   expect(app.declarations.find(row=>row.id==='shell.offboardingPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:offboardingPostings',declaredHref:'/lifecycle/offboarding/postings'});
   expect(app.declarations.find(row=>row.id==='shell.recruitment')).toMatchObject({sourceOwner:'packs/recruitment/index.ts',sourceKey:'shell-slot:recruitment',declaredHref:'/recruitment'});
   expect(app.declarations.find(row=>row.id==='shell.myReferrals')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:myReferrals',declaredHref:'/me/referrals'});
@@ -17,8 +18,8 @@ describe('composed application navigation declarations, not permission or execut
   for(const registry of MODULE_SUBMENU_REGISTRIES)sources.push(...registry.items);
   expect(sources).toHaveLength(59);
   for(const descriptor of sources)expect(app.declarations.filter(row=>row.descriptor===descriptor)).toHaveLength(1);
-  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(224);
-  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(224);
+  expect(new Set(app.declarations.map(row=>row.id)).size).toBe(225);
+  expect(new Set(app.declarations.map(row=>row.sourceKey)).size).toBe(225);
   expect(app.declarations.find(row=>row.id==='shell.rewardsAllReviews')).toMatchObject({
    sourceOwner:'packs/rewards/index.ts',sourceKey:'shell-slot:rewardsAllReviews',declaredHref:'/rewards/reviews',
   });

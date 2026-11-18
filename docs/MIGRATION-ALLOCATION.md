@@ -138,6 +138,103 @@ remote refs and peer claims must be checked again at admission. This allocation 
 The owner's newer COORDINATOR instruction authorizes staging only after complete verification and guarded queue admission.
 
 Earlier draft reservations below are superseded by this final source allocation.
+## Completed email context and setup membership — 17 November 2026 (provisional source only)
+
+Registered `6017_contract_completed_email_child_context`, idx5417/when1794841006017,
+SQL SHA-256 `5248b84495325150a4fd07ba578b6398da937290cbc755e18fdd8cff3a380452`, and
+`6018_contract_setup_membership_fold`, idx5418/when1794841006018, SQL SHA-256
+`c62d082c718aa7944883ef5beba674bdfe52c3c130673e764f231df8af2f2d65`.
+Fresh raw source/journal survey covered all423 Git-discovered migration directories, with no
+prefix/index/timestamp collision or unreadable source. All131 pending Contract entries remain
+provisional until actual prior accepted releases and the ordered installation ledger determine
+final forward allocation. Earlier1048 SQL and journal entries are preserved.
+
+6017 retains the strict current worker/cursor gate and all historical recovery/executor guards.
+Only genuinely completed, successful email origins with canonical source proof, the actual consumed
+immutable workflow step and exact email version may be ignored when selecting historical recovery.
+A same-cohort reconciliation marker veto remains. No new context fallback, role, helper, grant or
+business authority is added. Pin immutability stays enabled in native negative tests.
+
+6018 preserves every existing setup fingerprint input, account payload and UUID ordering. Grouped
+account/membership contributions replace the actual rescan-prone membership semi join under bad
+row estimates. No planner setting or execution budget is changed. Source review passed; exact
+parity, measured5001-member preview, historical refusal and native restricted-owner proofs remain
+required. No runtime PASS, installation, merge or release is claimed.
+
+## Set-based Contract setup fingerprint — 17 November 2026 (provisional source only)
+
+Registered `6016_contract_setup_fingerprint_setwise`, idx `5416`, when `1794841006016`,
+SQL SHA-256 `0b51b7a40c7f76e2d23ca8f9d0c29be655e01fe52763f4b7c2c57dc0eded8dca`.
+Fresh source-only survey read all420 Git-discovered migration directories and raw journal text,
+with no6016/5416/timestamp collision. One pre-existing conflicted journal was read as text and
+left untouched. All129 pending Contract entries still require final forward allocation from the
+actual accepted prior sources and ordered installation ledger before the final gate.
+
+The existing private fingerprint retains all original source, settings, configuration, workflow,
+routing, document, email, account and reason inputs and their ordering. Account activity,
+verification and participants are calculated as sets instead of repeated per-member functions.
+Canonical predecessor body hashes are guarded. OID, owner, security mode and private ACL remain;
+there is no grant, object, data write or new authority. Independent source review found no semantic
+blocker. Exact original/new hash comparisons and the unchanged5001-member preview remain unrun;
+the ordinary postgres fixture oracle is not restricted-owner evidence. Separate native restricted
+owner runtime/upgrade verification remains required. Earlier1047 SQL/journal entries are preserved.
+No passing check, installation, merge or release is claimed.
+
+## Shared Offboarding configure compatibility — 17 November 2026 (provisional source only)
+
+Registered `6015_automation_offboarding_configuration_compatibility`, idx `5415`, when
+`1794841006015`, SQL SHA-256 `e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5`.
+Fresh source-only survey read all 419 Git-discovered migration trees/journals, with no collision
+or unreadable journal. All 128 pending Contract entries await final forward allocation from the
+actual accepted prior sources and ordered installation ledger; this grants no installation position.
+
+This restores only the previously user-approved Offboarding configuration conjunction omitted
+from the assembled candidate: actual current user, group administrator and native Offboarding
+access. Existing Contract/Probation branches are byte-identical. The earlier archived5902 is not
+restored wholesale; later execution owners and Resignation branches stay unchanged. Function OID,
+owner and ACL are preserved, with no new object or grant. Independent source review passed;
+native grant/revocation and restricted upgrade checks remain required. Prior1046 SQL/journal
+entries remain unchanged. Source-selection metadata now also includes registered6013 and6014.
+No passing gate, merge or release is claimed.
+
+## Contract empty opening technical completion — 17 November 2026 (provisional source only)
+
+Registered `6014_contract_empty_opening_technical_finish`, idx `5414`, when `1794841006014`,
+SQL SHA-256 `4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d`, from the owned
+6000–6029 development block. Fresh static survey: all 416 Git-discovered worktrees/journals read,
+no 6014/5414/1794841006014 collision or unreadable journal. This is a provisional development
+identity; all 127 pending Contract entries still await forward allocation from the actual accepted
+earlier releases and ordered ledger before the final gate. No forecast position or installation.
+
+The owner directly approved exact empty-opening recovery SQL `4c121b4f3d8e` and handler patch
+`7fd8a9788895`. One private worker function can only mark an authentic, untouched, empty human
+caseOpened event processed after a newer current decision overtakes it. Existing worker/effect/
+finish guards remain unchanged; no context hydration, workflow step, case/pay/signing/access effect
+or app/PUBLIC grant is added. Independent source review found no blocker. Runtime tests remain
+required; no merge/release permission. All prior 1045 SQL bytes and journal entries are preserved.
+
+## Contract Form employee binding order — 17 November 2026 (provisional source only)
+
+Registered `6013_contract_email_form_binding_order`, idx `5413`, when `1794841006013`,
+SQL SHA-256 `a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364`, from the owned
+6000–6029 development block. A fresh static survey covered all 410 Git-discovered worktrees and
+journals, including raw conflict-marked journals: no 6013/5413/1794841006013 claim or unreadable
+journal was found. This is a development source identity, not a final installation allocation.
+All 126 pending Contract migrations must be allocated forward from the actual accepted earlier
+Board/Resignation source and ordered ledger before the final gate. No forecast watermark is used.
+
+Two existing Contract functions are replaced under unchanged OIDs, owners and ACLs. The existing
+exact employee/email-pin proof binds the actual unique account before permitted Form reads;
+the nested Signing metadata check verifies the retained hash without reading hidden Form values.
+No helper, grant, policy, table, column, provider use or business-effect authority is added.
+The original proposal header is retained with the reviewed SQL bytes. Independent source review
+found no blocker; native checks remain required. Earlier SQL bytes and journal entries are preserved.
+
+## Contract completion forward source block — 17 November 2026 (installation held)
+
+Root reserves **6000–6029**, idx **5400–5429**, when **1794841006000–1794841006029**, after a fresh read-only survey of all 333 Git-discovered migration trees and journal text, including conflict-marked journals; no collisions were found. `6000` belongs to canonical Contract email recovery and passive applied-period provenance; `6001–6008` belong to the protected human Contract posting owner, in dependency order; `6009` adds the reviewed forward reconciliation-readiness and explicit approver projection safeguards. `6010` is approved for the exact internal emailDocumentHRNotice boundary: fixed OneHR links only to the actual pending HR reviewer, BP signer or send-back owner, with account/Person/company/step proof; no authored workflow or business effects. Source6010 is registered with SQL SHA-256 71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4; independent native evidence remains required before any separately approved admission. Other slots are held and unused. A renewed source-only survey covered all 356 Git-discovered worktrees before6010 registration; nine owned Contract trees carried6000–6029 source claims, with no foreign claims or unreadable journals.
+
+These source allocations follow the selected pending `5990` private mail compatibility and `5991` guarded Contract directory prerequisites. Earlier unregistered proposal labels 5980/5981–5988 and all original bytes/history remain preserved; they are not installation positions. The accepted Recruitment baseline `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c` retains all 919 ordered journal entries and SQL bytes, including the original 891-entry Movement prefix. Contract source timestamps remain strictly above that accepted watermark. Slots 5880–5887 remain reserved to the Audit/Resignation owners. This is a source reservation, not a live-ledger query, passing check, migration application or merge/release approval. Recheck installed watermarks, accepted Recruitment integration and foreign claims before any separately approved admission.
 
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 

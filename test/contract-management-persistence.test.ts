@@ -261,6 +261,12 @@ it('keeps the shared Contract reviewer adapter equivalent to its owner directory
  const projected=await contractConfigurationDirectory(admin,{companyId:b.companyId,query:'',selectedUserIds});
  expect(projected.map(user=>({id:user.id,name:user.name,employeeId:user.employeeId}))).toEqual(existing.map(user=>({id:user.id,name:user.name,employeeId:user.employeeId})));
  expect(await contractConfigurationDirectory(fixture.subject.ctx,{companyId:b.companyId,query:'Fictional',selectedUserIds})).toEqual([]);
+ const named=existing.find(user=>user.name.trim().length>=2);expect(named).toBeDefined();
+ const matches=await contractConfigurationDirectory(admin,{companyId:b.companyId,query:named!.name,selectedUserIds:[]});
+ expect(matches.some(user=>user.id===named!.id&&user.name===named!.name)).toBe(true);
+ expect(matches.every(user=>Object.keys(user).sort().join(',')==='employeeId,id,name')).toBe(true);
+ expect(await contractConfigurationDirectory(fixture.subject.ctx,{companyId:b.companyId,query:named!.name,selectedUserIds:[named!.id]})).toEqual([]);
+
  const builder=await contractConfigurationWorkflows(admin);
  expect(builder.workflows.map(row=>row.id).sort()).toEqual((await contractWorkflowWorkspace(admin)).workflows.map(row=>row.id).sort());
  expect(builder.cases.length).toBeLessThanOrEqual(20);
