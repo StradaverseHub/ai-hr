@@ -8,7 +8,7 @@ import {employmentPaymentMethodOnTx,employmentPaymentMethodOnSql} from './employ
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
-import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
+import {deriveCompanyOrganisationTx,employmentOrganisationTagsTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
 import {probationDateAuthorityTx} from './probation-effect-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
@@ -3639,7 +3639,13 @@ export async function setEmploymentInfo(
         from: earlierDate(before.hiredOn ?? null, (set.hiredOn as string | null) ?? null),
       });
     }
-    if(set.hiredOn!==undefined){const [source]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId));if(source)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:source.companyId,asOf:String(set.hiredOn),trigger:'correction'});}
+    if(set.hiredOn!==undefined){
+      const asOf=String(set.hiredOn);
+      // The Group Join Date can precede an Entity Transfer. Resolve the employer on that date through
+      // the organisation owner; today's employment.companyId can belong to a later employer.
+      const source=await employmentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,asOf});
+      await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:source.companyId,asOf,trigger:'correction'});
+    }
     const after = { ...before, ...set };
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
