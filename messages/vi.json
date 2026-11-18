@@ -37302,6 +37302,46 @@
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
       }
+    },
+    "reconciliation": {
+      "title": "Kiểm tra Nhân sự",
+      "cadence": "Kiểm tra mỗi 15 phút.",
+      "lastCheck": "Lần kiểm tra thành công gần nhất: {time} (giờ Malaysia).",
+      "notChecked": "Chưa ghi nhận lần kiểm tra thành công.",
+      "stale": "Kiểm tra Nhân sự chưa hoàn tất gần đây. Hãy nhờ người vận hành kiểm tra tiến trình nền.",
+      "missing": "{count} nhân viên Thử việc chưa có hồ sơ",
+      "buAdvisory": "Chỉ thiếu Đơn vị kinh doanh không ngăn tạo hồ sơ.",
+      "missingBu": "Chưa có Đơn vị kinh doanh trên bản ghi Nhân sự.",
+      "employee": "Nhân viên",
+      "company": "Công ty",
+      "reason": "Lý do / cảnh báo",
+      "fix": "Khắc phục",
+      "queued": "Đang chờ lần kiểm tra nền tiếp theo.",
+      "settings": "Cài đặt thử việc",
+      "forms": "Trình sửa biểu mẫu",
+      "routes": "Tuyến phê duyệt",
+      "personnel": "Quản lý Nhân sự",
+      "intake": "Tiếp nhận và kích hoạt",
+      "pages": "Các trang nhân viên chưa có hồ sơ",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "reasons": {
+        "settings": "Chưa có cài đặt đã công bố cho công ty này.",
+        "form": "Chưa có biểu mẫu đánh giá đã công bố cho cấp bậc này.",
+        "route": "Chưa có tuyến ký đã công bố.",
+        "activation": "Công ty chưa được kích hoạt.",
+        "grade_missing": "Chưa có Cấp bậc công việc trên bản ghi Nhân sự.",
+        "grade_ineligible": "Cấp bậc {grade} không đủ điều kiện.",
+        "assignment": "Chưa có phân công tổ chức áp dụng.",
+        "employment_type": "Loại hình tuyển dụng này không đủ điều kiện tiếp nhận thử việc.",
+        "no_probation": "Bản ghi Nhân sự ghi rõ không có thời gian thử việc.",
+        "period_review": "Thiếu thời gian thử việc, cần rà soát tiếp nhận bởi người có thẩm quyền.",
+        "eligibility_review": "Lịch sử bắt đầu làm việc hoặc tuyển lại cần người có thẩm quyền rà soát.",
+        "excluded": "Rà soát tiếp nhận có thẩm quyền đã loại trừ nhân viên này.",
+        "cutover": "Thử việc trong quá khứ cần tiếp nhận và kích hoạt đã được rà soát.",
+        "prior_case": "Hồ sơ cũ đã đóng cần HR rà soát; chưa tạo hồ sơ trùng.",
+        "retry": "Kiểm tra nền cần người vận hành rà soát. Không hồ sơ nào bị thay đổi."
+      }
     }
   },
   "probationConfig": {

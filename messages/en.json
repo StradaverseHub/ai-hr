@@ -37302,6 +37302,46 @@
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
       }
+    },
+    "reconciliation": {
+      "title": "Personnel checks",
+      "cadence": "Checks every 15 minutes.",
+      "lastCheck": "Last successful check: {time} (Malaysia time).",
+      "notChecked": "No successful check recorded yet.",
+      "stale": "Personnel checks have not completed recently. Ask your operator to check the background worker.",
+      "missing": "{count, plural, one {# employee on Probation has no case} other {# employees on Probation have no case}}",
+      "buAdvisory": "A missing Business Unit alone does not block case creation.",
+      "missingBu": "No Business Unit on the Personnel record.",
+      "employee": "Employee",
+      "company": "Company",
+      "reason": "Reason / warning",
+      "fix": "Fix",
+      "queued": "Queued for the next background check.",
+      "settings": "Probation settings",
+      "forms": "Form editor",
+      "routes": "Approval routes",
+      "personnel": "Personnel Management",
+      "intake": "Intake and activation",
+      "pages": "Employees without a case pages",
+      "previous": "Previous",
+      "next": "Next",
+      "reasons": {
+        "settings": "No published settings for this company.",
+        "form": "No published evaluation form for this grade.",
+        "route": "No published signing route.",
+        "activation": "Company not activated.",
+        "grade_missing": "No Job Grade on the Personnel record.",
+        "grade_ineligible": "Grade {grade} is not an eligible grade.",
+        "assignment": "No applicable organisation assignment.",
+        "employment_type": "This employment type is not eligible for probation intake.",
+        "no_probation": "The Personnel record explicitly specifies no probation.",
+        "period_review": "The missing probation period requires an authorised intake review.",
+        "eligibility_review": "The employment start or rehire history requires an authorised intake review.",
+        "excluded": "An authorised intake review explicitly excluded this employee.",
+        "cutover": "Historical probation requires its reviewed intake and activation.",
+        "prior_case": "An earlier closed case needs HR review; no duplicate case was created.",
+        "retry": "The background check needs an operator review. No case was changed."
+      }
     }
   },
   "probationConfig": {

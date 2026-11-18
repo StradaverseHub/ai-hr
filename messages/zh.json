@@ -37302,6 +37302,46 @@
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
       }
+    },
+    "reconciliation": {
+      "title": "人事核查",
+      "cadence": "每15分钟核查一次。",
+      "lastCheck": "最近成功核查：{time}（马来西亚时间）。",
+      "notChecked": "尚无成功核查记录。",
+      "stale": "人事核查近期未完成，请联系操作人员检查后台工作进程。",
+      "missing": "{count}名试用期员工没有个案",
+      "buAdvisory": "仅缺少业务单元不会阻止创建个案。",
+      "missingBu": "人事记录没有业务单元。",
+      "employee": "员工",
+      "company": "公司",
+      "reason": "原因／警告",
+      "fix": "处理",
+      "queued": "已排队等待下一次后台核查。",
+      "settings": "试用期设置",
+      "forms": "表单编辑器",
+      "routes": "审批路线",
+      "personnel": "人事管理",
+      "intake": "导入与启用",
+      "pages": "无个案员工分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "reasons": {
+        "settings": "此公司没有已发布的设置。",
+        "form": "此职级没有已发布的评估表。",
+        "route": "没有已发布的签署路线。",
+        "activation": "公司尚未启用。",
+        "grade_missing": "人事记录没有职级。",
+        "grade_ineligible": "职级{grade}不符合资格。",
+        "assignment": "没有适用的组织任职记录。",
+        "employment_type": "此雇佣类型不符合试用期导入资格。",
+        "no_probation": "人事记录明确注明无试用期。",
+        "period_review": "缺少试用期限，需要获授权人员审核导入。",
+        "eligibility_review": "入职或重新雇佣记录需要获授权人员审核。",
+        "excluded": "获授权的导入审核已明确排除此员工。",
+        "cutover": "历史试用记录需要经过审核的导入与启用。",
+        "prior_case": "先前已关闭的个案需要HR审核；未创建重复个案。",
+        "retry": "后台核查需要操作人员审核。没有更改任何个案。"
+      }
     }
   },
   "probationConfig": {
