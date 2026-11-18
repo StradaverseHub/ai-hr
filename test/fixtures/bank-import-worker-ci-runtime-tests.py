@@ -33,6 +33,8 @@ guard=load_native('operation_guard_fixture','bank_import_worker_operation_guard_
 fences=load_native('complete_fences_fixture','bank_import_worker_fences_v1.py')
 cleanup_spec=importlib.util.spec_from_file_location('owned_cleanup_fixture',ROOT/'.github/ci/cleanup-install.py')
 owned_cleanup=importlib.util.module_from_spec(cleanup_spec);cleanup_spec.loader.exec_module(owned_cleanup)
+activation_spec=importlib.util.spec_from_file_location('native_build_activation_fixture',ROOT/'.github/ci/build-activate.py')
+native_activation=importlib.util.module_from_spec(activation_spec);activation_spec.loader.exec_module(native_activation)
 # Import immutable build/runtime contract data from its actual native owner, not a copied selector schema.
 contract=subprocess.run(['node','--input-type=module','-e',"import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './.github/ci/build-production.mjs';console.log(JSON.stringify({runtime:STAGING_BUILD_RUNTIME,capacity:BUILD_CAPACITY_PROFILE}))"],cwd=ROOT,capture_output=True,text=True,check=True)
 NATIVE_CONTRACT=json.loads(contract.stdout)
@@ -67,8 +69,13 @@ class Fixture(old.UpgradeFlowFixture):
         self.grant.update(policyVersion='aihr-staging-ci/v17',controllerBranch='alpha',runAttempt=1,runCreatedAt='2026-11-17T00:00:00Z',issuedAt='2026-11-17T00:00:00Z',expiresAt='2026-11-17T00:30:00Z',producerStartedAt='2026-11-17T00:00:00Z',producerCompletedAt='2026-11-17T00:00:00Z',witnessFingerprint='9'*64,artifact={'digest':'sha256:'+'8'*64,'id':1})
         self.grant['build'].update(format=2,capacityProfile=copy.deepcopy(NATIVE_CONTRACT['capacity']),buildSourcePath='/frozen',runtime=copy.deepcopy(NATIVE_CONTRACT['runtime']),provenanceSha256='1'*64,archiveSha256='2'*64,archiveBytes=1,manifestSha256='3'*64,preparedSha256='4'*64,successfulObservationSha256='5'*64)
         (self.directory/'next').mkdir(mode=0o700);(self.directory/'next/BUILD_ID').write_text(self.old_build)
-        active=(self.webroot/'.next').stat();retained=(self.directory/'next').stat()
-        self.activated={'activation':{'activeDirectory':{'device':active.st_dev,'inode':active.st_ino},'retainedDirectory':{'device':retained.st_dev,'inode':retained.st_ino}},'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
+        # Exercise the actual Linux atomic exchange producer and retain BOTH records.
+        (self.webroot/'.next/BUILD_ID').write_text(self.old_build)
+        (self.webroot/'.next').chmod(0o755)
+        (self.directory/'next/BUILD_ID').write_text(self.new_build)
+        with patch.object(native_activation.time,'time_ns',return_value=self.clock*10**9):
+            activation=native_activation.activate(self.directory/'next',self.webroot,self.new_build,self.old_build)
+        self.activated={'activation':activation,'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
         self.verified={'format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build}
         for name,key in [('system-testing.json','preparedSha256'),('successful-build.json','successfulObservationSha256'),('build-provenance.json','provenanceSha256'),('bytes/build-bundle-files.json','manifestSha256')]:
             leaf=self.directory/'packet'/name;leaf.parent.mkdir(mode=0o700,parents=True,exist_ok=True);leaf.write_bytes(encoded({'nativeFixtureRecord':name,'source':self.source}));leaf.chmod(0o600);self.grant['build'][key]=ci.sha(leaf.read_bytes())

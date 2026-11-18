@@ -197,12 +197,12 @@ def source_inventory(base, root, filters, deadline=None):
     return rows
 
 
-def private_install(base, path, uid, directory=False):
+def private_install(base, path, uid, directory=False, build=False):
     path = Path(path)
     base.check(path.is_absolute() and path.resolve() == path, 'canonical private installation path required')
     info = path.lstat()
     base.check(info.st_uid == uid and not stat.S_ISLNK(info.st_mode), 'private installation owner changed')
-    base.check(stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o700 if directory else
+    base.check(stat.S_ISDIR(info.st_mode) and stat.S_IMODE(info.st_mode) in ({0o700,0o755} if build else {0o700}) if directory else
                stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and not info.st_mode & 0o077, 'private installation protection differs')
     return info
 
@@ -486,7 +486,7 @@ class RuntimeObservation:
         """Original bytes stay immutable; only exact native cleanup publications/removals progress."""
         b=self.base;uid=self.owner.pw_uid
         initial_root=FENCES.metadata(private_install(b,self.directory,uid,True))
-        original={'authorization.json','store.json','verified.json','activated.json','runtime.json'}
+        original={'authorization.json','store.json','verified.json','activated.json','runtime.json','activate-intent.json','activate-result.json'}
         allowed={'audit','normal-cleanup.lock','normal-cleanup-ready.json','normal-cleanup-commit.json','normal-cleanup-consumed.json','cleanup-authorized.json','cleanup-intent.json','cleanup-result.json','normal-cleanup-owned-cleanup.json'}
         names=set(os.listdir(self.directory));b.check(names<=original|allowed|{'packet','next'} and original<=names,'unknown/missing private installation member')
         previous=getattr(self,'private_names',None)
@@ -556,6 +556,36 @@ class RuntimeObservation:
             raise NativePublicationPending(reason)
         for name in original:read(self.directory/name)
         store=json.loads(b.read_bounded(self.directory/'store.json',4096));activated=json.loads(b.read_bounded(self.directory/'activated.json',1024**2))
+        intent=read(self.directory/'activate-intent.json',65536)
+        exchange=read(self.directory/'activate-result.json',65536)
+        # These immutable records are produced by the native renameat2 owner.
+        # They are required originals, never optional cleanup publications.
+        common={'format':1,'action':'activate','source':str(SOURCE),'staged':str(self.directory/'next'),'releaseAuthorized':False}
+        result={**common,'kind':'BUILD_DIRECTORIES_EXCHANGED_NOT_SERVICE_OR_RELEASE',
+                'activeBuildId':self.args.build_id,'retainedBuildId':self.args.previous_web_build,
+                'activeDirectory':activated['activation']['activeDirectory'],
+                'retainedDirectory':activated['activation']['retainedDirectory'],
+                'serviceRestarted':False,'activeServiceVerified':False}
+        b.check(exchange==result and activated['activation']==result,'native activation result differs from pinned activated record')
+        expected_intent={**common,'kind':'BUILD_DIRECTORY_EXCHANGE_INTENT_NOT_RELEASE',
+                         'expectedNewBuildId':self.args.build_id,'expectedOldBuildId':self.args.previous_web_build,
+                         'newDirectory':result['activeDirectory'],'oldDirectory':result['retainedDirectory'],
+                         'createdUnixNs':intent.get('createdUnixNs')}
+        b.check(intent==expected_intent and type(intent['createdUnixNs'])is int and
+                epoch(self.grant['issuedAt'])*10**9<=intent['createdUnixNs']<=epoch(self.grant['expiresAt'])*10**9,
+                'native activation intent differs from original grant/result')
+        for identity in (result['activeDirectory'],result['retainedDirectory']):
+            b.check(set(identity)=={'device','inode'} and all(type(v)is int and v>0 for v in identity.values()),'native activation directory identity shape differs')
+        b.check(result['activeDirectory']!=result['retainedDirectory'],'native activation directories must be distinct')
+        active=private_install(b,SOURCE/'.next',uid,True,build=True)
+        b.check(stat.S_IMODE(active.st_mode)==0o755,'native active directory mode differs')
+        b.check({'device':active.st_dev,'inode':active.st_ino}==result['activeDirectory'] and
+                b.read_bounded(SOURCE/'.next/BUILD_ID',1024).decode().strip()==self.args.build_id,'native active directory/build identity differs')
+        if self.prepared is not None:
+            pins=self.auth['nativeActivation']
+            b.check(set(pins)=={'activate-intent.json','activate-result.json'} and
+                    all(re.fullmatch('[a-f0-9]{64}',value)for value in pins.values()) and
+                    all(records[name]['sha256']==value for name,value in pins.items()),'administrator-pinned native activation bytes differ')
         missing_cleanup_lock=False
         for name in allowed-{'audit'}:
             if name in names:
@@ -618,11 +648,12 @@ class RuntimeObservation:
                     raise
                 b.check(records[folder+'/'+name]['sha256']==self.grant['build'][key],'retained original audit byte integrity failed')
         if 'next'in names:
-            try:st=private_install(b,self.directory/'next',uid,True)
+            try:st=private_install(b,self.directory/'next',uid,True,build=True)
             except FileNotFoundError:
                 if intent_valid:pending('validated native retained directory removal is in progress',removal=True)
                 raise
             b.check({'device':st.st_dev,'inode':st.st_ino}==activated['activation']['retainedDirectory'],'retained previous build directory changed')
+            b.check(b.read_bounded(self.directory/'next/BUILD_ID',1024).decode().strip()==self.args.previous_web_build,'native retained build identity differs')
         if 'cleanup-authorized.json'in names:
             for name in audit_members:b.check('audit/'+name in records,'native cleanup lost retained original audit')
         # FIRST establish a stable final namespace/root observation. Applying old
