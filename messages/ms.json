@@ -40206,6 +40206,34 @@
           "title": "Semakan e-mel penyelia dihentikan",
           "body": "Semakan yang selesai kekal direkodkan pada kes masing-masing."
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "Semakan pelengkapan maklumat selesai",
+          "body": "Semak keputusan yang disimpan sebelum memilih pemulihan."
+        },
+        "failed": {
+          "title": "Pelengkapan maklumat memerlukan semakan",
+          "body": "Semak ralat yang direkodkan sebelum mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pelengkapan maklumat dihentikan",
+          "body": "Titik semak yang selesai kekal direkodkan."
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "Pemulihan pelengkapan maklumat selesai",
+          "body": "Semak keputusan setiap kes; e-mel lewat masih memerlukan keputusan HR."
+        },
+        "failed": {
+          "title": "Pelengkapan maklumat memerlukan semakan",
+          "body": "Semak ralat yang direkodkan sebelum mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pelengkapan maklumat dihentikan",
+          "body": "Titik semak yang selesai kekal direkodkan."
+        }
       }
     },
     "panel": {
@@ -44778,5 +44806,94 @@
     "sourceFrozen": "Penerima menggunakan larian aliran kerja tersimpan dan langkah yang dipilih.",
     "sourceCurrent": "Penerima menggunakan langkah terpilih dalam aliran kerja semasa.",
     "previewOnly": "Pratonton jadual baca sahaja. Salinan e-mel tersimpan semasa dipaparkan sehingga dibariskan; penghantaran manual tersedia dalam pratonton templat."
+  },
+  "personnelCompletion": {
+    "saveProgress": "Simpan kemajuan",
+    "submitAnswers": "Hantar jawapan",
+    "preparationHelp": "Jawapan anda akan dihantar kepada HR untuk semakan. Ini tidak menandatangani dokumen atau melengkapkan tugas berkaitan.",
+    "answersSubmitted": "Jawapan anda telah dihantar untuk semakan HR.",
+    "completionRequired": "Lengkapkan medan wajib sebelum menghantar atau menandatangani.",
+    "missingPersonalNote": "Tiada dalam Pengurusan Personel – sila isi",
+    "fromPM": "Daripada Pengurusan Personel",
+    "employeeTitle": "Lengkapkan dokumen anda",
+    "employeeHelp": "Lengkapkan butiran yang tiada di bawah. Jawapan yang dihantar akan disemak oleh HR sebelum Pengurusan Personel dikemas kini.",
+    "hrTitle": "Kawalan kes HR",
+    "hrHelp": "Perubahan hanya terpakai pada dokumen ini dan direkodkan pada kes.",
+    "employeeCompletes": "Pekerja akan melengkapkan",
+    "hrCompletes": "Menunggu HR",
+    "askEmployee": "Minta pekerja isi",
+    "fillMyself": "Saya akan isi",
+    "reason": "Sebab menukar pihak yang melengkapkan medan ini",
+    "confirmChoice": "Sahkan perubahan",
+    "cancel": "Batal",
+    "saved": "Disimpan pada kes ini.",
+    "saveFailed": "Dokumen telah berubah atau tidak dapat disimpan. Suntingan anda masih ada. Muat semula dan semak sebelum mencuba lagi.",
+    "saveHR": "Simpan nilai untuk dokumen ini",
+    "completeMissing": "Lengkapkan nilai Personel yang tiada",
+    "refresh": "Segarkan nilai Personel",
+    "conflictTitle": "Semak jawapan tersimpan untuk {field}",
+    "conflictHelp": "Pengurusan Personel kini mempunyai nilai. Jawapan terdahulu anda disimpan untuk semakan HR.",
+    "officialValue": "Nilai Personel semasa",
+    "savedDraft": "Jawapan terdahulu yang disimpan",
+    "keepDraftNote": "Jawapan pekerja yang dihantar muncul dalam Perubahan untuk Pengurusan Personel. HR memilih perkara yang hendak dihantar; jawapan yang tidak ditandakan kekal pada kes ini.",
+    "changedBy": "Direkodkan oleh {name} · {when}",
+    "locked": "Dokumen ini telah ditandatangani. Jawapan dan pilihan pihak yang melengkapkannya dikunci.",
+    "notInPm": "Tiada dalam PM",
+    "pmTitle": "Perubahan untuk Pengurusan Personel",
+    "pmHelp": "Daripada {document}. Tandakan perubahan yang hendak dihantar. Perubahan yang tidak ditandakan kekal pada kes sahaja.",
+    "push": "Hantar",
+    "field": "Medan",
+    "previous": "Nilai sebelumnya",
+    "proposed": "Nilai dicadangkan",
+    "status": "Status",
+    "recordedBy": "Direkodkan oleh",
+    "recordedWhen": "Masa direkodkan",
+    "notRecorded": "Tidak direkodkan",
+    "pushSelected": "Hantar {count} perubahan ke PM",
+    "keepOnCase": "Simpan pada kes sahaja",
+    "show": "Tunjukkan {field}",
+    "hide": "Sembunyikan {field}",
+    "reviewMapping": "Semak pemetaan medan dalam Personel",
+    "submittedForm": "borang yang dihantar",
+    "validationRequired": "Lengkapkan medan wajib ini.",
+    "validationPhone": "Masukkan nombor telefon yang sah termasuk kod kawasan atau kod panggilan negara.",
+    "validationEmail": "Masukkan alamat e-mel yang sah.",
+    "validationDate": "Masukkan tarikh kalendar yang sah.",
+    "validationNumber": "Masukkan nombor yang sah.",
+    "validationLength": "Hadkan nilai ini kepada 20,000 aksara.",
+    "templateHelp": "Nilai Personel sedia ada kekal dikunci. Butiran peribadi yang tiada diisi oleh pekerja; butiran pekerjaan yang tiada menunggu HR.",
+    "inventoryTitle": "Medan Personel manakah boleh dilengkapkan oleh pekerja?",
+    "inventoryHelp": "Pengelasan yang diluluskan ini meliputi semua 20 medan terpaut. Pautan baharu atau yang belum dikelaskan menunggu HR.",
+    "personalGroup": "Peribadi — pekerja isi jika tiada",
+    "employmentGroup": "Pekerjaan — HR isi jika tiada",
+    "fields": {
+      "employee_icNo": "Nombor kad pengenalan",
+      "race": "Bangsa",
+      "religion": "Agama",
+      "nationality": "Kewarganegaraan",
+      "gender": "Jantina",
+      "marital": "Status perkahwinan",
+      "employee_passportNo": "Nombor pasport",
+      "mobile": "Nombor telefon bimbit",
+      "homePhone": "Nombor telefon rumah",
+      "personalEmail": "E-mel peribadi",
+      "address": "Alamat",
+      "employee_empNo": "ID pekerja",
+      "employee_name": "Nama penuh",
+      "email": "E-mel kerja",
+      "company_name": "Syarikat",
+      "employee_department": "Jabatan",
+      "employee_position": "Jawatan",
+      "employee_supervisor": "Penyelia langsung",
+      "joiner_joinDate": "Tarikh menyertai",
+      "leaver_lastDay": "Tarikh akhir bekerja"
+    },
+    "statuses": {
+      "proposed": "Dicadangkan",
+      "pushed": "Dihantar",
+      "conflict": "Sumber Personel berubah; semakan diperlukan",
+      "rejected": "Disimpan pada kes sahaja"
+    },
+    "pushField": "Hantar {field} ke Pengurusan Personel"
   }
 }

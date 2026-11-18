@@ -1,3 +1,4 @@
+import {initializePersonnelCompletion,effectivePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,reconcilePersonnelCompletion,personnelCompletionLocked,savePersonnelCompletionAnswer,personnelCompletionIssues,personnelCompletionMergeValues,personnelCompletionEmployeeAnswers,type PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
 import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
 import {canEditSigningContent,type SigningDocument} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
@@ -87,6 +88,7 @@ export type Document = {
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
   supersededBy?: string;
   mergeValues?: Record<string, string>;
+  personnelCompletion?:PersonnelCompletionPolicy;
   personnelSourceReference?:{version:1;basis:'current'|'exit-boundary'|'draft';asOf:string;assignmentId:string|null;reportingLineId:string|null;exitEventId:string|null};
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
   /** Documents generated from a routed template version: each Sign step's signature, keyed by step id (`step:<id>` signature blocks). */
@@ -167,6 +169,8 @@ export function workflowWhen(workflow: Workflow): string {
 }
 export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow; actor?: Actor;
   /** An email step waiting because a recipient is missing. Only Continue looks the recipients up again. */
+  /** Original due day survives unsigned Personnel preparation and later signature/file waits. */
+  completionHold?: {documentId:string;stepId:string;dueOn:string|null;at:string};
   hold?: { stepId: string; missing: RecipientMissing[]; at: string }; lateEmail?: { stepId: string; dueOn: string; at: string }; resumeOn?: string; sourceEvent?: { kind: 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded'; sourceId: string; at: string; revision: number } };
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
@@ -179,7 +183,7 @@ export type Mail = {
     /** Keys in to/cc that came from Employee (Personal email); masked for viewers without that Personnel permission. */
     personalKeys?: string[] };
 };
-export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
+export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string; provenance?:{kind:'missing-personnel';version:1;by:Actor;at:string};superseded?:{at:string;by:Actor;reason:string} };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
@@ -218,6 +222,8 @@ export type Config = {
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
   documentRouting?:V9DocumentRoutingEnvironment;
+  /** Canonical, authorized source; absence deliberately preserves legacy pure-model callers. */
+  personnelCompletion?:{available?:boolean;country:string|null;source:Record<string,string>;fingerprint:(values:Record<string,string>,country:string|null)=>string};
   onLeave: (userId: string, date: string) => boolean;
   openLoad: (userId: string, groupId: string) => number;
   lastAssigned: (userId: string, groupId: string) => number;
@@ -391,11 +397,12 @@ export function validateFieldValue(field: Field, value: string): void {
 }
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
 /** Unused case-form answers never travel with a released document's merge snapshot. */
-export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>): Record<string,string> {
+export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>,restrictToUsed=false): Record<string,string> {
   const content=document.blocks.flatMap(block=>[document.edits?.[block.id]??block.text,block.rows??'',block.label??'']).join('\n');
-  const used=new Set([...content.matchAll(/\{(case\.[A-Za-z0-9_.-]+)\}/g)].map(match=>match[1]));
-  for(const field of document.fields)if(field.pmKey?.startsWith('case.'))used.add(field.pmKey);
-  return Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('case.')||used.has(key)));
+  const used=new Set([...content.matchAll(/\{([A-Za-z][A-Za-z0-9_.-]*)\}/g)].map(match=>match[1]));
+  for(const field of document.fields)if(field.pmKey)used.add(field.pmKey);
+  if(document.blocks.some(block=>block.type==='letterhead'))for(const key of ['company.name','company.regNo','company.address','company.color'])used.add(key);
+  return Object.fromEntries(Object.entries(values).filter(([key])=>restrictToUsed?used.has(key):!key.startsWith('case.')||used.has(key)));
 }
 export function personnelFieldSourceValue(field: Field, values: Readonly<Record<string, string>>): string {
   const value = field.pmKey ? values[field.pmKey] ?? '' : '';
@@ -414,6 +421,15 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
+  if(env.personnelCompletion&&doc.fields.some(field=>field.owner==='pmLocked')){
+    if(env.personnelCompletion.available===false)throw new V9Error('The current authorized Personnel source is unavailable.','conflict');
+    const source=env.personnelCompletion.source;
+    if(source._sourceBasis==='unresolved-exit'&&doc.fields.some(field=>['employee.department','employee.position','employee.supervisor'].includes(field.pmKey??'')))throw new V9Error('The dated Personnel source requires review.','conflict');
+    if(source._identityFieldsWithheld==='true'&&doc.fields.some(field=>['personalEmail','employee.icNo','employee.passportNo'].includes(field.pmKey??'')))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
+    const official=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,source)]));
+    initializePersonnelCompletion(doc,{country:env.personnelCompletion.country,sourceFingerprint:env.personnelCompletion.fingerprint(official,env.personnelCompletion.country),officialValues:official,actor:env.actor,at:env.now});
+  }
+  if(doc.personnelCompletion){doc.mergeValues=documentMergeValues(doc,{...doc.mergeValues,...Object.fromEntries(Object.entries(env.personnelCompletion!.source).filter(([key])=>!key.startsWith('_')))},true);if(env.personnelCompletion!.source._identityFieldsWithheld==='true'&&['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'].some(key=>Object.hasOwn(doc.mergeValues!,key)))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');}
   initializeV9DocumentRouting(c,version,doc,env);
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
@@ -443,19 +459,52 @@ export function documentDeliveryReserved(c: Pick<Case, 'mails'>, documentId: str
   return c.mails.some(mail => !mail.test && ['pending', 'sending', 'uncertain'].includes(mail.status) && mail.documentIds.includes(documentId));
 }
 export function missingDocumentPersonnelValues(doc: Document): string[] {
-  const values = { ...doc.mergeValues, ...doc.values };
+  const values = { ...doc.mergeValues,...personnelCompletionMergeValues(doc), ...doc.values };
   const missing = doc.blocks.flatMap(block => [
     doc.edits[block.id] ?? block.text, block.rows ?? '', block.label ?? '',
   ].flatMap(text => merge(text, values).missing));
   for (const field of doc.fields) {
-    if (field.owner === 'pmLocked' && field.pmKey && !doc.values[field.id]?.trim() &&
+    if (field.owner === 'pmLocked' && effectivePersonnelCompletion(doc,field)!=='employee' && field.pmKey && !doc.values[field.id]?.trim() &&
         (!field.when || doc.values[field.when.field] === field.when.value) &&
         doc.blocks.some(block => block.type === 'field' && block.fieldId === field.id ||
           block.type === 'fields' && block.section === field.section)) missing.push(field.pmKey);
   }
-  return [...new Set(missing)].filter(key => personnelMergeLabels.has(key));
+  return [...new Set(missing)].filter(key => personnelMergeLabels.has(key)&&!doc.fields.some(field=>field.pmKey===key&&effectivePersonnelCompletion(doc,field)==='employee'));
+}
+export function refreshDocumentPersonnelCompletion(doc:Document,env:Environment):boolean{
+  if(!doc.personnelCompletion||personnelCompletionLocked(doc))return false;
+  if(!env.personnelCompletion)throw new V9Error('Current Personnel values are unavailable. Refresh before continuing.','conflict');
+  const values=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,env.personnelCompletion!.source)]));
+  return reconcilePersonnelCompletion(doc,{values,sourceFingerprint:env.personnelCompletion.fingerprint(values,doc.personnelCompletion.country),actor:env.actor,at:env.now});
+}
+export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fieldId:string;owner:'employee'|'hr';reason:string},env:Environment){
+  const doc=c.documents.find(document=>document.id===id);if(!doc)throw new V9Error('Document not found.','not_found');
+  if(c.state!=='submitted'||documentDeliveryReserved(c,id))throw new V9Error('This document is no longer editable.','conflict');
+  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});reviseV9DocumentRouting(doc,env);
+  reconcileDocumentCompletionProposals(c,doc,env);
+  appendLog(c,env,'document.completionOwnerChanged',`${doc.name}: ${input.fieldId}; ${input.reason.trim()}`);
+}
+/** An earlier submitted answer is audit history, not permission to push an abandoned draft. */
+export function currentDocumentCompletionProposal(doc:Document,change:PMChange):boolean{
+  if(!doc.personnelCompletion||!doc.fields.some(field=>field.owner==='pmLocked'&&field.pmKey===change.field))return true;
+  if(change.provenance?.kind!=='missing-personnel')return false;
+  return doc.fields.some(field=>{const entry=doc.personnelCompletion!.fields[field.id],answer=entry?.answer;return field.pmKey===change.field&&effectivePersonnelCompletion(doc,field)==='employee'&&answer?.owner==='employee'&&answer.value===change.after&&doc.values[field.id]===change.after&&answer.by.id===change.provenance!.by.id;});
+}
+function reconcileDocumentCompletionProposals(c:Case,doc:Document,env:Environment){
+  for(const change of c.pmChanges)if(change.documentId===doc.id&&change.status==='proposed'&&!currentDocumentCompletionProposal(doc,change)){change.status='rejected';change.superseded={at:env.now,by:{...env.actor},reason:'The active employee answer changed or completion moved to another owner'};}
+}
+export function submitDocumentPersonnelCompletion(c:Case,id:string,env:Environment){
+  const doc=c.documents.find(document=>document.id===id);if(!doc?.personnelCompletion)throw new V9Error('This document has no Personnel completion request.','not_found');
+  refreshDocumentPersonnelCompletion(doc,env);
+  const issue=personnelCompletionIssues(doc,{owner:'employee',final:true})[0];if(issue)throw new V9Error(issue.message);
+  if(personnelCompletionLocked(doc))throw new V9Error('Signed content is locked.','conflict');
+  doc.personnelCompletion.submitted={at:env.now,by:{...env.actor},sourceFingerprint:doc.personnelCompletion.sourceFingerprint};
+  reconcileDocumentCompletionProposals(c,doc,env);
+  for(const answer of personnelCompletionEmployeeAnswers(doc,env.actor.id))if(!c.pmChanges.some(change=>change.documentId===id&&change.field===answer.key&&change.status==='proposed'&&change.after===answer.value&&change.provenance?.by.id===answer.by.id))c.pmChanges.push({id:env.nextId(),documentId:id,field:answer.key,before:'',after:answer.value,sourceRevision:c.sourceRevision,status:'proposed',provenance:{kind:'missing-personnel',version:1,by:{...answer.by},at:answer.at}});
+  reviseV9DocumentRouting(doc,env,true);appendLog(c,env,'document.completionSubmitted',doc.name);
 }
 function documentPersonnelHold(doc: Document): string | null {
+  if(doc.personnelCompletion){const missing=missingPersonnelCompletion(doc,'hr');if(missing.length)return 'Complete missing Personnel values for '+doc.name+': '+missing.map(field=>field.label).join(', ')+'.';}
   const missing = missingDocumentPersonnelValues(doc);
   return missing.length ? 'Complete missing Personnel values for ' + doc.name + ': ' +
     missing.map(key => personnelMergeLabels.get(key)).join(', ') + '.' : null;
@@ -486,20 +535,22 @@ export function fillDocumentPersonnelValues(c: Case, id: string, values: Record<
 }
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
+  refreshDocumentPersonnelCompletion(doc,env);
   if(doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)&&owner==='hr')throw new V9Error('The document is locked or it is not your turn to edit.','forbidden');
   if(doc.signing&&owner==='employee'&&doc.signing.actions.some(action=>action.action==='signed'&&action.contentHash===doc.signing!.contentHash))throw new V9Error('Signed document content is locked.','conflict');
   if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
-  if (owner === 'hr' && !doc.signing && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
+  if (owner === 'hr' && !doc.signing && !doc.personnelCompletion && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
-  if (owner === 'employee' && !doc.signing && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
+  if (owner === 'employee' && !doc.signing && !doc.personnelCompletion?.preparation && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
-    const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
+    const field = doc.fields.find(f => f.id === key); if (!field || effectivePersonnelCompletion(doc,field) !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
     validateFieldValue(field, value);
-    doc.values[key] = value;
+    if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
   }
   reviseV9DocumentRouting(doc,env,owner==='employee');
+  reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c, env, 'document.saved', doc.name);
 }
 /** Per-person wording is stored on the saved instance, never on the published template. */
@@ -521,12 +572,14 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');
   if(doc.signing)throw new V9Error('Use the assigned signing route for this document.','conflict');
+  refreshDocumentPersonnelCompletion(doc,env);
+  if(doc.personnelCompletion){const issue=personnelCompletionIssues(doc,{final:true})[0];if(issue)throw new V9Error(issue.message);}
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs and do not require a signature.', 'conflict');
   const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
   if (role === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (!signature.consent || !validV9SignatureValue(signature.method, signature.value) || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
-  const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
+  const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues,...personnelCompletionMergeValues(doc), ...doc.values }).missing);
   const personnelHold = documentPersonnelHold(doc);
   if (personnelHold) throw new V9Error(personnelHold, 'conflict');
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
@@ -911,6 +964,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
 }
 /** Frozen workflow dates govern held mail; a repeated reminder keeps the run's own day. */
 export function heldEmailDueOn(c: Pick<Case, 'facts'>, run: Run): string | null {
+  if(run.completionHold)return run.completionHold.dueOn&&validDate(run.completionHold.dueOn)?run.completionHold.dueOn:null;
   const trigger = run.definition?.trigger;
   if (!trigger || !dateTrigger(trigger.event) || trigger.repeat) return validDate(run.date) ? run.date : null;
   const anchor = ['beforeLWD', 'afterLWD'].includes(trigger.event) ? c.facts.lastDay : c.facts.joinDate;
@@ -924,10 +978,11 @@ export function decideLateEmail(c: Case, config: Config, input: { workflowId: st
   const step = definition?.steps[run?.cursor ?? -1];
   const due = run && heldEmailDueOn(c, run);
   if (!run || !definition || !step || !['email', 'notify'].includes(step.type) || step.id !== input.stepId || !(run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) || !due || due >= env.today) throw new V9Error('This late email changed. Refresh before deciding.', 'conflict');
+  if(c.mails.some(mail=>mail.workflowId===definition.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`))))throw new V9Error('This email already has a delivery record. Review its receipt.','conflict');
   return runWorkflow(c, config, definition, env, 'resume', { continueHeld: true, lateDecision: input });
 }
-export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; sourceEvent?:Run['sourceEvent'];lateDecision?:{runId:string;stepId:string;decision:'send'|'skip'} } = {}): Run | null {
-  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed') && (!options.lateDecision || r.id === options.lateDecision.runId) && (!options.sourceEvent || r.sourceEvent?.kind===options.sourceEvent.kind && r.sourceEvent.sourceId===options.sourceEvent.sourceId && r.sourceEvent.revision===options.sourceEvent.revision));
+export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; resumeRunId?:string; sourceEvent?:Run['sourceEvent'];lateDecision?:{runId:string;stepId:string;decision:'send'|'skip'} } = {}): Run | null {
+  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed') && (!options.resumeRunId || r.id===options.resumeRunId) && (!options.lateDecision || r.id === options.lateDecision.runId) && (!options.sourceEvent || r.sourceEvent?.kind===options.sourceEvent.kind && r.sourceEvent.sourceId===options.sourceEvent.sourceId && r.sourceEvent.revision===options.sourceEvent.revision));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if ((unfinished?.hold || unfinished?.lateEmail) && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
   // A retired workflow starts nothing new, but a run that already started finishes with the steps it saved.
@@ -960,17 +1015,30 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && (['draft', 'hrsigned'].includes(doc.status)||doc.signing&&!doc.sentAt&&!['withdrawn','superseded'].includes(doc.status))) {
-          if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
+          const employeePreparation=doc.personnelCompletion&&!personnelCompletionLocked(doc)&&!doc.personnelCompletion.submitted&&doc.fields.some(field=>field.required&&effectivePersonnelCompletion(doc,field)==='employee'&&field.owner==='pmLocked'&&(!field.when||doc.values[field.when.field]===field.when.value));
+          if(employeePreparation){
+            const hold=documentPersonnelHold(doc);
+            if(hold)waiting=hold;
+            else {if(!doc.personnelCompletion!.preparation){doc.personnelCompletion!.preparation={at:env.now,by:{...env.actor}};appendLog(c,env,'document.preparationOpened',doc.name);}waiting='Waiting for the employee to complete required Personnel answers before the first signature.';}
+          }
+          else if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
           else {
             waiting = documentPersonnelHold(doc) ?? '';
             if (!waiting) { if(!doc.signing||!documentFinal(doc))doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
           }
         }
+        if(waiting&&step.release&&doc.personnelCompletion&&!run.completionHold){
+          run.completionHold={documentId:doc.id,stepId:step.id,dueOn:heldEmailDueOn(c,run),at:env.now};
+          appendLog(c,env,'workflow.personnelCompletionHeld',`${workflow.name}: ${doc.name}`);
+        }
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }
       else {
         const dueOn = heldEmailDueOn(c, run);
-        if ((run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) && dueOn && dueOn < env.today) {
+        const captured=c.mails.some(mail=>mail.workflowId===workflow.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`)));
+        if(run.completionHold&&!captured&&!dueOn){run.status='waiting';run.reason='The original scheduled date is unavailable. HR must review this workflow.';return run;}
+        if(run.completionHold&&!captured&&dueOn&&dueOn>env.today){run.resumeOn=dueOn;run.status='waiting';run.reason=`Waiting until the original scheduled date ${dueOn}.`;return run;}
+        if (!captured&&(run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id || run.completionHold) && dueOn && dueOn < env.today) {
           const decision = options.lateDecision;
           if (!decision || decision.runId !== run.id || decision.stepId !== step.id || env.actor.id === 'system') {
             run.lateEmail = { stepId: step.id, dueOn, at: run.lateEmail?.at ?? env.now };
@@ -985,13 +1053,14 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
         const outcome = enqueue(c, config, step, `${run.id}:${step.id}`, workflow.id, env);
         if (outcome && 'held' in outcome) { holdEmail(c, config, workflow, run, step, outcome.held, env); return run; }
         if (run.hold?.stepId === step.id) { appendLog(c, env, 'workflow.emailReleased', `${workflow.name}: ${stepMessageName(config, step)}`); delete run.hold; }
-        if (!outcome) delete run.lateEmail;
+        // A captured receipt owns further delivery progress; approval never needs to replay it.
+        if (!outcome||c.mails.some(mail=>mail.workflowId===workflow.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`)))) delete run.lateEmail;
         waiting = outcome?.wait ?? '';
       }
       if (waiting) { run.status = 'waiting'; run.reason = waiting; return run; }
       run.cursor++;
     }
-    run.status = 'done'; run.reason = ''; appendLog(c, env, 'workflow.completed', workflow.name);
+    run.status = 'done'; run.reason = ''; delete run.completionHold; appendLog(c, env, 'workflow.completed', workflow.name);
   } catch (error) { run.status = 'failed'; run.reason = error instanceof Error ? error.message : 'Workflow could not complete.'; appendLog(c, env, 'workflow.failed', `${workflow.name}: ${run.reason}`); }
   return run;
 }

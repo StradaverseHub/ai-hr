@@ -40206,6 +40206,34 @@
           "title": "Manager email recheck stopped",
           "body": "Completed rechecks remain recorded on their cases."
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "Personnel completion review finished",
+          "body": "Review the saved results before choosing recovery."
+        },
+        "failed": {
+          "title": "Personnel completion needs review",
+          "body": "Review the recorded errors before trying again."
+        },
+        "cancelled": {
+          "title": "Personnel completion stopped",
+          "body": "Completed checkpoints remain recorded."
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "Personnel completion recovery finished",
+          "body": "Review each case result; late emails still need an HR decision."
+        },
+        "failed": {
+          "title": "Personnel completion needs review",
+          "body": "Review the recorded errors before trying again."
+        },
+        "cancelled": {
+          "title": "Personnel completion stopped",
+          "body": "Completed checkpoints remain recorded."
+        }
       }
     },
     "panel": {
@@ -44778,5 +44806,94 @@
     "sourceFrozen": "Recipients use the saved workflow run and selected step.",
     "sourceCurrent": "Recipients use the selected step of the current workflow.",
     "previewOnly": "Read-only schedule preview. The current saved email copy is shown until queued; manual sends remain in the template preview."
+  },
+  "personnelCompletion": {
+    "saveProgress": "Save progress",
+    "submitAnswers": "Submit answers",
+    "preparationHelp": "Your answers will go to HR for review. This does not sign the document or complete a linked task.",
+    "answersSubmitted": "Your answers were submitted for HR review.",
+    "completionRequired": "Complete the required fields before submitting or signing.",
+    "missingPersonalNote": "Not in Personnel Management – please fill in",
+    "fromPM": "From Personnel Management",
+    "employeeTitle": "Complete your document",
+    "employeeHelp": "Complete the missing details below. Your submitted answers go to HR for review before Personnel Management is updated.",
+    "hrTitle": "HR case controls",
+    "hrHelp": "Changes apply to this document only and are recorded on the case.",
+    "employeeCompletes": "Employee will complete",
+    "hrCompletes": "Waiting for HR",
+    "askEmployee": "Ask the employee",
+    "fillMyself": "Fill it myself",
+    "reason": "Reason for changing who completes this field",
+    "confirmChoice": "Confirm change",
+    "cancel": "Cancel",
+    "saved": "Saved on this case.",
+    "saveFailed": "The document changed or could not be saved. Your edits are still here. Refresh and review before trying again.",
+    "saveHR": "Save values for this document",
+    "completeMissing": "Complete missing Personnel values",
+    "refresh": "Refresh Personnel values",
+    "conflictTitle": "Review the saved answer for {field}",
+    "conflictHelp": "Personnel Management now has a value. Your earlier answer is saved for HR review.",
+    "officialValue": "Current Personnel value",
+    "savedDraft": "Saved earlier answer",
+    "keepDraftNote": "Submitted employee answers appear in Changes for Personnel Management. HR selects what to push; unticked answers stay on this case.",
+    "changedBy": "Recorded by {name} · {when}",
+    "locked": "This document is signed. Its answers and completion choices are locked.",
+    "notInPm": "Not in PM",
+    "pmTitle": "Changes for Personnel Management",
+    "pmHelp": "From {document}. Tick the changes to push. Unticked changes stay on the case only.",
+    "push": "Push",
+    "field": "Field",
+    "previous": "Previous value",
+    "proposed": "Proposed value",
+    "status": "Status",
+    "recordedBy": "Recorded by",
+    "recordedWhen": "Recorded when",
+    "notRecorded": "Not recorded",
+    "pushSelected": "Push {count, plural, one {# change} other {# changes}} to PM",
+    "keepOnCase": "Keep on case only",
+    "show": "Show {field}",
+    "hide": "Hide {field}",
+    "reviewMapping": "Review field mapping in Personnel",
+    "submittedForm": "the submitted form",
+    "validationRequired": "Complete this required field.",
+    "validationPhone": "Enter a valid phone number including its area or country calling code.",
+    "validationEmail": "Enter a valid email address.",
+    "validationDate": "Enter a valid calendar date.",
+    "validationNumber": "Enter a valid number.",
+    "validationLength": "Keep this value within 20,000 characters.",
+    "templateHelp": "Existing Personnel values stay locked. Missing personal details go to the employee; missing employment details wait for HR.",
+    "inventoryTitle": "Which Personnel fields can the employee complete?",
+    "inventoryHelp": "This approved classification covers all 20 linked fields. New or unclassified links wait for HR.",
+    "personalGroup": "Personal — employee fills if missing",
+    "employmentGroup": "Employment — HR fills if missing",
+    "fields": {
+      "employee_icNo": "IC number",
+      "race": "Race",
+      "religion": "Religion",
+      "nationality": "Nationality",
+      "gender": "Gender",
+      "marital": "Marital status",
+      "employee_passportNo": "Passport number",
+      "mobile": "Mobile phone number",
+      "homePhone": "Home phone number",
+      "personalEmail": "Personal email",
+      "address": "Address",
+      "employee_empNo": "Employee ID",
+      "employee_name": "Full name",
+      "email": "Work email",
+      "company_name": "Company",
+      "employee_department": "Department",
+      "employee_position": "Position",
+      "employee_supervisor": "Direct superior",
+      "joiner_joinDate": "Join date",
+      "leaver_lastDay": "Last working date"
+    },
+    "statuses": {
+      "proposed": "Proposed",
+      "pushed": "Pushed",
+      "conflict": "Personnel source changed; review required",
+      "rejected": "Kept on case only"
+    },
+    "pushField": "Push {field} to Personnel Management"
   }
 }

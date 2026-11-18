@@ -145,3 +145,26 @@ it('SQL-pages recovery in stable order at 70 companies and 1000 employments unde
  expect(await resolved(admin,c.id)).toMatchObject({employmentId:manager,email:'manager@example.invalid'});
  timing('authorization-denials');
 },270000); // Prior hosted aggregate exhausted 90s; 3x headroom includes fixture and both page walks. Phase timings diagnose regressions.
+
+it('recovers only the reviewed second on-time manager hold and preserves the earlier run and captured receipt on replay',async()=>{
+ const {managerEmailRecoveryPage}=await import('../core/lifecycle-manager-recovery');
+ const {recoverManagerEmailHoldTx}=await import('../packs/lifecycle/v9/service');
+ const c=await makeCase();await owner.client`update reporting_line set valid_to=${day}::date where subordinate_employment_id=${subject}::uuid`;
+ await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'manager'});
+ const held=(await v9CaseDetail(admin,c.id)).case,first=structuredClone(held.runs[0]),second={...structuredClone(held.runs[0]),id:'reviewed-second-manager-run'};
+ expect(first.status).toBe('waiting');expect(first.hold?.missing[0].reason).toBe('no supervisor on the Personnel record');expect(held.mails).toEqual([]);
+ await owner.client`update lc_v9_case set data=jsonb_set(data,'{runs}',${JSON.stringify([first,second])}::jsonb) where id=${c.id}::uuid`;
+ await owner.client`update reporting_line set valid_to=null where subordinate_employment_id=${subject}::uuid`;
+ const page=await managerEmailRecoveryPage(admin),source=page.items.find(target=>target.caseId===c.id&&target.runId===first.id)!;
+ expect(source).toMatchObject({revision:held.revision,classification:'today',stepId:'message',dueOn:day});
+ const target={...source,runId:second.id};
+ expect(await withTenant(admin,tx=>recoverManagerEmailHoldTx(tx,admin,target))).toMatchObject({outcome:'resumed',revision:held.revision+1});
+ const after=(await v9CaseDetail(admin,c.id)).case;
+ expect(after.runs.find(run=>run.id===first.id)).toEqual(first);expect(after.runs.find(run=>run.id===second.id)?.hold).toBeUndefined();
+ expect(after.mails).toHaveLength(1);expect(after.mails[0]).toMatchObject({key:'reviewed-second-manager-run:message:main',workflowId:'manager',to:['address:manager@example.invalid'],status:'pending'});
+ const receipts=await owner.client`select mail_id,payload,status from lc_v9_email_delivery where case_id=${c.id}::uuid order by mail_id`;
+ expect(receipts).toHaveLength(1);expect(receipts[0].mail_id).toBe(after.mails[0].id);expect(receipts[0].payload.mail.key).toBe('reviewed-second-manager-run:message:main');
+ expect(await withTenant(admin,tx=>recoverManagerEmailHoldTx(tx,admin,target))).toEqual({outcome:'changed'});
+ expect((await v9CaseDetail(admin,c.id)).case).toEqual(after);
+ expect(await owner.client`select mail_id,payload,status from lc_v9_email_delivery where case_id=${c.id}::uuid order by mail_id`).toEqual(receipts);
+});

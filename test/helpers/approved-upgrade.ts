@@ -299,9 +299,21 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10070,when:1794998006670,tag:'6670_offboarding_requisition'},
  {idx:10071,when:1794998006671,tag:'6671_offboarding_requisition_exception'},
  {idx:10072,when:1794998006672,tag:'6672_offboarding_requisition_list'},
+ {idx:10080,when:1794998006680,tag:'6680_personnel_completion_phone_metadata'},
+ {idx:10081,when:1794998006681,tag:'6681_personnel_completion_custody'},
+ {idx:10082,when:1794998006682,tag:'6682_personnel_completion_commands'},
+ {idx:10083,when:1794998006683,tag:'6683_personnel_completion_routing_bridge'},
+ {idx:10084,when:1794998006684,tag:'6684_personnel_completion_projection'},
+ {idx:10085,when:1794998006685,tag:'6685_personnel_completion_signature_projection'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6680_personnel_completion_phone_metadata':'3e6abfc893c876c3d06dc73fcd63bf601687da8654e22dfb5d3a4026ac6b738a',
+ '6681_personnel_completion_custody':'9d90c5812e5032c4a7a2f849d480ceb693b2fa319491b3b1d4ce8ffa6d27eef9',
+ '6682_personnel_completion_commands':'55ce0589a27acab651b2e303a47f6440811a66d173e094b26d6255d589baa49f',
+ '6683_personnel_completion_routing_bridge':'14bdf1f2977b1145fdc90143461ec337ea8d4bd8a05e187838941f08a29c4b39',
+ '6684_personnel_completion_projection':'d34b6068d37701dff80ac86c096de293fbc22b58f7183888c236aaafcbe13bb7',
+ '6685_personnel_completion_signature_projection':'cb192a12b2f64b8580988faddc68432095d1be2940e239bdec49dce498768437',
  '6660_imported_tax_basis_reader':'13de4ad5bac8d8e061bb36b66761175976acf07c7b691c5bf6266ef9e7957f2e',
  '6661_tax_basis_scoped_subject_page':'a09fd170eeadf27f0cb5cefb24c69b6208beaf7f3b2cea7f3c2a32315c651ca3',
  '6670_offboarding_requisition':'f280ef53a8a28c791bd73956673cd9addabfdc12330cd7c945ab50c573f97bb6',

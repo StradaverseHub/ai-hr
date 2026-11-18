@@ -35,3 +35,8 @@ export type {V9DocumentSigningWork,V9DocumentRouteAction} from './v9/document-ro
 export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';
 export {offboardingRequisition,updateOffboardingRequisitionItem} from './v9/offboarding-requisition';
 export {offboardingRequisitions} from './v9/offboarding-requisition';
+
+export {v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9ReadPersonnelCompletion} from './v9/personnel-completion';
+export async function recoverPersonnelCompletionRunsTx(...args:Parameters<typeof import('./v9/service').recoverPersonnelCompletionRunsTx>){
+ return (await import('./v9/service')).recoverPersonnelCompletionRunsTx(...args);
+}

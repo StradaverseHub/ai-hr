@@ -1,3 +1,4 @@
+import {lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler} from './lifecycle-personnel-completion-recovery';
 import {lifecycleManagerRecoveryHandler} from './lifecycle-manager-recovery';
 /** Every bulk operation the protected import worker runs on the shared kernel. A new kind adds its handler here,
  * its bulk_job_kind row in a migration and its completion-notice entry in lib/bulk-job.ts (ADR "Shared job kernel"). */
@@ -24,7 +25,7 @@ import {movementImportRevertJobHandler} from './movement-import-revert-job';
 import {recruitmentCandidateImportJobHandler} from './recruitment-candidate-import-worker';
 
 
-export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]= [lifecycleManagerRecoveryHandler,rewardPlanReviewsJobHandler,employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
+export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]= [lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler,lifecycleManagerRecoveryHandler,rewardPlanReviewsJobHandler,employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
  attendanceRecomputeJobHandler,payrollProcessJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,
  registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler,payrollHistoryJobHandler,

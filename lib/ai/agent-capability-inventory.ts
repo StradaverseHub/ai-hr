@@ -48,7 +48,7 @@ export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
  "app/automation/templates/email-assets/route.ts#route":{"POST":"backlog:approve"},
  "app/automation/templates/case-files/route.ts#route":{"POST":"backlog:approve"},
- "app/me/document-signing/actions.ts":{"actOnRoutedDocument":"handoff:employment_exit_or_discipline","editRoutedDocument":"backlog:approve","refreshRoutedDocument":"internal:session_and_presentation"},
+ "app/me/document-signing/actions.ts":{"actOnRoutedDocument":"handoff:employment_exit_or_discipline","submitRoutedDocumentCompletion":"backlog:approve","editRoutedDocument":"backlog:approve","refreshRoutedDocument":"internal:session_and_presentation"},
  "app/control-tower/agents/centre-control-actions.ts":{"setAiCentreFunctionAction":"handoff:ai_governance","setAiCentreJobAction":"handoff:ai_governance","setAiCentreStopAction":"handoff:ai_governance"},
  "app/admin/organization/organisation-tagging-actions.ts":{"prepareOrganisationAction":"backlog:approve","decideOrganisationAction":"backlog:approve","processOrganisationAction":"backlog:approve"},
  "app/admin/personnel/derived-organisation-actions.ts":{"derivedOrganisationAction":"internal:session_and_presentation"},
@@ -78,7 +78,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/lifecycle/v9/files/[caseId]/route.ts#route":{"POST":"handoff:employment_exit_or_discipline"},
  "app/lifecycle/requisitions/offboarding/[id]/actions.ts":{"updateRequisitionItem":"handoff:employment_exit_or_discipline"},
  "app/lifecycle/v9/actions.ts":{"setupV9":"handoff:access_and_authentication","saveV9Config":"handoff:access_and_authentication","removeV9Workflow":"handoff:access_and_authentication","restoreV9Workflow":"handoff:access_and_authentication","readV9WorkflowRemoval":"backlog:automatic","createV9Offboarding":"handoff:employment_exit_or_discipline","commandV9":"handoff:employment_exit_or_discipline","readV9Case":"backlog:automatic","readV9Email":"backlog:automatic","readV9Workflow":"backlog:automatic","readV9UpdatedEmail":"backlog:automatic","readV9PersonnelPreview":"backlog:automatic","previewV9WorkflowPlan":"backlog:automatic"},
- "app/me/lifecycle/actions.ts":{"openLifecycleDocument":"backlog:approve","saveOwnLifecycleDocument":"backlog:confirm","updateOwnLifecycleTask":"backlog:confirm","reportOwnLifecycleReturn":"backlog:confirm","updateOwnLifecycleReturn":"backlog:confirm","saveOwnLifecycleEquipmentReceipt":"backlog:confirm"},
+ "app/me/lifecycle/actions.ts":{"openLifecycleDocument":"backlog:approve","submitOwnLifecycleCompletion":"backlog:approve","saveOwnLifecycleDocument":"backlog:confirm","updateOwnLifecycleTask":"backlog:confirm","reportOwnLifecycleReturn":"backlog:confirm","updateOwnLifecycleReturn":"backlog:confirm","saveOwnLifecycleEquipmentReceipt":"backlog:confirm"},
  // HR correction effects stay unregistered and require an Approve review before any future integration.
  "app/admin/personnel/information-correction-actions.ts":{"informationContextAction":"backlog:approve","previewInformationAction":"backlog:automatic","saveInformationAction":"backlog:approve","previewInformationUploadAction":"backlog:approve","confirmInformationUploadAction":"backlog:approve"},
   "app/payroll/setup/corrections-actions.ts": {"savePayrollCorrections": "handoff:payroll_reversal"},
