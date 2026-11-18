@@ -141,13 +141,13 @@
   }
   :root[data-ui-theme='atelier'] [data-company-switcher]:hover { background: var(--accent); color: var(--foreground); }
 
-  /* ── Native tables under <main>: one vocabulary for every list ─────────────────────────────────────
-     Sentence-case 12.5px headers on a hairline, 44px rows, a quiet hover, tabular figures. Sorting, sticky
-     columns, row actions and StackedTable's container queries are untouched: only paint changes. */
+  /* ── Shared operational tables: owner-approved ElevenLabs reference, 17 Nov 2026 ───────────────
+     Open surfaces, quiet labels, hairlines and a distinct identity/metadata hierarchy. Keep local
+     area themes and V9 independent. StackedTable geometry changes only above its container breakpoint. */
   :root[data-ui-theme='atelier'] main table { font-variant-numeric: tabular-nums; border-color: var(--border); }
-  :root[data-ui-theme='atelier'] main table thead { background: var(--background); color: var(--atelier-ink-3); }
+  :root[data-ui-theme='atelier'] main table thead { background: var(--sidebar); color: var(--atelier-ink-3); }
   :root[data-ui-theme='atelier'] main table thead th {
-    font-size: .78125rem; font-weight: 500; letter-spacing: 0; text-transform: none;
+    font-size: .75rem; font-weight: 500; letter-spacing: 0; text-transform: none;
     border-bottom: 1px solid var(--border);
   }
   :root[data-ui-theme='atelier'] main table:not([data-wrap-headings]) thead th { white-space: nowrap; }
@@ -155,6 +155,69 @@
   :root[data-ui-theme='atelier'] main table tbody td { border-color: var(--border); height: 2.75rem; }
   :root[data-ui-theme='atelier'] main table tbody tr:hover,
   :root[data-ui-theme='atelier'] main table tbody tr:focus-within { background: var(--sidebar); }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) > tbody > tr[data-state='expanded'] { background: var(--sidebar); }
+
+  /* Zero-specificity exclusions let utility contracts and independent areas keep their own meaning. */
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) {
+    font-size: .8125rem; line-height: 1.25rem;
+  }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-stacked-table] *, [data-area-theme] *, .v9-workspace *)) > :is(thead, tbody, tfoot) > tr > :is(th, td):not([colspan]):not([data-table-control]) {
+    padding: .75rem 1rem; vertical-align: middle;
+  }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-stacked-table] *, [data-area-theme] *, .v9-workspace *)) > thead > tr > th:not([colspan]):not([data-table-control]) {
+    padding-block: .625rem;
+  }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) > tbody > tr > td[class~='tabular-nums'] { white-space: nowrap; }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) [data-ui-employee-name] {
+    display: inline-flex; flex-direction: column; align-items: flex-start; gap: .25rem;
+    white-space: normal; vertical-align: middle;
+  }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) [data-ui-employee-name] > :first-child:not(:last-child) {
+    font-size: .6875rem; line-height: 1rem; font-weight: 400; white-space: nowrap;
+  }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) [data-ui-employee-name] > :last-child {
+    font-weight: 600; line-height: 1.25rem;
+  }
+  :root[data-ui-theme='atelier'] main .ui-table-wrap:not(:where([data-area-theme] *, .v9-workspace *)) {
+    border: 0; border-radius: .5rem .5rem 0 0; scrollbar-width: thin;
+    scrollbar-color: var(--atelier-line-strong) var(--card);
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(table):not(:where([data-area-theme] *, .v9-workspace *)) {
+    border-color: transparent; border-radius: .5rem; box-shadow: none;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(table):not(:where([data-area-theme] *, .v9-workspace *)) :is([data-ui-section-header], [data-ui-card-header]) {
+    background: var(--card); font-size: .9375rem; font-weight: 600;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(table):not(:where([data-area-theme] *, .v9-workspace *)) [data-ui-section-count] {
+    display: inline-flex; align-items: center; min-height: 1.5rem; padding: 0 .5rem;
+    border: 1px solid var(--border); border-radius: .375rem; background: var(--sidebar);
+    font-size: .75rem; font-weight: 500; vertical-align: middle;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(table):not(:where([data-area-theme] *, .v9-workspace *)) :is(button, a)[class~='bg-primary'],
+  :root[data-ui-theme='atelier'] main [data-table-primary] {
+    background: var(--foreground); color: var(--background); border-color: var(--foreground); box-shadow: none;
+  }
+  :root[data-ui-theme='atelier'] main [data-ui-card]:has(table):not(:where([data-area-theme] *, .v9-workspace *)) :is(button, a)[class~='bg-primary']:hover:not(:disabled),
+  :root[data-ui-theme='atelier'] main [data-table-primary]:hover { background: var(--muted-foreground); }
+  :root[data-ui-theme='atelier'] main table:not(:where([data-area-theme] *, .v9-workspace *)) :is([data-ui-badge], [data-ui-status]) {
+    border-radius: .375rem; white-space: nowrap; font-size: .6875rem;
+  }
+  :root[data-ui-theme='atelier'] main table [data-table-control] { width: 3rem; padding: .375rem .5rem; }
+  :root[data-ui-theme='atelier'] main table [data-table-disclosure] {
+    display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .375rem;
+  }
+  :root[data-ui-theme='atelier'] main table [data-table-disclosure]:hover { background: var(--accent); }
+  :root[data-ui-theme='atelier'] main table [data-table-disclosure]:focus-visible {
+    outline: 2px solid var(--ring); outline-offset: 2px;
+  }
+  @container (min-width: 48rem) {
+    :root[data-ui-theme='atelier'] main [data-stacked-table]:not(:where([data-area-theme] *, .v9-workspace *)) > div > table > :is(thead, tbody) > tr > :is(th, td):not([colspan]) {
+      padding: .75rem 1rem; vertical-align: middle;
+    }
+  }
+  @container (max-width: 47.999rem) {
+    :root[data-ui-theme='atelier'] main [data-stacked-table]:not(:where([data-area-theme] *, .v9-workspace *)) > div > table > tbody > tr > td { height: auto; }
+  }
 
   /* ── The rail (components/sidebar.tsx, data-atelier-navigation) ─────────────────────────────────── */
   :root[data-ui-theme='atelier'] .atelier-navigation-container { display: contents; }
@@ -436,20 +499,20 @@
     padding: .625rem 1rem; background: var(--card);
   }
   :root[data-ui-theme='atelier'] .atelier-pager label {
-    position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    font-size: .8125rem; color: var(--muted-foreground); white-space: nowrap;
   }
   :root[data-ui-theme='atelier'] .atelier-pager select { height: 1.875rem; border-color: var(--atelier-line-strong); border-radius: .5rem; font-size: .8125rem; }
-  :root[data-ui-theme='atelier'] .atelier-pager-range { font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--foreground); white-space: nowrap; }
+  :root[data-ui-theme='atelier'] .atelier-pager-range { font-size: .8125rem; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--foreground); white-space: nowrap; }
   :root[data-ui-theme='atelier'] .atelier-pager-steps {
-    display: inline-flex; border: 1px solid var(--atelier-line-strong); border-radius: .5rem; overflow: hidden;
-    background: var(--card); box-shadow: var(--shadow-sm);
+    display: inline-flex; gap: .375rem; border: 0; border-radius: .375rem;
+    background: transparent; box-shadow: none;
   }
   :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) {
-    display: grid; place-items: center; width: 2rem; height: 1.875rem; color: var(--foreground); transition: background 150ms;
+    display: grid; place-items: center; width: 2rem; height: 1.875rem; border-radius: .375rem; background: var(--sidebar); color: var(--foreground); transition: background 150ms;
   }
-  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) + :is(a, button) { border-left: 1px solid var(--atelier-line-strong); }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) + :is(a, button) { border-left: 0; }
   :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button):hover:not(:disabled) { background: var(--sidebar); }
-  :root[data-ui-theme='atelier'] .atelier-pager-steps > button:disabled { color: var(--atelier-line-strong); cursor: default; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > button:disabled { color: var(--muted-foreground); opacity: .45; cursor: default; }
   :root[data-ui-theme='atelier'] .atelier-pager-steps svg { width: 1rem; height: 1rem; }
   :root[data-ui-theme='atelier'] .atelier-pager-note { flex: 0 0 100%; margin: 0; font-size: .75rem; color: var(--atelier-warn); text-align: right; }
   :root[data-ui-theme='atelier'] .atelier-pager-note a { color: inherit; text-decoration: underline; }
@@ -472,5 +535,6 @@
 @media (max-width: 640px), (pointer: coarse) {
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']),
   :root[data-ui-theme='atelier'] .atelier-pager :is(a, button, select) { min-height: 2.75rem; }
-  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button) { min-width: 2.75rem; }
+  :root[data-ui-theme='atelier'] .atelier-pager-steps > :is(a, button),
+  :root[data-ui-theme='atelier'] main table [data-table-disclosure] { min-width: 2.75rem; min-height: 2.75rem; }
 }
