@@ -49,11 +49,24 @@ def healthy_web_state(base, source, build):
     return state
 
 
+SERVICE_PROPERTY_FIELDS = ['User','Group','WorkingDirectory','FragmentPath','DropInPaths','ExecStartPre','ExecStartPost','ExecStop','ExecStopPost','ExecCondition','Environment','EnvironmentFiles','PassEnvironment','RootDirectory','RootImage','PAMName','MainPID','NRestarts','ActiveState','SubState','Restart','NeedDaemonReload','ExecStart','Result','ExecMainCode','ExecMainStatus','SendSIGKILL','UnitFileState']
+
+
 def properties(base):
-    fields = ['Restart', 'NeedDaemonReload', 'ExecStart', 'Result', 'ExecMainCode', 'ExecMainStatus', 'SendSIGKILL', 'UnitFileState']
-    extra = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
-                          *['--property=' + field for field in fields]]).stdout
-    return {**base.service_properties(), **dict(line.split('=', 1) for line in extra.splitlines() if '=' in line)}
+    # One complete systemd observation: never combine two different transition instants.
+    raw = base.command(['/usr/bin/systemctl', 'show', 'aihr-bank-import.service', '--no-pager',
+                        *['--property=' + field for field in SERVICE_PROPERTY_FIELDS]]).stdout
+    return dict(line.split('=', 1) for line in raw.splitlines() if '=' in line)
+
+
+def drain_configuration(report):
+    # ExecStart has a fixed command prefix followed by systemd's changing exit metadata.
+    # The complete original value is still retained and must match in the terminal pair.
+    runtime = {'MainPID','ActiveState','SubState','Result','ExecMainCode','ExecMainStatus'}
+    result = {key:value for key,value in report.items() if key not in runtime}
+    if 'ExecStart' in result:
+        result['ExecStart'] = result['ExecStart'].partition('; start_time=')[0]
+    return result
 
 
 def validate_existing(base, source, unit_hash, env_hash, receipt_env_hash=None):
@@ -211,28 +224,50 @@ def validate_process(base, report, source):
 
 
 def drain(base, initial, previous):
-    """SIGTERM invokes the existing runner's finish-current-tick handler, without a stop/kill timer.
-    If it crashes/restarts or fails to exit, refuse; never force-kill, disable or replay jobs.
+    """Require a clean, non-restarting exit and two identical complete terminal observations.
+    All observations share the original 330-second deadline; no stop/disable/force-kill fallback.
     """
     pid = validate_process(base, initial, previous)
     fresh = properties(base)
     base.check(fresh == initial, 'service changed before managed drain')
     base.command(['/usr/bin/systemctl', 'kill', '--kill-whom=main', '--signal=SIGTERM', 'aihr-bank-import.service'])
     deadline = time.monotonic() + 330
-    while time.monotonic() < deadline:
-        report = properties(base)
-        base.validate_service(report, base.ROOT / 'releases' / previous)
-        base.check(report.get('NRestarts') == initial.get('NRestarts'), 'worker restarted during drain')
-        current = int(report.get('MainPID', '0'))
-        base.check(current in (0, pid), 'worker PID changed during drain')
-        if current == 0 and report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead':
-            base.check(report.get('Result') == 'success' and report.get('ExecMainStatus') == '0', 'worker did not exit successfully')
+    original_deadline = getattr(base, 'VERIFIED_OPERATION_DEADLINE', None)
+    base.VERIFIED_OPERATION_DEADLINE = min(deadline, original_deadline) if original_deadline is not None else deadline
+    terminal = None
+    observations = [initial]
+    outcome = 'refused'
+    try:
+        while time.monotonic() < deadline:
+            report = properties(base)
+            base.check(time.monotonic() < deadline, 'drain observation deadline exceeded')
+            observations.append(report)
+            base.check(len(observations) <= 168, 'drain observation bound exceeded')
+            base.validate_service(report, base.ROOT / 'releases' / previous)
+            base.check(report.get('NRestarts') == initial.get('NRestarts'), 'worker restarted during drain')
+            current = int(report.get('MainPID', '0'))
+            base.check(current in (0, pid), 'worker PID changed during drain')
+            base.check(drain_configuration(report) == drain_configuration(initial), 'service configuration changed during drain')
+            if current == 0:
+                base.check(report.get('Result') == 'success' and report.get('ExecMainStatus') == '0', 'worker did not exit successfully')
+            dead = current == 0 and report.get('ActiveState') == 'inactive' and report.get('SubState') == 'dead'
+            if terminal is not None:
+                base.check(dead, 'worker did not remain drained')
+            if dead:
+                if terminal == report:
+                    outcome = 'stable'
+                    return {'pid': pid, 'state': 'drained', 'forcedKill': False}
+                terminal = report
+            else:
+                base.check(report.get('ActiveState') in ('active', 'activating', 'deactivating'), 'worker drain entered an unexpected state')
+            if deadline - time.monotonic() < 2:
+                raise RuntimeError('Worker drain deadline reached before complete stability interval')
             time.sleep(2)
-            base.check(properties(base) == report, 'worker did not remain drained')
-            return {'pid': pid, 'state': 'drained', 'forcedKill': False}
-        base.check(report.get('ActiveState') in ('active', 'activating', 'deactivating'), 'worker drain entered an unexpected state')
-        time.sleep(2)
-    raise RuntimeError('Worker drain deadline reached; retain prior unit and packages, inspect current process before proceeding')
+        raise RuntimeError('Worker drain deadline reached; retain prior unit and packages, inspect current process before proceeding')
+    finally:
+        base.VERIFIED_OPERATION_DEADLINE = original_deadline
+        # Bounded real observations, not a receipt. Service Environment is fixed nonsecret unit settings.
+        print(json.dumps({'kind':'WORKER_DRAIN_OBSERVATIONS_NOT_RECEIPT','outcome':outcome,'reports':observations}), file=sys.stderr)
 
 
 def atomic_unit(base, raw, expected_prior):
