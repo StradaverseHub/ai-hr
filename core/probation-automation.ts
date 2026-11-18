@@ -538,12 +538,15 @@ export async function resumeProbationEmailFilesTx(tx:Tx,ctx:SessionContext,caseI
 /** The existing out-of-band workflow sweep drains only holds whose template/file evidence changed. */
 export async function sweepProbationEmailHolds(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection){
  if(ctx.userId)throw new Error('Email hold sweep requires the owner connection.');
- const due=await connection.withTenant(ctx,tx=>tx.execute<{case_id:string;template_id:string}>(sql`select distinct h.case_id,h.template_id from automation_email_hold_context h join automation_run r on r.id=h.run_id and r.tenant_id=h.tenant_id where h.tenant_id=app.current_tenant_id() and h.needs_check and r.status='waiting' and r.waiting_for=h.template_id order by h.case_id,h.template_id limit 25`));
+ const due=await connection.withTenant(ctx,tx=>tx.execute<{case_id:string;template_id:string}>(sql`select h.case_id,h.template_id from automation_email_hold_context h join automation_run r on r.id=h.run_id and r.tenant_id=h.tenant_id where h.tenant_id=app.current_tenant_id() and h.needs_check and r.status='waiting' and r.waiting_for=h.template_id group by h.case_id,h.template_id order by min(h.checked_at) nulls first,h.case_id,h.template_id limit 25`));
  let failed=0;
  for(const item of due){try{await connection.withTenant(ctx,async tx=>{
    await tx.execute(sql`select app.probation_write_lock()`);
    const resumed=await resumeProbationEmailFilesTx(tx,ctx,item.case_id,item.template_id);
-   if(resumed===false)return;
+   if(resumed===false){
+    // Keep the signal while paused, but rotate bounded batches so paused companies cannot starve other holds.
+    await tx.execute(sql`update automation_email_hold_context set checked_at=now() where tenant_id=app.current_tenant_id() and case_id=${item.case_id}::uuid and template_id=${item.template_id}::uuid`);return;
+   }
    await tx.execute(sql`update automation_email_hold_context set needs_check=false,checked_at=now() where tenant_id=app.current_tenant_id() and case_id=${item.case_id}::uuid and template_id=${item.template_id}::uuid`);
  });}catch{failed++;}}
  return{checked:due.length,failed};

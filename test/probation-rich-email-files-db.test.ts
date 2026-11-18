@@ -32,6 +32,10 @@ it('holds two successive required email files, resumes each exact step once, and
  expect(await probationEmailFileChoices(fixture.staff.ctx,fixture.ids.caseId)).toEqual([]);
  await expect(downloadProbationEmailCaseFile(fixture.staff.ctx,fixture.ids.caseId,fileId)).rejects.toThrow();
  expect((await downloadProbationEmailCaseFile(admin,fixture.ids.caseId,fileId)).content.toString()).toBe('This exact employee voucher');
+ await owner.db.execute(sql`update probation_activation set enabled=false where tenant_id=${b.tenantId}::uuid and company_id=${b.companyId}::uuid`);
+ expect(await sweepProbationEmailHolds(runner,port)).toEqual({checked:1,failed:0});
+ expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${b.tenantId}::uuid`)).toHaveLength(0);
+ await owner.db.execute(sql`update probation_activation set enabled=true where tenant_id=${b.tenantId}::uuid and company_id=${b.companyId}::uuid`);
  expect(await sweepProbationEmailHolds(runner,port)).toEqual({checked:1,failed:0});
  const[waitingSecond]=await owner.db.execute<{status:string;waiting_for:string}>(sql`select status,waiting_for from automation_run where id=${result.runs[0].id}::uuid`);expect(waitingSecond).toMatchObject({status:'waiting',waiting_for:second.id});
  const nextRevision=(await probationCase(admin,fixture.ids.caseId)).record.revision;
