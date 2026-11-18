@@ -1439,3 +1439,19 @@ requires its own restricted-owner populated rehearsal, affected permissions/scal
 and production renderer qualification. Both original56a build failures remain failed; inventory
 diagnostic44278414933 is not semantic compiler or release evidence. No production installation or
 provider activation is implied.
+
+## Typed Leave Type update construction binding — 18 November 2026
+
+Under the same recorded owner approval of all AI binding and migration ordering, the release
+coordinator carried forward the same 28 active approvals from
+`b321c31a27f4b9932703efb09c41c6d1194f9523d9987ff4de8000b697fabd98` to
+`a4ded532cb02a3df0bf36772b34c199a7eac326133892de9e54326f9d0443dca` (1,791 covered files). The module-agent fingerprint is
+`80ab20e1fa279cea5feb54c673a306d7fd877b77366500e6ff4fbc320cffac29` (497 files). Reversing only these 28 source-digest replacements
+restores the preceding registry byte-for-byte; pending/retired records, purposes, provider data,
+reviewers and dates remain unchanged. No provider activation or request is added.
+
+The source-only repair f840dfa8de replaces one inferred Leave Type update union with individually
+typed, ordered patches against the same native setter. All 28 original patch expressions and
+the surrounding guards, transaction, query and audit remain unchanged. The complete diagnostic
+44301542100 motivates this measurement; it does not establish production-build or release readiness.
+The original 8 GiB production limits and required behavior/rendered/release checks remain in force.
