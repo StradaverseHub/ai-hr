@@ -253,7 +253,7 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
       if(Number(budget.data.count)+shared.length>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||Number(budget.data.bytes)+shared.reduce((total,asset)=>total+asset.size,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)return {resolved,email:null,hold:'This email exceeds the shared limit of 20 files and 20 MB. Review its documents and files before sending.'};
     }
     const renderedSubject=fillAutomationMergeFields(subject,merge).replace(/\s+/g,' ').trim()||'Probation update';
-    if(rich&&automationMergeTokens(renderedSubject).length)throw new Error('Complete the missing email subject fields before sending.');
+    if(rich&&automationMergeTokens(renderedSubject).length)return {resolved,email:null,hold:'Missing email subject fields: '+automationMergeTokens(renderedSubject).join(', ')};
     await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
     const email = await queueAutomationEmailTx(tx, {module: 'probation', subjectId: record.id, key, to: addressees.to, cc: addressees.cc,
       subject: renderedSubject, body: rich?.text ?? fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}'), ...(rich&&richTemplate?{rich:{templateId:richTemplate.id,html:rich.html,documents,caseFiles,assets:[...richTemplate.definition.files,...richTemplate.definition.images].map(asset=>({id:asset.id,kind:asset.kind,contentHash:asset.contentHash}))}}:{})});

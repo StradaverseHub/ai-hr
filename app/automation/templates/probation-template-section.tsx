@@ -5,12 +5,12 @@ import {convertProbationEmail} from '@/lib/automation/probation-email-definition
 import {ProbationEmailEditor} from './probation-email-editor';
 import type {ListedEmailTemplate} from './templates-workspace';
 import type {NamedOption} from '../recipients';
-export function ProbationTemplateSection({emails,refs,documents=[],letters,newRequest=0}:{emails:ListedEmailTemplate[];refs:{routings:(NamedOption&{retired?:boolean})[];groups:NamedOption[];people:NamedOption[]};documents?:{id:string;name:string;type:'Letter'}[];letters?:ReactNode;newRequest?:number}){
+export function ProbationTemplateSection({emails,refs,documents=[],letters,newRequest=0,onNewRequestHandled}:{emails:ListedEmailTemplate[];refs:{routings:(NamedOption&{retired?:boolean})[];groups:NamedOption[];people:NamedOption[]};documents?:{id:string;name:string;type:'Letter'}[];letters?:ReactNode;newRequest?:number;onNewRequestHandled?:()=>void}){
  const{copy:t}=useProbationEmailCopy();
  const[editing,setEditing]=useState<ListedEmailTemplate|null>(null),[dirty,setDirty]=useState(false);
  const close=()=>{if(!dirty||window.confirm(t('leave'))){setEditing(null);setDirty(false);}};
  const newEmail=()=>setEditing({template:{id:crypto.randomUUID(),name:t('newName'),module:'probation',active:false,subject:'',body:'',cc:[]},revision:0,retired:false});
- useEffect(()=>{if(newRequest>0)newEmail();},[newRequest]);
+ useEffect(()=>{if(newRequest>0){newEmail();onNewRequestHandled?.();}},[newRequest]);
  return <div className="v9-stack" data-probation-template-section>
   {letters}
   <section className="v9-panel v9-stack v9-template-list" aria-label={t('emailTemplates')+' · '+t('probation')}><header className="v9-heading"><div><h2>{t('emailTemplates')} · {t('probation')}</h2><p className="v9-muted">{t('intro')}</p></div><button type="button" className="v9-button" onClick={newEmail}>{t('newEmail')}</button></header>

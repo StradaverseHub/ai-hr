@@ -43,7 +43,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  const executable='/usr/bin/google-chrome';
  if(!existsSync(executable))throw Error('The hosted runner Chrome executable is unavailable; no visual evidence claimed.');
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
- const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='lifecycle-email-template'||section==='lifecycle-letter-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
+ const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='lifecycle-email-template'||section.startsWith('feedback-probation-email-')||section==='lifecycle-letter-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
  const motionProofs=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
