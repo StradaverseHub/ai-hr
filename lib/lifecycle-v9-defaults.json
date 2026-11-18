@@ -5489,7 +5489,7 @@
           "template": "e1"
         }
       ],
-      "description": "Emails the joiner a week before they start (change the days to suit). Sent from their TA, copying their line manager and BP. It no longer waits for forms or a health check voucher."
+      "description": "Emails the joiner a week before they start (change the days to suit), copying their line manager. It no longer waits for forms or a health check voucher."
     },
     {
       "id": "w2",
@@ -5571,7 +5571,7 @@
           "body": "Hi,\n\n{employee.name} joins as {employee.position} on {joiner.joinDate}, which is less than a week away. Please check their first-day plan, equipment and access are ready.\n\nRegards,\nAI HR"
         }
       ],
-      "description": "When a case is created for someone starting in less than 7 days, alerts their line manager and BP straight away."
+      "description": "When a case is created for someone starting in less than 7 days, alerts their line manager straight away."
     },
     {
       "id": "w7",
@@ -5602,7 +5602,7 @@
       "id": "w8",
       "name": "Escalate pending tasks 2 days before",
       "module": "onb",
-      "status": "published",
+      "status": "draft",
       "trigger": {
         "event": "beforeJoin",
         "days": 2,
@@ -5625,7 +5625,7 @@
           "body": "Hi,\n\n{employee.name} joins on {joiner.joinDate} and these tasks are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
         }
       ],
-      "description": "Two days before the start, tells the BP (copying the TA and line manager) about everything still open. Skipped when nothing is pending."
+      "description": "Switched off until a recipient is chosen. Two days before the start, tells the chosen recipient (copying the TA and line manager) about everything still open. Skipped when nothing is pending."
     },
     {
       "id": "w9",
@@ -5738,7 +5738,7 @@
           "by": "hr"
         }
       ],
-      "description": "Generates the acceptance of resignation letter when the case is submitted and holds it for the HR signatory. It is not emailed from here: GBS People Ops review and send it from the checklist task \"Review and send acceptance of resignation letter\", with the line manager and PBP copied."
+      "description": "Generates the acceptance of resignation letter when the case is submitted and holds it for the HR signatory. It is not emailed from here: GBS People Ops review and send it from the checklist task \"Review and send acceptance of resignation letter\", with the line manager copied."
     },
     {
       "id": "w5",
@@ -5865,7 +5865,7 @@
       "id": "w15",
       "name": "Escalate pending tasks 2 days before the last working day",
       "module": "off",
-      "status": "published",
+      "status": "draft",
       "trigger": {
         "event": "beforeLWD",
         "days": 2,
@@ -5887,7 +5887,7 @@
           "body": "Hi,\n\n{employee.name} leaves on {leaver.lastDay} and these items are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
         }
       ],
-      "description": "Two days before the last working day, tells the PBP, copying GBS People Ops, about everything still open. Skipped when nothing is pending."
+      "description": "Switched off until a recipient is chosen. Two days before the last working day, tells the chosen recipient, copying GBS People Ops, about everything still open. Skipped when nothing is pending."
     }
   ],
   "groups": [
@@ -5952,6 +5952,5 @@
       "limit": 4
     }
   ],
-  "peopleOpsGroup": "g-people",
-  "bpRules": []
+  "peopleOpsGroup": "g-people"
 }

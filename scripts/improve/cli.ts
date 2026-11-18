@@ -1,3 +1,4 @@
+import {pickupFeedback, completeFeedback, notifyFeedback, feedbackAutomationStatus} from './automation';
 /**
  * Improvement-loop CLI (ADR-0044). The operator (a Claude Code session) drives the loop by piping JSON
  * between these subcommands and the planning/build steps:
@@ -25,13 +26,17 @@
  * a picture cannot hedge the way a sentence can.
  */
 import { basename, extname } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   boardStatus,
+  askClarification,
+  closeClarification,
+  pullAwaitingClarification,
   fetchAttachment,
   listAttachments,
+  lifecycleRecipientReport,
   markBlocked,
   markBuildCompleted,
   markBuildStarted,
@@ -89,6 +94,9 @@ async function main() {
       process.stdout.write(JSON.stringify(pullItem(id), null, 2) + '\n');
       break;
     }
+    case 'recipient-report':
+      process.stdout.write(JSON.stringify(lifecycleRecipientReport(), null, 2) + '\n');
+      break;
     case 'pull-approved':
       process.stdout.write(JSON.stringify(pullApproved(), null, 2) + '\n');
       break;
@@ -136,6 +144,54 @@ async function main() {
     case 'pull-blocked':
       process.stdout.write(JSON.stringify(pullBlocked(), null, 2) + '\n');
       break;
+    case 'pickup': {
+      const p = JSON.parse(await readStdin());
+      notifyFeedback(p.tenantId);
+      process.stdout.write(JSON.stringify(pickupFeedback(p), null, 2) + '\n');
+      break;
+    }
+    case 'automation-status': {
+      const p = JSON.parse(await readStdin());
+      process.stdout.write(JSON.stringify(feedbackAutomationStatus(p.tenantId), null, 2) + '\n');
+      break;
+    }
+    case 'complete': {
+      const p = JSON.parse(await readStdin());
+      if (p.action === 'plan') {
+        if (p.mockups !== undefined) throw new Error('Use local mockupPaths for plan images.');
+        const paths = p.mockupPaths ?? [];
+        if (!Array.isArray(paths) || paths.length > 6 || paths.some((path: unknown) => typeof path !== 'string')) throw new Error('At most six rendered mockup paths required.');
+        p.mockups = paths.map((path: string) => {
+          const file = statSync(path);
+          if (!file.isFile() || file.size < 1 || file.size > 10 * 1024 * 1024) throw new Error('Each mockup must be a nonempty image file of at most 10 MB.');
+          return {fileName: basename(path), mimeType: mimeOf(path), content: readFileSync(path)};
+        });
+      }
+      completeFeedback(p);
+      notifyFeedback(p.tenantId);
+      console.log('Work settled; read back the report and claim before reporting its outcome.');
+      break;
+    }
+    case 'notify': {
+      const p = JSON.parse(await readStdin()); notifyFeedback(p.tenantId);
+      console.log('Current reporter notifications projected; no email sent.');
+      break;
+    }
+    case 'pull-waiting':
+      process.stdout.write(JSON.stringify(pullAwaitingClarification(), null, 2) + '\n');
+      break;
+    case 'ask': {
+      const p = JSON.parse(await readStdin());
+      askClarification(p);
+      console.log(`question ${p.questionId} recorded or retained for ${p.id}; read back with pull-item`);
+      break;
+    }
+    case 'close-question': {
+      const p = JSON.parse(await readStdin());
+      closeClarification(p);
+      console.log(`question ${p.questionId} closed without an answer; investigation can resume`);
+      break;
+    }
     case 'block': {
       // Park an approved item on an unanswered question (status → blocked), so it stops surfacing in
       // pull-approved as buildable. Reads {id, tenantId, reporterEmploymentId, reason, blockedById?}.
@@ -223,7 +279,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed | record-release>',
+        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | pull-waiting | ask | close-question | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed | record-release>',
       );
       process.exit(2);
   }

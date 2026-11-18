@@ -35,6 +35,11 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   await tx.unsafe("select set_config('app.tenant_id',$1,true),set_config('app.user_id',$2,true),set_config('app.roles',$3,true),set_config('app.grants',$4,true),set_config('app.agent_principal_id','',true)",[ids.tenant,user,role,JSON.stringify([{role,companyId:null}])]);
   if(appRole)await tx.unsafe('SET LOCAL ROLE ai_hr_app');
  }
+ // A new Feedback purpose must remain unassigned on every retained Letter/Rewards notice.
+ const legacyNotifications=async()=>(await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`).map(({feedback_request_id,...original})=>{
+  if(feedback_request_id!==undefined)expect(feedback_request_id).toBeNull();
+  return original;
+ });
  async function unchangedRows(){
   return {
    units:(await storage.client`select * from reward_unit where tenant_id=${ids.tenant} order by id`).map(({uploaded_award_digest,...legacy})=>{
@@ -47,7 +52,7 @@ it('preserves populated Rewards history, seats, shared policies and both notific
    groups:await storage.client`select * from reward_policy_group where tenant_id=${ids.tenant} order by id`,
    versions:await storage.client`select * from reward_policy_group_version where tenant_id=${ids.tenant} order by revision`,
    targets:await storage.client`select * from reward_policy_group_target where tenant_id=${ids.tenant} order by version_id,company_id,business_unit_id`,
-   notifications:await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`,
+   notifications:await legacyNotifications(),
    letterJobs:await storage.client`select * from letter_job where tenant_id=${ids.tenant} order by id`,
    letters:await storage.client`select * from letter_record where tenant_id=${ids.tenant} order by id`,
   };
@@ -147,11 +152,11 @@ it('preserves populated Rewards history, seats, shared policies and both notific
   const [added]=await storage.client`select user_id,role from reward_member where unit_id=${ids.unit} and role='pbp'`;expect(added).toMatchObject({user_id:ids.employeeUser,role:'pbp'});
   const [receipt]=await storage.client`select actor_id from domain_event where aggregate_id=${requestId} and event_type='reward-access.approved'`;expect(receipt.actor_id).toBe(ids.checker);
   expect(await storage.client`select * from reward_decision where tenant_id=${ids.tenant}`).toEqual(before.decisions);
-  expect(await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`).toEqual(before.notifications);
+  expect(await legacyNotifications()).toEqual(before.notifications);
   const terminal=await unchangedRows();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect(await ledger()).toEqual(completeLedger);expect(await unchangedRows()).toEqual(terminal);
-  expect(await storage.client`select * from notification where tenant_id=${ids.tenant} order by id`).toEqual(before.notifications);
+  expect(await legacyNotifications()).toEqual(before.notifications);
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});
  }

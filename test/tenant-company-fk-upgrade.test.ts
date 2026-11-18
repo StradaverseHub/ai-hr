@@ -21,6 +21,15 @@ const TAIL=[
  {idx:1349,version:'7',when:1793330001502,tag:'2102_company_tenant_fk_validate',breakpoints:true},
 ];
 
+// Approved but not yet installed forward tail; this fixture independently pins journal identity.
+const APPROVED_BOARD_TAIL:Entry[]=[
+ {idx:5500,version:'7',when:1794841006100,tag:'6100_rewards_review_plans',breakpoints:true},
+ {idx:5501,version:'7',when:1794841006101,tag:'6101_reward_person_history',breakpoints:true},
+ {idx:5502,version:'7',when:1794841006102,tag:'6102_lifecycle_recipient_directory',breakpoints:true},
+ {idx:5503,version:'7',when:1794841006103,tag:'6103_lifecycle_pbp_removal',breakpoints:true},
+ {idx:5504,version:'7',when:1794841006104,tag:'6104_lifecycle_recipient_fanout',breakpoints:true},
+];
+
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:Entry[]};
  const boundary=journal.entries.findIndex(row=>row.tag===TAIL[0].tag);
@@ -328,7 +337,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5875_recruitment_referral_rewards_agency_fees',
    '5876_recruitment_ai_match_summary',
    '5877_recruitment_agency_portal',
+   ...APPROVED_BOARD_TAIL.map(row=>row.tag),
+   '6200_feedback_automation',
   ]);
+  const approvedBoardStart=journal.entries.findIndex(row=>row.tag===APPROVED_BOARD_TAIL[0].tag);
+  expect(approvedBoardStart).toBeGreaterThan(performanceStart);
+  expect(journal.entries.slice(approvedBoardStart,approvedBoardStart+APPROVED_BOARD_TAIL.length)).toEqual(APPROVED_BOARD_TAIL);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
   for(const row of stagingPrefix.slice(prefix.length+TAIL.length)){
@@ -465,6 +479,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   // 5850–5877: Recruitment's SECURITY INVOKER predicates and normalisers keep the default PUBLIC EXECUTE (they run with the
   // caller's own privileges).
+  privateFunctions.push('app.feedback_automation_snapshot(uuid)','app.validate_feedback_notification(jsonb)','app.feedback_notification_operator_owner()');
   const publicFunctions:string[]=[
    'app.can_admin_recruitment_for(uuid)','app.can_operate_recruitment_job(uuid,uuid)','app.can_read_recruitment_application(uuid,uuid,uuid)',
    'app.can_review_recruitment_job(uuid,uuid)','app.can_see_recruitment_company(uuid)','app.recruitment_candidate_lock_key(uuid,uuid)',
@@ -801,6 +816,47 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   ];
   // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
+  //6100–6102: exact independently reviewed new signatures and application EXECUTE decisions.
+  const approvedFunctions:{fn:string;app:boolean}[]=[
+   {fn:'app.reward_review_plan_population(integer,date)',app:true},
+   {fn:'app.reward_review_plan_rows(integer)',app:true},
+   {fn:'app.reward_review_plan_grid(integer,jsonb,integer)',app:true},
+   {fn:'app.reward_review_plan_writing()',app:true},
+   {fn:'app.reward_review_plan_save(integer,jsonb,jsonb,jsonb,boolean,text)',app:true},
+   {fn:'app.reward_review_plan_links()',app:true},
+   {fn:'app.reward_review_plan_metadata(integer)',app:true},
+   {fn:'app.reward_review_plan_selected(integer,jsonb)',app:true},
+   {fn:'app.reward_review_plan_consume_rebind(uuid,integer)',app:true},
+   {fn:'app.reward_review_plan_rebind(integer,jsonb,text)',app:true},
+   {fn:'app.reward_review_plan_previous_choices(integer)',app:true},
+   {fn:'app.reward_review_plan_target_available()',app:false},
+   {fn:'app.reward_review_plan_company_enqueue()',app:false},
+   {fn:'app.reward_review_plan_company_tick()',app:false},
+   {fn:'app.reward_review_plan_company_recipients(uuid)',app:true},
+   {fn:'app.reward_review_plan_activate(integer,uuid)',app:true},
+   {fn:'app.reward_review_plan_company_rows(integer,date,boolean)',app:true},
+   {fn:'app.reward_review_plan_legacy_suggestion_data(integer,date)',app:true},
+   {fn:'app.reward_review_plan_track_legacy_setup()',app:false},
+   {fn:'app.reward_review_plan_track_legacy_participation()',app:false},
+   {fn:'app.reward_review_plan_rebind_recipients(uuid)',app:true},
+   {fn:'app.reward_plan_company_in_use(uuid)',app:true},
+   {fn:'app.reward_history_company_in_use(uuid)',app:true},
+   {fn:'app.reward_history_upload_authorized(uuid)',app:true},
+   {fn:'app.reward_history_upload_subject(uuid,uuid)',app:true},
+   {fn:'app.reward_history_upload_context(uuid,text[])',app:true},
+   {fn:'app.reward_history_shape()',app:false},
+   {fn:'app.reward_history_write_guard()',app:false},
+   {fn:'app.reward_record_person_history(uuid,jsonb)',app:true},
+   {fn:'app.reward_person_history(uuid,uuid)',app:true},
+   {fn:'app.reward_history_recorded_entries(uuid)',app:true},
+   {fn:'app.reward_history_audit_value(text,jsonb)',app:false},
+   {fn:'app.reward_review_activity_changes(uuid[],uuid,uuid)',app:true},
+   {fn:'app.lifecycle_recipient_case_allowed(uuid,boolean)',app:false},
+   {fn:'app.lifecycle_recipient_accounts(uuid,text,uuid[],text)',app:true},
+  ];
+  addedFunctions.push(...approvedFunctions.map(row=>row.fn));
+  privateFunctions.push(...approvedFunctions.filter(row=>!row.app).map(row=>row.fn));
+  addedFunctions.push('app.feedback_automation_snapshot(uuid)','app.validate_feedback_notification(jsonb)','app.feedback_notification_operator_owner()');
   addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
@@ -1750,12 +1806,93 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterPerformancePrivileges.columns.filter(row=>isRecruitmentRelation(row.rel)).map(row=>({rel:row.rel,col:row.col,acl:ownerAcl(row.acl)}))).toEqual(recruitmentColumns);
   expect(afterPerformancePrivileges.policies.filter(isRecruitmentPolicy).map(boardPolicyRow)).toEqual(recruitmentPolicies);
   expect(beforePerformancePrivileges.policies.filter(isRecruitmentPolicy)).toEqual([]);
+  // PR245's work ledger belongs to the operator connection, with no app policy or grant.
+  const feedbackWorkTable='feedback_automation_work';
+  expect(afterPerformancePrivileges.relations.filter(row=>row.rel===feedbackWorkTable)).toHaveLength(1);
+  expect(afterPerformancePrivileges.relations.find(row=>row.rel===feedbackWorkTable)).toMatchObject({rls:true,force:false});
+  expect(afterPerformancePrivileges.policies.filter(row=>row.tablename===feedbackWorkTable)).toEqual([]);
+  const [feedbackWorkRights]=await storage.client`select
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','SELECT') as can_read,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','INSERT') as can_insert,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','UPDATE') as can_update,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','DELETE') as can_delete`;
+  expect(feedbackWorkRights).toEqual({can_read:false,can_insert:false,can_update:false,can_delete:false});
+  //6100–6102: assert every new security delta before excluding ONLY its exact identity below.
+  const approvedRelations:Record<string,{rls:boolean;force:boolean;acl:string}>={
+   'app.reward_review_plan_company_outbox':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.reward_review_plan_write_lease':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'reward_history_post_read_lease':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'reward_person_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=a/OWNER}'},
+   'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+  };
+  const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
+  expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
+  expect(beforePerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
+  const approvedColumns=['company_id','employment_id','id','kind','source','superseded_at','tenant_id','year'].map(col=>({rel:'reward_person_history',col,acl:col==='superseded_at'?'{ai_hr_app=rw/OWNER}':'{ai_hr_app=r/OWNER}'}));
+  expect(afterPerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel)).map(row=>({...row,acl:ownerAcl(row.acl)}))).toEqual(approvedColumns);
+  expect(beforePerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
+  expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})))
+   .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}'})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
+  type ApprovedPolicy={table:string;name:string;cmd:'ALL'|'SELECT'|'INSERT'|'UPDATE';role:'public'|'ai_hr_owner'|'ai_hr_app';using:string|null;check:string|null};
+  const view=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','library_view')`;
+  const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
+  const own='app.acting_as_owner()';
+  const approvedPolicies:ApprovedPolicy[]=[
+   {table:'reward_plan_year',name:'reward_plan_year_read',cmd:'SELECT',role:'public',using:view('NULL'),check:null},
+   {table:'reward_plan_year',name:'reward_plan_year_insert',cmd:'INSERT',role:'public',using:null,check:manage('NULL')+' AND created_by=app.current_user_id()'},
+   {table:'reward_plan_year_company',name:'reward_plan_year_company_read',cmd:'SELECT',role:'public',using:view('company_id'),check:null},
+   {table:'reward_plan_year_company',name:'reward_plan_year_company_write',cmd:'ALL',role:'public',using:manage('company_id'),check:manage('company_id')},
+   {table:'app.reward_review_plan_write_lease',name:'reward_review_plan_lease_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'reward_plan_setup',name:'reward_year_plan_setup_owner',cmd:'ALL',role:'ai_hr_owner',using:"tenant_id=app.current_tenant_id() AND NOT EXISTS(SELECT 1 FROM unnest(company_ids)c WHERE NOT app.reward_config_page_allowed(c,'plans.manage','library_view'))",check:"tenant_id=app.current_tenant_id() AND NOT EXISTS(SELECT 1 FROM unnest(company_ids)c WHERE NOT app.reward_config_page_allowed(c,'plans.manage','manage'))"},
+   {table:'reward_plan_company',name:'reward_year_plan_company_owner',cmd:'ALL',role:'ai_hr_owner',using:view('company_id'),check:manage('company_id')},
+   {table:'reward_company_year_review',name:'reward_year_company_review_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('company_id'),check:null},
+   {table:'company',name:'reward_year_company_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('id'),check:null},
+   {table:'employment',name:'reward_year_employment_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('company_id'),check:null},
+   {table:'business_unit',name:'reward_year_business_unit_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('NULL'),check:null},
+   {table:'reward_pat_version',name:'reward_year_pat_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('company_id'),check:null},
+   {table:'reward_library',name:'reward_year_library_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('NULL'),check:null},
+   {table:'reward_library_version',name:'reward_year_library_version_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('NULL'),check:null},
+   {table:'company_registration_classification',name:'reward_year_registration_owner',cmd:'SELECT',role:'ai_hr_owner',using:view('company_id'),check:null},
+   {table:'reward_company_exclusion',name:'reward_review_plan_exclusion_owner',cmd:'ALL',role:'ai_hr_owner',using:manage('company_id'),check:manage('company_id')},
+   {table:'app.reward_review_plan_company_outbox',name:'reward_review_plan_outbox_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'reward_plan_year',name:'reward_plan_year_system',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'reward_plan_year_company',name:'reward_plan_year_company_system',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'company_registration_classification',name:'reward_plan_registration_system',cmd:'SELECT',role:'ai_hr_owner',using:own,check:null},
+   {table:'reward_unit_setup',name:'reward_review_plan_consume_owner',cmd:'UPDATE',role:'ai_hr_owner',using:"tenant_id=app.current_tenant_id() AND library_rebind_revision IS NOT NULL AND app.reward_not_viewing_as() AND app.reward_access(unit_id) AND(app.reward_capability(unit_id,'figures.edit') OR app.reward_capability(unit_id,'review.decide'))",check:"tenant_id=app.current_tenant_id() AND library_rebind_revision IS NULL AND app.reward_not_viewing_as() AND app.reward_access(unit_id) AND(app.reward_capability(unit_id,'figures.edit') OR app.reward_capability(unit_id,'review.decide'))"},
+   {table:'reward_person_history',name:'reward_history_owner_read',cmd:'SELECT',role:'ai_hr_owner',using:'tenant_id=app.current_tenant_id()',check:null},
+   {table:'reward_person_history',name:'reward_history_owner_insert',cmd:'INSERT',role:'ai_hr_owner',using:null,check:"tenant_id=app.current_tenant_id() AND source='review' AND created_by=app.current_user_id()"},
+   {table:'reward_person_history',name:'reward_history_upload_read',cmd:'SELECT',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND source='upload' AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)",check:null},
+   {table:'reward_person_history',name:'reward_history_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_not_viewing_as() AND source='upload' AND app.reward_history_upload_authorized(company_id)"},
+   {table:'reward_person_history',name:'reward_history_supersede',cmd:'UPDATE',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)",check:"tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)"},
+   {table:'reward_history_post_read_lease',name:'reward_history_post_read_lease_owner',cmd:'ALL',role:'ai_hr_owner',using:'tenant_id=app.current_tenant_id() AND transaction_id=txid_current()',check:'tenant_id=app.current_tenant_id() AND transaction_id=txid_current()'},
+   {table:'reward_uploaded_award',name:'reward_history_uploaded_post_selection',cmd:'SELECT',role:'ai_hr_owner',using:"tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.reward_not_viewing_as() AND EXISTS(SELECT 1 FROM public.reward_history_post_read_lease l WHERE l.tenant_id=reward_uploaded_award.tenant_id AND l.unit_id=reward_uploaded_award.unit_id AND l.transaction_id=txid_current()) AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_uploaded_award.unit_id AND u.tenant_id=reward_uploaded_award.tenant_id AND u.deleted_at IS NULL AND u.status IN('approved','posted') AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))))",check:null},
+  ];
+  const policyIdentity=(policy:ApprovedPolicy)=>({schemaname:policy.table.startsWith('app.')?'app':'public',tablename:policy.table.replace(/^app\./,''),policyname:policy.name});
+  const isApprovedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>approvedPolicies.some(policy=>samePolicy(policyIdentity(policy),row));
+  expect(beforePerformancePrivileges.policies.filter(isApprovedPolicy)).toEqual([]);
+  type ApprovedPolicyRow={schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;qual:string|null;with_check:string|null};
+  const renderedApproved=await storage.client.begin(async tx=>{
+   const rows:ApprovedPolicyRow[]=[];
+   for(const policy of approvedPolicies){
+    const table=policy.table.startsWith('app.')?policy.table:'public.'+policy.table;
+    await tx.unsafe(`create policy approved_forward_reference on ${table} for ${policy.cmd} to ${policy.role}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    const identity=policyIdentity(policy);
+    const [row]=await tx<ApprovedPolicyRow[]>`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check from pg_policies where schemaname=${identity.schemaname} and tablename=${identity.tablename} and policyname='approved_forward_reference'`;
+    rows.push({...row,policyname:policy.name});await tx.unsafe(`drop policy approved_forward_reference on ${table}`);
+   }
+   return rows;
+  });
+  const policyOrder=(a:{schemaname:string;tablename:string;policyname:string},b:{schemaname:string;tablename:string;policyname:string})=>{
+   const left=[a.schemaname,a.tablename,a.policyname].join('.'),right=[b.schemaname,b.tablename,b.policyname].join('.');return left<right?-1:left>right?1:0;
+  };
+  expect(afterPerformancePrivileges.policies.filter(isApprovedPolicy)).toEqual(renderedApproved.sort(policyOrder));
   const terminalComparable={
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==feedbackWorkTable&&row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
-   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)),
+   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:row),
@@ -1781,8 +1918,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    { rel: 'probation_access_member', conname: 'probation_access_member_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'probation_form_import', conname: 'probation_form_import_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'probation_settings_scope_member', conname: 'probation_settings_scope_member_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'reward_person_history', conname: 'reward_person_history_company_tenant_fk', convalidated: true, action: 'a' },
   ];
   const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));
+  expect(await storage.client`select i.indisvalid as valid,i.indisready as ready,i.indisunique as unique,
+   array(select a.attname::text from unnest(i.indkey::smallint[]) with ordinality k(num,ord) join pg_attribute a on a.attrelid=i.indrelid and a.attnum=k.num order by k.ord) as columns,
+   pg_get_expr(i.indpred,i.indrelid) as predicate from pg_index i where i.indexrelid='public.reward_person_history_company'::regclass`)
+   .toEqual([{valid:true,ready:true,unique:false,columns:['tenant_id','company_id'],predicate:null}]);
   const completeKeys = await keys();
   expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual(boardReleaseKeys);
   expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname))).toEqual(installed);

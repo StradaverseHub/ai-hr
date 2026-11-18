@@ -533,7 +533,7 @@ describe('separate fixed native shell baseline data and driver controls',()=>{
 });
 
 
-it('retains all 74 group primary documents and refuses a 75th or an unlisted actor',async()=>{
+it('retains all 76 group primary documents and refuses a 77th or an unlisted actor',async()=>{
  const id=(index:number)=>'12345678-1234-4234-8234-'+String(index).padStart(12,'0');
  async function observe(count:number){
   const fixture=retirementPage();
@@ -550,8 +550,8 @@ it('retains all 74 group primary documents and refuses a 75th or an unlisted act
   observer.requireSettled(count);
   return observer.facts();
  }
- expect(await observe(74)).toMatchObject({admitted:74,retired:74,finalBlank:true});
- await expect(observe(75)).rejects.toThrow(/snapshot identity differs/);
+ expect(await observe(76)).toMatchObject({admitted:76,retired:76,finalBlank:true});
+ await expect(observe(77)).rejects.toThrow(/snapshot identity differs/);
  await expect(installNativePrimaryFailureObserver(retirementPage().page,3)).rejects.toThrow(/Unknown primary route retirement actor/);
 });
 
@@ -566,7 +566,7 @@ it('seals the separate development route union only with exact route, hidden and
   observations:Array.from({length:48},()=>old.observations[0])};
  const rows=nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,elapsedMs:10,failureCount:0,
   readiness:nativePreflightReadiness(row.witness)}));
- const primary=[{actorIndex:0,documents:74},{actorIndex:1,documents:71},{actorIndex:2,documents:16},{actorIndex:4,documents:30}]
+ const primary=[{actorIndex:0,documents:76},{actorIndex:1,documents:73},{actorIndex:2,documents:16},{actorIndex:4,documents:30}]
   .map(({actorIndex,documents})=>({actorIndex,admitted:documents,retired:documents,refusals:0,finalBlank:true,pageFailures:0,
    markerDocuments:{busy:0,unavailable:0,alerts:0}}));
  const tiles=[{phase:'baseline',role:'groupHR',open:2,pending:1},{phase:'baseline',role:'companyHR',open:1,pending:1}];
@@ -586,7 +586,7 @@ it('seals the separate development route union only with exact route, hidden and
   expect(seal).toEqual({sha256:createHash('sha256').update(bytes).digest('hex'),bytes:bytes.length});
   const actual=JSON.parse(bytes.toString('utf8'));
   expect(actual).toMatchObject({kind:'DEVELOPMENT_RENDERED_ROUTE_UNION_V1',complete:true,releaseEligible:false,protectedNative:false,
-   dynamicNavigationComplete:false,counts:{total:191,urls:93,usable:17,scopedDenials:1,renderedOnly:173},hiddenShell:{count:4,retiredDocuments:8},
+   dynamicNavigationComplete:false,counts:{total:195,urls:95,usable:17,scopedDenials:1,renderedOnly:177},hiddenShell:{count:4,retiredDocuments:8},
    candidateSha:source.sha,controllerSha:source.sha,runId:123,runAttempt:1});
   expect(actual.observations).toEqual(rows);expect(actual.primaryRetirement).toEqual(primary);
   expect(()=>writeDevelopmentRenderedRouteUnion(output,baseline,rows,hidden,primary,tiles)).toThrow(/EEXIST/);

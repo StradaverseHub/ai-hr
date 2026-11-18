@@ -502,7 +502,7 @@
     "rewardsApprovalsBoard": "Papan Kelulusan",
     "rewardsRules": "Peraturan",
     "rewardsReviewCycles": "Kitaran Semakan",
-    "rewardsSharedConfiguration": "Konfigurasi Ganjaran Bersama",
+    "rewardsSharedConfiguration": "Pelan Semakan",
     "rewardsSalaryStructures": "Struktur Gaji",
     "rewardsBonusMatrices": "Matriks Bonus",
     "rewardsPatInputs": "Input PAT",
@@ -603,7 +603,9 @@
     "probationPostings": "Personnel postings",
     "probationAccess": "Access",
     "recruitment": "Pengambilan",
-    "myReferrals": "Rujuk calon"
+    "myReferrals": "Rujuk calon",
+    "rewardsReviewPlans": "Pelan Semakan",
+    "rewardsHistoryUpload": "Muat naik sejarah ganjaran"
   },
   "dashboard": {
     "viewAll": "Lihat semua"
@@ -12221,7 +12223,9 @@
         "recruitment": "Pengambilan mesti diaktifkan. Pentadbir HR dan Rakan Pengambilan melihat jawatan, calon dan tetapan bagi syarikat yang mereka tadbir; pengurus pengambilan dan penemu duga belum mempunyai akses.",
         "myReferrals": "Hanya orang yang mempunyai pekerjaan aktif dalam syarikat yang menggunakan Pengambilan. Mereka melihat jawatan yang diletakkan HR di portal rujukan dan rujukan mereka sendiri sahaja; merujuk tidak memberi akses Pengambilan yang lain.",
         "attendanceRequestOnBehalf": "Hanya menyenaraikan pekerja dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.request_on_behalf. Permohonan mengikut aliran kerja pekerja itu sendiri.",
-        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan."
+        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan.",
+        "rewardsAdmin": "Rewards mesti didayakan. Kebenaran persediaan semasa dan skop syarikat menentukan akses kepada Pelan Semakan dan Pelan Terdahulu. Penyemak seluruh kumpulan dan pentadbir HR berskop boleh mempunyai hak baca dan sunting yang berbeza; peranan platform sahaja tidak memberikan hak tersebut.",
+        "rewardsHistoryUpload": "Rewards mesti didayakan. Muat naik sejarah ganjaran terdahulu memerlukan peranan Group Rewards yang berkuat kuasa serta kuasa persediaan semasa bagi seluruh kumpulan dan syarikat yang dipilih. Status pentadbir HR sahaja tidak memberikan akses muat naik."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -16029,6 +16033,16 @@
     "previewAnyOne": "Mana-mana seorang daripada ini boleh meluluskan"
   },
   "feedback": {
+    "dialogueTitle": "Jelaskan laporan ini",
+    "dialogueWaitingTitle": "Menunggu jawapan anda",
+    "dialogueQuestionLabel": "Apakah yang perlu diketahui?",
+    "dialogueAskHint": "Baca laporan dan jawapan terdahulu dahulu. Kumpulkan soalan berkaitan dan terangkan mengapa jawapan diperlukan.",
+    "dialogueAnswerHint": "Jawab apabila sesuai. Jawapan anda disimpan dan siasatan diteruskan; ini bukan kelulusan pelan.",
+    "dialogueAskSubmit": "Tanya soalan",
+    "dialogueQuestionSent": "Soalan disimpan. Menunggu jawapan pelapor.",
+    "dialogueAnswerSent": "Jawapan disimpan. Laporan sedia untuk disiasat.",
+    "dialogueWaitingHint": "Pelapor telah diminta memberikan maklumat lanjut.",
+    "dialogueSending": "Menghantar…",
     "kanbanScroll": "Tatal ke sisi untuk melihat peringkat lain.",
     "kanbanPrevious": "Peringkat sebelumnya",
     "kanbanNext": "Peringkat seterusnya",
@@ -23987,7 +24001,17 @@
       "view": "Lihat"
     },
     "workflowRecipients": {
-      "setupNeeded": "Pilih penerima Kepada untuk langkah ini. Aliran kerja sedia ada membiarkannya untuk dipilih oleh kumpulan syarikat anda. Sehingga itu, e-mel ini ditahan setiap kali ia dijalankan."
+      "setupNeeded": "Pilih penerima Kepada untuk langkah ini. Aliran kerja sedia ada membiarkannya untuk dipilih oleh kumpulan syarikat anda. Sehingga itu, e-mel ini ditahan setiap kali ia dijalankan.",
+      "taUnavailable": "TA yang dipilih tidak tersedia. Pilih pengguna aktif lain.",
+      "clearTa": "Kosongkan TA",
+      "taNotLinked": "{name} tidak dipautkan kepada pengguna. Pilih TA.",
+      "taNotSelected": "TA belum dipilih.",
+      "searchTa": "Cari TA",
+      "searchTaHint": "Taip sekurang-kurangnya dua huruf nama",
+      "searchingTa": "Sedang mencari pengguna aktif…",
+      "taSearchFailed": "Carian TA tidak dapat dimuatkan. Cuba taip nama sekali lagi.",
+      "taNoMatches": "Tiada pengguna aktif sepadan dengan nama ini.",
+      "taMatches": "Pengguna aktif yang sepadan"
     }
   },
   "clockingFile": {
@@ -24808,10 +24832,10 @@
     "sourceAdoption": "Imported assessment reference",
     "potential": "Potential",
     "sharedPolicy": {
-      "title": "Konfigurasi ganjaran dikongsi",
+      "title": "Pelan Semakan",
       "description": "Selenggara satu dasar berversi untuk pasangan syarikat dan unit perniagaan yang dipilih.",
       "edit": "Edit konfigurasi dikongsi",
-      "create": "Konfigurasi dikongsi baharu",
+      "create": "Pelan Semakan baharu",
       "futureOnly": "Simpanan mencipta versi baharu untuk semakan akan datang. Senarai pekerja, belanjawan, akses dan kelulusan sedia ada kekal pada semakan masing-masing.",
       "name": "Nama konfigurasi",
       "year": "Tahun ganjaran",
@@ -24830,7 +24854,7 @@
       "preview": "Semak kumpulan dipilih",
       "back": "Kembali menyunting",
       "reload": "Muat semula konfigurasi",
-      "saved": "Konfigurasi dikongsi disimpan.",
+      "saved": "Pelan Semakan disimpan.",
       "backToReviews": "Kembali ke Konfigurasi Ganjaran",
       "empty": "Tiada konfigurasi dikongsi tersedia.",
       "policyHelp": "Input dasar ini dikongsi untuk semakan akan datang bagi pasangan dipilih. Setiap semakan mengekalkan petikan pekerja dan gaji, belanjawan serta kelulusan yang berasingan.",
@@ -24851,7 +24875,7 @@
         "excluded": "Syarikat yang dipilih diarkibkan atau dikecualikan bagi tahun ganjaran ini. Alih keluarnya sebelum menyimpan."
       },
       "ownershipHelp": "Setiap pasangan syarikat/unit menggunakan satu konfigurasi dikongsi bagi setiap tahun ganjaran.",
-      "currencyHelp": "Konfigurasi dikongsi menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
+      "currencyHelp": "Pelan Semakan menggunakan dasar Reward Desk MYR sedia ada; dasar mata wang lain tidak ditawarkan di sini.",
       "archive": "Arkibkan konfigurasi",
       "archiveHelp": "Menyimpan tanpa pasangan dipilih menghentikan konfigurasi ini untuk semakan akan datang. Versi tersimpan dan semakan sedia ada dikekalkan.",
       "otherCompanies": "Syarikat lain",
@@ -25143,7 +25167,7 @@
         "previous": "Sebelumnya",
         "next": "Seterusnya",
         "position": "{index} daripada {total}",
-        "openRecord": "Buka rekod penuh untuk menyunting",
+        "openRecord": "Buka rekod penuh",
         "noFlags": "Tiada perkara untuk orang ini.",
         "notes": "Nota",
         "noNote": "Tiada nota.",
@@ -25231,8 +25255,46 @@
           "multiplier": "Masukkan pengganda seperti 1.25.",
           "amount": "Masukkan amaun dalam MYR dengan sehingga dua tempat perpuluhan.",
           "grade": "Pilih gred jawatan.",
-          "note": "Hadkan nota kepada 2,000 aksara atau kurang."
+          "note": "Hadkan nota kepada 2,000 aksara atau kurang.",
+          "withhold": "Masukkan sebab sekurang-kurangnya 10 aksara.",
+          "decision": "Pilih keputusan kes yang sah."
         }
+      },
+      "panel": {
+        "suggested": "Cadangan {value}",
+        "useSuggested": "Guna cadangan",
+        "difference": "Perbezaan {value}",
+        "range": {
+          "below": "Di bawah julat",
+          "in": "Dalam julat",
+          "above": "Melebihi julat"
+        },
+        "withheld": "Ditahan",
+        "withhold": "Tahan {award}",
+        "award": {
+          "increase": "kenaikan gaji",
+          "bonus": "bonus",
+          "lump": "bayaran sekali gus"
+        },
+        "withholdReason": "Sebab penahanan",
+        "withholdReasonRequired": "Masukkan sebab sekurang-kurangnya 10 aksara.",
+        "withheldReason": "Ditahan: {reason}",
+        "viewOnly": "Dengan {role} – lihat sahaja",
+        "caseDecision": "Keputusan PIP / ER",
+        "history": "Sejarah ganjaran",
+        "notFinal": "Semakan ini – belum muktamad",
+        "offcycle": "Luar kitaran",
+        "notOnRecord": "Tiada dalam rekod",
+        "historyColumn": {
+          "year": "Tahun",
+          "talent": "Bakat",
+          "performance": "Prestasi",
+          "incrementPercent": "Kenaikan %",
+          "incrementMoney": "Kenaikan (MYR)",
+          "bonusMoney": "Bonus (MYR)",
+          "bonusMonths": "Bulan bonus"
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {
@@ -25249,8 +25311,8 @@
       "confirmExclusion": "Sahkan pengecualian",
       "cancel": "Batal",
       "unknownActor": "Nama pengguna tidak tersedia",
-      "configurations": "Konfigurasi ganjaran bersama",
-      "newConfiguration": "Konfigurasi bersama baharu",
+      "configurations": "Pelan Semakan",
+      "newConfiguration": "Pelan Semakan baharu",
       "name": "Nama",
       "year": "Tahun ganjaran",
       "version": "Versi",
@@ -25446,7 +25508,7 @@
     "unitInputsLink": "Buka input unit",
     "architectureMismatch": "Gred pekerja berbeza daripada gred jawatan yang diluluskan. Semak pemetaan atau cadangkan perubahan gred bertarikh; gred pekerja yang direkodkan kekal.",
     "companyPicker": {
-      "classificationTitle": "Semakan identiti syarikat",
+      "classificationTitle": "Syarikat yang diketepikan",
       "reviewDesignation": "Semak penetapan syarikat",
       "classificationHelp": "Hanya penetapan yang disemak secara jelas menyembunyikan syarikat daripada pilihan konfigurasi baharu. Nama tidak dipadankan secara automatik. Sasaran dan sejarah tersimpan kekal.",
       "noneDesignated": "Tiada penetapan syarikat direkodkan. Semak identiti sebelum mengesahkan rekod ujian atau pendua telah dibersihkan.",
@@ -25497,7 +25559,8 @@
         "merit": "merit",
         "promotion": "kenaikan pangkat",
         "special": "pelarasan khas"
-      }
+      },
+      "withheldAward": "Ditahan: {reason}"
     },
     "limitControlsOwned": "Kawalan Had memiliki nilai ini bagi tahun ganjaran ini. Nilai ini baca sahaja di sini dan semakan menggunakan versi Kawalan Had.",
     "offcycle": {
@@ -34353,7 +34416,7 @@
   "rewardsAdminTabs": {
     "label": "Pentadbiran Ganjaran",
     "configuration": "Konfigurasi Ganjaran",
-    "shared": "Konfigurasi ganjaran dikongsi",
+    "shared": "Pelan Semakan",
     "access": "Akses Ganjaran",
     "salary": "Struktur Gaji",
     "bonus": "Matriks Bonus",
@@ -37951,7 +38014,7 @@
     "approved": "Diluluskan",
     "locked": "Dikunci",
     "notUsed": "Tiada pelan menggunakan versi ini.",
-    "assignmentOwner": "Penugasan syarikat diurus dalam pelan Ganjaran. Senarai ini untuk bacaan sahaja.",
+    "assignmentOwner": "Penugasan syarikat diurus dalam Pelan Semakan. Senarai ini untuk bacaan sahaja.",
     "compare": "Bandingkan",
     "compareVersion": "Bandingkan dengan versi",
     "choose": "Pilih…",
@@ -38366,7 +38429,8 @@
       "BUD-01": "Kumpulan bonus mengikut pencapaian PAT dan bulan sasaran. Perbelanjaan melebihi kumpulan menghalang penghantaran; penggunaan yang terlalu sedikit memberi amaran.",
       "BUD-03": "Bayaran bonus dibundarkan ke bawah. Bonus individu yang luar biasa tinggi memerlukan sebab.",
       "BUD-05": "Bayaran sekali gus berkongsi baki bonus yang tinggal. RM 0 bermaksud ditahan; amaun individu yang berbeza memerlukan sebab."
-    }
+    },
+    "reviewPlan": "Pelan Semakan"
   },
   "rewardAccessPolicy": {
     "scrollRoles": "Tatal ke sisi untuk melihat lebih banyak peranan.",
@@ -39102,7 +39166,7 @@
   "rewardsPreparation": {
     "sourceChanged": "Bukti sumber berubah; persediaan perlu disemak semula.",
     "system": "Sistem",
-    "sharedConfiguration": "Konfigurasi bersama",
+    "sharedConfiguration": "Pelan Semakan",
     "salaryStructure": "Struktur gaji",
     "bonusMatrix": "Matriks bonus",
     "version": "Versi {number}",
@@ -39978,6 +40042,34 @@
           "title": "Import calon dihentikan",
           "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Penciptaan semakan selesai",
+          "body": "Buka Pelan Semakan untuk melihat semakan yang dicipta dan syarikat yang dilangkau."
+        },
+        "failed": {
+          "title": "Penciptaan semakan dihentikan",
+          "body": "Semakan yang telah dicipta dikekalkan. Buka Pelan Semakan untuk menyemak kemajuan dan sebab."
+        },
+        "cancelled": {
+          "title": "Penciptaan semakan dihentikan",
+          "body": "Semakan yang telah dicipta dikekalkan. Buka Pelan Semakan untuk menyemak kemajuan dan sebab."
+        }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Sejarah ganjaran disimpan",
+          "body": "Muat naik sejarah ganjaran selesai. Buka untuk menyemak hasil setiap baris."
+        },
+        "failed": {
+          "title": "Muat naik sejarah ganjaran gagal",
+          "body": "Muat naik tidak dapat diselesaikan. Buka untuk menyemak masalah dan baris yang disimpan."
+        },
+        "cancelled": {
+          "title": "Muat naik sejarah ganjaran dihentikan",
+          "body": "Muat naik dihentikan. Baris yang sudah disimpan masih tersedia."
+        }
       }
     },
     "panel": {
@@ -40028,7 +40120,7 @@
     "cancel": "Batal",
     "highImpact": {
       "released-pat": "PAT berubah untuk semakan yang telah dilepaskan.",
-      "released-library": "Semakan yang telah dilepaskan menggunakan versi terdahulu. Semakan itu mengekalkannya; semakan baharu menggunakan versi ini.",
+      "released-library": "Semakan yang telah dilepaskan terjejas. Semak di bawah sama ada versinya dikekalkan atau dikira semula.",
       "released-limit": "Had bajet berubah untuk semakan yang telah dilepaskan.",
       "release-review": "Pelepasan menghantar semakan ini kepada CEO BU.",
       "remove-access": "Seseorang kehilangan akses kepada semakan.",
@@ -40076,8 +40168,8 @@
       "salary": "Struktur gaji",
       "bonus": "Matriks bonus",
       "pat": "Input PAT",
-      "plan": "Konfigurasi Ganjaran Dikongsi",
-      "shared": "Konfigurasi dikongsi",
+      "plan": "Pelan Semakan",
+      "shared": "Pelan Semakan",
       "exemption": "Pengecualian had bajet",
       "senior": "Pelan Senior",
       "upload": "Anugerah dimuat naik",
@@ -40097,7 +40189,8 @@
       "released": "Dilepaskan",
       "applied": "Digunakan",
       "changed": "Diubah",
-      "reset": "Ditetapkan semula kepada lalai"
+      "reset": "Ditetapkan semula kepada lalai",
+      "created": "Dicipta"
     },
     "empty": "Tiada perubahan sepadan dengan penapis ini.",
     "pages": "Halaman",
@@ -43930,5 +44023,187 @@
       "subject": "Kod log masuk portal agensi anda: {code}",
       "body": "Kod anda untuk log masuk ke portal agensi {companyName} ialah:\n\n{code}\n\nKod tamat tempoh dalam 10 minit. Jika anda tidak meminta kod ini, anda boleh abaikan e-mel ini.\n\n{senderName}"
     }
+  },
+  "rewardsReviewPlans": {
+    "title": "Pelan Semakan",
+    "newYear": "Tahun ganjaran baharu",
+    "year": "Tahun ganjaran",
+    "earlierPlans": "Pelan terdahulu",
+    "openYear": "Buka tahun",
+    "yearSettings": "Tetapan tahun",
+    "businessUnit": "Unit Perniagaan",
+    "allUnits": "Semua Unit Perniagaan",
+    "planType": "Jenis pelan",
+    "allTypes": "Semua jenis pelan",
+    "missingSalary": "Struktur gaji tiada",
+    "missingBonus": "Matriks bonus tiada",
+    "unreviewed": "Cadangan belum disemak",
+    "applyFilters": "Gunakan penapis",
+    "clearFilters": "Kosongkan penapis",
+    "salary": "Struktur gaji",
+    "bonus": "Matriks bonus",
+    "company": "Unit Perniagaan › Syarikat",
+    "headcount": "Bilangan pekerja",
+    "pat": "Input PAT",
+    "status": "Status",
+    "chooseSalary": "Pilih struktur gaji",
+    "chooseBonus": "Pilih matriks bonus",
+    "applySalary": "Gunakan struktur gaji",
+    "applyBonus": "Gunakan matriks bonus",
+    "applyType": "Gunakan jenis pelan",
+    "acceptAll": "Terima semua cadangan",
+    "copyPrevious": "Salin pilihan tahun lepas",
+    "accept": "Terima cadangan",
+    "selected": "{count} dipilih",
+    "selectAll": "Pilih semua syarikat pada halaman ini",
+    "selectCompany": "Pilih {name}",
+    "companyField": "{company}: {field}",
+    "entered": "Diisi",
+    "missing": "Tiada",
+    "edited": "Diubah — belum disimpan",
+    "viewOnly": "Lihat sahaja",
+    "openReview": "Buka semakan",
+    "missingUnit": "Unit Perniagaan belum ditetapkan",
+    "branch": "Faktor cawangan",
+    "branchAcknowledged": "Syarikat ini disediakan untuk faktor cawangan",
+    "exclusionReason": "Sebab tiada ganjaran (sekurang-kurangnya 10 aksara)",
+    "reviewChanges": "Semak perubahan",
+    "saveChanges": "Simpan perubahan",
+    "discard": "Buang perubahan",
+    "pendingChanges": "{count} syarikat dengan perubahan belum disimpan",
+    "saved": "Pelan Semakan disimpan.",
+    "copied": "Pilihan tahun lepas telah disediakan. Semak dan simpan untuk menggunakannya.",
+    "fixInvalid": "Berikan sebab bagi setiap syarikat dikecualikan dan sahkan pilihan faktor cawangan.",
+    "saveFailed": "Perubahan tidak dapat disimpan. Muat semula dan semak akses sebelum mencuba lagi.",
+    "unsaved": "Pelan Semakan mempunyai perubahan belum disimpan. Simpan atau buang sebelum keluar.",
+    "createSelected": "Cipta semakan terpilih",
+    "createReady": "Cipta semakan untuk syarikat Sedia",
+    "saveBeforeCreate": "Simpan atau buang perubahan sebelum mencipta semakan.",
+    "creationStarted": "Penciptaan semakan berjalan di latar belakang. Anda boleh terus bekerja.",
+    "progress": "{done} daripada {total} syarikat diproses",
+    "empty": "Tiada syarikat sepadan dengan penapis ini.",
+    "previewYear": "Semak tahun ganjaran baharu",
+    "createYear": "Cipta tahun ganjaran dan draf pelan",
+    "cancel": "Batal",
+    "pagination": "Halaman Pelan Semakan",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "page": "Halaman {page}",
+    "leftOut": "Syarikat yang diketepikan",
+    "noneLeftOut": "Tiada syarikat diketepikan dalam skop anda.",
+    "noYear": "Tahun ganjaran {year} belum dicipta.",
+    "description": "Cipta tahun ganjaran, kemudian pilih struktur gaji, matriks bonus dan jenis pelan bagi setiap syarikat.",
+    "yearHelp": "Tarikh terpakai untuk seluruh tahun ganjaran. Tarikh tahun sebelumnya dianjak dan boleh diedit. Menyimpan mencipta satu draf pelan bagi setiap syarikat yang layak.",
+    "coverage": "{ready} daripada {total} syarikat sedia · {missingSalary} tiada struktur gaji · {missingBonus} tiada matriks bonus · {missingPat} tiada PAT",
+    "leftOutHelp": "Rekod pengelompokan, entiti diarkibkan, syarikat ujian atau demo, alias dan syarikat bukan MYR tidak dimasukkan dalam grid. Pengelasan syarikat diurus di sini.",
+    "types": {
+      "standard": "Pelan standard",
+      "uploaded": "Ganjaran dimuat naik",
+      "no_awards": "Dikecualikan – tiada ganjaran"
+    },
+    "statuses": {
+      "draft": "Draf",
+      "ready": "Sedia",
+      "reviews-created": "Semakan dicipta"
+    },
+    "sources": {
+      "previous-year": "Sama seperti {year}",
+      "business-unit": "Sepadan dengan Unit Perniagaan",
+      "group-default": "Lalai Kumpulan",
+      "multiple-matches": "Beberapa padanan – pilih",
+      "none": "Tiada cadangan"
+    },
+    "dates": {
+      "effectiveFrom": "Tarikh kuat kuasa gaji",
+      "joinedBefore": "Menyertai sebelum",
+      "confirmedBy": "Disahkan selewatnya",
+      "activeAsOf": "Aktif pada",
+      "blockedFrom": "Pengecualian kenaikan dari",
+      "blockedTo": "Pengecualian kenaikan hingga",
+      "snapshotDate": "Tarikh petikan data"
+    },
+    "jobStates": {
+      "queued": "Dalam giliran",
+      "preparing": "Menyediakan",
+      "running": "Sedang berjalan",
+      "finalizing": "Menyiapkan",
+      "discarding": "Membatalkan",
+      "completed": "Selesai",
+      "failed": "Perlu perhatian",
+      "cancelled": "Dibatalkan"
+    },
+    "pollRetry": "Kemajuan tidak dapat dibaca. Semakan status dicuba semula; penciptaan semakan diteruskan di latar belakang.",
+    "newCompanyTitle": "Syarikat baharu ditambah ke Pelan Semakan",
+    "newCompanyBody": "Pilih struktur gaji dan matriks bonus untuk syarikat baharu.",
+    "leftOutReasons": {
+      "archived": "Syarikat diarkibkan",
+      "currency": "Bukan dibayar dalam MYR",
+      "grouping": "Rekod pengelompokan",
+      "test": "Syarikat ujian atau demo",
+      "test_demo": "Syarikat ujian atau demo",
+      "alias": "Alias syarikat lain",
+      "structure": "Unit Perniagaan belum disahkan"
+    },
+    "rebindNotificationTitle": "Semakan ganjaran dikemas kini",
+    "rebindNotificationBody": "Struktur gaji atau matriks bonus syarikat telah berubah. Sebagai pelulus semasa, semak cadangan yang dikira semula sebelum meluluskan.",
+    "viewOnlyHelp": "Lihat sahaja. Anda boleh memeriksa pelan ini, tetapi akses semasa anda tidak membenarkan perubahan.",
+    "mixedViewOnly": "Sesetengah syarikat untuk lihat sahaja. Nama mereka ditandakan dalam grid.",
+    "exclusionTooShort": "Masukkan sekurang-kurangnya 10 aksara untuk menerangkan sebab syarikat ini tiada ganjaran.",
+    "refreshComparison": "Muat semula perbandingan",
+    "comparisonRefreshed": "Perbandingan dimuat semula daripada rekod semasa. Pilihan dan sebab anda dikekalkan; semak perbandingan baharu sebelum menyimpan."
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Muat naik sejarah ganjaran",
+    "description": "Tambah penarafan dan ganjaran bagi tahun sebelum AI-HR Rewards.",
+    "back": "Kembali ke Ganjaran",
+    "help": "Pilih syarikat, muat turun templat dan semak setiap baris sebelum menyimpan. Gunakan ID Pekerja syarikat tersebut. Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan.",
+    "company": "Syarikat",
+    "file": "Fail sejarah",
+    "template": "Muat turun templat",
+    "fileError": "Pilih fail CSV atau Excel sehingga 5 MB.",
+    "literalCells": "Gunakan nilai sahaja; formula tidak diterima.",
+    "working": "Menyemak fail…",
+    "previewTitle": "Semak baris sejarah",
+    "summary": "{accepted} baris sah · {problems} baris perlu dibetulkan",
+    "cutoff": "Muat naik tahun sebelum {year}.",
+    "problem": "Baris {line}: {reason}",
+    "employee": "ID Pekerja",
+    "year": "Tahun",
+    "talent": "Penarafan bakat",
+    "performance": "Penarafan prestasi",
+    "incrementPercent": "Kenaikan %",
+    "incrementMoney": "Kenaikan (MYR)",
+    "bonusMoney": "Bonus (MYR)",
+    "bonusMonths": "Bulan bonus",
+    "type": "Jenis",
+    "annual": "Tahunan",
+    "offcycle": "Luar kitaran",
+    "replaceHelp": "Rekod baharu untuk pekerja, tahun dan jenis yang sama menggantikan muat naik yang dipaparkan. Rekod terdahulu kekal dalam sejarah audit.",
+    "confirm": "Simpan sejarah",
+    "progressTitle": "Kemajuan muat naik sejarah",
+    "progress": "{done} daripada {total} baris diproses",
+    "stop": "Hentikan muat naik",
+    "stopping": "Menghentikan…",
+    "checkpointHelp": "Muat naik menyimpan selepas setiap baris. Menghentikannya mengekalkan baris yang sudah disimpan.",
+    "states": {
+      "queued": "Dalam giliran",
+      "preparing": "Menyemak",
+      "running": "Menyimpan sejarah",
+      "finalizing": "Menyiapkan",
+      "discarding": "Menghentikan",
+      "completed": "Selesai",
+      "failed": "Gagal",
+      "cancelled": "Dihentikan"
+    },
+    "problems": {
+      "columns": "Terlalu banyak lajur.",
+      "duplicate": "Pekerja, tahun dan jenis berulang.",
+      "invalid": "Masukkan pekerja, tahun, penarafan dan amaun bukan negatif yang sah.",
+      "number": "Gunakan nombor bukan negatif dengan sehingga dua tempat perpuluhan.",
+      "employee": "ID Pekerja tidak tersedia atau tidak unik dalam syarikat ini.",
+      "year": "Muat naik tahun sejarah yang sudah lengkap sahaja.",
+      "postedYear": "Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan untuk syarikat."
+    },
+    "error": "Permintaan tidak dapat diselesaikan. Cuba lagi."
   }
 }

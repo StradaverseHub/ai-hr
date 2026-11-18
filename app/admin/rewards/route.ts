@@ -4,7 +4,7 @@ import { isOperator, requireModule } from '@/lib/authz';
 import { isDemoDeployment } from '@/lib/demo-mode';
 import { getSession } from '@/lib/session';
 
-/** The old Rewards Configuration address still forwards to the Plans workspace. */
+/** Legacy Rewards configuration links forward privately to Review Plans. */
 export async function GET(request: Request) {
   try {
     // Route handlers bypass the root and Rewards layouts.
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   return new Response(null, {
     status: 307,
     headers: {
-      Location: '/admin/rewards/plans' + (query.size ? '?' + query.toString() : ''),
+      Location: '/admin/rewards/review-plans' + (query.size ? '?' + query.toString() : ''),
       'Cache-Control': 'private, no-store',
     },
   });

@@ -266,9 +266,20 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
  {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
  {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5500,when:1794841006100,tag:'6100_rewards_review_plans'},
+ {idx:5501,when:1794841006101,tag:'6101_reward_person_history'},
+ {idx:5502,when:1794841006102,tag:'6102_lifecycle_recipient_directory'},
+ {idx:5503,when:1794841006103,tag:'6103_lifecycle_pbp_removal'},
+ {idx:5504,when:1794841006104,tag:'6104_lifecycle_recipient_fanout'},
+ {idx:5600,when:1794974006200,tag:'6200_feedback_automation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6100_rewards_review_plans':'ce6c91a351f2c5178101da137c601b363b5bacc8b560f46e808b319d54c9f0e5',
+ '6101_reward_person_history':'055838fa4f2ccc7110b4cd56030e4e97e9ddd85d8455f1ade581fb74e51345f8',
+ '6102_lifecycle_recipient_directory':'b7ba294ffdf0a95439995c61730407dfda7b204d07ba32f2adc15b94a3f7e2e3',
+ '6103_lifecycle_pbp_removal':'3cbe38c2aee6fc1297991d4af368bd1f1176cc33872767068a5d3f332cd973a1',
+ '6104_lifecycle_recipient_fanout':'130469c2b2f94235223b767c49bffaab6aa062d5d052605d0e34d5d1db99de9f',
  '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
  '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
  '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
@@ -305,6 +316,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5875_recruitment_referral_rewards_agency_fees':'39cdc06b4fff3afaedf50e8061a22420e40fb1bcae89bb42545e1d8246ff4575',
  '5876_recruitment_ai_match_summary':'d23289bec17b303e15f1ea36c2e4f0b72b14fd3d6580885485b167ba00dd8c47',
  '5877_recruitment_agency_portal':'f92d2277433ba41add69ab9574e7f7309be68a9c699524488dcb7ffabb7a62d3',
+ '6200_feedback_automation':'7a3b72927c150fd1fcfbe27bc51f555cbae424c5eb197abdb589b29945bf56ec',
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',

@@ -2,10 +2,10 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { hireEmployee, setEmploymentInfo, updatePersonProfilePartial } from '../core/org';
+import { hireEmployee, setEmploymentInfo, setReportingLine, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { addDays } from '../lib/lifecycle-v9-model';
+import { addDays, type Workflow } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
 import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9PreviewWorkflow, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
@@ -301,9 +301,9 @@ it('submits offboarding with validated saved form answers and fresh workflow mer
   const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-10-01',lastDay:'2026-11-01'});
   await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination'},reason:'',submit:true})).rejects.toThrow('Decision detail');
   await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{empNo:'FORGED'},reason:'',submit:false})).rejects.toThrow('Personnel fields are locked');
-  await v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination',notice:'2026-10-02',decisionDetail:'Reviewed explanation',revokeMode:'date',revokeDate:'2026-10-31',pbp:employee.userId!},reason:'',submit:true});
+  await v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination',notice:'2026-10-02',decisionDetail:'Reviewed explanation',revokeMode:'date',revokeDate:'2026-10-31'},reason:'',submit:true});
   const c=(await v9CaseDetail(admin,id)).case;
-  expect(c).toMatchObject({state:'submitted',caseValues:{decisionDetail:'Reviewed explanation'},revokeMode:'date',revokeDate:'2026-10-31',facts:{caseType:'Termination',noticeDate:'2026-10-02',pbpUserId:employee.userId}});
+  expect(c).toMatchObject({state:'submitted',caseValues:{decisionDetail:'Reviewed explanation'},revokeMode:'date',revokeDate:'2026-10-31',facts:{caseType:'Termination',noticeDate:'2026-10-02'}});
   expect(c.mails[0].body).toBe('Termination: Reviewed explanation');
   await expect(v9Command(admin,id,c.revision,{type:'caseFormSave',values:{notice:'2026-10-03'},reason:'',submit:false})).rejects.toThrow('Record a reason');
 });
@@ -1239,7 +1239,7 @@ it('separates module membership, company HR scope and the minimal onboarding she
   const shell=await v9Workspace(employee);
   expect(shell.permissions).toEqual({onboarding:true,offboarding:false,administration:false,records:true});
   expect(shell.cases).toEqual([]);expect(shell.config!.checklists.every(checklist=>checklist.module==='onb')).toBe(true);
-  expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});
+  expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],});
   expect(shell.config).not.toHaveProperty('settlementPolicy');expect(shell.config).not.toHaveProperty('companies');
   await expect(v9CaseDetail(employee,c.id)).rejects.toThrow();
   const scopedId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
@@ -1455,4 +1455,44 @@ it('previews the saved draft contact fields and organisation names without sendi
   expect(preview.body).toBe('Fictional Business Unit · Finance · V9 subject · preview-personal@example.test · +60121234567 · 100 Fixture Road');
   expect((await v9CaseDetail(admin, row.case.id)).case.mails).toHaveLength(0);
   await expect(v9PreviewEmail(other, row.case.id, 'draft-field-preview')).rejects.toThrow();
+});
+
+it('resolves an offboarding email manager from current PM reporting lines without rewriting the case snapshot', async () => {
+  const managers=[];
+  for(const name of ['Original manager','New manager']){
+    const person=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional '+name,primaryEmail:name==='Original manager'?'original.manager@test.invalid':'new.manager@test.invalid'}});
+    managers.push({...person,userId:await createAppUser(base.tenantId,person.personId,'employee')});
+  }
+  await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[0].employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  const config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');
+  const workflow:Workflow={id:'current-supervisor',name:'Current PM manager',module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'manager-notice',type:'notify' as const,to:['supervisor' as const],cc:[],subject:'Current manager notice',body:'For {employee.supervisor}'}],description:''};
+  config.workflows=[workflow];await v9SaveConfig(admin,config.revision,config);
+  const caseId=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
+  expect((await v9CaseDetail(admin,caseId)).case.facts.supervisorUserId).toBe(managers[0].userId);
+  await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[1].employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
+  await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
+  await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:workflow.id});current=(await v9CaseDetail(admin,caseId)).case;
+  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:[managers[1].userId],body:'For Fictional New manager'}]);
+  expect(current.facts.supervisorUserId).toBe(managers[0].userId);
+});
+
+it('masks personal mailboxes across email previews and history until identity permission exists in any company', async () => {
+  const { payrollPermissionGrant, company } = await import('../db/schema');
+  const mailbox='private.recipient@fictional.invalid';await updatePersonProfilePartial(admin,{personId:employee.personId!,personalEmail:mailbox});
+  const config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');
+  config.emails.push({id:'privacy-preview',name:'Private mailbox preview',module:'off',active:true,sender:'noreply',subject:'Email {personalEmail}',body:'Contact {personalEmail}',cc:['employeePersonal'],links:[],attachments:[],slots:[]});
+  config.workflows=[{id:'privacy-workflow',name:'Private mailbox workflow',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'private-message',type:'notify',subject:'Email {personalEmail}',body:'Contact {personalEmail}',to:['employeePersonal'],cc:[]}],description:''}];
+  await v9SaveConfig(admin,config.revision,config);
+  const caseId=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
+  await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
+  await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:'privacy-workflow'});
+  const [raw]=await owner.client`select data from lc_v9_case where id=${caseId}::uuid`;expect(JSON.stringify(raw.data.mails)).toContain(mailbox);
+  await owner.db.insert(payrollPermissionGrant).values({tenantId:base.tenantId,companyId:null,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+  const hidden=(await v9CaseDetail(admin,caseId)).case;expect(JSON.stringify(hidden.mails)).not.toContain(mailbox);expect(hidden.mails.find(mail=>mail.workflowId)?.body).toBe('Contact p•••••@fictional.invalid');
+  expect(JSON.stringify(await v9PreviewEmail(admin,caseId,'privacy-preview'))).not.toContain(mailbox);
+  const otherCompany=(await owner.db.insert(company).values({tenantId:base.tenantId,legalName:'Fictional separate identity permission company'}).returning())[0];
+  await owner.db.insert(payrollPermissionGrant).values({tenantId:base.tenantId,companyId:otherCompany.id,role:'hr_admin',permissionKey:'report.read.identity',allowed:true});
+  expect((await v9CaseDetail(admin,caseId)).case.mails.find(mail=>mail.workflowId)?.body).toBe('Contact '+mailbox);
+  expect((await v9PreviewEmail(admin,caseId,'privacy-preview')).body).toBe('Contact '+mailbox);
+  expect((await owner.client`select data from lc_v9_case where id=${caseId}::uuid`)[0].data.mails).toEqual(raw.data.mails);
 });

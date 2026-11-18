@@ -217,15 +217,15 @@ describe('69d6ed3c — the kernel’s item lines add up to the bases', () => {
   it('each line carries its settings as read and its contribution to each wage', () => {
     const out = buildStatutoryTraceLines({
       basic: 3500, lines, bonus2012Codes: new Set(['BNS']), ownOvertimeCharged: true, unpaid: 0,
-      totals: { epfNormal: 3800, epfBonus: 800, socsoEis: 4200 },
+      totals: { epfNormal: 3800, epfBonus: 800, socsoEis: 5000 },
     });
     expect(out).toEqual([
       { kind: 'basic', amount: 3500, epfNormal: 3500, epfBonus: 0, socsoEis: 3500 },
       { kind: 'item', code: 'TRANSPORT', name: 'Transport', amount: 300, epf: true, epfBonus2012: false, socso: true, epfNormal: 300, epfBonus: 0, socsoEis: 300 },
       { kind: 'item', code: 'PHONE', name: 'Phone', amount: 150, epf: false, epfBonus2012: false, socso: true, epfNormal: 0, epfBonus: 0, socsoEis: 150 },
       { kind: 'item', code: 'OT', name: 'Overtime', amount: 250, epf: false, epfBonus2012: false, socso: true, epfNormal: 0, epfBonus: 0, socsoEis: 250 },
-      // EPF Bonus 2012 keeps the bonus out of SOCSO even with SOCSO ticked (SOCSO Act 1969 s.2).
-      { kind: 'item', code: 'BNS', name: 'Bonus', amount: 800, epf: true, epfBonus2012: true, socso: true, epfNormal: 0, epfBonus: 800, socsoEis: 0 },
+      // Approved ffb6c2e0: the SOCSO tick is independent of the EPF classification.
+      { kind: 'item', code: 'BNS', name: 'Bonus', amount: 800, epf: true, epfBonus2012: true, socso: true, epfNormal: 0, epfBonus: 800, socsoEis: 800 },
     ]);
   });
   it('money the items cannot account for is disclosed as one other line, never hidden', () => {
@@ -249,14 +249,16 @@ const GOLDEN_LINES: KernelLine[] = [
 function stampFrom(r: ReturnType<typeof run>, lines: KernelLine[], bonus2012Codes: Set<string>) {
   const t = traceOf(r);
   const items = buildStatutoryTraceLines({
-    basic: 3500, lines, bonus2012Codes, ownOvertimeCharged: true, unpaid: 0,
+    // Historical pre-ffb6c2e0 fixture: reproduce its stored zero liability, not today's rule.
+    basic: 3500, lines: lines.map((l) => bonus2012Codes.has(l.code) ? { ...l, socso: false } : l),
+    bonus2012Codes, ownOvertimeCharged: true, unpaid: 0,
     totals: { epfNormal: t.epf.normalWage, epfBonus: t.epf.bonusWage, socsoEis: t.socso.wage },
   });
   const thisRun = Object.fromEntries(STATUTORY_TRACE_AMOUNT_KEYS.map((k) => [k, r[k]]));
   return {
     ...r,
     bases: { epf: t.epf.normalWage, epfAdditional: t.epf.bonusWage, socsoEis: t.socso.wage, pcb: 5000, hrdf: 0 },
-    statutoryTrace: { ...t, items, run: { kind: 'single', own: { epfAdditional: t.epf.bonusWage, socsoWageExtra: 0 }, thisRun } },
+    statutoryTrace: { ...t, items: items.map((l) => l.code && bonus2012Codes.has(l.code) ? { ...l, socso: true } : l), run: { kind: 'single', own: { epfAdditional: t.epf.bonusWage, socsoWageExtra: 0 }, thisRun } },
   };
 }
 const stampedBlob = () => stampFrom(GOLDEN(), GOLDEN_LINES, new Set(['BNS']));

@@ -615,3 +615,162 @@ directory and release.
 
 Disk: each update keeps the archive (about 275 MB for 0cbe5fec), one checked extraction in the attempt and the new
 release (about 0.9 GB each). Check `df -B1 /opt/aihr-import` before the window.
+
+### Authenticated CI runtime cutover (`aihr-worker-ci-runtime/v2`, staging only)
+
+This conditional administrator operation preserves the ordinary `drain`, `activate`, `adopt-stopped`
+contracts. It has no CI controller hook, environment mutation, synthetic heartbeat, deployment finish,
+pending removal, queue promotion, acceptance or handback authority. The complete gate, independent
+administrator review, installed journeys and actual capacity evidence remain release prerequisites.
+
+There are two separate administrator approvals. Before the unchanged operator starts, the root-private
+`ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS` record pins the complete approved gate/build/artifact/witness tuple,
+original managed drain arguments, helper/Node bytes, prior worker unit/archive/environment, healthy old
+web, native environment fingerprint and raw dotenv SHA, readiness policy, complete canonical source
+manifest SHA, held lease credential and native coordinator, and existing kernel operation lock identity.
+The normal drain record is unchanged. Its mtime must fall within that first approval's validity interval.
+A later approval cannot retrospectively justify a different drain.
+
+After the unchanged native installer initializes its single grant/installation and publishes its genuine
+active-service CI marker, the administrator independently prepares
+`ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER`. It names the original approval and SHA and compares every
+shared pin, including the exact full gate/build provenance and unchanged web and worker environments.
+It adds the actual installation UUID/owner/device/inode, original grant/activated/runtime record SHAs,
+original drain SHA, full ordered ledger identity, web PID/start/boot, original CI launch and old last-ok,
+and independently prepared full source manifest. It expires within900 seconds and before the original
+unexpired native grant. No helper generates approval, chooses the latest grant, or widens that authority.
+The exact closed schemas are `FIRST_APPROVAL_FIELDS` and `ACTIVATION_FIELDS` in the reviewed helper.
+Approval and lease files are root-private regular single-link files, opened without following links;
+their named/opened inode and immutable bytes remain pinned throughout. The first approval is historical;
+its expiry need not remain current after the drain. The second approval and grant must remain fresh.
+
+Prepare content evidence as the ordinary owner of an actually clean frozen Git checkout:
+
+```
+node --import tsx scripts/bank-import-worker-source-inventory.mjs FROZEN_CHECKOUT FULL_CANDIDATE_SHA PRIVATE_OUTPUT
+```
+
+The generator imports the actual `deploymentRsyncArgs` and `canonicalSourceExclusions` owners. It includes
+all canonical nodes, including ignored but canonically included extras, and records exact membership,
+file bytes, modes and links. Its output parent is canonical/private/owned and the output must not exist.
+Transfer and root-protect/hash-pin it independently. The helper checks both filter owners, detects extra
+and missing nodes, and hashes installed content through held no-follow descriptors. This additional proof
+never relabels native `fullSourceChecksumVerified:false`; the normal operator's checksum owner remains
+unchanged. Metadata is never described as byte verification.
+
+Invoke only the independently hash-pinned, root-owned self-contained bundle **after** the privilege
+boundary, using the fixed launcher for each stage:
+
+```
+sudo /usr/bin/python3 -I /ROOT_PROTECTED_HELPER guarded-drain --approval /ROOT_PRIVATE_FIRST_APPROVAL --approval-sha256 EXACT_SHA256
+sudo /usr/bin/python3 -I /ROOT_PROTECTED_HELPER guarded-activate-ci-runtime --approval /ROOT_PRIVATE_ACTIVATION_APPROVAL --approval-sha256 EXACT_SHA256
+```
+
+There are no arbitrary command/target arguments: original managed arguments come from the closed approval.
+The launcher opens the existing canonical native `operations.lock` without CREATE, verifies owner/mode/
+regular single-link inode and private queue ancestors, acquires shared flock, then acquires the worker
+install exclusive lock. Both descriptions survive into every direct helper/proof/mutation child, including
+systemctl. Native lease assertions run as the actual queue owner; root never calls the native coordinator
+as root or executes web-writable application JavaScript. Closing one holder never intentionally unlocks
+an inherited description. The lock supplies exclusion, not approval. Fixed launcher and native lease checks
+cover the whole operation, including failure-only quarantine. No queue ownership or sudoers changes apply.
+
+This is a precise process boundary, not a claim that every descendant inherits unrelated FDs. Native Node
+may spawn truly read-only Python byte-audit or psql leaves which do not inherit those descriptions. Their
+fixed argv provides only verification/read-only ledger queries, with no callback, grant write, activation,
+receipt or release continuation. If all authority parents die, such a leaf cannot publish success or mutate
+the release. The uncertain nonexpiring lease remains retained; there is no automatic handback.
+
+All application JavaScript runs only as the actual private-install owner with supplementary groups cleared,
+fixed PATH/HOME and exact held lease environment. Before any Node invocation with a dotenv, the pinned
+Node runs as that owner **without** a dotenv or application import and uses builtin `util.parseEnv` on the
+same bounded inode-bracketed private bytes. Only active key names, safe/CA booleans and the raw hash leave
+that parser. Quoted/multiline/exported values, duplicates and comments follow actual Node semantics;
+comments and ordinary NODE_ENV are allowed. Shared first/late
+`nodeOptions:{policy:"aihr-worker-node-options-memory/v1",sha256}` pins the exact unchanged active value.
+Only the anchored single `--max[-_]old[-_]space[-_]size=(\d+)` flag with numeric128..65536 is admitted;
+no leading/trailing whitespace, additional flag, quoted-value extension, import/require/inspect or other
+option is accepted. Absence may be pinned with the empty-value digest; an actively empty value refuses.
+The owner parser emits only the memory-policy boolean and digest; subsequent native Node reads the
+UNCHANGED dotenv, with no NODE_OPTIONS override/deletion. Hosted controls execute every accepted
+hyphen/underscore spelling through actual Node/V8. Active LD_*, DYLD_*, PYTHON*, NODE_PATH,
+NODE_V8_COVERAGE, NODE_COMPILE_CACHE, NODE_REDIRECT_WARNINGS, NODE_ICU_DATA,
+NODE_REPL_EXTERNAL_MODULE, OPENSSL_CONF/OPENSSL_MODULES refuse. NODE_EXTRA_CA_CERTS
+currently has no independently bounded external certificate pin, so its active presence also refuses
+rather than removing configuration or pretending coverage.
+
+Both administrator approvals also pin `python:{path,sha256,version}` for the root-protected resolved
+`/usr/bin/python3.N` binary, which must match fixed PATH resolution and actual version >=3.11. A fixed
+owner probe verifies version and actual safe_path/no_user_site flags. Subprocess environments alone add
+PYTHONNOUSERSITE=1/PYTHONSAFEPATH=1 after loader admission; native Node-to-Python verification inherits them.
+Host/private environment files, native argv, grant and native proof fields remain unchanged. This excludes
+user-site/current-directory Python customization; system Python/global packages remain under OS trust.
+
+Proof subprocesses also receive fixed TSX_DISABLE_CACHE=1 after active-dotenv admission. The installed
+TSX owner selects an in-memory Map under this flag rather than reading/writing generated transforms in
+os.tmpdir()/tsx-UID outside the observed roots. Active TSX_DISABLE_CACHE must be absent or exactly1;
+TSX_TSCONFIG_PATH must be absent, preserving normal resolution through the frozen source config. The
+builtin no-dotenv parser emits only those policy booleans and key presence. Hosted controls execute
+actual Node --import tsx against a poisoned, unreadable/unwritable fictional cache, preserve frozen
+config/path-alias resolution, and verify actual --env-file precedence for the fixed subprocess flag.
+No environment file is edited. Coverage
+is deliberately bounded to canonical source, active compiled tree, entire node_modules link-target graph
+and complete `/opt/node22`; it does not claim a systemwide dependency graph or replace OS loader trust.
+
+The success graph has exactly two native `status` audits, before the first unit/service mutation and after
+three four-second stability observations. They use the exact native command as the actual installation
+owner, retaining raw original/fresh records. Any native byte error is fatal, including a concurrent cleanup
+read race. There is no generic retry or metadata fallback. Runtime comparison normalizes exactly its two
+known changing timestamps: top-level verifiedAt and nested migrationLedger.verifiedAt. Both are validated;
+the original seven-field native ledger is retained, while approval pins its six stable named fields.
+
+Ten complete metadata/identity fences bracket the two source content passes, both native audits, reload,
+start and stability checks. Each fence uses descriptor-relative O_NOFOLLOW/named-FD identity and two exact
+complete enumerations of canonical source, compiled tree, dependencies including resolved link targets,
+and the bounded Node runtime tree. It also rechecks immutable private original/audit record bytes, exact
+legal monotonic native cleanup publications/removals, current lease, full native environment fingerprint,
+web PID/start/boot/build/health and fresh full ordered ledger. Cache membership is pinned absent or safe
+existing; membership changes refuse. The existing cache boundary pins device/inode/type/UID/GID/mode,
+while child changes within that sole native-excluded directory are permitted. Compiled parent-root and
+all non-cache metadata remain exact. Metadata-only regular entries use two complete anchored parent-FD
+no-follow stat observations; every directory retains opened/no-follow descriptor identity and membership
+brackets, links retain O_PATH, and actual byte consumers retain full opened-FD/named identity bridges. Original private records cannot change. Cleanup's wx sentinel is never precreated
+or treated as flock; native packet/retained removal is admitted only under the exact native successful O,
+commit/checksum/authority/consumption chain and retained original audit bytes. The immutable cleanup-intent has the exact authority hash, directory
+identity and ordered children next/packet before either deletion. Native wx/write/fsync can expose a new
+known file before publication completes: only that typed metadata-publication outcome may re-observe,
+at most16 short attempts inside the SAME20/24-second slot, with fresh original pins/lease/strict O.
+Existing accepted record changes, wrong closed records, retained audit integrity errors and every genuine
+native byte-proof error are fatal; there is no generic exception retry or fallback.
+
+Only the same original `ci-build-health` launch may progress R0 (running with pinned old last-ok) → R1
+(native exit0/finished-at/last-ok publication) → O (strict normal success). Direct R0→O is allowed. The same
+lease may advance installing→arrived only under strict O. Failed/foreign/pending/backsliding states refuse.
+The helper never publishes native finish or arrival. Final helper PASS is required before acceptance and
+handback, and need not precede the normal operator's genuine arrival while both branches run concurrently.
+
+Each helper slot has one absolute deadline shared across all subprocesses, without reset per child:
+preparation30s, each complete fence20s, each source content pass60s, each native audit180s, reload45s,
+start45s, receipt15s. Each stability sleep plus following fence shares one24s absolute slot, so scheduler
+and proof work consume that same budget. Before first mutation F2, remaining approval/grant must be at
+least527s, and the original native runtime marker +600s readiness deadline must leave155s. Global planning
+also reserves max(remaining helper497s, latest genuine heartbeat/poll plus estimated normal branch830s)
+plus30s safety-initiation margin against the original grant. The830s is explicitly an **estimate**, not an
+enforced bound on the unchanged normal operator: its three source checks, arrival status and cleanup have
+larger genuine existing timeouts. Neither estimates nor deterministic tests prove aggregate capacity.
+Actual candidate/load/admin timing must fit before release; failed or insufficient evidence refuses.
+
+A selected CI install waits fixed600 seconds for the unchanged all-kind heartbeat predicate. Explicit
+AIHR_IMPORT_WORKER_WAIT_SECONDS is allowed only if exactly600; empty/45/0600 refuse early without rewriting
+configuration. Unset selects600. Non-CI retains configured/default45. REQUIRED1 remains mandatory. Startup
+bank/individual work may delay bulk heartbeat and cause genuine failure; there is no schema or env waiver.
+The native grant's original maximum1800s, root approval900s and readiness600s are separate clocks.
+
+Failure cannot publish success, activate further, arrive or hand back after authority expiry. Only a
+protected exact own start (unit/source, UID/cgroup/PID/start/boot, immutable intent/evidence) plus continuous
+validated shared/exclusive locks allows the existing graceful no-SIGKILL quarantine. Foreign/restarted/
+reused/uncertain processes are never stopped. Failure initiation gets30s; the existing separately bounded
+330s graceful quarantine may continue beyond success-authority expiry under those own-process fences.
+No automatic rollback, DB kill or queue reset applies. Lost lock ownership permits no unit/service mutation.
+Partial receipts remain honest (`journeyVerified:false`); failure diagnostics may themselves be unavailable
+once ownership or process identity can no longer be demonstrated.

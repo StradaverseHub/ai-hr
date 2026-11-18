@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "changeId": "synthetic-payroll-preview-example",
+  "sourceSha": "1111111111111111111111111111111111111111",
+  "baseSha": "2222222222222222222222222222222222222222",
+  "effects": ["presentation", "private-read", "money-calculation"],
+  "scope": {"status": "unknown", "author": "example-builder", "reviewer": null},
+  "acceptance": {
+    "revision": 1,
+    "approvedRevision": null,
+    "criteria": ["Preview matches independently approved payroll fixtures without changing or finalizing payroll."]
+  },
+  "recovery": "unknown",
+  "observability": "unknown"
+}

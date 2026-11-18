@@ -15,7 +15,7 @@ it('retains disjoint fallback lanes, three non-group reads and the explicit boun
  expect(navigationRoutesForIteration(pool,{role:'companyHR',ordinal:0,actors:2,iteration:1})).toEqual(pool.slice(6,9));
  expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:0,actors:2,iteration:0})).toEqual(pool.slice(0,7));
  expect(navigationRoutesForIteration(pool,{role:'groupHR',ordinal:1,actors:2,iteration:0})).toEqual(pool.slice(7));
- expect(scheduler().slots('groupHR')).toBe(7);expect(scheduler().slots('groupHR',0,0)).toBe(10);for(const role of roles.slice(0,3))expect(scheduler().slots(role)).toBe(3);
+ expect(scheduler().slots('groupHR')).toBe(7);expect(scheduler().slots('groupHR',0,0)).toBe(11);expect(scheduler().slots('groupHR',1,0)).toBe(11);for(const role of roles.slice(0,3))expect(scheduler().slots(role)).toBe(3);
 });
 it('preserves actual first-cycle Group HR priority routes during ramp without consuming steady obligations',()=>{
  const s=scheduler(),first=firstGroupNavigationRoutes(routePools,counts);
@@ -53,17 +53,26 @@ it('does not stall or duplicate an obligation when all pending routes are in fli
 });
 it.each([1000,5000])('models actual 500 actor offsets and first-cycle priorities at %sms with all per-role steady obligations and retained mutations',thinkTimeMs=>{
  expect(users.filter(u=>u.role==='groupHR').map(u=>u.index)).toEqual([0,250]);expect([...counts.values()]).toEqual([460,20,18,2]);
+ const bounded=planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000});
+ expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(thinkTimeMs===5000?8:7);
+ // Independent lower-budget counterexample: the slow seven-slot model completes only
+ // 75 of the current 76 Group HR obligations. No route or native mutation is dropped.
+ if(thinkTimeMs===5000){
+  const lower=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,groupReadSlots:7});
+  expect(lower.feasible).toBe(false);
+  expect(lower.rows.find(row=>row.role==='groupHR')).toEqual({role:'groupHR',required:76,completed:75,pending:['/admin/claims/limits'],inflight:[]});
+  expect(lower.rows.filter(row=>row.role!=='groupHR').every(row=>row.completed===row.required)).toBe(true);
+ }
  for(const [getMs,postMs]of [[900,400],[1000,500]]){
-  const plan=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,getMs,postMs});
+  const plan=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,groupReadSlots:bounded.groupReadSlots,getMs,postMs});
   expect(plan.kind).toBe('PLANNING_ONLY');expect(plan.feasible,JSON.stringify(plan.rows)).toBe(true);
   for(const row of plan.rows){expect(row.completed).toBe(routePools[row.role as keyof typeof routePools].length);expect(row.pending).toEqual([]);expect(row.inflight).toEqual([]);}
   expect(plan.steps.payrollProcess).toBe(2);expect(plan.steps.payrollExport).toBe(2);
   expect(plan.steps.ordinaryMutations).toBeGreaterThan(0);expect(plan.steps.clockingActions).toBeGreaterThan(0);expect(plan.iterations.groupHR).toBeGreaterThan(2);
  }
- const bounded=planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000});expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(7);
 });
 it('handles future route cardinality through a bounded explicit revision or refuses, never drops required routes',()=>{
- // Group HR carries the 20 routes no other role reaches in the first cycle, at most 12 per actor: growth that fits the
+ // Group HR carries the 22 routes no other role reaches in the first cycle, at most 12 per actor: growth that fits the
  // remaining headroom is revised within the bound and the next route must refuse, so neither case can drop an obligation.
  const firstCycle=firstGroupNavigationRoutes(routePools,counts),headroom=12*firstCycle.length-firstCycle.flat().length;
  const grown=(routes:number)=>({...routePools,groupHR:[...routePools.groupHR,...Array.from({length:routes},(_,i)=>'/future/'+i)]});

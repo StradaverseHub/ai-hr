@@ -20,7 +20,7 @@
  *
  * Dependency-free so the runner can load it before any database module. */
 
-export type ImportWorkerPhase='start'|'bank'|'individual'|'bulk'|'pause'|'stop';
+export type ImportWorkerPhase='start'|'bank'|'individual'|'bulk'|'reward-plan-companies'|'pause'|'stop';
 
 export const IMPORT_WORKER_STALL_ENV='AIHR_IMPORT_WORKER_STALL_SECONDS';
 export const IMPORT_WORKER_STALL_DEFAULT_SECONDS=1800;

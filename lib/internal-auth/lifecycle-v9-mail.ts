@@ -47,7 +47,8 @@ export async function internalLifecycleV9Mail(input: LifecycleV9DeliveryRequest,
   if (addresses.some(address => !address) || addresses.length !== target.payload.mail.to.length + target.payload.mail.cc.length)
     return { outcome: 'skipped', error: 'recipientUnavailable' };
   const { mail, documents, files } = target.payload;
-  if (!mail.delivery || (mail.delivery.version !== 1 && !(mail.delivery.version === 2 && typeof mail.delivery.html === 'string')) || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
+  // Eight choices may resolve to any number of group/task-owner addresses; send one shared copy.
+  if (!mail.delivery || (mail.delivery.version !== 1 && !(mail.delivery.version === 2 && typeof mail.delivery.html === 'string')) || mail.to.length < 1) return { outcome: 'skipped', error: 'notEligible' };
   // One copy per address: an account and a typed address can be the same mailbox. To wins over CC.
   const seen = new Set<string>(), unique = (list: (string | undefined)[]) => list.filter((address): address is string => { const key = address!.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true; });
   const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));

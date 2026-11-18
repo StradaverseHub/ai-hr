@@ -35,7 +35,8 @@ describe('Role permissions catalogue',()=>{
   expect(row('senior.manage')).toEqual({bu:'none',bg:'none',proxy_bg:'none',gr:'full',ctro:'view',ec:'view',pbp:'none',hr_admin:'none',payroll:'none'});
   expect(row('restricted.view')).toEqual({bu:'none',bg:'none',proxy_bg:'none',gr:'step',ctro:'step',ec:'step',pbp:'none',hr_admin:'none',payroll:'none'});
   // CTRO and HR Admin get no Full on configuration pages the database does not let them use (plans and Rewards Access).
-  for(const capability of ['plans.manage','access.manage'] as const){expect(rewardDefaultLevel('ctro',capability)).not.toBe('full');expect(rewardDefaultLevel('hr_admin',capability)).toBe('none');}
+  for(const capability of ['access.manage'] as const){expect(rewardDefaultLevel('ctro',capability)).not.toBe('full');expect(rewardDefaultLevel('hr_admin',capability)).toBe('none');}
+  expect(row('plans.manage')).toEqual({bu:'none',bg:'none',proxy_bg:'none',gr:'full',ctro:'full',ec:'view',pbp:'none',hr_admin:'full',payroll:'none'});
   // PBP has no case decision in SQL (app.reward_role_native_capability), so the grid no longer claims View only.
   expect(rewardDefaultLevel('pbp','cases.decide')).toBe('none');
   expect(rewardDefaultLevel('proxy_bg','offcycle.decide')).toBe('step');
@@ -47,7 +48,8 @@ describe('Role permissions catalogue',()=>{
   expect(rewardLevelOptions('hr_admin','pat.manage')).toEqual(['full','none']);
   expect(rewardLevelOptions('bu','review.view')).toEqual(['view','none']);
   expect(rewardLevelOptions('proxy_bg','offcycle.decide')).toEqual(['step','none']);
-  expect(rewardLevelOptions('gr','plans.manage')).toEqual(['full','none']);
+  expect(rewardLevelOptions('gr','plans.manage')).toEqual(['full','view','none']);
+  expect(rewardLevelOptions('ec','plans.manage')).toEqual(['view','none']);
   expect(rewardLevelOptions('ec','restricted.view')).toEqual(['step','view']);
   expect(rewardLevelOptions('bu','salary.view')).toEqual(['none']);
   for(const row of rewardPermissionCatalogue)if(row.editable)for(const role of rewardAccessRoles)for(const level of rewardLevelOptions(role,row.id))expect(rewardLevelRank(level)).toBeLessThanOrEqual(rewardLevelRank(rewardDefaultLevel(role,row.id)));

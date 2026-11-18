@@ -13,6 +13,7 @@ export type RewardSetupQueryPort=Readonly<{
  authority:(tx:Tx,companyId:string|null,operation:'library_view'|'manage')=>Promise<void>;
  usedBy:(tx:Tx,id:string)=>PromiseLike<{plan:string;company:string;year:number}[]>;
  locked:(tx:Tx,id:string)=>PromiseLike<{locked:boolean}[]>;
+ companiesWithStructure:(tx:Tx,year:number,at:string)=>PromiseLike<PatCompany[]>;
  companies:(tx:Tx,year:number)=>PromiseLike<{id:string;name:string;parentId:string|null;parentName:string|null}[]>;
  structure:(tx:Tx,companyId:string,at:string)=>PromiseLike<{tags:{businessGroupId?:string;businessGroupName?:string;businessUnitId?:string;businessUnitName?:string;status?:string}}[]>;
  patHistory:(tx:Tx,companyId:string,year:number)=>PromiseLike<{value:PatVersion}[]>;
@@ -67,7 +68,7 @@ export async function rewardPlanLibraryChoicesQueryTx(tx:Tx,ctx:SessionContext,y
  });
 }
 
-export async function rewardSetupCompaniesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<PatCompany[]>{setupYear.parse(year);await port.authority(tx,null,'manage');const rows=await port.companies(tx,year);const result:PatCompany[]=[];const at=rewardStructureDate(year);for(const company of rows){const [r]=await port.structure(tx,company.id,at);result.push({...company,businessGroupId:r?.tags?.businessGroupId??null,businessGroupName:r?.tags?.businessGroupName??null,businessUnitId:r?.tags?.businessUnitId??null,businessUnitName:r?.tags?.businessUnitName??null,structureStatus:r?.tags?.status??'legacy'});}return result.sort(compareRewardCompanies);}
+export async function rewardSetupCompaniesQueryTx(tx:Tx,ctx:SessionContext,year:number,port:RewardSetupQueryPort):Promise<PatCompany[]>{setupYear.parse(year);await port.authority(tx,null,'manage');const rows=await port.companiesWithStructure(tx,year,rewardStructureDate(year));return [...rows].sort(compareRewardCompanies);}
 /** Preserve the authorized company order without reading any PAT version or value. */
 export async function rewardPlanCompanyChoicesQueryTx(tx:Tx,year:number,port:RewardPlanCompanyChoiceQueryPort){
  setupYear.parse(year);

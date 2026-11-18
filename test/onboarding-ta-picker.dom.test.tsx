@@ -1,0 +1,40 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { NextIntlClientProvider } from 'next-intl';
+import { readFileSync } from 'node:fs';
+import { OnboardingTaPicker } from '../app/lifecycle/onboarding/ta-picker';
+import { searchOnboardingTaUsers } from '../app/lifecycle/onboarding/v31-actions';
+vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ searchOnboardingTaUsers: vi.fn() }));
+beforeEach(() => { vi.clearAllMocks(); });
+const messages = JSON.parse(readFileSync('messages/en.json','utf8'));
+const caseId = '11111111-1111-4111-8111-111111111111';
+const user = { id: '22222222-2222-4222-8222-222222222222', name: 'Fictional TA', email: 'actual.account@fictional.invalid', department: 'Fictional Talent Acquisition' };
+const frame = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;
+it('warns on legacy typed names and selects an actual user from a bounded server search with name, email and department', async () => {
+ const change = vi.fn();vi.mocked(searchOnboardingTaUsers).mockResolvedValue({users:[user],error:null});
+ render(frame(<OnboardingTaPicker caseId={caseId} value="" legacyName="Fictional typed name" editing change={change}/>));
+ expect(screen.getByRole('status')).toHaveTextContent('Fictional typed name is not linked to a user.');
+ expect(change).not.toHaveBeenCalled();
+ const input = screen.getByRole('combobox',{name:'Search for a TA'});
+ fireEvent.change(input,{target:{value:'Fictional'}});
+ const option = await screen.findByRole('option',{name:/Fictional TA/});
+ expect(option).toHaveTextContent(user.email);expect(option).toHaveTextContent(user.department);
+ expect(searchOnboardingTaUsers).toHaveBeenLastCalledWith(caseId,'Fictional');
+ fireEvent.keyDown(input,{key:'Enter'});
+ expect(change).toHaveBeenCalledWith(user.id);expect(input).toHaveValue('');
+});
+it('exposes no search control to a viewer and allows an editor to explicitly clear a selected TA', () => {
+ const change=vi.fn();const view=render(frame(<OnboardingTaPicker caseId={caseId} value={user.id} selectedName={user.name} editing={false} change={change}/>));
+ expect(screen.getByText(user.name)).toBeVisible();expect(screen.queryByRole('combobox')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Clear TA'})).not.toBeInTheDocument();
+ view.rerender(frame(<OnboardingTaPicker caseId={caseId} value={user.id} selectedName={user.name} editing change={change}/>));
+ fireEvent.click(screen.getByRole('button',{name:'Clear TA'}));expect(change).toHaveBeenCalledWith('');
+});
+it('keeps failed searches recoverable and does not submit an arbitrary typed name', async () => {
+ const change=vi.fn();vi.mocked(searchOnboardingTaUsers).mockResolvedValueOnce({users:[],error:'TA_SEARCH_UNAVAILABLE'}).mockResolvedValueOnce({users:[user],error:null});
+ render(frame(<OnboardingTaPicker caseId={caseId} value="" editing change={change}/>));
+ const input=screen.getByRole('combobox',{name:'Search for a TA'});fireEvent.change(input,{target:{value:'First'}});
+ expect(await screen.findByRole('alert')).toHaveTextContent('Try typing the name again');expect(change).not.toHaveBeenCalled();
+ fireEvent.change(input,{target:{value:'Fictional'}});await screen.findByRole('option',{name:/Fictional TA/});
+ fireEvent.click(screen.getByRole('option',{name:/Fictional TA/}));await waitFor(()=>expect(change).toHaveBeenCalledWith(user.id));
+});

@@ -20,6 +20,82 @@ import {defaultAdvisorSettings} from '../packs/rewards/advisor-model';
 import {rewardRulesForReview} from '../packs/rewards/applied-rules';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
+/** Same installed-ownership projector as restricted-owner-release-upgrade, always rolled back here.
+ * Only migrator-owned objects move; purpose-owned definers and their exact ACLs stay intact. */
+const HISTORY_INSTALLED_OWNERSHIP=`DO $project$
+DECLARE source oid:=(SELECT oid FROM pg_catalog.pg_roles WHERE rolname=current_user); target text:='ai_hr_owner'; r record;
+BEGIN
+ FOR r IN SELECT n.nspname FROM pg_catalog.pg_namespace n WHERE n.nspowner=source
+  AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_namespace'::regclass AND d.objid=n.oid AND d.deptype='e')
+ LOOP EXECUTE format('ALTER SCHEMA %I OWNER TO %I',r.nspname,target); END LOOP;
+ FOR r IN SELECT c.oid,c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+  WHERE c.relowner=source AND c.relkind IN ('r','p','v','m','f')
+  AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+ LOOP EXECUTE format('ALTER %s %s OWNER TO %I',CASE r.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END,r.oid::regclass,target); END LOOP;
+ -- Sequences a column owns followed their table above.
+ FOR r IN SELECT c.oid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+  WHERE c.relowner=source AND c.relkind='S'
+  AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+ LOOP EXECUTE format('ALTER SEQUENCE %s OWNER TO %I',r.oid::regclass,target); END LOOP;
+ FOR r IN SELECT p.oid,p.prokind FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+  WHERE p.proowner=source
+  AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+ LOOP EXECUTE format('ALTER %s %s OWNER TO %I',CASE r.prokind WHEN 'a' THEN 'AGGREGATE' WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END,r.oid::regprocedure,target); END LOOP;
+ -- Enums, domains, ranges and standalone composites; array and table row types follow their owners.
+ FOR r IN SELECT t.oid,t.typtype FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+  WHERE t.typowner=source AND t.typtype IN ('b','c','d','e','r')
+  AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+  AND NOT (t.typtype='c' AND EXISTS(SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid=t.typrelid AND c.relkind<>'c'))
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type e WHERE e.typarray=t.oid)
+  AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_catalog.pg_type'::regclass AND d.objid=t.oid AND d.deptype='e')
+ LOOP EXECUTE format('ALTER %s %s OWNER TO %I',CASE r.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,r.oid::regtype,target); END LOOP;
+ FOR r IN SELECT p.oid,a.privilege_type,a.is_grantable FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid=p.pronamespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(p.proacl) a
+  WHERE p.proowner<>source AND a.grantee=source AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+ LOOP
+  EXECUTE format('GRANT %s ON ROUTINE %s TO %I%s',r.privilege_type,r.oid::regprocedure,target,CASE WHEN r.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  EXECUTE format('REVOKE %s ON ROUTINE %s FROM %I',r.privilege_type,r.oid::regprocedure,current_user);
+ END LOOP;
+ FOR r IN SELECT c.oid,c.relkind,a.privilege_type,a.is_grantable FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(c.relacl) a
+  WHERE c.relowner<>source AND a.grantee=source AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+ LOOP
+  EXECUTE format('GRANT %s ON %s %s TO %I%s',r.privilege_type,CASE r.relkind WHEN 'S' THEN 'SEQUENCE' ELSE 'TABLE' END,r.oid::regclass,target,CASE WHEN r.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  EXECUTE format('REVOKE %s ON %s %s FROM %I',r.privilege_type,CASE r.relkind WHEN 'S' THEN 'SEQUENCE' ELSE 'TABLE' END,r.oid::regclass,current_user);
+ END LOOP;
+ FOR r IN SELECT c.oid,att.attname,a.privilege_type,a.is_grantable FROM pg_catalog.pg_attribute att JOIN pg_catalog.pg_class c ON c.oid=att.attrelid
+  JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace CROSS JOIN LATERAL pg_catalog.aclexplode(att.attacl) a
+  WHERE c.relowner<>source AND a.grantee=source AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+ LOOP
+  EXECUTE format('GRANT %s (%I) ON TABLE %s TO %I%s',r.privilege_type,r.attname,r.oid::regclass,target,CASE WHEN r.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  EXECUTE format('REVOKE %s (%I) ON TABLE %s FROM %I',r.privilege_type,r.attname,r.oid::regclass,current_user);
+ END LOOP;
+ FOR r IN SELECT n.nspname,a.privilege_type,a.is_grantable FROM pg_catalog.pg_namespace n CROSS JOIN LATERAL pg_catalog.aclexplode(n.nspacl) a
+  WHERE n.nspowner<>source AND a.grantee=source AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+ LOOP
+  EXECUTE format('GRANT %s ON SCHEMA %I TO %I%s',r.privilege_type,r.nspname,target,CASE WHEN r.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  EXECUTE format('REVOKE %s ON SCHEMA %I FROM %I',r.privilege_type,r.nspname,current_user);
+ END LOOP;
+ FOR r IN SELECT t.oid,t.typtype,a.privilege_type,a.is_grantable FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid=t.typnamespace
+  CROSS JOIN LATERAL pg_catalog.aclexplode(t.typacl) a
+  WHERE t.typowner<>source AND a.grantee=source AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%'
+ LOOP
+  EXECUTE format('GRANT %s ON %s %s TO %I%s',r.privilege_type,CASE r.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,r.oid::regtype,target,CASE WHEN r.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END);
+  EXECUTE format('REVOKE %s ON %s %s FROM %I',r.privilege_type,CASE r.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,r.oid::regtype,current_user);
+ END LOOP;
+ -- Policies a migration addressed to its own role (storage-owner and retention policies on forced tables).
+ FOR r IN SELECT pol.polname,pol.polrelid,(SELECT string_agg(CASE WHEN x=0 THEN 'PUBLIC' WHEN x=source THEN quote_ident(target)
+   ELSE quote_ident(pg_catalog.pg_get_userbyid(x)) END,',') FROM unnest(pol.polroles) x) AS roles
+  FROM pg_catalog.pg_policy pol WHERE source=ANY(pol.polroles)
+ LOOP EXECUTE format('ALTER POLICY %I ON %s TO %s',r.polname,r.polrelid::regclass,r.roles); END LOOP;
+ EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM ai_hr_app',current_user);
+ EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public REVOKE USAGE, SELECT ON SEQUENCES FROM ai_hr_app',current_user);
+END $project$`;
+
 /** Board db14e49c: the fixture's HR Admin also holds the Group Rewards seat, so the self rule stops it narrowing
  * that column; the saved override is seeded directly (the grid command is covered by rewards-role-permission-grid-db). */
 const narrowGroupRewardsReviewPage=(b:Base)=>owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason) values(${b.tenantId}::uuid,'gr','review.view',false,'none',${b.adminUserId}::uuid,'Fictional narrowed review page')`);
@@ -132,6 +208,10 @@ describe('approved Rewards review SQL custody',()=>{
   const subject=await hireEmployee(gr,{person:{fullName:'Fictional uploaded recipient',primaryEmail:randomUUID()+'@fixture.test'},companyId:co.id,departmentId:dept.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   await setEmploymentGrade(gr,{employmentId:subject.employmentId,gradeId:grade.id});
   await owner.db.update(schema.employment).set({confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,subject.employmentId));await setCompensation(gr,{employmentId:subject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
+  const zeroSubject=await hireEmployee(gr,{person:{fullName:'Fictional selected zero award',primaryEmail:randomUUID()+'@fixture.test'},companyId:co.id,departmentId:dept.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+  await setEmploymentGrade(gr,{employmentId:zeroSubject.employmentId,gradeId:grade.id});
+  await owner.db.update(schema.employment).set({confirmationDate:`${year-2}-04-01`}).where(eq(schema.employment.id,zeroSubject.employmentId));
+  await setCompensation(gr,{employmentId:zeroSubject.employmentId,basicSalary:5000,effectiveFrom:`${year-2}-01-01`});
   const buPerson=await hireEmployee(gr,{person:{fullName:'Fictional uploaded BU reviewer',primaryEmail:randomUUID()+'@fixture.test'},companyId:co.id,departmentId:dept.id,businessUnitId:bu.id,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
   const buUser=await createAppUser(b.tenantId,buPerson.personId,'employee');const buCtx={...gr,userId:buUser,personId:buPerson.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
   const existing=(await getRewardUnit(gr,unitId)).unit;
@@ -143,12 +223,16 @@ describe('approved Rewards review SQL custody',()=>{
   const actors:Partial<Record<'bg'|'ctro'|'ec'|'payroll',SessionContext>>={};
   for(const role of ['bg','ctro','ec','payroll'] as const){const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional uploaded '+role,primaryEmail:randomUUID()+'@fixture.test'}).returning();const login=await createAppUser(b.tenantId,p.id,role==='payroll'?'hr_admin':'employee');actors[role]={...gr,userId:login,personId:p.id,roles:[role==='payroll'?'hr_admin':'employee'],grants:[{role:role==='payroll'?'hr_admin':'employee',companyId:null}]};await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:uploadedId,userId:login,role});}
   await owner.db.insert(schema.rewardMember).values([{tenantId:b.tenantId,unitId:uploadedId,userId:buUser,role:'bu'},{tenantId:b.tenantId,unitId:uploadedId,userId:checker.userId!,role:'gr'}]);
+  const selfLogin=await createAppUser(b.tenantId,subject.personId,'hr_admin');
+  const selfPayroll={...gr,userId:selfLogin,personId:subject.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} satisfies SessionContext;
+  await owner.db.insert(schema.rewardMember).values([{tenantId:b.tenantId,unitId:uploadedId,userId:selfLogin,role:'payroll'},{tenantId:b.tenantId,unitId:uploadedId,userId:gr.userId!,role:'gr'},{tenantId:b.tenantId,unitId:uploadedId,userId:gr.userId!,role:'payroll'}]);
   await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);
   const award={employmentId:subject.employmentId,incrementType:'merit' as const,incrementBp:1000,newBasicCents:550000,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional checked external award'};
+  const zeroAward={...award,employmentId:zeroSubject.employmentId,incrementBp:0,newBasicCents:500000,bonusCents:0,remarks:'Explicitly selected unchanged salary and zero bonus'};
   const [checkerEmployment]=await owner.db.insert(schema.employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:checker.personId!,hiredOn:`${year-2}-01-01`,employeeCode:'UPLOAD-CHECKER'}).returning();
-  await expect(saveUploadedRewards(doer,uploadedId,[award],1,'Preview identity does not match this import',undefined,'0'.repeat(64))).rejects.toThrow(/Preview/);
-  const preview=await previewUploadedRewards(doer,uploadedId,[award]);
-  await saveUploadedRewards(doer,uploadedId,[award],1,'Original independently prepared company upload',undefined,preview.digest);
+  await expect(saveUploadedRewards(doer,uploadedId,[award,zeroAward],1,'Preview identity does not match this import',undefined,'0'.repeat(64))).rejects.toThrow(/Preview/);
+  const preview=await previewUploadedRewards(doer,uploadedId,[award,zeroAward]);
+  await saveUploadedRewards(doer,uploadedId,[award,zeroAward],1,'Original independently prepared company upload',undefined,preview.digest);
   await dispatchNotificationsFromSweep({tenantId:b.tenantId,roles:['hr_admin'],entitlements:gr.entitlements},owner);
   const checks=await owner.db.select().from(schema.notification).where(eq(schema.notification.recipientEmploymentId,checkerEmployment.id));expect(checks.some(n=>n.linkPath===`/rewards/${uploadedId}/uploaded`)).toBe(true);
   expect(await withTenant(buCtx,tx=>tx.execute(sql`update reward_unit set status='bg',approved_digest=${'a'.repeat(64)} where id=${uploadedId}::uuid returning id`))).toEqual([]);
@@ -160,7 +244,7 @@ describe('approved Rewards review SQL custody',()=>{
   await refreshUploadedRewardSources(doer,uploadedId,2,'Rebuild dated sources before replacing the award file');
   await expect(getRewardUnit(buCtx,uploadedId)).rejects.toThrow(/independent/);
   await expect(withTenant(doer,tx=>tx.execute(sql`update reward_uploaded_review set refresh_required=false where unit_id=${uploadedId}::uuid`))).rejects.toThrow();
-  await saveUploadedRewards(doer,uploadedId,[award],3,'Replace with updated independently prepared company upload');
+  await saveUploadedRewards(doer,uploadedId,[award,zeroAward],3,'Replace with updated independently prepared company upload');
   await confirmUploadedRewards(checker,uploadedId,4,'Independent reviewer checked refreshed source and totals');
   expect((await getRewardUnit(buCtx,uploadedId)).rows.some(r=>r.source.personId===buCtx.personId)).toBe(false);
   await decideRewardUnit(buCtx,uploadedId,4,'submit','External company amounts reviewed and accepted');
@@ -173,14 +257,71 @@ describe('approved Rewards review SQL custody',()=>{
   const adjusted=await getRewardUnit(actors.bg!,uploadedId);expect(adjusted.flags).toContainEqual(expect.objectContaining({code:'UPL-02',severity:'warning'}));expect(adjusted.flags.some(f=>f.code.startsWith('BUD'))).toBe(false);
   for(const actor of [actors.bg!,doer,actors.ctro!,actors.ec!])await decideRewardUnit(actor,uploadedId,5,'approve','External award warning reviewed and accepted');
   const {batchId}=await createBatch(actors.payroll!,{companyId:co.id,payPeriod:`${year+1}-01`});
+  const sourceRows=(await getRewardUnit(doer,uploadedId)).rows;
+  expect(sourceRows).toHaveLength(3); // Two selected awards, plus the BU reviewer who was not in the file.
+  const zeroEntry=sourceRows.find(row=>row.source.employmentId===zeroSubject.employmentId)!,unawarded=sourceRows.find(row=>row.source.employmentId===buPerson.employmentId)!;
+  expect(zeroEntry).toBeDefined();expect(unawarded).toBeDefined();
+  const expectedMain={entryId:line.id,employmentId:subject.employmentId,talent:null,performance:null,meritBp:1200,promotionBp:0,specialBp:0,incrementCents:60000,totalIncreaseBp:1200,promoted:false,promotionGrade:null,bonusCents:10000,bonusMonthsBp:200,lumpCents:0,withheld:{}};
+  const expectedZero={...expectedMain,entryId:zeroEntry.id,employmentId:zeroSubject.employmentId,meritBp:0,incrementCents:0,totalIncreaseBp:0,bonusCents:0,bonusMonthsBp:0};
+  const unselected={...expectedZero,entryId:unawarded.id,employmentId:buPerson.employmentId};
+  const writeHistory=(ctx:SessionContext,rows:unknown)=>withTenant(ctx,tx=>tx.execute(sql`select app.reward_record_person_history(${uploadedId}::uuid,${JSON.stringify(rows)}::jsonb)`));
+  for(const rows of [[],[expectedMain],[expectedMain,expectedMain],[expectedMain,unselected],[expectedMain,expectedZero,unselected],[{...expectedMain,entryId},expectedZero]]){
+    const error=await writeHistory(actors.payroll!,rows).catch(error=>error);expect(pgSqlState(error)).toBe('23514');
+    expect(pgErrorChain(error).some(cause=>/selected review entry set/.test(cause.message??''))).toBe(true);
+  }
+  // Whole-unit self refusal must hold even when the submitted payload omits that person's own award.
+  const writeInstalledHistory=(ctx:SessionContext,rows:unknown)=>owner.withTenant(ctx,async tx=>{
+    await tx.execute(sql.raw(HISTORY_INSTALLED_OWNERSHIP));await tx.execute(sql`set local row_security=on`);await tx.execute(sql`set local role ai_hr_app`);
+    await tx.execute(sql`select app.reward_record_person_history(${uploadedId}::uuid,${JSON.stringify(rows)}::jsonb)`);
+    throw new Error('Rollback unexpected acceptance of an installed-owner refusal case');
+  });
+  expect(pgSqlState(await writeInstalledHistory(selfPayroll,[expectedZero]).catch(error=>error))).toBe('42501');
+  expect(pgSqlState(await postRewardUnit(selfPayroll,uploadedId,5,batchId).catch(error=>error))).toBe('42501');
+  const stale={...actors.payroll!,roles:['employee'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
+  expect(pgSqlState(await writeInstalledHistory(stale,[expectedMain,expectedZero]).catch(error=>error))).toBe('42501');
+  await beginRewardViewAs(gr,actors.bg!.userId!);
+  expect(pgSqlState(await writeInstalledHistory(gr,[expectedMain,expectedZero]).catch(error=>error))).toBe('42501');
+  await endRewardViewAs(gr);
+  expect(await owner.db.execute(sql`select id from reward_person_history where unit_id=${uploadedId}::uuid`)).toHaveLength(0);
+  expect(await owner.db.execute(sql`select unit_id from reward_history_post_read_lease`)).toHaveLength(0);
+  const purposeSql=sql`select oid::text,pg_get_userbyid(proowner) as owner,proacl::text,prosrc from pg_proc where oid='app.reward_uploaded_awards_for_post(uuid)'::regprocedure`;
+  const purposeBefore=await owner.db.execute(purposeSql),rollback=new Error('Rollback installed-owner history boundary proof');
+  try{await owner.withTenant(actors.payroll!,async tx=>{
+    await tx.execute(sql.raw(HISTORY_INSTALLED_OWNERSHIP));
+    expect(await tx.execute(purposeSql)).toEqual(purposeBefore);
+    const [writer]=await tx.execute<{owner:string;super:boolean;bypass:boolean;canonicalExecute:boolean}>(sql`select pg_get_userbyid(p.proowner) as owner,r.rolsuper as super,r.rolbypassrls as bypass,has_function_privilege('ai_hr_owner','app.reward_uploaded_awards_for_post(uuid)','EXECUTE') as "canonicalExecute" from pg_proc p join pg_roles r on r.oid=p.proowner where p.oid='app.reward_record_person_history(uuid,jsonb)'::regprocedure`);
+    expect(writer).toEqual({owner:'ai_hr_owner',super:false,bypass:false,canonicalExecute:false});
+    const [isolation]=await tx.execute<{member:boolean;usage:boolean;canSet:boolean;leaseRead:boolean;leaseWrite:boolean}>(sql`select pg_has_role('ai_hr_owner','ai_hr_reward_upload_reader','MEMBER') as member,pg_has_role('ai_hr_owner','ai_hr_reward_upload_reader','USAGE') as usage,pg_has_role('ai_hr_owner','ai_hr_reward_upload_reader','SET') as "canSet",has_table_privilege('ai_hr_app','public.reward_history_post_read_lease','SELECT') as "leaseRead",has_table_privilege('ai_hr_app','public.reward_history_post_read_lease','INSERT') as "leaseWrite"`);
+    expect(isolation).toEqual({member:false,usage:false,canSet:false,leaseRead:false,leaseWrite:false});
+    await tx.execute(sql`set local row_security=on`);await tx.execute(sql`set local role ai_hr_owner`);
+    const [active]=await tx.execute<{role:string;rls:boolean}>(sql`select current_user as role,row_security_active('public.reward_uploaded_award') as rls`);
+    expect(active).toEqual({role:'ai_hr_owner',rls:true});
+    expect(await tx.execute(sql`select entry_id from reward_uploaded_award where unit_id=${uploadedId}::uuid`)).toHaveLength(0);
+    await tx.execute(sql`set local role ai_hr_app`);
+    const [recorded]=await tx.execute<{count:number}>(sql`select app.reward_record_person_history(${uploadedId}::uuid,${JSON.stringify([expectedMain,expectedZero])}::jsonb) as count`);expect(recorded.count).toBe(2);
+    await tx.execute(sql`set local role ai_hr_owner`);
+    expect(await tx.execute(sql`select entry_id from reward_uploaded_award where unit_id=${uploadedId}::uuid`)).toHaveLength(0);
+    expect(await tx.execute(sql`select unit_id from reward_history_post_read_lease`)).toHaveLength(0);
+    expect((await tx.execute<{entry_id:string}>(sql`select entry_id from reward_person_history where unit_id=${uploadedId}::uuid order by entry_id`)).map(row=>row.entry_id)).toEqual([line.id,zeroEntry.id].sort());
+    throw rollback;
+  });throw new Error('Installed owner proof must roll back');}catch(error){if(error!==rollback)throw error;}
+  expect(await owner.db.execute(purposeSql)).toEqual(purposeBefore);
+  expect(await owner.db.execute(sql`select id from reward_person_history where unit_id=${uploadedId}::uuid`)).toHaveLength(0);
   await postRewardUnit(actors.payroll!,uploadedId,5,batchId);expect(await postRewardUnit(actors.payroll!,uploadedId,5,batchId)).toEqual({alreadyPosted:true});
+  const saved=await owner.db.execute<{entry_id:string;employment_id:string;talent:string|null;performance:string|null;merit_bp:number;promotion_bp:number;special_bp:number;increment_cents:string;total_increase_bp:string;bonus_cents:string;bonus_months_bp:string;lump_cents:string}>(sql`select entry_id,employment_id,talent,performance,merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,bonus_cents,bonus_months_bp,lump_cents from reward_person_history where unit_id=${uploadedId}::uuid order by entry_id`);
+  expect(saved).toHaveLength(2);
+  expect(saved.find(row=>row.entry_id===line.id)).toEqual({entry_id:line.id,employment_id:subject.employmentId,talent:null,performance:null,merit_bp:1200,promotion_bp:0,special_bp:0,increment_cents:'60000',total_increase_bp:'1200',bonus_cents:'10000',bonus_months_bp:'200',lump_cents:'0'});
+  expect(saved.find(row=>row.entry_id===zeroEntry.id)).toEqual({entry_id:zeroEntry.id,employment_id:zeroSubject.employmentId,talent:null,performance:null,merit_bp:0,promotion_bp:0,special_bp:0,increment_cents:'0',total_increase_bp:'0',bonus_cents:'0',bonus_months_bp:'0',lump_cents:'0'});
+  expect(saved.some(row=>row.entry_id===unawarded.id)).toBe(false);
+  expect(await owner.db.execute(sql`select unit_id from reward_history_post_read_lease`)).toHaveLength(0);
   const [input]=await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId,batchId));expect(Number(input.bonusAmount)).toBe(100);expect(input.rewardProvenance).toContainEqual(expect.objectContaining({unitId:uploadedId,plan:'Uploaded award',confirmedBy:checker.userId}));
   const sources=await rewardPayrollProvenance(actors.payroll!,batchId);expect(sources.flatMap(r=>r.sources).filter(r=>r.unitId===uploadedId)).toHaveLength(1);
   await owner.db.update(schema.compensation).set({basicSalary:'5100.00'}).where(eq(schema.compensation.id,line.source.compensationId!));
   const history=await getRewardUnit(actors.payroll!,uploadedId);
   expect(history.rows.find(r=>r.source.employmentId===subject.employmentId)?.newBasicCents).toBe(560000);
   expect(history.flags.some(flag=>flag.code==='UPL-01')).toBe(false);
- });
+  expect(await owner.db.execute(sql`select entry_id,employment_id,talent,performance,merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,bonus_cents,bonus_months_bp,lump_cents from reward_person_history where unit_id=${uploadedId}::uuid order by entry_id`)).toEqual(saved);
+ },120000); // Native uploaded route plus genuine installed-owner/RLS projection and rollback.
  it('private advisor row visibility always removes the signed-in person',async()=>{await owner.db.update(schema.rewardEntry).set({source:{...(await owner.db.select().from(schema.rewardEntry).where(eq(schema.rewardEntry.id,entryId)))[0].source,personId:checker.personId!}}).where(eq(schema.rewardEntry.id,entryId));const [row]=await withTenant(checker,tx=>tx.execute<{allowed:boolean}>(sql`select app.reward_private_entry_visible(${unitId}::uuid,${entryId}::uuid) as allowed`));expect(row.allowed).toBe(false);
  await expect(withTenant(checker,tx=>rewardsAnalysisSourceTx(tx,checker,[b.companyId],unitId))).rejects.toThrow(/complete authorized/);
  await uploadFixtureMetadata();const award={employmentId,incrementType:'merit',incrementBp:1000,newBasicCents:550000,newGrade:null,bonusCents:10000,lumpCents:0,remarks:'Fictional private award'};await withTenant(gr,async tx=>{await tx.execute(sql`insert into reward_uploaded_version(tenant_id,unit_id,version,rows,digest,uploaded_by,reason) values(${b.tenantId}::uuid,${unitId}::uuid,1,${JSON.stringify([award])}::jsonb,${'b'.repeat(64)},${gr.userId}::uuid,'Fictional private own-line probe')`);await tx.execute(sql`insert into reward_uploaded_award(entry_id,tenant_id,unit_id,award,source_version,updated_by) values(${entryId}::uuid,${b.tenantId}::uuid,${unitId}::uuid,${JSON.stringify(award)}::jsonb,1,${gr.userId}::uuid)`);await tx.execute(sql`update reward_uploaded_review set current_version=1 where unit_id=${unitId}::uuid`);});expect(await withTenant(checker,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(0);expect(await withTenant(gr,tx=>tx.execute(sql`select award from reward_uploaded_award where unit_id=${unitId}::uuid`))).toHaveLength(1);});

@@ -7,6 +7,7 @@ import './lib/stub-server-only';
 import {freshImportContext,runBankImportTick} from '../core/bank-import-worker';
 import {runIndividualImportTick} from '../core/individual-import-worker';
 import {retireBulkJobWorker,runBulkJobTick} from '../core/bulk-job-worker';
+import {runRewardPlanCompanyTick} from '../packs/rewards/service';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import {client} from '../db/client';
 import {openImportWorkerOwner} from '../db/worker-connection';
@@ -34,9 +35,11 @@ async function main(){
   const individualWorked=await runIndividualImportTick(owner,freshImportContext);
   watchdog.enter('bulk');
   const bulkWorked=await runBulkJobTick(owner,{handlers:BULK_JOB_HANDLERS});
+  watchdog.enter('reward-plan-companies');
+  const rewardPlansWorked=await runRewardPlanCompanyTick(owner);
   if(process.argv.includes('--once'))break;
   watchdog.enter('pause');
-  if(!bankWorked&&!individualWorked)await new Promise(resolve=>setTimeout(resolve,bulkWorked?bulkPauseMs:1000));
+  if(!bankWorked&&!individualWorked)await new Promise(resolve=>setTimeout(resolve,bulkWorked||rewardPlansWorked?bulkPauseMs:1000));
  }while(!stopping);}
  finally{watchdog.enter('stop');await retireBulkJobWorker(owner).catch(()=>undefined);await owner.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
 }

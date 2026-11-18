@@ -45,6 +45,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
  const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='lifecycle-email-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
+ const motionProofs=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   await page.route('**/*',route=>route.abort());
@@ -58,7 +59,32 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const unloaded=await page.evaluate(async faces=>{void getComputedStyle(document.documentElement).fontFamily;const lists=await Promise.all(faces.map(face=>document.fonts.load(face)));return faces.filter((_,i)=>!lists[i].length||lists[i].some(face=>face.status!=='loaded'));},SCRIPT_FONTS.map(font=>`${font.weight} 16px "${font.family}"`));
   if(unloaded.length)throw Error('Script fonts did not load before layout: '+unloaded.join(', '));
   await page.evaluate(()=>{document.body.hidden=false;return document.fonts.ready;});
+  // A jsdom source-DOM fixture serializes an open native dialog as an attribute. Restore the real
+  // top layer in Chrome for Review Plans captures; ordinary dialog[open] is non-modal and misrepresents
+  // backdrop/placement, especially on a phone. This changes evidence rendering, never application behavior.
+  const reviewPlanModal=section.startsWith('rewards-review-plans-')?await page.evaluate(()=>{
+   const dialogs=Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]'));
+   for(const dialog of dialogs){dialog.removeAttribute('open');dialog.showModal();}
+   window.scrollTo(0,0);
+   return dialogs.map(dialog=>{const box=dialog.getBoundingClientRect();if(!dialog.matches(':modal'))throw Error('Review Plans confirmation did not enter the native modal top layer.');if(box.left<0||box.right>innerWidth+1||box.top<0||box.bottom>innerHeight+1)throw Error('Review Plans native modal exceeds the viewport.');return{nativeModal:true,width:box.width,height:box.height,viewportWidth:innerWidth,viewportHeight:innerHeight};});
+  }):null;
   let chartGeometry:unknown=null;
+  // Source-DOM serialization starts CSS entrance animations anew. Finish finite motion before
+  // measuring/capturing the actual layout; application animation behavior remains unchanged.
+  const settledMotion=await page.evaluate(async()=>{
+   let finished=0;
+   for(const animation of document.getAnimations()){
+    const end=animation.effect?.getComputedTiming().endTime;
+    if(typeof end==='number'&&Number.isFinite(end)){animation.finish();finished++;}
+   }
+   await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+   const panel=document.querySelector<HTMLElement>('.ui-drawer-panel[data-state="open"]');
+   const rect=panel?.getBoundingClientRect();
+   const drawer=rect?{left:rect.left,right:rect.right,width:rect.width,viewportWidth:innerWidth}:null;
+   return{finished,drawer,drawerFits:!drawer||(drawer.left>=-1&&drawer.right<=innerWidth+1)};
+  });
+  motionProofs.push({device,...settledMotion});
+
   if(section==='org-chart-controls'){
    // React's layout effect has already rendered the real edge population in jsdom. Re-measure those
    // SAME cards after Chromium loads the application fonts, using the live chart's pure path owner.
@@ -107,7 +133,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,reviewPlanModal,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
@@ -116,9 +142,17 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    const controls=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controls),fullPage:true});
    rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture});
   }
+  // Review Plans keeps its wide company grid scrollable. Capture the complete plan-type control and
+  // the right-side status/actions on a phone, rather than treating the leftmost clipped viewport as proof.
+  if(section.startsWith('rewards-review-plans-')&&device==='mobile'&&(!reviewPlanModal||reviewPlanModal.length===0)){
+   const tableProof=await page.evaluate(()=>{const table=document.querySelector<HTMLTableElement>('table');const holder=table?.parentElement;const choice=table?.querySelector<HTMLSelectElement>('tbody tr select');if(!table||!holder||!choice||holder.scrollWidth<=holder.clientWidth)return null;const before=choice.getBoundingClientRect(),bounds=holder.getBoundingClientRect();holder.scrollLeft+=before.left-bounds.left-8;const after=choice.getBoundingClientRect();if(after.left<bounds.left-1||after.right>bounds.right+1)throw Error('Review Plans plan-type choice does not fit the mobile scrolling region.');return{width:holder.clientWidth,content:holder.scrollWidth,choiceWidth:after.width};});
+   if(tableProof){const choiceFile=`${locale}-${section}-mobile-plan-type.png`;await page.screenshot({path:join(out,choiceFile),fullPage:true});rows.push({locale,section,device:'mobile-plan-type',width,height,overflow,file:choiceFile,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,fixture,tableProof});await page.evaluate(()=>{const holder=document.querySelector('table')?.parentElement;if(holder)holder.scrollLeft=holder.scrollWidth;});const controlsFile=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controlsFile),fullPage:true});rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controlsFile,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,fixture,tableProof});}
+  }
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
+ writeFileSync(join(out,`${locale}-${section}-motion.json`),JSON.stringify(motionProofs,null,2)+'\n');
+ if(motionProofs.some(row=>!row.drawerFits))throw Error('Settled drawer exceeds its native viewport; inspect the captured geometry.');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
 

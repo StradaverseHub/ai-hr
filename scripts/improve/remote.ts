@@ -13,6 +13,10 @@ import { execFileSync } from 'node:child_process';
 import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-release';
+import {dialogueText, FEEDBACK_QUESTION_LIMIT} from '../../lib/feedback-dialogue';
+import {FEEDBACK_DIALOGUE_SOURCE_AGGREGATE, FEEDBACK_DIALOGUE_SOURCE_WINDOW} from '../../lib/feedback-dialogue-source';
+
+import { recipientReportRoles, v9RecipientReport } from '../../lib/lifecycle-v9-recipients';
 
 const SSH = operatorSsh();
 const TARGET = SSH.target;
@@ -114,8 +118,41 @@ function remote(cmd: string, stdin?: string): string {
   });
 }
 
+/** Private operator transport; never import into application request code. */
+export const runFeedbackOperatorSql = (statement: string): string =>
+  remote('psql "$MIGRATION_DATABASE_URL" -X -q -A -t -v ON_ERROR_STOP=1 -f -', statement);
+
+/** Operator-only inventory for board 4a60b3ec and the 42f2b8a9 removal precondition. The database
+ * rejects writes for this session, and no case facts, addresses or message bodies leave the server. */
+export function lifecycleRecipientReport() {
+  // Filter before crossing SSH too: literal addresses and named users/groups are outside this inventory.
+  const roles = recipientReportRoles.map(role => `'${role}'`).join(',');
+  const roleArray = (expression: string) => `(select coalesce(jsonb_agg(value order by position), '[]') from jsonb_array_elements(
+    case jsonb_typeof(${expression}) when 'array' then ${expression} when 'string' then jsonb_build_array(${expression}) else '[]'::jsonb end
+    ) with ordinality as report_role(value,position) where value #>> '{}' in (${roles}))`;
+  const query = `select coalesce(json_agg(row_to_json(r)), '[]') from (
+    select v.tenant_id as "tenantId", t.name as "tenantName", jsonb_build_object(
+      'workflows', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', w->'id', 'name', w->'name', 'module', w->'module', 'status', w->'status', 'trigger', w->'trigger',
+        'steps', coalesce((select jsonb_agg(jsonb_build_object('id', s->'id', 'type', s->'type',
+          'to', ${roleArray("s->'to'")}, 'cc', ${roleArray("s->'cc'")})) from jsonb_array_elements(coalesce(w->'steps', '[]')) s
+          where s->>'type' in ('email','notify')), '[]')))
+        from jsonb_array_elements(coalesce(v.data->'workflows', '[]')) w), '[]'),
+      'emails', coalesce((select jsonb_agg(jsonb_build_object('id', e->'id', 'name', e->'name',
+        'module', e->'module', 'active', e->'active', 'cc', ${roleArray("e->'cc'")}))
+        from jsonb_array_elements(coalesce(v.data->'emails', '[]')) e), '[]')) as config
+    from lc_v9_config v join tenant t on t.id=v.tenant_id order by t.name,v.tenant_id
+  ) r`;
+  const rows = JSON.parse(remote('PGOPTIONS="-c default_transaction_read_only=on" psql "$MIGRATION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA -f -', query)) as {
+    tenantId: string; tenantName: string; config: Parameters<typeof v9RecipientReport>[0];
+  }[];
+  return rows.map(row => ({ tenantId: row.tenantId, tenantName: row.tenantName, recipients: v9RecipientReport(row.config) }));
+}
+
 /** One time this item was parked on a question, and what was said back (migration 0323). */
 export type RemoteBlockEpisode = {
+  id?: string;
+  dialogue_digest?: string;
   question: string;
   asked_at: string;
   answer: string | null;
@@ -123,6 +160,7 @@ export type RemoteBlockEpisode = {
 };
 
 export type RemoteFeedback = {
+  dialogue_digest?: string | null;
   id: string;
   tenant_id: string;
   reporter_employment_id: string | null;
@@ -190,8 +228,8 @@ export function blockTrailSql(ids: string[]): string {
   const list = ids.map((id) => `'${id}'`).join(',');
   return (
     `select coalesce(json_agg(row_to_json(t)), '[]') from (` +
-    `select feedback_request_id, question, asked_at, answer, resolved_at from feedback_block ` +
-    `where feedback_request_id in (${list}) order by asked_at) t`
+    `select id, feedback_request_id, question, asked_at, answer, resolved_at, ${FEEDBACK_DIALOGUE_SOURCE_WINDOW} AS dialogue_digest from feedback_block ` +
+    `where feedback_request_id in (${list}) order by asked_at, id) t`
   );
 }
 
@@ -241,7 +279,7 @@ function selectFeedback(whereStatus: string): RemoteFeedback[] {
   // Always present, even as []. An absent key would make "never blocked" indistinguishable from "this
   // pull predates block trails" at the point of use, and a build agent skimming the JSON would read the
   // absence as "no question was asked" rather than "look again".
-  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  for (const r of rows) {r.block_trail = trails.get(r.id) ?? []; r.dialogue_digest = r.block_trail[0]?.dialogue_digest ?? null;}
   return rows;
 }
 
@@ -253,12 +291,14 @@ export function pullItem(id: string): RemoteFeedback[] {
   const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(feedbackSelectByIdSql(id))}`).trim();
   const rows = JSON.parse(out || '[]') as RemoteFeedback[];
   const trails = blockTrails(rows.map((r) => r.id));
-  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  for (const r of rows) {r.block_trail = trails.get(r.id) ?? []; r.dialogue_digest = r.block_trail[0]?.dialogue_digest ?? null;}
   return rows;
 }
 
-/** Items awaiting a (re)plan. */
-export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`);
+export const waitingForClarification = (item: Pick<RemoteFeedback, 'block_trail'>): boolean => item.block_trail.some(q => q.resolved_at === null);
+/** Waiting items release the investigation slot. The next pull resumes them once an answer is saved. */
+export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`).filter(r => !waitingForClarification(r));
+export const pullAwaitingClarification = (): RemoteFeedback[] => selectFeedback(`'open','contested'`).filter(waitingForClarification);
 /**
  * Items the reporter has approved AND that are actually startable.
  *
@@ -368,16 +408,22 @@ export function attachPlanMockups(p: {
   tenantId: string;
   mockups: PlanMockup[];
 }): void {
+  const rows = attachPlanMockupsSql(p);
+  if (rows) remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, `BEGIN;\n${rows}\nCOMMIT;`);
+}
+
+/** Shared statement builder so a claimed plan and its images can commit atomically. */
+export function attachPlanMockupsSql(p: {id: string; tenantId: string; mockups: PlanMockup[]}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  if (p.mockups.length === 0) return;
+  if (p.mockups.length === 0) return '';
   for (const m of p.mockups) {
     if (m.content.byteLength === 0) throw new Error(`mockup ${m.fileName} is empty`);
     // Mirrors the 10 MB ceiling addFeedbackAttachment enforces. Checked here too because this path does
     // not go through it — the in-app limit would otherwise be advisory for the one caller that bypasses it.
     if (m.content.byteLength > 10 * 1024 * 1024) throw new Error(`mockup ${m.fileName} exceeds 10 MB`);
   }
-  const rows = p.mockups
+  return p.mockups
     .map(
       (m) =>
         `INSERT INTO feedback_attachment
@@ -387,7 +433,6 @@ export function attachPlanMockups(p: {
          FROM feedback_request WHERE id = '${p.id}';`,
     )
     .join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, `BEGIN;\n${rows}\nCOMMIT;`);
 }
 
 /**
@@ -403,6 +448,7 @@ export function pushPlanWithMockups(p: {
   reporterEmploymentId: string | null;
   plan: string;
   model: string;
+  dialogueDigest?: string | null;
   mockups?: PlanMockup[];
 }): void {
   pushPlan(p);
@@ -416,13 +462,22 @@ export function pushPlan(p: {
   reporterEmploymentId: string | null;
   plan: string;
   model: string;
+  dialogueDigest?: string | null;
 }): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, pushPlanSql(p));
+}
+
+export function pushPlanSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; plan: string; model: string; dialogueDigest?: string | null}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
   reporterEmploymentSql(p.reporterEmploymentId);
+  if (p.dialogueDigest != null && !/^[a-f0-9]{64}$/.test(p.dialogueDigest)) throw new Error('Invalid reporter conversation version.');
   const sql = [
     'BEGIN;',
-    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
+    doBlock(['BEGIN', reporterBindingBody(p),
+      `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id='${p.id}' AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report is waiting for an answer; read the reply before planning'; END IF;`,
+      `IF ${p.dialogueDigest != null ? 'TRUE' : 'FALSE'} OR EXISTS (SELECT 1 FROM domain_event e JOIN feedback_request f ON f.id=e.aggregate_id WHERE f.id='${p.id}' AND e.event_type='feedback.clarification.requested' AND e.payload->>'planRevision'=f.plan_revision::text) THEN IF ${p.dialogueDigest ? dq(p.dialogueDigest) : 'NULL'} IS DISTINCT FROM (SELECT ${FEEDBACK_DIALOGUE_SOURCE_AGGREGATE} FROM feedback_block WHERE feedback_request_id='${p.id}') THEN RAISE EXCEPTION 'Reporter conversation changed; read the latest answers'; END IF; END IF;`,
+      'END'].join('\n')),
     // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
     // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the
     // objection that prompted it, which is precisely how the old history was lost.
@@ -434,7 +489,50 @@ export function pushPlan(p: {
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+  return sql;
+}
+
+export type OperatorClarification = {id: string; tenantId: string; reporterEmploymentId: string | null; questionId: string; expectedPlanRevision: number; question: string};
+
+/** Idempotent operator command; the caller must already have authorization to contact this reporter. */
+export function askClarificationSql(p: OperatorClarification): string {
+  assertUuid(p.id, 'feedback id'); assertUuid(p.tenantId, 'tenant id'); assertUuid(p.questionId, 'question id');
+  reporterEmploymentSql(p.reporterEmploymentId);
+  if (!Number.isSafeInteger(p.expectedPlanRevision) || p.expectedPlanRevision < 0) throw new Error('A current plan revision is required.');
+  const question = dialogueText(p.question, FEEDBACK_QUESTION_LIMIT);
+  return doBlock([
+    'DECLARE f feedback_request%ROWTYPE; q feedback_block%ROWTYPE;', 'BEGIN', reporterBindingBody(p),
+    `SELECT * INTO f FROM feedback_request WHERE id='${p.id}';`,
+    `SELECT * INTO q FROM feedback_block WHERE id='${p.questionId}';`,
+    `IF FOUND THEN IF q.feedback_request_id IS DISTINCT FROM f.id OR q.question IS DISTINCT FROM ${dq(question)} THEN RAISE EXCEPTION 'Question reference already used'; END IF; RETURN; END IF;`,
+    `IF f.status NOT IN ('open','contested') OR f.plan_revision <> ${p.expectedPlanRevision} THEN RAISE EXCEPTION 'Report or plan revision changed; read it again'; END IF;`,
+    `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id=f.id AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report already waits for an answer'; END IF;`,
+    `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id=f.id AND question=${dq(question)}) THEN RAISE EXCEPTION 'Question already in history; read the earlier answer'; END IF;`,
+    `INSERT INTO feedback_block (id,tenant_id,feedback_request_id,question) VALUES ('${p.questionId}',f.tenant_id,f.id,${dq(question)});`,
+    `UPDATE feedback_request SET updated_at=now() WHERE id=f.id;`,
+    `INSERT INTO domain_event (tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) VALUES (f.tenant_id,'feedback',f.id,'feedback.clarification.requested','agent',f.reporter_employment_id,${dq(JSON.stringify({questionId: p.questionId, planRevision: p.expectedPlanRevision, via: 'improvement-loop'}))}::jsonb);`,
+    'END',
+  ].join('\n'));
+}
+export function askClarification(p: OperatorClarification): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, askClarificationSql(p));
+}
+
+export function closeClarificationSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; questionId: string; reason: string}): string {
+  assertUuid(p.id, 'feedback id'); assertUuid(p.tenantId, 'tenant id'); assertUuid(p.questionId, 'question id');
+  reporterEmploymentSql(p.reporterEmploymentId);
+  const reason = dialogueText(p.reason, FEEDBACK_QUESTION_LIMIT);
+  return doBlock(['DECLARE n int;', 'BEGIN', reporterBindingBody(p),
+    `IF NOT EXISTS (SELECT 1 FROM feedback_request WHERE id='${p.id}' AND status IN ('open','contested')) THEN RAISE EXCEPTION 'Only pre-plan questions can be closed'; END IF;`,
+    `UPDATE feedback_block SET resolved_at=now() WHERE id='${p.questionId}' AND feedback_request_id='${p.id}' AND resolved_at IS NULL;`,
+    'GET DIAGNOSTICS n = ROW_COUNT;',
+    `IF n <> 1 THEN RAISE EXCEPTION 'Question already resolved or unavailable'; END IF;`,
+    `UPDATE feedback_request SET updated_at=now() WHERE id='${p.id}';`,
+    `INSERT INTO domain_event (tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) VALUES ('${p.tenantId}','feedback','${p.id}','feedback.clarification.closed','agent',${reporterEmploymentSql(p.reporterEmploymentId)},${dq(JSON.stringify({questionId: p.questionId, reason, resumes: 'investigation', via: 'improvement-loop'}))}::jsonb);`,
+    'END'].join('\n'));
+}
+export function closeClarification(p: Parameters<typeof closeClarificationSql>[0]): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, closeClarificationSql(p));
 }
 
 /**
