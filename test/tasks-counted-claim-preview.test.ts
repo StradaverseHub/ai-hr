@@ -29,9 +29,9 @@ it('loads exact native card links independently of document-list pagination with
  const cards=items.map((item,i)=>({caseId:item.caseId,taskId:item.taskId,documentId:'saved-'+i,state:i===60?'unreleased':'released'}));
  state.onboarding.mockResolvedValue(items);state.cardDocuments.mockResolvedValue(cards);state.preview.mockResolvedValue({items:[],total:13,claimTotal:7});
  state.documents.mockImplementation((_ctx:unknown,input:{offset:number})=>Promise.resolve({items:cards.slice(input.offset,input.offset+50),total:cards.length,offset:input.offset,limit:50}));
- await Page({searchParams:Promise.resolve({documentsPage:'0'})});
+ renderToStaticMarkup(await Page({searchParams:Promise.resolve({documentsPage:'0'})}));
  const first=state.view.mock.calls.at(-1)![0] as {cardDocuments:unknown[];documents:{items:unknown[]}};
- await Page({searchParams:Promise.resolve({documentsPage:'1'})});
+ renderToStaticMarkup(await Page({searchParams:Promise.resolve({documentsPage:'1'})}));
  const second=state.view.mock.calls.at(-1)![0] as {cardDocuments:unknown[];documents:{items:unknown[]}};
  expect(state.cardDocuments).toHaveBeenNthCalledWith(1,state.session,{companyIds:['selected-company'],refs:items.map(item=>({caseId:item.caseId,taskId:item.taskId}))});
  expect(first.cardDocuments).toEqual(cards);expect(second.cardDocuments).toEqual(cards);expect(first.documents.items).toHaveLength(50);expect(second.documents.items).toHaveLength(11);

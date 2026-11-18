@@ -105,6 +105,7 @@ it('keeps ordered page/count parity across 70 companies and 1000 employments wit
  await owner.client`update lc_v9_case set data=jsonb_set(data,'{tasks}',${JSON.stringify(tasks)}::jsonb) where id=${c.id}::uuid`;
  const old=(await v9OwnWork(employee)).find(row=>row.id===c.id)!;expect(old.tasks.map(t=>t.id)).toEqual(tasks.map(t=>t.id));
  const expected=[...tasks].sort((a,b)=>a.dueOn.localeCompare(b.dueOn)||a.id.localeCompare(b.id)).map(t=>t.id);
+ expect((await lifecycleTaskDocuments(employee,{companyIds:[]})).total).toBe(0);
  const all=await lifecycleTaskDocuments(employee,{companyIds,limit:100}),single=await lifecycleTaskDocuments(employee,{companyIds:[b.companyId],limit:100}),next=await lifecycleTaskDocuments(employee,{companyIds,offset:100,limit:100});
  expect(all.total).toBe(1);expect(all.items).toHaveLength(1);expect(all.items[0]).toMatchObject({taskId:null,action:null,documentId:c.documents[0].id});expect(all.items[0].linkedTasks?.map(task=>task.taskId)).toEqual(expected);expect(all.items[0].linkedTasks?.map(task=>task.action)).toEqual(expected.map(id=>tasks.find(task=>task.id===id)!.documentAction));expect(single).toEqual(all);expect(next.items).toEqual([]);expect(next.total).toBe(1);
  expect((await lifecycleTaskDocuments(other,{companyIds,limit:100})).total).toBe(0);expect((await lifecycleTaskDocuments(admin,{companyIds,limit:100})).total).toBe(0);

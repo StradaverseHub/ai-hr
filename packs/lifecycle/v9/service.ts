@@ -1197,22 +1197,7 @@ export type ManagerEmailRecoveryTarget = { tenantId: string; caseId: string; com
 export async function managerEmailRecoveryPage(ctx: SessionContext, after = '', limit = 100) {
   if (!ctx.userId) throw new M.V9Error('Sign in as authorised HR before reviewing recovery.', 'forbidden');
   return withLifecycleTenant(ctx, async tx => {
-    const rows = await tx.execute<{case_id:string;company_id:string;revision:number;run:M.Run;facts:M.Case['facts'];total:string}>(sql`
-      with candidates as materialized (
-        select distinct h.case_id,h.company_id from lc_v9_email_hold h where h.tenant_id=${ctx.tenantId}::uuid and h.released_at is null
-        and exists(select 1 from jsonb_array_elements(h.missing) m where m->>'reason'='no supervisor on the Personnel record')
-      ), cases as (
-        select c.id,c.revision,c.data->'facts' as facts,c.data->'runs' as runs from lc_v9_case c join candidates h on h.case_id=c.id where c.tenant_id=${ctx.tenantId}::uuid and c.data->>'state'='submitted'
-        union all
-        select c.id,c.revision,jsonb_build_object('joinDate',coalesce(p.data->'source'->>'joinDate',c.data->'source'->>'joinDate'),'lastDay','') as facts,p.data->'lifecycleV9'->'runs' as runs
-        from lc_onboarding_case c join candidates h on h.case_id=c.id join lc_onboarding_private p on p.case_id=c.id and p.tenant_id=c.tenant_id
-        where c.tenant_id=${ctx.tenantId}::uuid and c.data->>'state'='submitted'
-      ), held as (
-        select c.id as case_id,h.company_id,c.revision,c.facts,r as run from cases c join candidates h on h.case_id=c.id
-        cross join lateral jsonb_array_elements(coalesce(c.runs,'[]')) r
-        where r->>'status'='waiting' and exists(select 1 from jsonb_array_elements(coalesce(r->'hold'->'missing','[]')) m where m->>'role'='supervisor' and m->>'reason'='no supervisor on the Personnel record')
-      ) select *,count(*) over()::text as total from held
-      where case_id::text||':'||(run->>'id')>${after} order by case_id::text,run->>'id' limit ${Math.max(1,Math.min(100,limit))}`);
+    const rows = await tx.execute<{case_id:string;company_id:string;revision:number;run:M.Run;facts:M.Case['facts'];total:string}>(sql`select * from app.lifecycle_manager_recovery_page(${after},${Math.max(1,Math.min(100,limit))})`);
     const today=todayInKualaLumpur();
     return {items:rows.map(row=>{const dueOn=M.heldEmailDueOn({facts:row.facts},row.run);return{tenantId:ctx.tenantId,caseId:row.case_id,companyId:row.company_id,revision:row.revision,runId:row.run.id,stepId:row.run.hold!.stepId,heldAt:row.run.hold!.at,dueOn,classification:!dueOn?'unknown':dueOn<today?'late':dueOn===today?'today':'future'} satisfies ManagerEmailRecoveryTarget;}),remainingCount:Number(rows[0]?.total??0),after:rows.length?rows.at(-1)!.case_id+':'+rows.at(-1)!.run.id:null};
   });

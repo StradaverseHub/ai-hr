@@ -10,7 +10,7 @@ import type { LifecycleTaskDocumentsPage, LifecycleTaskDocument, LifecycleTaskCa
 export async function lifecycleTaskDocuments(ctx: SessionContext, input: { companyIds: string[]; caseId?:string; offset?: number; limit?: number }): Promise<LifecycleTaskDocumentsPage> {
   const query = z.object({companyIds:z.array(z.string().uuid()).max(500),caseId:z.string().uuid().optional(),offset:z.number().int().min(0).max(1000000).default(0),limit:z.number().int().min(1).max(100).default(50)}).parse(input);
   return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
-    const [row] = await tx.execute<{data:LifecycleTaskDocumentsPage}>(sql`select app.lifecycle_task_documents(${query.companyIds}::uuid[],${query.offset},${query.limit},${query.caseId??null}::uuid) as data`);
+    const [row] = await tx.execute<{data:LifecycleTaskDocumentsPage}>(sql`select app.lifecycle_task_documents(ARRAY[${sql.join(query.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${query.offset},${query.limit},${query.caseId??null}::uuid) as data`);
     return row.data;
   }));
 }
@@ -29,7 +29,7 @@ export async function lifecycleTaskCardDocuments(ctx: SessionContext, input: {co
   const refs=[...new Map(query.refs.map(ref=>[ref.caseId+':'+ref.taskId,ref])).values()];
   if(!refs.length||!query.companyIds.length)return [];
   return withAccessDisplayRead(()=>withLifecycleTenant(ctx,async tx=>{
-    const [row]=await tx.execute<{items:LifecycleTaskDocument[]}>(sql`select app.lifecycle_task_card_documents(${query.companyIds}::uuid[],${JSON.stringify(refs)}::jsonb) as items`);
+    const [row]=await tx.execute<{items:LifecycleTaskDocument[]}>(sql`select app.lifecycle_task_card_documents(ARRAY[${sql.join(query.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${JSON.stringify(refs)}::jsonb) as items`);
     return row.items;
   }));
 }
