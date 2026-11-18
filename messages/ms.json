@@ -44565,6 +44565,11 @@
     "openError": "Dokumen tidak dapat dibuka. Muat semula dan semak bahawa HR telah melepaskannya."
   },
   "personnelCompletion": {
+    "saveProgress": "Simpan kemajuan",
+    "submitAnswers": "Hantar jawapan",
+    "preparationHelp": "Jawapan anda akan dihantar kepada HR untuk semakan. Ini tidak menandatangani dokumen atau melengkapkan tugas berkaitan.",
+    "answersSubmitted": "Jawapan anda telah dihantar untuk semakan HR.",
+    "completionRequired": "Lengkapkan medan wajib sebelum menghantar atau menandatangani.",
     "missingPersonalNote": "Tiada dalam Pengurusan Personel – sila isi",
     "fromPM": "Daripada Pengurusan Personel",
     "employeeTitle": "Lengkapkan dokumen anda",

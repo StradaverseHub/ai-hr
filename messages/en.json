@@ -44565,6 +44565,11 @@
     "openError": "The document could not be opened. Refresh and check that HR has released it."
   },
   "personnelCompletion": {
+    "saveProgress": "Save progress",
+    "submitAnswers": "Submit answers",
+    "preparationHelp": "Your answers will go to HR for review. This does not sign the document or complete a linked task.",
+    "answersSubmitted": "Your answers were submitted for HR review.",
+    "completionRequired": "Complete the required fields before submitting or signing.",
     "missingPersonalNote": "Not in Personnel Management – please fill in",
     "fromPM": "From Personnel Management",
     "employeeTitle": "Complete your document",

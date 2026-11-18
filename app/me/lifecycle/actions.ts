@@ -2,7 +2,7 @@
 import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
-import { openOwnLifecycleDocument, v9OwnDocument, v9OwnTask, v9OwnItem, v9ReportOwnReturn, v9OwnEquipmentReceipt } from '@/packs/lifecycle/service';
+import { openOwnLifecycleDocument, v9SubmitOwnDocumentCompletion, v9OwnDocument, v9OwnTask, v9OwnItem, v9ReportOwnReturn, v9OwnEquipmentReceipt } from '@/packs/lifecycle/service';
 import type { Signature } from '@/lib/lifecycle-v9-model';
 export async function saveOwnLifecycleDocument(input: { caseId: string; revision: number; documentId: string; values: Record<string, string>; signature?: Pick<Signature, 'method' | 'value' | 'consent'> }) {
   try { await v9OwnDocument(await requireModule('lifecycle'), input); revalidatePath('/me/lifecycle'); revalidatePath('/tasks'); revalidatePath('/lifecycle/v9'); return { ok: true as const }; }
@@ -31,4 +31,9 @@ export async function saveOwnLifecycleEquipmentReceipt(input:{caseId:string;revi
 export async function openLifecycleDocument(input:{caseId:string;documentId:string;revision:number}) {
  try {await openOwnLifecycleDocument(await requireModule('lifecycle'),input);revalidatePath('/tasks');revalidatePath('/me/lifecycle');return {ok:true as const};}
  catch{const t=await getTranslations('taskDocuments');return {ok:false as const,error:t('openError')};}
+}
+
+export async function submitOwnLifecycleCompletion(input:{caseId:string;revision:number;documentId:string;values:Record<string,string>}) {
+ try {await v9SubmitOwnDocumentCompletion(await requireModule('lifecycle'),input);for(const path of ['/me/lifecycle','/me/document-signing','/tasks','/lifecycle/v9','/lifecycle/onboarding'])revalidatePath(path);return {ok:true as const};}
+ catch {const t=await getTranslations('personnelCompletion');return {ok:false as const,error:t('saveFailed')};}
 }

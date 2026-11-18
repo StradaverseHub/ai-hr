@@ -58,3 +58,10 @@ export function PersonnelCompletionPanel({document,busy=false,canOverride=false,
  </section>;
 }
 export function PersonnelChangeProvenance({change}:{change:PMChange}){const t=useTranslations('personnelCompletion');return change.provenance?.kind==='missing-personnel'?<small className="v9-muted">{t('changedBy',{name:change.provenance.by.name,when:onboardingTimestamp(change.provenance.at)})}</small>:null;}
+
+/** Preparation deliberately renders assigned fields only, never unreleased document wording or signature blocks. */
+export function PersonnelCompletionPreparation({document,values=document.values,disabled=false,change}:{document:Document;values?:Record<string,string>;disabled?:boolean;change:(id:string,value:string)=>void}){
+ const t=useTranslations('personnelCompletion');
+ const current={...document,values},issues=personnelCompletionIssues(current,{owner:'employee',final:true});
+ return <section className="v9-panel v9-stack" aria-label={t('employeeTitle')}><h2>{t('employeeTitle')}</h2><PersonnelCompletionEmployeeNotice document={document}/>{document.fields.filter(field=>effectivePersonnelCompletion(document,field)==='employee'&&(!field.when||values[field.when.field]===field.when.value)).map(field=>{const issue=issues.find(issue=>issue.fieldId===field.id);return <DocumentField key={field.id} field={field} sourceLabel={null} value={values[field.id]??''} disabled={disabled||personnelCompletionLocked(document)} hint={field.owner==='pmLocked'?t('missingPersonalNote'):undefined} error={issue?t('validation'+issue.code[0].toUpperCase()+issue.code.slice(1)):undefined} change={value=>change(field.id,value)}/>;})}</section>;
+}

@@ -44565,6 +44565,11 @@
     "openError": "无法打开文件。请刷新并确认人事部门已发布此文件。"
   },
   "personnelCompletion": {
+    "saveProgress": "保存进度",
+    "submitAnswers": "提交答案",
+    "preparationHelp": "您的答案将交由人力资源部门审核。此操作不会签署文件或完成关联任务。",
+    "answersSubmitted": "您的答案已提交给人力资源部门审核。",
+    "completionRequired": "请先填写必填字段，再提交或签署。",
     "missingPersonalNote": "人事管理中尚无此资料，请填写",
     "fromPM": "来自人事管理",
     "employeeTitle": "完成您的文件",
