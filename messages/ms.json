@@ -36639,6 +36639,9 @@
       "legacyMapping": "Versi tersimpan ini mengekalkan skop terdahulu: Kumpulan perniagaan bermaksud syarikat induk; Unit perniagaan bermaksud Unit Perniagaan Personnel. Identiti tersimpan dikekalkan."
     },
     "letters": {
+      "editContent": "Edit perkataan dan medan",
+      "wordingBlock": "Blok perkataan {id}",
+      "saveContent": "Simpan perubahan dokumen",
       "prepareHelp": "Pratonton butiran Personel semasa yang dibenarkan dan templat yang telah disemak. Penyediaan membekukan versi surat baharu untuk penandatangan yang ditugaskan.",
       "noTemplate": "Tiada surat diterbitkan untuk keputusan ini. Minta penyedia percubaan yang dinamakan melengkapkan dan menerbitkan templat yang telah disemak.",
       "template": "Templat surat diterbitkan",
@@ -40973,6 +40976,14 @@
       "sample": "Kes contoh rekaan — untuk pratonton sahaja."
     },
     "routing": {
+      "documentHelp": "Pilih siapa menyemak, meluluskan, menandatangani atau mengakui dokumen ini. Nombor turutan yang sama berjalan serentak; langkah wajib mengawal kemajuan. Penyemak mengedit sebelum tandatangan pertama. Pulangan memadam tandatangan semasa dan mengembalikan dokumen kepada pemiliknya.",
+        "documentEmpty": "Tiada penghalaan. Tetapan tandatangan HR dan pekerja sedia ada digunakan.",
+        "documentHint": {
+          "review": "Boleh mengedit dokumen sebelum tandatangan pertama.",
+          "approve": "Merekod kelulusan tanpa tandatangan.",
+          "sign": "Menandatangani dokumen; tidak boleh mengedit teks yang ditandatangani.",
+          "acknowledge": "Mengakui dokumen dengan tandatangan."
+        },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",

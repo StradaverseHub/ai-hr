@@ -36639,6 +36639,9 @@
       "legacyMapping": "சேமித்த இந்தப் பதிப்பு முந்தைய வரம்பைத் தக்கவைக்கிறது: வணிகக் குழு என்பது தாய் நிறுவனம்; வணிக அலகு என்பது பணியாளர் மேலாண்மையின் வணிக அலகு. சேமித்த அடையாளங்கள் பாதுகாக்கப்படுகின்றன."
     },
     "letters": {
+      "editContent": "உரையையும் புலங்களையும் திருத்தவும்",
+      "wordingBlock": "உரைத் தொகுதி {id}",
+      "saveContent": "ஆவண மாற்றங்களைச் சேமிக்கவும்",
       "prepareHelp": "அனுமதிக்கப்பட்ட தற்போதைய பணியாளர் விவரங்களையும் மதிப்பாய்வு செய்த வார்ப்புருவையும் முன்னோட்டமிடவும். தயாரித்தல் ஒதுக்கப்பட்ட கையொப்பதாரர்களுக்காகப் புதிய கடிதப் பதிப்பை உறுதிப்படுத்தும்.",
       "noTemplate": "இந்த முடிவிற்கான வெளியிடப்பட்ட கடிதம் இல்லை. பெயரிட்டு நியமிக்கப்பட்ட தகுதிகாண் தயாரிப்பவரிடம் மதிப்பாய்வு செய்த வார்ப்புருவை முடித்து வெளியிடக் கோரவும்.",
       "template": "வெளியிடப்பட்ட கடித வார்ப்புரு",
@@ -40973,6 +40976,14 @@
       "sample": "கற்பனை மாதிரி வழக்கு — முன்னோட்டத்திற்கு மட்டும்."
     },
     "routing": {
+      "documentHelp": "ஆவணத்தைச் சரிபார்ப்பவர், ஒப்புதல் அளிப்பவர், கையொப்பமிடுபவர் அல்லது ஏற்றுக்கொள்பவரைத் தேர்ந்தெடுக்கவும். ஒரே வரிசை எண் படிகள் இணையாக இயங்கும்; கட்டாயப் படிகள் முன்னேற்றத்தை நிர்ணயிக்கும். முதல் கையொப்பத்திற்கு முன் மதிப்பாய்வாளர் திருத்தலாம். திருப்பியனுப்புதல் தற்போதைய கையொப்பங்களை நீக்கி உரிமையாளரிடம் ஆவணத்தைத் தரும்.",
+        "documentEmpty": "வழிப்படுத்தல் இல்லை. ஏற்கெனவே உள்ள HR மற்றும் ஊழியர் கையொப்ப அமைப்புகள் பொருந்தும்.",
+        "documentHint": {
+          "review": "முதல் கையொப்பத்திற்கு முன் ஆவணத்தைத் திருத்தலாம்.",
+          "approve": "கையொப்பமின்றி ஒப்புதலைப் பதிவு செய்கிறது.",
+          "sign": "ஆவணத்தில் கையொப்பமிடுகிறார்; கையொப்பமிட்ட உரையைத் திருத்த முடியாது.",
+          "acknowledge": "கையொப்பத்துடன் ஆவணத்தை ஏற்றுக்கொள்கிறார்."
+        },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",

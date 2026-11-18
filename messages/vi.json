@@ -36639,6 +36639,9 @@
       "legacyMapping": "Phiên bản đã lưu giữ phạm vi trước đây: Nhóm kinh doanh là công ty mẹ; Đơn vị kinh doanh là Đơn vị kinh doanh trong Quản lý nhân sự. Các mã đã lưu được giữ nguyên."
     },
     "letters": {
+      "editContent": "Sửa nội dung và trường",
+      "wordingBlock": "Khối nội dung {id}",
+      "saveContent": "Lưu thay đổi tài liệu",
       "prepareHelp": "Xem trước thông tin Nhân sự hiện tại được phép truy cập và mẫu đã rà soát. Khi chuẩn bị, một phiên bản thư mới sẽ được cố định cho những người ký được chỉ định.",
       "noTemplate": "Chưa có thư được công bố cho kết quả này. Hãy yêu cầu người chuẩn bị thử việc được chỉ định hoàn thiện và công bố mẫu đã rà soát.",
       "template": "Mẫu thư đã công bố",
@@ -40973,6 +40976,14 @@
       "sample": "Hồ sơ mẫu hư cấu — chỉ để xem trước."
     },
     "routing": {
+      "documentHelp": "Chọn người rà soát, phê duyệt, ký hoặc xác nhận tài liệu. Các bước cùng thứ tự chạy song song; bước bắt buộc quyết định tiến trình. Người rà soát chỉnh sửa trước chữ ký đầu tiên. Trả lại sẽ xóa chữ ký hiện tại và chuyển tài liệu về chủ sở hữu.",
+        "documentEmpty": "Chưa đặt định tuyến. Áp dụng thiết lập ký của HR và nhân viên hiện có.",
+        "documentHint": {
+          "review": "Có thể sửa tài liệu trước chữ ký đầu tiên.",
+          "approve": "Ghi nhận phê duyệt không cần chữ ký.",
+          "sign": "Ký tài liệu; không thể sửa nội dung đã ký.",
+          "acknowledge": "Ký xác nhận tài liệu."
+        },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",

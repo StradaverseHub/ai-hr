@@ -15,7 +15,7 @@ import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
 import {saveProbationLetterTemplate,probationNativeRoutingReferencesTx} from './probation-letter';
 import {documentRoutingProblems,documentRoutingSignatureProblems,type DocumentRouting} from '../lib/document-signing-routing';
-import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
+import {documentRoutingSchema,nativeDocumentRoutingSchema} from '../lib/document-signing-routing-schema';
 
 /** core/probation-letter.ts stores `routing` with each template version (lane D2, migration 5752). */
 export const PROBATION_LETTER_ROUTING_STORED = true;
@@ -30,7 +30,7 @@ export function probationTemplateRouting(template: Pick<ProbationRoutedTemplate,
 export function probationLetterRoutingProblems(ctx: SessionContext, template: ProbationRoutedTemplate,companyId?:string): Promise<string[]> {
   const routing = probationTemplateRouting(template);
   if (!routing.length) return Promise.resolve([]);
-  const parsed = probationLetterRoutingSchema.safeParse(routing);
+  const parsed = (template.routingRegistry==='on-off-boarding'?nativeDocumentRoutingSchema:probationLetterRoutingSchema).safeParse(routing);
   if (!parsed.success) return Promise.resolve(['Complete every step of the signing and review routing.']);
   const people = [...new Set(routing.flatMap(step => step.who.kind === 'people' ? step.who.userIds : []))];
   return withScopedLifecycleTenant(ctx, async tx => {
