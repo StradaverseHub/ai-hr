@@ -110,14 +110,14 @@ async function measure(dir,argv){
  sample();const timer=setInterval(sample,2000);
  const startedAt=new Date().toISOString();
  const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:'inherit',env:e});
- let observer,processTimer,exit;
+ let observer,processTimer,exit,observerFailure=false;
+ const observe=()=>{try{observer?.sample();}catch{observerFailure=true;try{observer?.noteFailure();}catch{}}};
  try{
-  observer=createBuildProcessObserver(child.pid);observer.sample();
-  processTimer=setInterval(()=>{try{observer.sample();}catch{observer.noteFailure();}},500);
+  try{observer=createBuildProcessObserver(child.pid);observe();processTimer=setInterval(observe,500);}catch{observerFailure=true;}
   exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
  }finally{
   clearInterval(timer);clearInterval(processTimer);sample();
-  try{observer?.sample();writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'},null,2)+'\n',{flag:'wx',mode:0o600});}
+  try{observe();const attribution=observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'};attribution.observerFailure=observerFailure;writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(attribution,null,2)+'\n',{flag:'wx',mode:0o600});}
   catch{console.log('::warning::Optional build-process attribution unavailable; GNU time verdict remains authoritative');}
  }
  const report={kind:'NEXT_BUILD_MEMORY_TELEMETRY_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD??null,controller:e.AIHR_CI_CONTROL_HEAD??e.GITHUB_SHA??null,
