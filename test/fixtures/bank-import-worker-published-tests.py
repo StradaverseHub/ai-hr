@@ -57,8 +57,9 @@ class Fixture(core.Fixture):
   proof=self.seal();live=self.live(proof);original=ci.RuntimeObservation.complete_fence
   def fail(o,*args,**kw):
    if o.started_sha is not None:
-    o.slot('F4',60);self.monotonic_offset+=61
-    raise ValueError('Complete metadata fence refused: absolute monotonic deadline exceeded')
+    # Reproduce the retained historical20s/OTHER boundary, not the corrected live budget.
+    o.slot('F4',20);self.monotonic_offset+=20.01
+    raise ValueError('retained original unclassified F4 boundary')
    return original(o,*args,**kw)
   with patch.object(ci.RuntimeObservation,'complete_fence',fail):
    try:self.invoke_published(published.LIVE_STAGE,live)
@@ -162,7 +163,7 @@ class PublishedTests(unittest.TestCase):
    with self.subTest(seconds=seconds):
     f=self.fixture();proof=f.seal();capture=core.core.fences.capture_tree;seen=[];timeouts=[];native=f.native
     def timed_native(argv,*args,**kwargs):
-     observer=ci.ACTIVE_OPERATION_GUARD.observer
+     observer=getattr(ci.ACTIVE_OPERATION_GUARD,'observer',None)
      if observer is not None and observer.slot_name=='F4'and '-e'in argv and 'CI_WORKER_COMPLETE_FENCE_V2'in argv[argv.index('-e')+1]:timeouts.append(kwargs['timeout'])
      return native(argv,*args,**kwargs)
     f.native=timed_native

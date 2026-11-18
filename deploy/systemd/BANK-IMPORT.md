@@ -896,3 +896,22 @@ exact owned worker is still running, before either success receipt, within the
 unchanged15-second receipt slot. It never enables before starting: a pre-start
 failure must leave the unaccepted unit disabled. Enable or readback failure uses
 the same owned-process quarantine and disables the rejected worker again.
+
+The published-only F4 post-start fence has a60-second absolute slot. The measured
+staging attempt passed F0–F3 in9.8–14.1 seconds, then failed at F4 with its20-second
+allowance exhausted while the worker's measured20.4-second bootstrap overlapped
+the scan. This does not establish the lost inner exception text. The adjustment
+retains both full enumerations, link closure, all native proofs and their20-second
+child limits, native freshness60 and every other20/24-second slot. The global827
+and fresh900-second authorities do not change. Required post-mutation opportunity
+increases497→537 and authority reserve527→567; admission therefore refuses before
+unit mutation if the pre-graph consumed more than290 seconds of the global cap.
+
+A fresh root selection may additionally bind exactly one failed published attempt
+in `publishedFailure.previousPublished`, keyed by its fixed derived directory name.
+It pins that directory, all eleven file identities/hashes and its original live
+approval/hash. The original seal, start/quarantine identity, F4 rejected boundary,
+stopped/disabled observation and absence of any success member are revalidated.
+The directory stays in place. Unknown attempts, changed records, uncertain state,
+success receipts and any unselected prior attempt still refuse. This explicit
+review is required before minting a new seal/UUID; no old clock or proof is renewed.
