@@ -308,8 +308,15 @@ describe('payroll history confirm and revert as staged jobs',()=>{
    // Nothing of the revert remains; the import stays effective; the failure is recorded once.
    expect(await owner.client`select 1 from payroll_history_import_revision where tenant_id=${t.b.tenantId}::uuid and kind='revert'`).toHaveLength(0);
    const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));expect(events.map(e=>e.kind)).toEqual(['confirmed']);
-   const [queued]=await owner.client<{attempt_id:string}[]>`select input->>'attemptId' attempt_id from bulk_job where id=${revert.jobId}::uuid`;expect(queued.attempt_id).not.toBe(v.preview.attemptId);
-   const failures=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,queued.attempt_id));expect(failures.map(e=>[e.kind,e.detail])).toEqual([['failed',{reason:job.error}]]);
+   // Terminal settlement deliberately retires input; the retained sealed plan binds its durable audit receipt.
+   const [queued]=await owner.client<{attempt_id:string|null;input:unknown;recorded:boolean|null}[]>`select plan->>'attemptId' attempt_id,input,(plan->>'failureRecorded')::boolean recorded from bulk_job where id=${revert.jobId}::uuid`;
+   if(!queued||typeof queued.attempt_id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(queued.attempt_id))throw Error('The settled job must retain its exact removal receipt UUID');
+   expect(queued.input).toBeNull();expect(queued.recorded).toBe(true);expect(queued.attempt_id).not.toBe(v.preview.attemptId);
+   const actorId=t.ctx.userId;if(!actorId)throw Error('The audited fixture requires its authenticated creator');
+   const [receipt]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,queued.attempt_id));if(!receipt)throw Error('The bound removal receipt must remain available');
+   expect(receipt.createdBy).toBe(actorId);expect(receipt.plan.previewHash).toBe(review.previewHash);expect(receipt.plan.maintenance).toEqual({version:1,mode:'remove_batch',reason:'Revert import batch',request:{version:1,operation:'remove_batch',attemptId:v.preview.attemptId,reason:'Revert import batch'}});
+   const failures=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,queued.attempt_id));expect(failures.map(e=>({kind:e.kind,actorId:e.actorId,changes:e.changes,detail:e.detail}))).toEqual([{kind:'failed',actorId,changes:[],detail:{reason:job.error}}]);
+   const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,queued.attempt_id),eq(schema.domainEvent.eventType,'payroll-history-import.failed')));expect(audit.map(e=>({aggregateType:e.aggregateType,actorType:e.actorType,actorId:e.actorId,payload:e.payload}))).toEqual([{aggregateType:'payroll-history-import',actorType:'user',actorId,payload:{reason:job.error}}]);
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 
