@@ -70,3 +70,16 @@ BEGIN
  RETURN score;
 END $$;
 REVOKE ALL ON FUNCTION app.probation_letter_template_score(uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Legacy ties retain their explicit selection hold. Reviewed native ties expose the stable first choice already shown.
+ALTER FUNCTION app.probation_letter_template_choices(uuid) RENAME TO probation_letter_template_choices_before_6625;
+REVOKE ALL ON FUNCTION app.probation_letter_template_choices_before_6625(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.probation_letter_template_choices(p_outcome uuid) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb;first_id uuid;
+BEGIN
+ result:=app.probation_letter_template_choices_before_6625(p_outcome);first_id:=(result->'templates'->0->>'id')::uuid;
+ IF first_id IS NOT NULL AND result->'suggestedTemplateId'='null'::jsonb AND EXISTS(SELECT 1 FROM probation_builder_definition WHERE id=first_id AND tenant_id=app.current_tenant_id() AND data->'organisationMigration' IS NOT NULL) THEN result:=result||jsonb_build_object('suggestedTemplateId',first_id);END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.probation_letter_template_choices(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.probation_letter_template_choices(uuid) TO ai_hr_app;

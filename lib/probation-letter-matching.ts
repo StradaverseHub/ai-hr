@@ -27,3 +27,10 @@ export function applyReviewedLetterOrganisation(template:ProbationTemplate,compa
  for(const [field,groups]of grouped){const sets=[...groups.values()],values=[...sets[0]].filter(value=>sets.every(set=>set.has(value))).sort();if(!values.length)throw new Error('The reviewed conditions have no shared match. Keep the published template until the mapping is corrected.');rules[field]=values;}
  return{...structuredClone(template),rules,organisationMapping:'personnel-v2',organisationMigration:structuredClone(migration)};
 }
+/** Conservative overlap warning: empty dimensions are wildcards, and any disjoint dimension proves no overlap. */
+export function letterMatchingOverlap(left:ProbationTemplate,right:ProbationTemplate):boolean{
+ if(left.outcome!==right.outcome)return false;
+ if(probationOrganisationMapping(left)!==probationOrganisationMapping(right))return true;
+ const keys=new Set([...Object.keys(left.rules),...Object.keys(right.rules)]);
+ return [...keys].every(key=>{const a=(left.rules as Record<string,string[]|undefined>)[key]??[],b=(right.rules as Record<string,string[]|undefined>)[key]??[];return !a.length||!b.length||a.some(value=>b.includes(value));});
+}

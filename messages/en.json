@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "Choose who reviews, approves, signs or acknowledges this document. Equal order numbers act together; required steps control progression. Reviewers edit before the first signature. Sending back clears the current signatures and returns the document to its owner.",
-        "documentEmpty": "No routing set. The existing HR and employee signing settings apply.",
-        "documentHint": {
-          "review": "Can edit the document before its first signature.",
-          "approve": "Records an approval without a signature.",
-          "sign": "Signs the document; cannot edit signed text.",
-          "acknowledge": "Acknowledges the document with a signature."
-        },
+      "documentEmpty": "No routing set. The existing HR and employee signing settings apply.",
+      "documentHint": {
+        "review": "Can edit the document before its first signature.",
+        "approve": "Records an approval without a signature.",
+        "sign": "Signs the document; cannot edit signed text.",
+        "acknowledge": "Acknowledges the document with a signature."
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -41041,6 +41041,29 @@
     },
     "history": {
       "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    },
+    "builderMatch": {
+      "reviewTitle": "Review saved matching rules",
+      "reviewHelp": "Original versions are retained. Review each actual Personnel identity. Unresolved or archived values hold conversion.",
+      "savedRule": "Saved rule",
+      "builderMatch": "Builder match",
+      "reviewRequired": "Review required",
+      "reviewConfirm": "I reviewed every saved value and the explicit Company scope.",
+      "applyReview": "Apply reviewed matching to draft",
+      "rulesHelp": "Rules combine with AND; values within each rule combine with OR. Grade at start uses the recorded admission identity.",
+      "grade": "Grade at start",
+      "businessGroup": "Business group",
+      "company": "Company",
+      "department": "Department",
+      "employmentType": "Employment type",
+      "title": "Job title",
+      "archived": "Archived",
+      "overlap": "Potential overlap: {names}. The most specific match is suggested; ties use name, then version identity. Review before preparing.",
+      "overlapConfirm": "Matching rules may overlap with {names}. The most specific match is suggested; ties use name, then version identity. Publish this version?",
+      "delete": "Delete template",
+      "deleteHelp": "Historical versions are retained. A template used by any document must be retired instead.",
+      "deleteConfirm": "Delete this template from future selection? Historical versions remain. Templates used by a document cannot be deleted.",
+      "deleteReason": "Reason for deleting this template"
     }
   },
   "automationRuntime": {

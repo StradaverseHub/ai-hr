@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "选择审核、批准、签署或确认文档的人员。相同顺序号并行执行；必需步骤决定进度。首次签名前审核人可编辑。退回将清除当前签名并将文档交还所有者。",
-        "documentEmpty": "未设置路由。使用现有的人事和员工签署设置。",
-        "documentHint": {
-          "review": "可在首次签名前编辑文档。",
-          "approve": "记录批准，无需签名。",
-          "sign": "签署文档；无法编辑已签署的文本。",
-          "acknowledge": "签名确认文档。"
-        },
+      "documentEmpty": "未设置路由。使用现有的人事和员工签署设置。",
+      "documentHint": {
+        "review": "可在首次签名前编辑文档。",
+        "approve": "记录批准，无需签名。",
+        "sign": "签署文档；无法编辑已签署的文本。",
+        "acknowledge": "签名确认文档。"
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -41041,6 +41041,29 @@
     },
     "history": {
       "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    },
+    "builderMatch": {
+      "reviewTitle": "审核已保存的匹配规则",
+      "reviewHelp": "保留原始版本。请审核每个实际人事身份。未解决或已归档的值会暂停转换。",
+      "savedRule": "已保存规则",
+      "builderMatch": "构建器匹配",
+      "reviewRequired": "需要审核",
+      "reviewConfirm": "我已审核所有已保存值及明确的公司范围。",
+      "applyReview": "将已审核匹配应用到草稿",
+      "rulesHelp": "规则之间为“且”；同一规则内的值为“或”。起始职级使用录入时保存的身份。",
+      "grade": "起始职级",
+      "businessGroup": "业务组",
+      "company": "公司",
+      "department": "部门",
+      "employmentType": "雇佣类型",
+      "title": "职位",
+      "archived": "已归档",
+      "overlap": "可能重叠：{names}。建议最具体的匹配；同分时按名称及版本身份排序。准备前请审核。",
+      "overlapConfirm": "匹配可能与 {names} 重叠。建议最具体的匹配；同分时按名称及版本身份排序。发布此版本？",
+      "delete": "删除模板",
+      "deleteHelp": "保留历史版本。已被文档使用的模板须停用。",
+      "deleteConfirm": "从未来选择中删除此模板？保留历史版本。已使用的模板无法删除。",
+      "deleteReason": "删除此模板的原因"
     }
   },
   "automationRuntime": {
