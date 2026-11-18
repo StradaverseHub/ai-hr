@@ -28,7 +28,7 @@ export function initializePersonnelCompletion(document:CompletionDocument,input:
  if(document.personnelCompletion)return;
  if(document.sentAt||document.status!=='draft'||personnelCompletionLocked(document))throw new Error('Only an unsigned, unreleased draft can adopt Personnel completion.');
  const fields:PersonnelCompletionPolicy['fields']={};
- for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'',before=document.values[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint,...(official&&before&&before!==official?{conflict:{draft:before,official,at:input.at}}:{})};if(official)document.values[field.id]=official;}
+ for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'',before=document.values[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint,...(official.trim()&&before&&before!==official?{conflict:{draft:before,official,at:input.at}}:{})};if(official.trim())document.values[field.id]=official;}
  document.personnelCompletion={version:1,classification:PERSONNEL_COMPLETION_CLASSIFICATION,country:input.country,sourceFingerprint:input.sourceFingerprint,adoptedAt:input.at,adoptedBy:{...input.actor},fields,history:[]};
 }
 export function effectivePersonnelCompletion(document:CompletionDocument,field:Field):PersonnelCompletionOwner{
@@ -101,6 +101,6 @@ export function personnelCompletionIssues(document:CompletionDocument,options:{o
 /** Resolve a missing source token from its per-document answer without changing the official PM snapshot. */
 export function personnelCompletionMergeValues(document:CompletionDocument,values:Record<string,string>=document.values):Record<string,string>{
  const result:Record<string,string>={};
- for(const field of document.fields){const entry=document.personnelCompletion?.fields[field.id];if(!entry?.key||entry.sourceValue||effectivePersonnelCompletion(document,field)==='pmLocked'||field.when&&values[field.when.field]!==field.when.value)continue;result[entry.key]=values[field.id]??'';}
+ for(const field of document.fields){const entry=document.personnelCompletion?.fields[field.id];if(!entry?.key||field.when&&values[field.when.field]!==field.when.value)continue;if(entry.sourceValue.trim()){result[entry.key]=field.type==='date'&&isCalendarDate(entry.sourceValue)?entry.sourceValue.slice(8)+'/'+entry.sourceValue.slice(5,7)+'/'+entry.sourceValue.slice(0,4):entry.sourceValue;continue;}if(effectivePersonnelCompletion(document,field)==='pmLocked')continue;result[entry.key]=values[field.id]??'';if(!field.required&&!result[entry.key])result[entry.key]='—';}
  return result;
 }
