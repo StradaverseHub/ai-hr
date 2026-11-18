@@ -28,11 +28,17 @@ describe('exact effective tax basis reads',()=>{
   const source=fixture(2),old=await correction(1),fresh=await correction(2);
   const prior={...fresh,id:'prior-correction',basis:{...basis,supersedes:[old.id]}};
   const result=await readEffectiveTaxBasesTx(txRows([[source],[old,fresh,prior],[],[]]),ctx,[source.id]);
-  expect(result.get(source.id)?.correction.id).toBe(fresh.id);
+  expect(result.get(source.id)?.correction?.id).toBe(fresh.id);
  });
  it('rejects malformed corrections and unreconciled remuneration totals',()=>{
   expect(()=>validatedTaxBasis({...basis,pcb:5501})).toThrow(/reconcile/);
   expect(()=>validatedTaxBasis({...basis,exemptionUsed:{PCB_TRA_BUSINESS:-1}})).toThrow(/malformed/);
   expect(()=>validatedTaxBasis({...basis,normal:NaN})).toThrow(/malformed/);
  });
+ it('holds legacy imported inputs for eligible calculations while original artifact reads remain available',async()=>{
+  const legacy={...fixture(1),historyAttemptId:'original-attempt'};
+  expect((await readEffectiveTaxBasesTx(txRows([[legacy],[]]),ctx,[legacy.id])).size).toBe(0);
+  await expect(readEffectiveTaxBasesTx(txRows([[legacy],[],[],[{period:'2026-01',digest:'current-rules'}]]),ctx,[legacy.id],{includeImported:true})).rejects.toThrow(/Imported wage inputs require review/);
+ });
+
 });

@@ -35604,7 +35604,60 @@
     "noticeApplied": "ผลลัพธ์นี้ใช้การแก้ไขฐานภาษีเงินได้ที่บันทึกไว้ ยอด PCB ที่ชำระจริงและเงินเดือนที่ออกแล้วไม่เปลี่ยนแปลง",
     "noticeReferences": "เลขอ้างอิงการแก้ไขภาษีเงินได้",
     "noticeView": "ดูการแก้ไขภาษีเงินได้",
-    "reviewPayrollProcess": "ตรวจสอบการประมวลผลเงินเดือน"
+    "reviewPayrollProcess": "ตรวจสอบการประมวลผลเงินเดือน",
+    "basisNotTax": "ยอดรวมที่เสียภาษีในสรุปและตารางรายเดือนเป็นฐานค่าจ้างเงินสด ไม่ใช่ยอดหัก PCB ฐานสิทธิประโยชน์ที่ไม่ใช่เงินสดแสดงแยกด้านล่าง โดยรายละเอียดรายการระบุแต่ละประเภท PCB ที่จ่ายเดิมและเงินเดือนที่ออกแล้วไม่เปลี่ยนแปลง",
+    "noNoncashItems": "ไม่มีรายการที่ไม่ใช่เงินสด",
+    "currentNoncashTaxable": "ฐานที่ไม่ใช่เงินสดที่เสียภาษีปัจจุบัน",
+    "ownedNoncashTaxable": "ฐานที่ไม่ใช่เงินสดที่เสียภาษีของการคำนวณครั้งนี้",
+    "missingEvidenceTitle": "ขาดหลักฐานในอดีต",
+    "missingEvidenceHelp": "ยังไม่สามารถระบุยอดสุดท้ายที่ได้รับผลกระทบได้จนกว่าจะตรวจสอบหลักฐานในอดีตที่จำเป็น จะไม่ถือว่าค่าที่ขาดหายเป็นศูนย์",
+    "affectsValues": "มีผลต่อ: {values}",
+    "availableItems": "รายละเอียดค่าจ้างและรายการเงินเดือนที่มีอยู่",
+    "availableItemsHelp": "ยังดูยอดเงินเดิมและการจัดประเภทปัจจุบันได้ การรวมก่อนยกเว้นภาษีไม่ได้ยืนยันยอดที่ต้องเสียภาษีสุดท้าย",
+    "itemDirection": "ประเภทยอดเงิน",
+    "pcbTreatment": "การปฏิบัติต่อ PCB",
+    "remunerationType": "ประเภทค่าตอบแทน",
+    "exemptionCode": "รหัสยกเว้น",
+    "includedBeforeExemption": "รวมก่อนยกเว้นภาษี",
+    "notIncludedInPcb": "ไม่รวมในค่าจ้าง PCB",
+    "notRecorded": "ไม่ได้บันทึก",
+    "noExemptionCode": "ไม่ได้บันทึกรหัสยกเว้น",
+    "importWageBasis": "ตรวจสอบฐานค่าจ้าง PCB ที่นำเข้า",
+    "importBasisReady": "ตัวอย่างฐานค่าจ้างพร้อมแล้ว",
+    "importBasisHeld": "ต้องมีหลักฐานฐานค่าจ้าง",
+    "importBasisHelp": "ฐานค่าจ้างที่ได้ใช้การตั้งค่ารายการเงินเดือนที่จับคู่ไว้ ยอดตามกฎหมายจากไฟล์ไม่เปลี่ยนแปลง",
+    "originalImportedPcb": "PCB ที่จ่ายจากข้อมูลนำเข้า",
+    "originalRecordedPcb": "PCB ที่จ่ายในประวัติที่บันทึกไว้",
+    "cashPcbWages": "ค่าจ้างเงินสดที่เสียภาษี PCB",
+    "noncashPcbWages": "สิทธิประโยชน์ที่ไม่ใช่เงินสดที่เสียภาษี PCB",
+    "pcbComparisonTitle": "เปรียบเทียบยอดหัก PCB",
+    "pcbComparisonUnavailable": "ยังไม่มี PCB ที่คำนวณใหม่: ประวัตินี้ไม่ได้เก็บข้อมูลคำนวณตามกฎหมายเดิม ประเภทภาษีและค่าลดหย่อน และข้อมูลรายได้จากนายจ้างก่อนหน้าไว้",
+    "directions": {
+      "earning": "รายได้",
+      "deduction": "รายการหัก",
+      "noncash": "สิทธิประโยชน์ที่ไม่ใช่เงินสด"
+    },
+    "remuneration": {
+      "normal": "ปกติ",
+      "additional": "เพิ่มเติม",
+      "optional_deduction": "รายการหักทางเลือก"
+    },
+    "evidenceFields": {
+      "priorEmployerExemptionUsage": "การใช้สิทธิยกเว้นเดิมจากนายจ้างก่อนหน้าสำหรับปีภาษีนี้",
+      "originalStatutoryInputs": "ข้อมูลคำนวณตามกฎหมายเดิม",
+      "originalTaxCategoryAndReliefs": "ประเภทภาษีและค่าลดหย่อนเดิม",
+      "originalPriorEmployerIncome": "ข้อมูลรายได้เดิมจากนายจ้างก่อนหน้า",
+      "nonCashSourceOwnership": "ที่มาของรายการที่ไม่ใช่เงินสดเดิม",
+      "optionalDeductionOwnership": "การแยกค่าลดหย่อนและรายการหักทางเลือกเดิม",
+      "historicalTaxInputs": "ที่มาของข้อมูลภาษีเดิม"
+    },
+    "affectedValues": {
+      "taxableWages": "ค่าจ้างที่เสียภาษี",
+      "exemptWages": "ค่าจ้างที่ยกเว้นภาษี",
+      "optionalDeductions": "รายการหักทางเลือก",
+      "pcbComparison": "การเปรียบเทียบ PCB",
+      "noncashWages": "ฐานสิทธิประโยชน์ที่ไม่ใช่เงินสด"
+    }
   },
   "entra": {
     "title": "Microsoft Entra ID",

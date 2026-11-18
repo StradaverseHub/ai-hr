@@ -35604,7 +35604,60 @@
     "noticeApplied": "此结果使用已记录的所得税基数更正。实际已扣PCB和已发放的薪资保持不变。",
     "noticeReferences": "所得税更正参考编号",
     "noticeView": "查看所得税更正",
-    "reviewPayrollProcess": "查看薪资处理"
+    "reviewPayrollProcess": "查看薪资处理",
+    "basisNotTax": "摘要及月度表中的应税总额是现金工资输入，并非 PCB 扣款。非现金福利输入在下方单独列示；项目明细会标明各自类别。原已缴 PCB 和已出具的工资记录保持不变。",
+    "noNoncashItems": "无非现金项目",
+    "currentNoncashTaxable": "当前非现金应税输入",
+    "ownedNoncashTaxable": "本次计算所归属的非现金应税输入",
+    "missingEvidenceTitle": "缺少历史证据",
+    "missingEvidenceHelp": "在所需历史证据核实前，受影响的最终金额不可用。缺失值不会被视为零。",
+    "affectsValues": "影响：{values}",
+    "availableItems": "可查看的工资及薪资项目明细",
+    "availableItemsHelp": "原始金额和当前分类仍可查看。豁免前纳入计算不代表最终应税金额已确定。",
+    "itemDirection": "金额类型",
+    "pcbTreatment": "PCB 处理方式",
+    "remunerationType": "报酬类型",
+    "exemptionCode": "豁免代码",
+    "includedBeforeExemption": "豁免前纳入计算",
+    "notIncludedInPcb": "不纳入 PCB 工资",
+    "notRecorded": "未记录",
+    "noExemptionCode": "未记录豁免代码",
+    "importWageBasis": "查看导入的 PCB 工资输入",
+    "importBasisReady": "工资输入预览已就绪",
+    "importBasisHeld": "需要工资输入证据",
+    "importBasisHelp": "派生工资输入采用映射的薪资项目设置。文件中的法定金额保持不变。",
+    "originalImportedPcb": "导入记录中的已缴 PCB",
+    "originalRecordedPcb": "已保存历史中的已缴 PCB",
+    "cashPcbWages": "PCB 应税现金工资",
+    "noncashPcbWages": "PCB 应税非现金福利",
+    "pcbComparisonTitle": "PCB 扣款比较",
+    "pcbComparisonUnavailable": "重新计算的 PCB 不可用：此历史记录未保留原始法定计算输入、税务类别和减免，以及前雇主收入输入。",
+    "directions": {
+      "earning": "收入",
+      "deduction": "扣款",
+      "noncash": "非现金福利"
+    },
+    "remuneration": {
+      "normal": "普通",
+      "additional": "额外",
+      "optional_deduction": "可选扣款"
+    },
+    "evidenceFields": {
+      "priorEmployerExemptionUsage": "本课税年度原始前雇主豁免使用记录",
+      "originalStatutoryInputs": "原始法定计算输入",
+      "originalTaxCategoryAndReliefs": "原始税务类别和减免",
+      "originalPriorEmployerIncome": "原始前雇主收入输入",
+      "nonCashSourceOwnership": "原始非现金来源归属",
+      "optionalDeductionOwnership": "原始减免与可选扣款分配",
+      "historicalTaxInputs": "原始税务输入归属"
+    },
+    "affectedValues": {
+      "taxableWages": "应税工资",
+      "exemptWages": "豁免工资",
+      "optionalDeductions": "可选扣款",
+      "pcbComparison": "PCB 比较",
+      "noncashWages": "非现金福利输入"
+    }
   },
   "entra": {
     "title": "Microsoft Entra ID",

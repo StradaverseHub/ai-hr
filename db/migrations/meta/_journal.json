@@ -6632,6 +6632,20 @@
       "breakpoints": true
     },
     {
+      "idx": 10060,
+      "version": "7",
+      "when": 1794998006660,
+      "tag": "6660_imported_tax_basis_reader",
+      "breakpoints": true
+    },
+    {
+      "idx": 10061,
+      "version": "7",
+      "when": 1794998006661,
+      "tag": "6661_tax_basis_scoped_subject_page",
+      "breakpoints": true
+    },
+    {
       "idx": 10070,
       "version": "7",
       "when": 1794998006670,

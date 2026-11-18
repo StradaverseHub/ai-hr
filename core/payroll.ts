@@ -16,7 +16,7 @@ import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
-import {readEffectiveTaxBasesTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef} from './payroll-tax-basis-read';
+import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -5147,14 +5147,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           )
       : [];
     // Correct only the tax-input read. The saved payroll row and actual deducted PCB remain original.
-    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id));
+    const taxOpeningPrefix=await taxBasisSourceRowsTx(tx,priorSlips.map(slip=>slip.id));
+    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
     for (const slip of priorSlips) {
       const corrected = correctedPriorBases.get(slip.id);
       if (!corrected) continue;
       slip.statutory = corrected.statutory;
       const refs = taxBasisCorrectionsByEmp.get(slip.employmentId) ?? [];
-      refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
+      if(corrected.correction)refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
     }
     priorSlips.sort((a, b) => a.period.localeCompare(b.period)||a.id.localeCompare(b.id));
     const accByEmp = new Map<string, Acc>();
@@ -5361,7 +5362,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
-      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
+      for(const source of await taxBasisSourceRowsTx(tx,earlier.map(slip=>slip.id)))if(!taxOpeningPrefix.some(saved=>saved.id===source.id))taxOpeningPrefix.push(source);
+      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true,sameMonth:true});
       for (const r of earlier) {
         // Read what the original payslip charged before applying any tax-input correction.
         const savedStatutory: unknown = r.statutory;
@@ -5377,7 +5379,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         if (correction) {
           r.statutory = correction.statutory;
           const refs = taxBasisCorrectionsByEmp.get(r.employmentId) ?? [];
-          refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
+          if(correction.correction)refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
         }
         if(postEmploymentIds.has(r.employmentId)){
           const saved=(r.statutory as {postEmploymentPayment?:{statutoryInputs?:PostInputs}}|null)?.postEmploymentPayment?.statutoryInputs;
@@ -7780,6 +7782,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         ...(postEmployment?{postEmploymentPayment:{version:1,statutoryInputs:postOwnInputs,endedOn:e.terminatedOn,payPeriod:batch.payPeriod,payrollCycleId:batch.payrollCycleId,sourceTxnIds:postEmploymentSourcesByEmp.get(e.employmentId)??[]}}:{}),
         // Exact opening actually applied to this run, retained for later explicit tax-basis replay.
         // This is captured from the source profile before own-employer exemption consumption.
+        taxBasisImportedSources:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId&&source.importRevision!==null).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source),importRevision:source.importRevision})),
+        taxBasisOpeningSource:{version:1,year:pYear,employmentId:e.employmentId,companyId:batch.companyId,prefix:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source)}))},
         taxBasisOpeningExemptionYear: pYear,
         taxBasisOpeningExemptionUsed: e.tp3Year === pYear
           ? Object.fromEntries(Object.entries(e.tp3ExemptionUsed ?? {}).map(([code,amount]) => [code,round2(Number(amount ?? 0))] as const).filter(([,amount]) => amount > 0))

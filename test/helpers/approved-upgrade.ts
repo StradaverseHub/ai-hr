@@ -294,12 +294,16 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10057,when:1794998006657,tag:'6657_v9_document_routing_actions'},
  {idx:10058,when:1794998006658,tag:'6658_document_route_returned_content_custody'},
  {idx:10059,when:1794998006659,tag:'6659_v9_routed_document_source_events'},
+ {idx:10060,when:1794998006660,tag:'6660_imported_tax_basis_reader'},
+ {idx:10061,when:1794998006661,tag:'6661_tax_basis_scoped_subject_page'},
  {idx:10070,when:1794998006670,tag:'6670_offboarding_requisition'},
  {idx:10071,when:1794998006671,tag:'6671_offboarding_requisition_exception'},
  {idx:10072,when:1794998006672,tag:'6672_offboarding_requisition_list'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6660_imported_tax_basis_reader':'13de4ad5bac8d8e061bb36b66761175976acf07c7b691c5bf6266ef9e7957f2e',
+ '6661_tax_basis_scoped_subject_page':'a09fd170eeadf27f0cb5cefb24c69b6208beaf7f3b2cea7f3c2a32315c651ca3',
  '6670_offboarding_requisition':'f280ef53a8a28c791bd73956673cd9addabfdc12330cd7c945ab50c573f97bb6',
  '6671_offboarding_requisition_exception':'86c06c0ab94a5030082bc34201650e6854da3f90430d0ad42d64f88f165f0c85',
  '6672_offboarding_requisition_list':'bc6b311df58069df599f05a5d8f28099954508c88ffe7acf3e214ef1c2184e71',

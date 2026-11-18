@@ -35604,7 +35604,60 @@
     "noticeApplied": "Hasil ini menggunakan pembetulan asas cukai pendapatan yang direkodkan. PCB yang dibayar dan gaji yang telah dikeluarkan kekal tidak berubah.",
     "noticeReferences": "Rujukan pembetulan cukai pendapatan",
     "noticeView": "Lihat pembetulan cukai pendapatan",
-    "reviewPayrollProcess": "Semak Proses Gaji"
+    "reviewPayrollProcess": "Semak Proses Gaji",
+    "basisNotTax": "Jumlah bercukai dalam ringkasan dan jadual bulanan ialah input upah tunai, bukan potongan PCB. Input manfaat bukan tunai ditunjukkan secara berasingan di bawah; butiran item mengenal pasti setiap aliran. PCB asal yang dibayar dan penggajian yang dikeluarkan kekal tidak berubah.",
+    "noNoncashItems": "Tiada item bukan tunai",
+    "currentNoncashTaxable": "Input bercukai bukan tunai semasa",
+    "ownedNoncashTaxable": "Input bercukai bukan tunai milik pengiraan ini",
+    "missingEvidenceTitle": "Bukti sejarah yang tiada",
+    "missingEvidenceHelp": "Angka akhir yang terjejas tidak tersedia sehingga bukti sejarah yang diperlukan disahkan. Nilai yang tiada tidak dianggap sifar.",
+    "affectsValues": "Menjejaskan: {values}",
+    "availableItems": "Butiran upah dan Item Gaji yang tersedia",
+    "availableItemsHelp": "Amaun asal dan pengelasan semasa masih tersedia. Kemasukan sebelum pengecualian tidak mengesahkan amaun bercukai akhir.",
+    "itemDirection": "Jenis amaun",
+    "pcbTreatment": "Layanan PCB",
+    "remunerationType": "Jenis saraan",
+    "exemptionCode": "Kod pengecualian",
+    "includedBeforeExemption": "Termasuk sebelum pengecualian",
+    "notIncludedInPcb": "Tidak termasuk dalam upah PCB",
+    "notRecorded": "Tidak direkodkan",
+    "noExemptionCode": "Tiada kod pengecualian direkodkan",
+    "importWageBasis": "Semak input upah PCB yang diimport",
+    "importBasisReady": "Pratonton input upah tersedia",
+    "importBasisHeld": "Bukti input upah diperlukan",
+    "importBasisHelp": "Input upah terbitan menggunakan tetapan Item Gaji yang dipetakan. Amaun berkanun daripada fail kekal tidak berubah.",
+    "originalImportedPcb": "PCB dibayar daripada import",
+    "originalRecordedPcb": "PCB dibayar dalam sejarah tersimpan",
+    "cashPcbWages": "Upah tunai bercukai PCB",
+    "noncashPcbWages": "Manfaat bukan tunai bercukai PCB",
+    "pcbComparisonTitle": "Perbandingan potongan PCB",
+    "pcbComparisonUnavailable": "PCB yang dikira semula tidak tersedia: input pengiraan berkanun asal, kategori cukai dan pelepasan, serta input pendapatan majikan terdahulu tidak disimpan dalam sejarah ini.",
+    "directions": {
+      "earning": "Pendapatan",
+      "deduction": "Potongan",
+      "noncash": "Manfaat bukan tunai"
+    },
+    "remuneration": {
+      "normal": "Biasa",
+      "additional": "Tambahan",
+      "optional_deduction": "Potongan pilihan"
+    },
+    "evidenceFields": {
+      "priorEmployerExemptionUsage": "Penggunaan pengecualian majikan terdahulu yang asal bagi tahun taksiran ini",
+      "originalStatutoryInputs": "Input pengiraan berkanun asal",
+      "originalTaxCategoryAndReliefs": "Kategori cukai dan pelepasan asal",
+      "originalPriorEmployerIncome": "Input pendapatan majikan terdahulu yang asal",
+      "nonCashSourceOwnership": "Pemilikan sumber bukan tunai asal",
+      "optionalDeductionOwnership": "Pecahan pelepasan dan potongan pilihan asal",
+      "historicalTaxInputs": "Pemilikan input cukai asal"
+    },
+    "affectedValues": {
+      "taxableWages": "upah bercukai",
+      "exemptWages": "upah dikecualikan",
+      "optionalDeductions": "potongan pilihan",
+      "pcbComparison": "perbandingan PCB",
+      "noncashWages": "input manfaat bukan tunai"
+    }
   },
   "entra": {
     "title": "Microsoft Entra ID",

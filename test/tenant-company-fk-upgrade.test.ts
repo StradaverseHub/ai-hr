@@ -51,6 +51,8 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10057,version:'7',when:1794998006657,tag:'6657_v9_document_routing_actions',breakpoints:true},
  {idx:10058,version:'7',when:1794998006658,tag:'6658_document_route_returned_content_custody',breakpoints:true},
  {idx:10059,version:'7',when:1794998006659,tag:'6659_v9_routed_document_source_events',breakpoints:true},
+ {idx:10060,version:'7',when:1794998006660,tag:'6660_imported_tax_basis_reader',breakpoints:true},
+ {idx:10061,version:'7',when:1794998006661,tag:'6661_tax_basis_scoped_subject_page',breakpoints:true},
  {idx:10070,version:'7',when:1794998006670,tag:'6670_offboarding_requisition',breakpoints:true},
  {idx:10071,version:'7',when:1794998006671,tag:'6671_offboarding_requisition_exception',breakpoints:true},
  {idx:10072,version:'7',when:1794998006672,tag:'6672_offboarding_requisition_list',breakpoints:true},
@@ -929,6 +931,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.v9_document_route_act(uuid,integer,text,jsonb)',app:true},
    {fn:'app.v9_document_route_edit(uuid,integer,text,jsonb,jsonb)',app:true},
    {fn:'app.v9_document_route_hr_complete(jsonb)',app:true},
+   //6660/61: fail-loud compatible reader and original-employer SELECT-only subject scope.
+   {fn:'app.payroll_import_tax_reader_compatible(uuid,uuid,jsonb)',app:true},
+   {fn:'app.payroll_tax_import_source_revision(uuid)',app:true},
+   {fn:'app.payroll_tax_basis_subject_page(uuid[],integer,integer)',app:true},
+   {fn:'app.payroll_tax_basis_original_employer_read(uuid)',app:true},
    //6670–6672: bounded RVK projections and guarded item exception; history hook is private.
    {fn:'app.offboarding_items_resolved(jsonb)',app:true},
    {fn:'app.offboarding_requisition_history()',app:false},
@@ -1955,11 +1962,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'probation_file',name:'probation_email_document_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
   ];
   expect(await storage.client`select c.relname::text as rel,t.tgname::text as name,t.tgtype::integer as kind,t.tgfoid::regprocedure::text as fn,t.tgenabled::text as enabled,pg_get_expr(t.tgqual,t.tgrelid) as condition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and t.tgname=any(${templateTriggers.map(trigger=>trigger.name)}::text[]) order by c.relname,t.tgname`).toEqual(templateTriggers);
-  type ApprovedPolicy={table:string;name:string;cmd:'ALL'|'SELECT'|'INSERT'|'UPDATE';role:'public'|'ai_hr_owner'|'ai_hr_app';using:string|null;check:string|null};
+  type ApprovedPolicy={restrictive?:boolean;table:string;name:string;cmd:'ALL'|'SELECT'|'INSERT'|'UPDATE';role:'public'|'ai_hr_owner'|'ai_hr_app';using:string|null;check:string|null};
   const view=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','library_view')`;
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'payslip',name:'payroll_import_tax_basis_reader_guard',restrictive:true,cmd:'SELECT',role:'ai_hr_app',using:"app.payroll_import_tax_reader_compatible(employment_id,batch_id,statutory->'importedTaxBasis')",check:null},
+   {table:'payslip',name:'payslip_original_employer_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND app.payroll_tax_basis_original_employer_read(batch_id)',check:null},
    {table:'automation_email_asset',name:'automation_email_asset_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
    {table:'automation_email_asset',name:'automation_email_asset_read',cmd:'SELECT',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND app.automation_can_configure(module)",check:null},
    {table:'automation_email_asset',name:'automation_email_asset_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND uploaded_by=app.current_user_id() AND app.automation_can_configure(module) AND EXISTS(SELECT 1 FROM automation_email_template_version v WHERE v.tenant_id=automation_email_asset.tenant_id AND v.template_id=automation_email_asset.template_id AND v.module=automation_email_asset.module)"},
@@ -2006,7 +2015,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    const rows:ApprovedPolicyRow[]=[];
    for(const policy of approvedPolicies){
     const table=policy.table.startsWith('app.')?policy.table:'public.'+policy.table;
-    await tx.unsafe(`create policy approved_forward_reference on ${table} for ${policy.cmd} to ${policy.role}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
+    await tx.unsafe(`create policy approved_forward_reference on ${table}${policy.restrictive?' as restrictive':''} for ${policy.cmd} to ${policy.role}${policy.using?` using (${policy.using})`:''}${policy.check?` with check (${policy.check})`:''}`);
     const identity=policyIdentity(policy);
     const [row]=await tx<ApprovedPolicyRow[]>`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check from pg_policies where schemaname=${identity.schemaname} and tablename=${identity.tablename} and policyname='approved_forward_reference'`;
     rows.push({...row,policyname:policy.name});await tx.unsafe(`drop policy approved_forward_reference on ${table}`);

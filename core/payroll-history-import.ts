@@ -12,6 +12,8 @@
  * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
  * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
  */
+import {createHash} from 'node:crypto';
+import {importedTaxSettingsTx,importedTaxRulesStateTx,importedTaxRulesStatesTx,projectImportedTaxBasis} from './payroll-import-tax-source';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { entitySegmentRow, mergeCompanySegments, dayAfter, segmentForCompany, type CompanySegment } from './employment-company';
@@ -164,6 +166,10 @@ type ImportedStat = {
    *  no EA / statutory evidence reader sees them. See `importedComponentLines`. Absent when the month carried
    *  no allowance / overtime / bonus / deduction line. */
   importedLines?: ImportedComponentLine[];
+  importedTaxBasis?:import('./payroll-import-tax-source').ImportedTaxBasisStamp;
+  bases?:{pcb:number};
+  exemptionUsed?:Record<string,number>;
+  pcbNonCash?:unknown;
 };
 
 /** One imported pay item line, in the shape the kernel stamps (core/payroll.ts `PayComponentLine`), so every
@@ -263,6 +269,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
         displayCategory: payComponent.displayCategory,
         isNonPayable: payComponent.isNonPayable,
         archivedAt: payComponent.archivedAt,
+        includedInPcb:payComponent.includedInPcb,pcbRemunerationType:payComponent.pcbRemunerationType,pcbExemptionCode:payComponent.pcbExemptionCode,epfBonus2012:payComponent.epfBonus2012,eaFormLine:payComponent.eaFormLine,
       })
       .from(payComponent);
     const catalog = await tx.select().from(payrollImportCode);
@@ -273,13 +280,13 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
   for (const c of components) {
-    if (c.archivedAt != null || c.isNonPayable) continue;
+    if (c.archivedAt != null) continue;
     const { destination, direction } = payComponentDestination({
       code: c.code,
       kind: c.kind,
       displayCategory: c.displayCategory,
     });
-    byCode.set(up(c.code), { code: c.code, label: c.name, destination, direction, source: 'component' });
+    byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,taxSettings:c });
   }
   // Pass 1: direct catalog rows (and removals). Pass 2: aliases, so an alias may point at a row added in
   // pass 1 regardless of the order they came back from the database.
@@ -299,7 +306,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: row.destination as PayrollImportDestination,
       direction: row.direction as ImportCodeEntry['direction'],
-      source: 'catalog',
+      source: 'catalog',targetCode:row.code,taxSettings:components.find(component=>up(component.code)===up(row.code)),...(up(row.code)==='BASIC'&&row.destination==='basic'?{basicSalaryOwner:true}:{}),
     });
   }
   for (const row of aliases) {
@@ -314,7 +321,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: target.destination,
       direction: target.direction,
-      source: 'alias',
+      source: 'alias',targetCode:target.targetCode??target.code,basicSalaryOwner:target.basicSalaryOwner,
     });
   }
   return byCode;
@@ -357,6 +364,7 @@ type AnalyzeInputs = Awaited<ReturnType<typeof readAnalyzeInputs>>;
 function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs) {
   const byId = <T extends { id?: string; employmentId?: string }>(a: T, b: T) => String(a.id ?? a.employmentId).localeCompare(String(b.id ?? b.employmentId));
   return {
+    taxRulesState:inputs.taxRulesState,
     codes: [...codes.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
     companies: [...inputs.companies].sort(byId),
     employees: [...inputs.employees].sort(byId),
@@ -412,7 +420,8 @@ async function readAnalyzeInputs(tx: Tx, companyId: string) {
         })
         .from(payrollCycle)
         .where(eq(payrollCycle.companyId, companyId));
-      return { companies, employees, cycles, placements, currentCompany };
+      const taxRulesState=await importedTaxRulesStateTx(tx);
+      return { companies, employees, cycles, placements, currentCompany,taxRulesState };
 }
 
 async function analyze(
@@ -424,11 +433,11 @@ async function analyze(
   const codes = await resolveImportCodes(ctx, options.transaction);
   const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements, currentCompany } = await read(
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements, currentCompany,taxRulesState } = await read(
     async (tx) => {
       const inputs = await readAnalyzeInputs(tx, companyId);
       options.facts?.(analyzeFacts(codes, inputs));
-      const { companies, employees, cycles } = inputs;
+      const { companies, employees, cycles,taxRulesState } = inputs;
       const targetCompany = companies.find((c) => c.id === companyId);
       const statutoryVersion = requirePackFor(targetCompany?.country).statutoryConfig.default.version;
 
@@ -447,7 +456,7 @@ async function analyze(
         }
       }
 
-      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements: inputs.placements, currentCompany: inputs.currentCompany };
+      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements: inputs.placements, currentCompany: inputs.currentCompany,taxRulesState };
     },
   );
 
@@ -943,6 +952,22 @@ async function analyze(
         ...(componentLines.length ? { importedLines: componentLines } : {}),
       },
     });
+  }
+
+  // The accepted import snapshot owns these derived wage inputs, separately from every imported
+  // statutory amount. Confirmation recomputes this same projection and binds its settings/rules bytes.
+  const taxSettings=await read(importedTaxSettingsTx);
+  const pack=requirePackFor(targetCompany?.country);
+  const taxRuleStates=await read(tx=>importedTaxRulesStatesTx(tx,[...new Set(months.map(month=>month.period))]));
+  for(const period of targetCompany?.country==='MY'?[...new Set(months.map(month=>month.period))]:[]){
+    const resolution=await read(tx=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}));
+    const rulesHash=createHash('sha256').update(JSON.stringify(resolution)).digest('hex');
+    for(const month of months.filter(month=>month.period===period)){
+      const source=buckets.get(month.month.key)!;
+      const stamp=projectImportedTaxBasis({ownerKey:`${companyId}:${month.employmentId}:${source.cycles.join(',')}`,replay:pack.payroll.replayTaxBasis,period,rows:source.lines.map(line=>({rowNum:line.rowNum,code:line.doeCode,amount:line.amount})),codes,settings:taxSettings,rules:resolution.ruleset,rulesHash,rulesState:taxRuleStates.get(period),rulesEvidence:{version:resolution.version,source:resolution.source,effectiveFrom:resolution.effectiveFrom,packVersion:resolution.packVersion,signedKeyId:resolution.signedKeyId,pcbExemptions:resolution.ruleset.pcbExemptions},gross:month.grossPay,deductions:month.otherDeductions,statutory:month.statutory as unknown as Record<string,unknown>});
+      month.statutory.importedTaxBasis=stamp;
+      if(stamp.state==='ready'&&stamp.basis){month.statutory.bases={pcb:stamp.basis.pcb};month.statutory.exemptionUsed=stamp.basis.exemptionUsed;if(stamp.basis.pcbNonCash)month.statutory.pcbNonCash=stamp.basis.pcbNonCash;}
+    }
   }
 
   // A month EVERY line of which failed produced no bucket above, so it has no summary yet. Emit one, or

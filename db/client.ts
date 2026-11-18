@@ -379,7 +379,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
       // it back on for its own transaction (test/with-tenant-jit-off.test.ts).
       const columns = extra ?? sql``;
       const [identityRow] = (await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`,
+        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('app.payroll_import_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`,
       )) as unknown as Record<string, unknown>[];
       // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
       // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
@@ -455,7 +455,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
   function preambleColumns(preamble: SharedReadPreambleRead, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
     const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
       and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
-      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1'`;
+      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1' and current_setting('app.payroll_import_tax_basis_reader',true)='1'`;
     return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
