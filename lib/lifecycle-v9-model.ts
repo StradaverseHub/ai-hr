@@ -1015,7 +1015,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && (['draft', 'hrsigned'].includes(doc.status)||doc.signing&&!doc.sentAt&&!['withdrawn','superseded'].includes(doc.status))) {
-          const employeePreparation=doc.personnelCompletion&&!personnelCompletionLocked(doc)&&!doc.personnelCompletion.submitted&&doc.fields.some(field=>field.required&&effectivePersonnelCompletion(doc,field)==='employee'&&field.owner==='pmLocked'&&(!field.when||doc.values[field.when.field]===field.when.value));
+          const employeePreparation=doc.personnelCompletion&&!personnelCompletionLocked(doc)&&!doc.personnelCompletion.submitted&&doc.fields.some(field=>field.required&&effectivePersonnelCompletion(doc,field)==='employee'&&(!field.when||doc.values[field.when.field]===field.when.value));
           if(employeePreparation){
             const hold=documentPersonnelHold(doc);
             if(hold)waiting=hold;
