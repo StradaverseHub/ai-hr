@@ -1,7 +1,7 @@
 import {beforeEach,afterAll,expect,it} from 'vitest';
 import {randomUUID,createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Grant} from '../db/client';
 import {saveEmployeeDraft} from '../core/employee-draft';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {hireEmployee,updatePersonProfilePartial,terminateEmployment} from '../core/org';
@@ -98,7 +98,32 @@ it('pages one set-based signing projection across 70 companies and 1,000 employm
  const first=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:0}),second=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:50}),last=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:950}),expected=records.map(r=>r.caseId).sort();
  const scoped=await owner.withTenant(admin,tx=>tx.execute<{case_id:string;document:{id:string}}>(sql`select case_id,document from app.v9_document_route_sources(${expected[0]}::uuid)`));expect(scoped).toHaveLength(1);expect(scoped.every(row=>row.case_id===expected[0])).toBe(true);const detail=await v9ReadDocumentSigningWork(admin,expected[0],scoped[0].document.id);expect(detail.caseId).toBe(expected[0]);expect(detail.document?.values['official-name']).toBe('Signing scale person');
  expect(first.total).toBe(1000);expect(second.total).toBe(1000);expect(first.items.map(r=>r.caseId)).toEqual(expected.slice(0,50));expect(second.items.map(r=>r.caseId)).toEqual(expected.slice(50,100));expect(last.items.map(r=>r.caseId)).toEqual(expected.slice(950));expect((await v9DocumentSigningWorkspace(other,{search:'SIGN-SCALE-'})).total).toBe(0);
-},60000);
+ const companyId=companies[0].id,companyRecords=records.filter(record=>record.company===companyId),companyIds=companyRecords.map(record=>record.caseId).sort(),outside=records.find(record=>record.company!==companyId)!;expect(companyIds).toHaveLength(15);
+ const {resolveDevPrincipal}=await import('../lib/session');
+ const refreshedContext=async()=>{
+  const principal=await resolveDevPrincipal(async userId=>owner.db.execute<{tenant_id:string;person_id:string|null;grants:Grant[]|null}>(sql`select tenant_id,person_id,grants from app.principal(${userId}::uuid) where tenant_id=${base.tenantId}::uuid`),admin.userId!,undefined,async userId=>{const [row]=await owner.db.execute<{blocked:boolean}>(sql`select app.login_blocked(${userId}::uuid) as blocked`);return row.blocked;});
+  return {...principal,entitlements:(await entitledCtx(base)).entitlements};
+ };
+ const narrowed=await owner.db.execute<{id:string}>(sql`update role_assignment set company_id=${companyId}::uuid where tenant_id=${base.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin' and company_id is null returning id`);
+ try{
+  expect(narrowed).toHaveLength(1);const companyContext=await refreshedContext();expect(companyContext.grants).toEqual([{role:'hr_admin',companyId}]);expect(companyContext.personId).toBe(admin.personId);
+  // Whole-case HR visibility follows the current real company grant, independently of frozen document participation.
+  const workspace=await v9Workspace(companyContext);expect(workspace.cases.map(row=>row.id)).toEqual([...companyIds].reverse());expect(workspace.cases.every(row=>row.facts.company===companyId)).toBe(true);
+  const page=await withTenant(companyContext,tx=>tx.execute<{id:string;total:number}>(sql`select id,count(*) over()::int as total from lc_v9_case where tenant_id=${base.tenantId}::uuid order by created_at desc,id desc limit 7 offset 7`));expect(page.map(row=>row.id)).toEqual([...companyIds].reverse().slice(7,14));expect(page.every(row=>row.total===15)).toBe(true);
+  expect((await v9CaseDetail(companyContext,companyIds[0])).case.id).toBe(companyIds[0]);await expect(v9CaseDetail(companyContext,outside.caseId)).rejects.toThrow();expect(await withTenant(companyContext,tx=>tx.execute(sql`select id from lc_v9_case where id=${outside.caseId}::uuid and tenant_id=${base.tenantId}::uuid`))).toEqual([]);
+  // The same named participant retains document-only access to all 1,000 already frozen routes while licenses remain active.
+  const participant=await v9DocumentSigningWorkspace(companyContext,{search:'SIGN-SCALE-'});expect(participant.total).toBe(1000);expect(participant.items.map(row=>row.caseId)).toEqual(expected.slice(0,50));
+  const outsideDocument=await v9ReadDocumentSigningWork(companyContext,outside.caseId,outside.data.documents[0].id);expect(outsideDocument.caseId).toBe(outside.caseId);expect(outsideDocument).not.toHaveProperty('case');
+  // A company-only lifecycle entitlement is a separate boundary; it is not a reassignment of the frozen route.
+  await setModule(base.tenantId,'lifecycle',null);await setModule(base.tenantId,'lifecycle','active',companyId);const licensedContext=await refreshedContext();
+  const licensed=await v9DocumentSigningWorkspace(licensedContext,{search:'SIGN-SCALE-'});expect(licensed.total).toBe(15);expect(licensed.items.map(row=>row.caseId)).toEqual(companyIds);
+  expect((await v9ReadDocumentSigningWork(licensedContext,companyIds[0],companyRecords.find(row=>row.caseId===companyIds[0])!.data.documents[0].id)).caseId).toBe(companyIds[0]);await expect(v9ReadDocumentSigningWork(licensedContext,outside.caseId,outside.data.documents[0].id)).rejects.toThrow();
+ }finally{
+  await owner.db.execute(sql`update role_assignment set company_id=null where tenant_id=${base.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin' and company_id=${companyId}::uuid`);
+  await setModule(base.tenantId,'lifecycle',null,companyId);await setModule(base.tenantId,'lifecycle','active');
+ }
+ // R4 measured the initial 70/1,000 shape at 19.3s; allow threefold headroom for added scope/detail checks.
+},90000);
 
 it('preserves the existing identity reveal permission at the direct scoped source RPC and denies the private source owner',async()=>{
  const {payrollPermissionGrant}=await import('../db/schema');const {id}=await prepared(),mailbox='protected@fictional.invalid';await updatePersonProfilePartial(admin,{personId:employee.personId!,personalEmail:mailbox});
