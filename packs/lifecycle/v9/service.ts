@@ -1,3 +1,4 @@
+import {withAccessDisplayRead} from '../../../core/access-configuration-lock';
 import {communicationPreviewSource,type WorkflowPreviewContext} from '../../../lib/lifecycle-case-preview';
 import {reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
 import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
@@ -123,10 +124,10 @@ async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId + ':onboarding'},0))`);
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'lifecycle-v9:' + ctx.tenantId},0))`);
 }
-async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
-  const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${identifier(id)}::uuid for update`);
+async function load(tx: Tx, ctx: SessionContext, id: string, lock = true): Promise<Row> {
+  const [row] = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and id=${identifier(id)}::uuid ${lock ? sql`for update` : sql``}`);
   if (!row) {
-    const native = await onboardingV9ReadTx(ctx, tx, id);
+    const native = await onboardingV9ReadTx(ctx, tx, id, lock);
     return { id: native.c.id, revision: native.row.revision, company_id: native.row.companyId, data: projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId), native: true };
   }
   await admin(tx, row.company_id); return row;
@@ -149,7 +150,7 @@ async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action
   await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
   await record(tx, ctx, row.id, next.facts.employmentId, action);
 }
-async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
+async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config, lockCase = true): Promise<M.Environment> {
   const who = await actor(tx, ctx), today = todayInKualaLumpur();
   const users = await tx.execute<DirectoryUser & {personId:string}>(sql`select u.id,u.person_id as "personId",coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and u.person_id is not null and not app.login_blocked(u.id)`);
   const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn), ...c.items.map(i => i.dueOn)]);
@@ -162,7 +163,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const sharedLoads = await onboardingAssignmentLoadsTx(tx);
   const company = await tx.execute<{ name: string; registrationNo: string; address: string }>(sql`select legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where id=${c.facts.company}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null }>(sql`select (select title from position where id::text=${c.facts.title} and tenant_id=${ctx.tenantId}::uuid) as position,(select name from department where id::text=${c.facts.department} and tenant_id=${ctx.tenantId}::uuid) as department,(select name from business_unit where id::text=${c.facts.businessGroup} and tenant_id=${ctx.tenantId}::uuid) as business_group`);
-  const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
+  const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id, lockCase) : null;
   const nf = native ? nativeFacts(native.c) : null;
   const source: Record<string,string> = c.facts.employmentId
     ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId)
@@ -250,40 +251,40 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
 
 export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: string, module: M.Module) {
   const selectedModule = z.enum(['onb', 'off']).parse(module);
-  return withLifecycleTenant(ctx, async tx => {
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
     await admin(tx);
-    const row = await load(tx, ctx, caseId);
+    const row = await load(tx, ctx, caseId, false);
     if (row.data.module !== selectedModule) throw new M.V9Error('Choose a case from this module.', 'not_found');
     const config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    const { mergeValues } = await environment(tx, ctx, row.data, config);
+    const { mergeValues } = await environment(tx, ctx, row.data, config, false);
     const preview = Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
     return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [mergeValues.personalEmail ?? '']);
-  });
+  }, {readOnlySnapshot:true}));
 }
 
 export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string,context?:WorkflowPreviewContext): Promise<M.EmailPreview> {
   emailId = z.string().min(1).max(120).parse(emailId);
-  return withLifecycleTenant(ctx, async tx => {
-    const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId, false), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    const env = await environment(tx, ctx, row.data, config);
+    const env = await environment(tx, ctx, row.data, config, false);
     const selected=context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext(context)):null;
     const step=selected?.steps.find(step=>step.id===context?.stepId);if(context&&(step?.type!=='email'||step.template!==emailId))throw new M.V9Error('Choose the email step of this workflow version.','not_found');
     const preview = M.previewEmail(row.data, config, emailId, env,selected&&step?.type==='email'?{workflowId:selected.id,step}:undefined);
     return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [env.mergeValues.personalEmail ?? '', ...preview.cc.filter(recipient => recipient.personal).map(recipient => recipient.id)]);
-  });
+  }, {readOnlySnapshot:true}));
 }
 
 const parseCommunicationPreviewContext=(input:WorkflowPreviewContext)=>z.object({workflowId:z.string().min(1).max(120),runId:z.string().min(1).max(1000).optional(),stepId:z.string().min(1).max(120)}).strict().parse(input);
 export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string,context?:Omit<WorkflowPreviewContext,'workflowId'>) {
   workflowId=z.string().min(1).max(120).parse(workflowId);
-  return withLifecycleTenant(ctx, async tx => {
-    const row=await load(tx,ctx,caseId), config=await configTx(tx,ctx);
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row=await load(tx, ctx, caseId, false), config=await configTx(tx,ctx);
     const workflow=config?(context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext({...context,workflowId})):config.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module)):null;
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
     if(workflow.status==='retired'&&!context?.runId)throw new M.V9Error('This workflow is retired. Restore it before previewing it.','conflict');
-    const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
+    const c=structuredClone(row.data),env=await environment(tx, ctx, c, config, false);
     const steps=context?workflow.steps.filter(step=>step.id===context.stepId):workflow.steps;
     const email=steps.find(step=>step.type==='email'),notification=steps.find(step=>step.type==='notify'),document=steps.find(step=>step.type==='doc');
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
@@ -296,18 +297,18 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
      }
     }
     return {workflow, messages: await personalEmailRevealTx(tx, ctx) ? messages : maskPersonalEmailView(messages, [env.mergeValues.personalEmail ?? '']), documents};
-  });
+  }, {readOnlySnapshot:true}));
 }
 
 /** Board 4a60b3ec dry run: the real people and addresses each step reaches for this case, or why it would hold.
  * Nothing is sent or saved. Personal email is masked unless the viewer may see that Personnel field. */
 export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input: unknown) {
   const workflow = v9ConfigSchema.shape.workflows.element.parse(input) as M.Workflow;
-  return withLifecycleTenant(ctx, async tx => {
-    const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx, async tx => {
+    const row = await load(tx, ctx, caseId, false), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     if (row.data.module !== workflow.module) throw new M.V9Error('Choose a case from this module.', 'not_found');
-    const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
+    const c = structuredClone(row.data), env = await environment(tx, ctx, c, config, false);
     const userIds = new Set<string>();
     for (const step of workflow.steps) if (step.type === 'email' || step.type === 'notify') {
       const template = step.type === 'email' ? config.emails.find(email => email.id === step.template) : null;
@@ -316,7 +317,7 @@ export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input:
     }
     const addresses = await lifecycleRecipientAddressesTx(tx, ctx, caseId, [...userIds]);
     return M.planWorkflow(c, config, workflow, { ...env, userEmail: id => addresses[id] ?? null, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
-  });
+  }, {readOnlySnapshot:true}));
 }
 export type EmailHoldInboxItem = { caseId: string; module: M.Module; number: string; name: string; email: string; workflow: string; heldAt: string; missing: { label: string; reason: string }[] };
 /** Inbox: held emails for viewers with Full case view, rechecked on every read. Shared Access lock only (none here). */
@@ -349,13 +350,13 @@ async function updatedEmailAllowed(tx:Tx,id:string,mailId:string):Promise<void> 
 }
 export async function v9PreviewUpdatedEmail(ctx:SessionContext,id:string,mailId:string):Promise<UpdatedEmailPreview> {
   mailId=commandId.parse(mailId);
-  return withLifecycleTenant(ctx,async tx=>{
-    const row=await load(tx,ctx,id),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
-    await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx,ctx,row.data,config);let sequence=0;
+  return withAccessDisplayRead(() => withLifecycleTenant(ctx,async tx=>{
+    const row=await load(tx, ctx, id, false),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
+    await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx, ctx, row.data, config, false);let sequence=0;
     const plan=M.updatedDeliveryPlan(row.data,config,mailId,{...env,nextId:()=>`preview-${++sequence}`});
     const preview = {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
     return await personalEmailRevealTx(tx,ctx) ? preview : maskPersonalEmailView(preview,[env.mergeValues.personalEmail ?? '',...(plan.mail.delivery?.personalKeys ?? [])]);
-  });
+  }, {readOnlySnapshot:true}));
 }
 
 export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {

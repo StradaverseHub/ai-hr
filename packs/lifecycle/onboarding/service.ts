@@ -324,7 +324,7 @@ export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Conf
     },{readOnlySnapshot:true});
 }
 
-async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
+async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false, reconcileCompany = true) {
     const q = tx.select().from(cases).where(eq(cases.id, id)).limit(1), [row] = lock ? await q.for('update') : await q;
     if (!row)
         M.fail('Onboarding case not found.', 'not_found');
@@ -350,6 +350,7 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
         const nextCompany = c.source.company;
         const nextActor = await actorTx(tx, ctx, config, nextCompany);
         if (!nextActor.hr) M.fail('Company HR access is required for the updated Personnel company.', 'forbidden');
+        if (!reconcileCompany) M.fail('Open the case to refresh its Personnel company before previewing.', 'conflict');
         M.log(c, actor, { ...clock(), id:randomUUID, nextNumber:()=>'', leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[] }, 'personnel.companyUpdated');
         await storeTx(tx,ctx,{...row,companyId:nextCompany},c,true);
         await auditTx(tx,ctx,c,'personnel_company_updated');
@@ -1548,13 +1549,14 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
 }
 
 /** Private V9 document state follows the native case and its revision/history. */
-export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string) {
+export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string, lock = true) {
     let result: Awaited<ReturnType<typeof loadTx>>;
-    if (ctx.userId) result = await loadTx(tx, ctx, id, true);
+    if (ctx.userId) result = await loadTx(tx, ctx, id, lock, lock);
     else {
         const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
         if (!permission?.ok) M.fail('The storage owner is required for scheduled onboarding documents.', 'forbidden');
-        const [row] = await tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId))).for('update');
+        const query = tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId)));
+        const [row] = lock ? await query.for('update') : await query;
         if (!row) M.fail('Onboarding case not found.', 'not_found');
         const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
