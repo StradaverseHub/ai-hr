@@ -1,5 +1,5 @@
 import {probationLetterConversionReport} from '@/lib/probation-letter-builder';
-import {probationNativeDocumentRoutingChoices} from '@/core/probation-letter';
+import {probationNativeDocumentRoutingChoices,probationLetterBuilderCatalog} from '@/core/probation-letter';
 import type {SessionContext} from '@/db/client';
 import {probationAdministrationOptions,probationSetup,probationLetterTemplates,probationSummaryRows} from '@/packs/probation/service';
 import {automationAssignmentGroups,automationPeopleNames,listAutomationRoutings} from '@/packs/automation/service';
@@ -13,11 +13,12 @@ export async function readProbationLetterWorkspace(ctx:SessionContext,companyId?
  const definitions=Array.from(await probationLetterTemplates(ctx,company.id));
  const people=[...new Set(definitions.flatMap(definition=>probationTemplateRouting(definition.data as ProbationRoutedTemplate).flatMap(step=>step.who.kind==='people'?step.who.userIds:[])))];
  // Sequential requests avoid holding several database connections for one page.
+ const builderCatalog=await probationLetterBuilderCatalog(ctx,company.id);
  const nativeRoutingChoices=await probationNativeDocumentRoutingChoices(ctx,company.id);
  const routings=await listAutomationRoutings(ctx),groups=await automationAssignmentGroups(ctx),names=await automationPeopleNames(ctx,people).catch(()=>[]),cases=await probationSummaryRows(ctx,{companyId:company.id,limit:50});
  const canonical=options.organisationCatalogs?.['personnel-v2']??options;
  const conversionReports=definitions.map(definition=>({id:definition.id,report:probationLetterConversionReport(definition.data,definition.version,{businessGroup:canonical.businessGroups,businessUnit:canonical.businessUnits,company:options.companies,department:options.departments,grade:options.grades.map(code=>({id:code,code,name:code}))})}));
- return {conversionReports,nativeRoutingChoices,company,companies:options.companies,ruleOptions:{organisationMapping:options.organisationMapping,organisationCatalogs:options.organisationCatalogs,businessGroups:options.businessGroups,businessUnits:options.businessUnits.filter(unit=>unit.companyId===company.id),departments:options.departments.filter(department=>department.companyId===company.id),grades:options.grades},definitions,
+ return {maxExtensions:setup.settings?.data.maxExtensions??2,builderCatalog,conversionReports,nativeRoutingChoices,company,companies:options.companies,ruleOptions:{organisationMapping:options.organisationMapping,organisationCatalogs:options.organisationCatalogs,businessGroups:options.businessGroups,businessUnits:options.businessUnits.filter(unit=>unit.companyId===company.id),departments:options.departments.filter(department=>department.companyId===company.id),grades:options.grades},definitions,
   routingChoices:{routings:routings.filter(routing=>!routing.retired).map(routing=>({id:routing.routing.id,name:routing.routing.name})),groups,people:names},
   previewCases:cases.rows.map(row=>({id:row.id,label:row.employeeCode?`${row.employeeName} · ${row.employeeCode}`:row.employeeName})),routingStored:PROBATION_LETTER_ROUTING_STORED};
 }

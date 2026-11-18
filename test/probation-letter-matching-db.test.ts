@@ -1,0 +1,20 @@
+import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {sql} from 'drizzle-orm';
+import {randomUUID} from 'node:crypto';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
+import {newProbationLetterTemplate} from '../lib/probation-letter-template';
+import {probationLetterBuilderCatalog} from '../core/probation-letter';
+import {saveProbationLetterTemplate,probationLetterTemplateChoices} from '../packs/probation/service';
+let b:Base;beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');});
+it('publishes a scoped per-definition review without switching tenant or altering prior versions',async()=>{
+ const fixture=await probationOutcomeFixture(b,adminCtx(b)).recordedConfirm();const catalog=await probationLetterBuilderCatalog(fixture.admin,b.companyId);expect(catalog.targets.company[0].id).toBe(b.companyId);
+ const legacy=newProbationLetterTemplate('confirm','matching-'+randomUUID().slice(0,8),'Fictional matching letter');
+ const first=await saveProbationLetterTemplate(fixture.admin,{companyId:b.companyId,template:legacy,publish:true,expectedVersion:0});
+ const converted={...structuredClone(legacy),organisationMapping:'personnel-v2' as const,organisationMigration:{sourceVersionId:first,sourceVersion:1,reviewed:true as const,mappings:[]},rules:{company:[b.companyId],outcome:['confirm' as const],extensionNumber:['0']}};
+ const next=await saveProbationLetterTemplate(fixture.admin,{companyId:b.companyId,template:converted,publish:true,expectedVersion:1});
+ const choices=await probationLetterTemplateChoices(fixture.admin,fixture.decision.id);expect(choices.templates.map(row=>row.id)).toEqual([next]);
+ const [row]=await owner.db.execute<{mapping:string;old:string}>(sql`select coalesce((select mapping from probation_organisation_mapping where tenant_id=${b.tenantId}::uuid),'legacy-v1') as mapping,(select data->>'organisationMapping' from probation_builder_definition where id=${first}::uuid) as old`);
+ expect(row.mapping).toBe('legacy-v1');expect(row.old).toBe('legacy-v1');
+ const unknown={...converted,rules:{company:[b.companyId],department:[randomUUID()]}};await expect(saveProbationLetterTemplate(fixture.admin,{companyId:b.companyId,template:unknown,publish:true,expectedVersion:2})).rejects.toThrow();
+});
