@@ -294,9 +294,15 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10057,when:1794998006657,tag:'6657_v9_document_routing_actions'},
  {idx:10058,when:1794998006658,tag:'6658_document_route_returned_content_custody'},
  {idx:10059,when:1794998006659,tag:'6659_v9_routed_document_source_events'},
+ {idx:10070,when:1794998006670,tag:'6670_offboarding_requisition'},
+ {idx:10071,when:1794998006671,tag:'6671_offboarding_requisition_exception'},
+ {idx:10072,when:1794998006672,tag:'6672_offboarding_requisition_list'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6670_offboarding_requisition':'2f5550d79acb97aac45ac3c6faa4f4267bb29a68d77e4392e3a552489ab92ddb',
+ '6671_offboarding_requisition_exception':'86c06c0ab94a5030082bc34201650e6854da3f90430d0ad42d64f88f165f0c85',
+ '6672_offboarding_requisition_list':'bc6b311df58069df599f05a5d8f28099954508c88ffe7acf3e214ef1c2184e71',
  '6610_probation_rich_email_definitions':'933d7b2b2d24969bddda1356b75ebd2789a4ec24fac7afe5b7c5bfa4e0d59f37',
  '6611_probation_rich_email_delivery':'a1919f0c19085cbe07ca20222c7224d8d70ca77e85f10b2b65b42e9a8f70c8f0',
  '6612_probation_email_documents':'dce3951e891f0e6c56ef58b70c240b68797c8ff7d0e9ce84d7886769af6ada63',

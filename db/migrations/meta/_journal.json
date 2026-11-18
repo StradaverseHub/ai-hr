@@ -6630,6 +6630,27 @@
       "when": 1794998006659,
       "tag": "6659_v9_routed_document_source_events",
       "breakpoints": true
+    },
+    {
+      "idx": 10070,
+      "version": "7",
+      "when": 1794998006670,
+      "tag": "6670_offboarding_requisition",
+      "breakpoints": true
+    },
+    {
+      "idx": 10071,
+      "version": "7",
+      "when": 1794998006671,
+      "tag": "6671_offboarding_requisition_exception",
+      "breakpoints": true
+    },
+    {
+      "idx": 10072,
+      "version": "7",
+      "when": 1794998006672,
+      "tag": "6672_offboarding_requisition_list",
+      "breakpoints": true
     }
   ]
 }
