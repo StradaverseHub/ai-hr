@@ -13,11 +13,13 @@ import time
 from types import SimpleNamespace
 
 POLICY='aihr-worker-prepared-handoff/v1'
+NORMAL_V2_POLICY='aihr-worker-prepared-handoff/v2'
 KINDS={'prepare-ci-worker':'ADMIN_REVIEWED_CI_WORKER_PREPARATION','activate-prepared-ci-runtime':'ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER','recover-ci-runtime':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_RECOVERY'}
 PREP_KEYS={'policy','mode','id','firstStageApproval','firstStageApprovalSha256','drainSha256','directory','directoryIdentity','proof','failure'}
 FAILURE_KEYS={'originalOperation','originalActivationApproval','originalActivationApprovalSha256','originalStartedSha256','failureCurrentSha256','failureLastOkSha256','failureLog','failureLogSha256','failureFinishedAt'}
 OVERALL_SECONDS=827
 PREPARE_SECONDS=300
+NORMAL_V2_PREPARE_SECONDS=600
 INSTALL_LOCK=Path('/run/aihr-bank-import/install.lock')
 
 
@@ -61,8 +63,12 @@ def tree_identity(root,manifest,*,deadline,content=False,uid=0):
     return {'rootIdentity':identity(before),'entries':len(rows),'bytes':total,'metadataSha256':digest(json.dumps(rows,sort_keys=True,separators=(',',':')).encode())}
 
 
+def preparation_seconds(p):
+    return NORMAL_V2_PREPARE_SECONDS if p['policy']==NORMAL_V2_POLICY and p['mode']=='normal' else PREPARE_SECONDS
+
+
 def closed_preparation(base,ci,a):
-    p=a['preparation'];base.check(set(p)==PREP_KEYS and p['policy']==POLICY and p['mode']in('normal','failed-preunit') and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',p['id']),'closed preparation identity required')
+    p=a['preparation'];base.check(set(p)==PREP_KEYS and (p['policy']==POLICY or p['policy']==NORMAL_V2_POLICY and p['mode']=='normal') and p['mode']in('normal','failed-preunit') and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',p['id']),'closed preparation identity required')
     operation=base.ROOT/'upgrades'/a['identity']['source'];base.root_protected(operation)
     base.check(p['proof']==str(operation/('prepared-worker-'+p['id']+'.json')),'fixed exclusive proof destination required')
     wanted=operation/('prepared-'+p['id']) if p['mode']=='normal' else operation/'activation-release'
@@ -126,13 +132,14 @@ def admit_mutation(o):
 def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,published_root=None):
     base.check(set(selected)=={'path','sha256'},'closed prepared proof selection required');path=Path(selected['path']);ci.protected_private(base,path)
     raw=base.read_bounded(path,65536);base.check(ci.sha(raw)==selected['sha256'],'sealed prepared proof differs');proof=json.loads(raw)
-    base.check(set(proof)=={'format','kind','policy','preparationApproval','preparationApprovalSha256','preparedAt','identity','archiveSha256','manifestSha256','directory','tree','preparation','releaseAuthorized'} and proof['format']==1 and proof['kind']=='ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION' and proof['policy']==POLICY and proof['identity']==identity and proof['releaseAuthorized']is False,'closed prepared byte attestation required')
+    base.check(set(proof)=={'format','kind','policy','preparationApproval','preparationApprovalSha256','preparedAt','identity','archiveSha256','manifestSha256','directory','tree','preparation','releaseAuthorized'} and proof['format']==1 and proof['kind']=='ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION' and proof['policy']in(POLICY,NORMAL_V2_POLICY) and proof['identity']==identity and proof['releaseAuthorized']is False,'closed prepared byte attestation required')
     approval=Path(proof['preparationApproval']);ci.protected_private(base,approval);araw=base.read_bounded(approval,65536)
     base.check(ci.sha(araw)==proof['preparationApprovalSha256'],'preparation authority differs');a=json.loads(araw)
     base.check(set(a)==PREP_FIELDS and a['kind']==KINDS['prepare-ci-worker'] and a['policy']==ci.POLICY and a['format']==1 and a['target']=='alpha-staging' and a['releaseAuthorized']is False and a['identity']==identity and a['preparation']==proof['preparation'],'original closed preparation required')
     p,operation=closed_preparation(base,ci,a)
+    base.check(proof['policy']==p['policy'],'prepared proof/approval policy version differs')
     base.check(str(path)==p['proof'] and proof['directory']==p['directory'],'fixed prepared proof/root selection differs')
-    base.check(ci.epoch(a['issuedAt'])<=ci.epoch(proof['preparedAt'])<=ci.epoch(a['expiresAt']) and ci.epoch(a['issuedAt'])<=path.stat().st_mtime<=ci.epoch(a['expiresAt']) and ci.epoch(proof['preparedAt'])<=time.time() and ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+PREPARE_SECONDS,'preparation proof outside original finite IO authority')
+    base.check(ci.epoch(a['issuedAt'])<=ci.epoch(proof['preparedAt'])<=ci.epoch(a['expiresAt']) and ci.epoch(a['issuedAt'])<=path.stat().st_mtime<=ci.epoch(a['expiresAt']) and ci.epoch(proof['preparedAt'])<=time.time() and ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+preparation_seconds(p),'preparation proof outside original finite IO authority')
     operation=base.ROOT/'upgrades'/identity['source'];archive=operation/'authenticated-worker.zip';base.root_protected(archive,regular=True)
     manifest=fmt.inspect_archive(archive,identity['source'],identity['lock_sha256'],identity['package_sha256'])
     base.check(proof['archiveSha256']==identity['archive_sha256'] and proof['manifestSha256']==fmt.digest(fmt.canonical(manifest)),'prepared archive/manifest identity differs')
@@ -153,8 +160,8 @@ def clean_prior(base,update,identity):
 
 
 def prepare(guard,fmt,base,ci,update):
-    a=guard.a;p,operation=closed_preparation(base,ci,a);end=min(time.monotonic()+PREPARE_SECONDS,ci.epoch(a['expiresAt'])-time.time()+time.monotonic())
-    base.check(ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+PREPARE_SECONDS,'finite preparation authority exceeds300s')
+    a=guard.a;p,operation=closed_preparation(base,ci,a);seconds=preparation_seconds(p);end=min([time.monotonic()+seconds,ci.epoch(a['expiresAt'])-time.time()+time.monotonic(),*[d for d in (getattr(base,'VERIFIED_OPERATION_DEADLINE',None),getattr(ci,'SLOT_DEADLINE',None))if d is not None]])
+    base.check(ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+seconds,'finite preparation authority exceeds'+str(seconds)+'s')
     first_path=Path(p['firstStageApproval']);ci.protected_private(base,first_path);first_raw=base.read_bounded(first_path,65536)
     base.check(ci.sha(first_raw)==p['firstStageApprovalSha256'],'original drain approval differs');first=json.loads(first_raw)
     base.check(set(first)==ci.FIRST_APPROVAL_FIELDS and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','closed original drain approval required')
@@ -192,7 +199,7 @@ def prepare(guard,fmt,base,ci,update):
         st=directory.lstat();base.check({k:getattr(st,'st_'+v)for k,v in [('device','dev'),('inode','ino'),('uid','uid'),('gid','gid')]}|{'mode':stat.S_IMODE(st.st_mode)}==p['directoryIdentity'],'exact failed extraction inode differs')
     tree=tree_identity(directory,manifest,deadline=end,content=True)
     state();base.check(time.monotonic()<end,'aggregate offline preparation deadline expired')
-    proof={'format':1,'kind':'ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION','policy':POLICY,'preparationApproval':str(guard.path),'preparationApprovalSha256':ci.sha(guard.bytes),'preparedAt':ci.datetime.fromtimestamp(time.time(),ci.timezone.utc).isoformat(),'identity':a['identity'],'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'directory':str(directory),'tree':tree,'preparation':p,'releaseAuthorized':False}
+    proof={'format':1,'kind':'ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION','policy':p['policy'],'preparationApproval':str(guard.path),'preparationApprovalSha256':ci.sha(guard.bytes),'preparedAt':ci.datetime.fromtimestamp(time.time(),ci.timezone.utc).isoformat(),'identity':a['identity'],'archiveSha256':args.archive_sha256,'manifestSha256':fmt.digest(fmt.canonical(manifest)),'directory':str(directory),'tree':tree,'preparation':p,'releaseAuthorized':False}
     guard.file_mutation();base.write_new(Path(p['proof']),fmt.canonical(proof),0o400)
     print(json.dumps({'kind':proof['kind'],'proof':p['proof'],'proofSha256':ci.sha(fmt.canonical(proof)),'tree':tree,'serviceMutation':False,'releaseAuthorized':False}))
 
