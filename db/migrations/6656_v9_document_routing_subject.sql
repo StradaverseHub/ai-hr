@@ -33,7 +33,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d
  WHERE c.tenant_id=app.current_tenant_id() AND jsonb_typeof(d->'signing')='object'
  UNION ALL
- SELECT c.id,c.revision,c.company_id,c.employment_id,(c.data->>'personId')::uuid,true,c.number,c.data->>'state',d
+ SELECT c.id,c.revision,c.company_id,c.employment_id,(c.data->>'personId')::uuid,true,c.data->>'number',c.data->>'state',d
  FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
  CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d
  WHERE c.tenant_id=app.current_tenant_id() AND jsonb_typeof(d->'signing')='object'
