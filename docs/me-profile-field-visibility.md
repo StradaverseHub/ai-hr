@@ -144,6 +144,7 @@ not allocate migrations or grant employee rights.
 | `employment.employment_dates_and_service.extendedprobationunit` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.finalconfirmationdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractstartdate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
+| `employment.employment_dates_and_service.contractnumber` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractenddate` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |
 | `employment.employment_dates_and_service.contractremark` | Employment | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `employment.employment_dates_and_service.noticebeforeconfirmationvalue` | Employment | Visible | viewOnly | Recorded own employee fact; changes use the authorized owner workflow. |

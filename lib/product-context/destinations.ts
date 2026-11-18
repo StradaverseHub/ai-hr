@@ -164,6 +164,8 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  // Resignation postings use configured/current-or-pending group membership plus company/workforce authority.
  // The shell resolves offboardingPostingAccess; a coarse HR role must not advertise this queue.
  '/lifecycle/offboarding/postings',
+ // Contract postings require native posting-group and workforce authority, beyond a coarse HR role.
+ '/lifecycle/contracts/postings',
  '/admin/attendance/settings/offline-clocking',
  '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',

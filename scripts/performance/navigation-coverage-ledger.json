@@ -1381,6 +1381,15 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.contractPersonnelPostings",
+      "sourceOwner": "lib/navigation/shell-inventory.ts",
+      "sourceKey": "shell-slot:contractPersonnelPostings",
+      "declaredHref": "/lifecycle/contracts/postings",
+      "status": "uncovered",
+      "owner": "lib/navigation/shell-inventory.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.probationSettings",
       "sourceOwner": "lib/navigation/shell-inventory.ts",
       "sourceKey": "shell-slot:probationSettings",

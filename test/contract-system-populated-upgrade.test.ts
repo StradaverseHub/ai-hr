@@ -9,7 +9,7 @@ import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
 import {seedCatalogs} from '../scripts/seed-catalogs';
-import {COMBINED_RELEASE_DEFAULT_COLUMNS} from './helpers/approved-upgrade';
+import {COMBINED_RELEASE_DEFAULT_COLUMNS,COMBINED_RELEASE_NULL_COLUMNS} from './helpers/approved-upgrade';
 import {todayInKualaLumpur} from '../lib/hr-date';
 it('retains genuine human Contract jobs, events, seals, actor bindings and old rows across the nullable-system-creator/default-actor upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
@@ -35,13 +35,14 @@ it('retains genuine human Contract jobs, events, seals, actor bindings and old r
   await storage.withTenant(ctx,tx=>tx.execute(sql`select app.contract_shared_enqueue_event(${opened.value.caseId}::uuid,'beforeContractEnd','retained-human-reminder','{}'::jsonb)`));
   const snapshots=async()=>({jobs:[...await storage.client`select to_jsonb(j) as row from bulk_job j where tenant_id=${tenant} order by id`],events:[...await storage.client`select to_jsonb(e) as row from contract_shared_event e where tenant_id=${tenant} order by id`],cases:[...await storage.client`select to_jsonb(c) as row from contract_case c where tenant_id=${tenant} order by id`],flows:[...await storage.client`select to_jsonb(f) as row from contract_shared_case f where tenant_id=${tenant} order by case_id`],seals:[...await storage.client`select to_jsonb(s) as row from app.bulk_job_seal s where tenant_id=${tenant} order by job_id`],audit:[...await storage.client`select to_jsonb(e) as row from domain_event e where tenant_id=${tenant} order by id`]});
   const before=await snapshots(),ledger=[...await storage.client`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`];expect(before.jobs).toHaveLength(2);expect(before.events).toHaveLength(2);expect(before.seals).toHaveLength(2);expect(before.audit.length).toBeGreaterThan(0);
-  expect(before.jobs.every(item=>item.row.created_by===user&&item.row.context.userId===user&&item.row.state==='queued')).toBe(true);expect(before.events.every(item=>item.row.actor_user_id===user&&item.row.actor_person_id===person&&!Object.hasOwn(item.row,'actor_type'))).toBe(true);
+  expect(before.jobs.every(item=>item.row.created_by===user&&item.row.context.userId===user&&item.row.state==='queued')).toBe(true);expect(before.events.every(item=>item.row.actor_user_id===user&&item.row.actor_person_id===person&&!Object.hasOwn(item.row,'actor_type')&&!Object.hasOwn(item.row,'email_reconciliation'))).toBe(true);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const after=await snapshots();expect(after.jobs).toEqual(before.jobs);expect(after.cases).toEqual(before.cases);expect(after.flows).toEqual(before.flows);expect(after.seals).toEqual(before.seals);expect(after.audit).toEqual(before.audit);
   expect(COMBINED_RELEASE_DEFAULT_COLUMNS).toContainEqual({tag:'6380_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'});
-  expect(after.events.map(item=>{const {actor_type,...retained}=item.row;expect(actor_type).toBe('user');return {row:retained};})).toEqual(before.events);
-  const columns=await storage.client`select table_name,column_name,is_nullable from information_schema.columns where table_schema='public' and (table_name='bulk_job' and column_name='created_by' or table_name='contract_shared_event' and column_name='actor_type') order by table_name`;
-  expect(columns).toEqual([{table_name:'bulk_job',column_name:'created_by',is_nullable:'YES'},{table_name:'contract_shared_event',column_name:'actor_type',is_nullable:'NO'}]);
+  expect(COMBINED_RELEASE_NULL_COLUMNS).toContainEqual({tag:'6420_contract_historical_email_recovery',table:'contract_shared_event',columns:['email_reconciliation']});
+  expect(after.events.map(item=>{const {actor_type,email_reconciliation,...retained}=item.row;expect(actor_type).toBe('user');expect(email_reconciliation).toBeNull();return {row:retained};})).toEqual(before.events);
+  const columns=await storage.client`select table_name,column_name,is_nullable from information_schema.columns where table_schema='public' and (table_name='bulk_job' and column_name='created_by' or table_name='contract_shared_event' and column_name in('actor_type','email_reconciliation')) order by table_name,column_name`;
+  expect(columns).toEqual([{table_name:'bulk_job',column_name:'created_by',is_nullable:'YES'},{table_name:'contract_shared_event',column_name:'actor_type',is_nullable:'NO'},{table_name:'contract_shared_event',column_name:'email_reconciliation',is_nullable:'YES'}]);
   expect((await storage.client`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).slice(0,ledger.length)).toEqual(ledger);
   expect(await storage.client`select job_id from app.contract_system_job_source where tenant_id=${tenant}`).toHaveLength(0);expect(await storage.client`select id from app_user where tenant_id=${tenant}`).toHaveLength(1);
   await expect(storage.client`update bulk_job set created_by=null where id=${opened.value.jobId}::uuid`).rejects.toMatchObject({code:'23514'});await expect(storage.client`update contract_shared_event set actor_type='system' where id=${opened.value.eventId}::uuid`).rejects.toMatchObject({code:'23514'});
