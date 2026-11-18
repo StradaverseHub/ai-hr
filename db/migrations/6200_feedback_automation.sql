@@ -17,7 +17,10 @@ REVOKE ALL ON feedback_automation_work FROM PUBLIC,ai_hr_app;
 -- One snapshot binds report, ordered conversation and attachment bytes. Report text stays private.
 CREATE FUNCTION app.feedback_automation_snapshot(wanted uuid) RETURNS jsonb
 LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
- SELECT jsonb_build_object('report',to_jsonb(f),'block_trail',coalesce((
+ SELECT jsonb_build_object('report',to_jsonb(f),'dialogueDigest',(
+  SELECT encode(sha256(convert_to(coalesce(jsonb_agg(jsonb_build_array(q.id::text,q.question,q.answer,q.resolved_at IS NOT NULL) ORDER BY q.id)::text,'[]'),'UTF8')),'hex')
+  FROM public.feedback_block q WHERE q.feedback_request_id=f.id AND q.tenant_id=f.tenant_id),
+ 'block_trail',coalesce((
   SELECT jsonb_agg(to_jsonb(q) ORDER BY q.asked_at,q.id) FROM public.feedback_block q
   WHERE q.feedback_request_id=f.id AND q.tenant_id=f.tenant_id),'[]'::jsonb),
  'attachments',coalesce((SELECT jsonb_agg((to_jsonb(a)-'content')||jsonb_build_object('content_sha256',encode(sha256(a.content),'hex')) ORDER BY a.id)

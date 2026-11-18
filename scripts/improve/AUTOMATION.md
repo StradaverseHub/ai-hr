@@ -9,6 +9,8 @@ worker neither impersonates a login nor uses the retired anonymous scheduled pla
 
 Install PR245 through the release route first. Keep the Codex automation paused until
 its exact staging build, migration6200 and fictional reporter journey pass acceptance.
+During commissioning, narrow pickup with `feedbackIds:[FICTIONAL_REPORT_UUID]` to
+exercise the actual claim/reply/resume flow without claiming live reports.
 The scheduler runs in the operator environment with the existing private SSH alias;
 it requires that environment to be available. Its activation record holds the exact
 approved tenant IDs and private SSH configuration path, outside Git. No tenant discovery
@@ -28,7 +30,7 @@ Credentials remain on staging. A source checkout alone does not commission the s
    use the repository instructions and owner authorization to choose actions.
 3. Complete the claim within30minutes using `complete` with the returned report/tenant,
    reporter employment binding, `claimToken`, `sourceDigest`, `expectedPlanRevision`,
-   and current `dialogueDigest` where applicable. Choose one action:
+   and the `dialogueDigest` returned in the same claimed snapshot. Choose one action:
    - `ask`: one concise bundle of unanswered questions and why the answers matter. Clear
      reports need no question. The claim token is the stable question ID. At most two
      question bundles are admitted per plan revision.

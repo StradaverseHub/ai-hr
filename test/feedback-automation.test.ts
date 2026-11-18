@@ -6,7 +6,7 @@ import * as s from '../db/schema';
 import {submitFeedback,getFeedback,approveFeedbackPlan} from '../core/feedback';
 import {answerFeedbackClarification} from '../core/feedback-clarification';
 import {notificationBellSummary,markNotificationRead} from '../core/notifications';
-import {pickupSql,completeSql,notifySql,type Completion} from '../scripts/improve/automation';
+import {pickupSql,completeSql,notifySql,type Completion,type ClaimedFeedback} from '../scripts/improve/automation';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,reporter:SessionContext,other:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -19,16 +19,29 @@ beforeEach(async()=>{
 });
 async function script(statement:string){const c=await owner.client.reserve();try{return await c.unsafe(statement).simple();}catch(e){await c.unsafe('ROLLBACK').simple();throw e;}finally{c.release();}}
 const report=()=>submitFeedback(reporter,{category:'issue',title:'Payroll preview',description:'The preview shows the wrong November date.',expectedBehavior:'Show the selected date.'});
-async function pickup(tenantId=b.tenantId){await script(pickupSql({tenantId,worker:'fixture'}));return owner.client<{feedback_request_id:string;claim_token:string;source_digest:string}[]>`select * from feedback_automation_work where tenant_id=${tenantId} and state='claimed' order by updated_at`;}
+async function pickup(tenantId=b.tenantId,feedbackIds?:string[]){
+ const packets=await script(pickupSql({tenantId,worker:'fixture',feedbackIds}));
+ const row=(packets as unknown as {claimed_feedback?:ClaimedFeedback[]}[][]).flat().find(row=>row.claimed_feedback!==undefined);
+ expect(row?.claimed_feedback,'the actual pickup packet must be present').toBeDefined();
+ return row!.claimed_feedback!;
+}
+async function completion(action?:'ask'):Promise<Extract<Completion,{action:'ask'}>>;
+async function completion(action:'plan'):Promise<Extract<Completion,{action:'plan'}>>;
+async function completion(action:'hold'):Promise<Extract<Completion,{action:'hold'}>>;
+async function completion(action:'retry'):Promise<Extract<Completion,{action:'retry'}>>;
 async function completion(action:Completion['action']='ask'){
- const [w]=await pickup();const detail=(await getFeedback(reporter,w.feedback_request_id))!;
- const common={id:w.feedback_request_id,tenantId:b.tenantId,reporterEmploymentId:null,claimToken:w.claim_token,sourceDigest:w.source_digest,expectedPlanRevision:detail.planRevision,dialogueDigest:detail.dialogueDigest};
+ const [w]=await pickup();
+ const common={id:w.report.id,tenantId:w.report.tenant_id,reporterEmploymentId:w.report.reporter_employment_id,claimToken:w.claimToken,sourceDigest:w.sourceDigest,expectedPlanRevision:w.report.plan_revision,dialogueDigest:w.dialogueDigest};
  return action==='ask'?{...common,action,question:'Which preview screen did you open?'} as const:action==='plan'?{...common,action,plan:'Fix the selected date and show independent verification.',model:'fixture',visualChange:false} as const:action==='hold'?{...common,action,reason:'Needs a scope decision.'} as const:{...common,action:'retry'} as const;
 }
 describe('durable operator feedback coordinator',()=>{
  it('claims only the explicit tenant and cannot double-pick a live lease',async()=>{
-  await report();const foreign=await seedBase();expect(await pickup(foreign.tenantId)).toHaveLength(0);
-  const first=await pickup();expect(first).toHaveLength(1);await pickup();expect((await pickup())[0].claim_token).toBe(first[0].claim_token);
+  const {id}=await report(),{id:untouched}=await report();const foreign=await seedBase();expect(await pickup(foreign.tenantId)).toHaveLength(0);
+  const first=await pickup(b.tenantId,[id]);expect(first).toHaveLength(1);expect(first[0].report.id).toBe(id);
+  expect(await pickup(b.tenantId,[id])).toHaveLength(0);
+  const [stored]=await owner.client`select claim_token from feedback_automation_work where feedback_request_id=${id}`;
+  expect(stored.claim_token).toBe(first[0].claimToken);
+  expect(await owner.client`select * from feedback_automation_work where feedback_request_id=${untouched}`).toHaveLength(0);
   await expect(withTenant(admin,tx=>tx.execute(sql.raw('select * from feedback_automation_work')))).rejects.toThrow();
  });
  it('commits one question, preserves its identity on retry, waits for reply, then picks the answer as new source',async()=>{

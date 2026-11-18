@@ -9,6 +9,9 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {observeStatements} from './helpers/statement-observer';
 
 let fixture:ScaleFixture;
+type FixtureAmendment={id:string;compensationId:string;basicSalary:string|null;currency:string;rateAmount:string|null;
+ effectiveFrom:string;payrollFrom:string;until:null;informationOnly:boolean;reason:string};
+const expectedAmendments=new Map<string,{sequence:bigint;value:FixtureAmendment}[]>();
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();const base=await seedBase();
  fixture=await buildScaleFixture(base,{employments:1000,events:0});
@@ -16,10 +19,21 @@ beforeAll(async()=>{
  await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source)
   select tenant_id,id,'2026-01-01',payment_method::text,'legacy_snapshot' from employment where tenant_id=${base.tenantId}::uuid`;
  // Reader fixtures use the actual native compensation IDs. No amount is copied into audit payloads.
- await owner.client`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload)
+ const salaries=await owner.db.select({id:compensation.id,basicSalary:compensation.basicSalary,currency:compensation.currency,rateAmount:compensation.rateAmount})
+  .from(compensation).where(eq(compensation.tenantId,base.tenantId));
+ const salaryById=new Map(salaries.map(row=>[row.id,row]));
+ const amendments=await owner.client<{id:string;aggregate_id:string;subject_employment_id:string;sequence:string}[]>`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload)
   select c.tenant_id,'compensation',c.id,'compensation.amended','system',c.employment_id,
    jsonb_build_object('effectiveFrom','2026-01-15','payrollEffectiveFrom','2026-02-01','informationOnly',false,'reason','Fictional group-scale amendment')
-  from compensation c where c.tenant_id=${base.tenantId}::uuid`;
+  from compensation c where c.tenant_id=${base.tenantId}::uuid returning id,aggregate_id,subject_employment_id,sequence::text`;
+ for(const event of amendments){
+  const salary=salaryById.get(event.aggregate_id);if(!salary)throw Error('Fixture amendment must reference a known native salary.');
+  const rows=expectedAmendments.get(event.subject_employment_id)??[];
+  rows.push({sequence:BigInt(event.sequence),value:{id:event.id,compensationId:salary.id,basicSalary:salary.basicSalary,currency:salary.currency,
+   rateAmount:salary.rateAmount,effectiveFrom:'2026-01-15',payrollFrom:'2026-02-01',until:null,informationOnly:false,reason:'Fictional group-scale amendment'}});
+  expectedAmendments.set(event.subject_employment_id,rows);
+ }
+ for(const rows of expectedAmendments.values())rows.sort((a,b)=>a.sequence>b.sequence?-1:a.sequence<b.sequence?1:0);
 
 },300_000);
 afterAll(closeAll);
@@ -49,12 +63,18 @@ describe('dated payment-method reader at group scale',()=>{
  it('reads salary amendment references as one bounded subject query for group, multi and single-company HR',async()=>{
   expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);expect(fixture.employmentIds.length).toBeGreaterThanOrEqual(1000);
   for(const [name,ctx] of Object.entries(fixture.personas)){
-   const [expected]=await withTenant(ctx,tx=>tx.select({employmentId:employment.id,compensationId:compensation.id,basicSalary:compensation.basicSalary,currency:compensation.currency})
-    .from(employment).innerJoin(compensation,eq(compensation.employmentId,employment.id)).where(eq(employment.companyId,fixture.singleCompanyId)).orderBy(asc(employment.id)).limit(1));
-   expect(expected,name+': nonempty authorized salary source').toBeDefined();
-   const observed=await observeStatements(()=>compensationAmendmentHistory(ctx,expected.employmentId));
-   expect(observed.result).toMatchObject({page:1,hasMore:false,rows:[{compensationId:expected.compensationId,basicSalary:expected.basicSalary,currency:expected.currency,effectiveFrom:'2026-01-15',payrollFrom:'2026-02-01'}]});
-   expect(observed.statements.filter(statement=>statement.sql.includes('inner join "compensation"')&&statement.sql.includes('limit'))).toHaveLength(1);
+   const subjects=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment)
+    .where(eq(employment.companyId,fixture.singleCompanyId)).orderBy(asc(employment.id)));
+   // The scale fixture deliberately contains both one- and two-record salary histories. Pick both
+   // shapes explicitly; a random first UUID must not define the expected number of amendments.
+   for(const historyLength of [1,2]){
+    const subject=subjects.find(row=>expectedAmendments.get(row.id)?.length===historyLength);
+    expect(subject,`${name}: authorized ${historyLength}-record salary source`).toBeDefined();
+    const expected=expectedAmendments.get(subject!.id)!.map(row=>row.value);
+    const observed=await observeStatements(()=>compensationAmendmentHistory(ctx,subject!.id));
+    expect(observed.result).toEqual({page:1,hasMore:false,rows:expected});
+    expect(observed.statements.filter(statement=>statement.sql.includes('inner join "compensation"')&&statement.sql.includes('limit'))).toHaveLength(1);
+   }
   }
  },120_000);
  it('does not substitute the current master for a known pre-history date',async()=>{

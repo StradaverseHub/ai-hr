@@ -15,16 +15,23 @@ function protectBlock(statement: string, label: string): string {
 }
 function text(value: string, max: number) {if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw Error('Bounded nonempty text required.'); return value.trim();}
 const snapshotDigest = (expr: string) => `encode(sha256(convert_to((${expr})::text,'UTF8')),'hex')`;
-export type Pickup = {tenantId: string; worker: string; limit?: number};
+export type Pickup = {tenantId: string; worker: string; limit?: number; feedbackIds?:string[]};
+export type ClaimedFeedback = {
+ claimToken:string; sourceDigest:string; dialogueDigest:string;
+ report:{id:string;tenant_id:string;reporter_employment_id:string|null;plan_revision:number};
+ block_trail:unknown[]; attachments:unknown[];
+};
 export function pickupSql(p: Pickup): string {
  const tenant = id(p.tenantId), worker = literal(text(p.worker,120)), limit = p.limit ?? 3;
  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Pickup admits 1–3 reports.');
+ if(p.feedbackIds!==undefined&&(!Array.isArray(p.feedbackIds)||!p.feedbackIds.length||p.feedbackIds.length>3))throw Error('A narrowed pickup admits 1–3 explicit report IDs.');
+ const selected=p.feedbackIds?`AND r.id IN (${p.feedbackIds.map(id).join(',')})`:'';
  return protectBlock(`BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
  CREATE TEMP TABLE _feedback_pickup (result jsonb) ON COMMIT DROP;
  DO $pickup$ DECLARE f feedback_request%ROWTYPE; w feedback_automation_work%ROWTYPE; snapshot jsonb; fingerprint text; token uuid;
  BEGIN
  FOR f IN SELECT r.* FROM feedback_request r LEFT JOIN feedback_automation_work prior ON prior.feedback_request_id=r.id
- WHERE r.tenant_id=${tenant} AND r.status IN ('open','contested')
+ WHERE r.tenant_id=${tenant} AND r.status IN ('open','contested') ${selected}
  AND NOT EXISTS(SELECT 1 FROM feedback_block q WHERE q.feedback_request_id=r.id AND q.resolved_at IS NULL)
  AND (prior.feedback_request_id IS NULL OR ((prior.state<>'claimed' OR prior.lease_until<now()) AND (
  prior.source_digest IS DISTINCT FROM encode(sha256(convert_to(app.feedback_automation_snapshot(r.id)::text,'UTF8')),'hex') OR
@@ -52,7 +59,7 @@ export function pickupSql(p: Pickup): string {
   EXIT WHEN (SELECT count(*) FROM _feedback_pickup)>=${limit};
  END LOOP;
  END $pickup$;
- SELECT coalesce(jsonb_agg(result),'[]') FROM _feedback_pickup; COMMIT;`, 'pickup');
+ SELECT coalesce(jsonb_agg(result),'[]') AS claimed_feedback FROM _feedback_pickup; COMMIT;`, 'pickup');
 }
 export type Completion = {
  tenantId: string; id: string; claimToken: string; sourceDigest: string;
@@ -136,7 +143,7 @@ export function notifySql(tenantId: string): string {
  END LOOP;
  END $notify$; COMMIT;`;
 }
-export const pickupFeedback = (p:Pickup): unknown => JSON.parse(runFeedbackOperatorSql(pickupSql(p)));
+export const pickupFeedback = (p:Pickup): ClaimedFeedback[] => JSON.parse(runFeedbackOperatorSql(pickupSql(p)));
 export const completeFeedback = (p:Completion): void => {runFeedbackOperatorSql(completeSql(p));};
 export const notifyFeedback = (tenantId:string): void => {runFeedbackOperatorSql(notifySql(tenantId));};
 /** Private operator attention, not a reporter message or a public health response. */
