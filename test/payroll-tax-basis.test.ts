@@ -182,7 +182,8 @@ it('keeps original item amounts and named affected figures visible when annual o
 });
 
 it('denies a rollback reader access to newly imported tax-input evidence',async()=>{
- await expect(withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_import_tax_basis_reader','0',true)`);return tx.select().from(schema.payslip);})).rejects.toThrow(/import-aware income-tax reader/);
+ const error=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_import_tax_basis_reader','0',true)`);return tx.select().from(schema.payslip);}).catch(error=>error);
+ expect(error.cause?.code??error.code).toBe('55000');expect(error.cause?.message??error.message).toMatch(/import-aware income-tax reader/);
 });
 
 it('uses a proven later native opening for the earlier imported prefix without fabricating a historical zero',async()=>{
@@ -194,7 +195,7 @@ it('uses a proven later native opening for the earlier imported prefix without f
  await owner.client`update payroll_batch set status='processed',employee_count=1 where id=${later.batchId}::uuid`;
  const prefix=await previewTaxBasisRecalculation(ctx,selection());expect(prefix.employees[0].reason).toMatch(/Later saved months/);expect(prefix.employees[0].months.map(month=>month.taxable)).toEqual([5000,5000,5000]);expect(prefix.employees[0].missingEvidence).toBeUndefined();
  const complete=await previewTaxBasisRecalculation(ctx,{...selection(),upToMonth:10});expect(complete.eligibleCount).toBe(1);expect(complete.employees[0].months.map(month=>month.taxable)).toEqual([5000,5000,5000,5000]);expect(complete.employees[0].exempt).toBe(1500);
- await confirm(complete);for(const saved of original)expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved.id)))[0]).toEqual(saved);
+ await confirm(complete);const january=sources.find(source=>source.period==='2026-01')!.id;expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true}))).size).toBe(1);await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true,sameMonth:true}))).rejects.toThrow(/monthly exemption source ownership/);for(const saved of original)expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved.id)))[0]).toEqual(saved);
 });
 it('invalidates an eligible open run when only owned noncash taxability changes and preserves closed history',async()=>{
  await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BIK_OWNED',name:'Owned historical benefit',kind:'allowance',displayCategory:'bik',eaFormLine:'EA_B3',isNonPayable:true,includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'});
@@ -240,8 +241,44 @@ it('keeps import source identities and scoped subject pages stable while a repla
   for(let tick=0;tick<100;tick++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [job]=await owner.client<{state:string}[]>`select state from bulk_job where id=${request.jobId}::uuid`;if(job.state==='completed'){completed=true;break;}if(job.state==='failed')throw new Error('History stage failed');}
   expect(completed).toBe(true);expect(await source(ctx)).toEqual([]);expect(await source(self)).toEqual([]);
   const current=(await withTenant(ctx,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip))).map(slip=>slip.id);expect(current).toHaveLength(3);expect(current.every(id=>!ids.includes(id))).toBe(true);
+  const currentSource=(who:SessionContext)=>withTenant(who,async tx=>(await taxBasisSourceRowsTx(tx,current)).map(hashTaxBasisSource)),accepted=await currentSource(ctx);
+  const discarded=await previewPayrollHistoryUpload(ctx,{name:'discarded-correction.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('0007','700')]))});
+  const second=await requestPayrollHistoryConfirm(ctx,{attemptId:discarded.attemptId,previewHash:discarded.plan.previewHash,confirmReplacement:true,acknowledgeWarnings:true});if(!('jobId' in second))throw new Error('Expected second staged history job');
+  for(let tick=0;tick<50;tick++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [count]=await owner.client<{n:number}[]>`select count(*)::int as n from app.payroll_history_staged_row where stage_id=${second.jobId}::uuid and relation='payroll_history_import_revision'`;if(count.n)break;}
+  expect(await currentSource(ctx)).toEqual(accepted);expect(await currentSource(self)).toEqual(accepted);
+  await owner.db.update(schema.payComponent).set({name:'Changed after staged plan'}).where(eq(schema.payComponent.id,travel));
+  let failed=false;
+  for(let tick=0;tick<100;tick++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [job]=await owner.client<{state:string;notified:boolean}[]>`select state,notified_at is not null as notified from bulk_job where id=${second.jobId}::uuid`;if(job.state==='failed'&&job.notified){failed=true;break;}}
+  expect(failed).toBe(true);expect(await currentSource(ctx)).toEqual(accepted);expect(await currentSource(self)).toEqual(accepted);expect(await owner.client`select 1 from app.payroll_history_staged_row where stage_id=${second.jobId}::uuid`).toHaveLength(0);
  }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
 },90000);
 it('rejects null and oversized SQL subject pages before reading historical subjects',async()=>{
- for(const query of [sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,null)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],null,500)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,501)`])await expect(withTenant(ctx,tx=>tx.execute(query))).rejects.toThrow(/Invalid historical subject page/);
+ for(const query of [sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,null)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],null,500)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,501)`]){const error=await withTenant(ctx,tx=>tx.execute(query)).catch(error=>error);expect(error.cause?.code??error.code).toBe('22023');expect(error.cause?.message??error.message).toMatch(/Invalid historical subject page/);}
+});
+it('owns imported BIK once across two historical cycles and reconstructs the complete month baseline',async()=>{
+ await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BIK_CYCLE',name:'Cycle-owned benefit',kind:'allowance',displayCategory:'bik',eaFormLine:'EA_B3',isNonPayable:true,includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'});
+ const cycleRows=(cycle:string,basic:string,benefit:string)=>[['0007','2026-01',cycle,'BASIC','TAXCO',basic],['0007','2026-01',cycle,'BIK_CYCLE','TAXCO',benefit],...['EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['0007','2026-01',cycle,code,'TAXCO','0'])];
+ const draft=await previewPayrollHistoryUpload(ctx,{name:'two-cycles.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...cycleRows('ME','5000','300'),...cycleRows('BO','0','200')]))});expect(draft.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true});
+ const sources=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select p.id from payslip p join payroll_batch b on b.id=p.batch_id where p.employment_id=${employee}::uuid and b.pay_period='2026-01' order by b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`));expect(sources).toHaveLength(2);
+ const effective=await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,sources.map(source=>source.id),{includeImported:true}));
+ const snapshots=sources.map(source=>effective.get(source.id)!.basis.pcbNonCash as {owned:{bik:number};cumulative:{bik:number};before:{bik:number};ownedEntries:{sourceId:string}[]});
+ expect(snapshots.map(snapshot=>snapshot.owned.bik).sort((a,b)=>a-b)).toEqual([200,300]);expect(snapshots[0].before.bik).toBe(0);expect(snapshots[1].before.bik).toBe(snapshots[0].owned.bik);expect(snapshots[1].cumulative.bik).toBe(500);expect(new Set(snapshots.flatMap(snapshot=>snapshot.ownedEntries.map(entry=>entry.sourceId))).size).toBe(2);
+ const preview=await previewTaxBasisRecalculation(ctx,selection());expect(preview.employees[0].months.filter(month=>month.period==='2026-01').map(month=>(month.basis.pcbNonCash as {owned:{bik:number}}).owned.bik).sort((a,b)=>a-b)).toEqual([200,300]);
+});
+
+it('keeps reviewed receipts current for later calculations without treating display-name edits as tax changes',async()=>{
+ await confirm(await previewTaxBasisRecalculation(ctx,selection()));
+ await owner.db.update(schema.payComponent).set({name:'Renamed travel display'}).where(eq(schema.payComponent.id,travel));
+ const ids=(await withTenant(ctx,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip))).map(slip=>slip.id);
+ expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,ids,{includeImported:true}))).size).toBe(3);expect((await previewTaxBasisRecalculation(ctx,selection())).unchangedCount).toBe(1);
+ await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
+ await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,ids,{includeImported:true}))).rejects.toThrow(/Imported wage inputs require review/);
+ const refreshed=await previewTaxBasisRecalculation(ctx,selection());expect(refreshed.eligibleCount).toBe(1);await confirm(refreshed);
+ expect([...((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,ids,{includeImported:true}))).values())].map(value=>value.basis.pcb)).toEqual([5000,5000,5000]);
+});
+it('retains available imported item detail when the original relief split cannot be proved',async()=>{
+ const source=[...rows('0007'),...['01','02','03'].map(month=>['0007',`2026-${month}`,'ME','LP','TAXCO','100'])];
+ const draft=await previewPayrollHistoryUpload(ctx,{name:'unknown-relief-split.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...source]))});expect(draft.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true});
+ const preview=await previewTaxBasisRecalculation(ctx,selection()),subject=preview.employees[0];expect(subject.status).toBe('blocked');expect(subject.taxable).toBeNull();expect(subject.partialMonths).toHaveLength(3);expect(subject.partialMonths![0].items.find(item=>item.code==='TRV')?.amount).toBe(500);expect(subject.missingEvidence).toMatchObject([{field:'optionalDeductionOwnership',affects:['optionalDeductions','pcbComparison']}]);
+ const current=await withTenant(ctx,tx=>tx.select().from(schema.payslip));expect(current.map(slip=>(slip.statutory as {lp:number}).lp)).toEqual([100,100,100]);expect(current.map(slip=>(slip.statutory as {pcb:number}).pcb)).toEqual([0,0,0]);
 });

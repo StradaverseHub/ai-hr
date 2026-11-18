@@ -35,4 +35,10 @@ describe('exact effective tax basis reads',()=>{
   expect(()=>validatedTaxBasis({...basis,exemptionUsed:{PCB_TRA_BUSINESS:-1}})).toThrow(/malformed/);
   expect(()=>validatedTaxBasis({...basis,normal:NaN})).toThrow(/malformed/);
  });
+ it('holds legacy imported inputs for eligible calculations while original artifact reads remain available',async()=>{
+  const legacy={...fixture(1),historyAttemptId:'original-attempt'};
+  expect((await readEffectiveTaxBasesTx(txRows([[legacy],[]]),ctx,[legacy.id])).size).toBe(0);
+  await expect(readEffectiveTaxBasesTx(txRows([[legacy],[],[],[{period:'2026-01',digest:'current-rules'}]]),ctx,[legacy.id],{includeImported:true})).rejects.toThrow(/Imported wage inputs require review/);
+ });
+
 });

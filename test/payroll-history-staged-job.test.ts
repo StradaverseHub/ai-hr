@@ -26,12 +26,13 @@ import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
-import {todayInKualaLumpur} from '../lib/hr-date';
+import {importedTaxSettingsTx,importTaxSettingsWithBasic,importedTaxSettingsHash} from '../core/payroll-import-tax-source';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 // `earlier` is imported new (after the processed month, so nothing processed depends on it and it can be reverted);
 // `processed` holds a closed processed run the file overwrites.
-const year=Number(todayInKualaLumpur().slice(0,4))-2,earlier=`${year}-03`,processed=`${year}-02`;
+// This fixture intentionally exercises calculation with the pack's verified assessment year.
+const year=2026,earlier=`${year}-03`,processed=`${year}-02`;
 const CODES=['0007','0008','0009'];
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
 const tick=()=>runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});
@@ -48,7 +49,7 @@ async function tenant():Promise<Tenant>{
  const b=await seedBase();await setModule(b.tenantId,'payroll','active');const ctx=await entitledCtx(b);
  await owner.db.update(schema.company).set({companyLabel:'000AC'}).where(eq(schema.company.id,b.companyId));
  await seedPayrollCycleCatalog(ctx,b.companyId);
- await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
+ await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic',pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'});
  const employments:Record<string,string>={};
  for(const [i,code] of CODES.entries()){
   const hired=await hireEmployee(ctx,{person:{fullName:`Fictional history employee ${code}`,primaryEmail:`history-${code}-${randomUUID().slice(0,6)}@fixture.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:code,hiredOn:`${year-1}-01-01`});
@@ -97,13 +98,23 @@ async function state(t:Tenant,attemptId:string){
  const cycles=await q(sql`select id,code from payroll_cycle where tenant_id=${t.b.tenantId}::uuid`);
  const selections=await q(sql`select id,employment_id from employment_tax_selection_my where tenant_id=${t.b.tenantId}::uuid`);
  const salaries=await q(sql`select id,employment_id from compensation where tenant_id=${t.b.tenantId}::uuid`);
+ const settings=importTaxSettingsWithBasic(await withTenant(t.ctx,importedTaxSettingsTx));
+ const settingsHash=importedTaxSettingsHash(settings);
+ // The digest binds tenant-specific Pay Item ids. Verify it before normalizing across tenants;
+ // compare all receipt settings and source bindings below rather than discarding them.
+ for(const slip of slips){const stamp=(slip.statutory as {importedTaxBasis?:{settingsHash:string;settings:{id:string;code:string}[];lines:{settingId:string;code:string}[]}}).importedTaxBasis;if(!stamp)continue;
+  expect(stamp.settingsHash).toBe(settingsHash);
+  for(const setting of stamp.settings)expect(settings.find(current=>current.id===setting.id)).toEqual(setting);
+  for(const line of stamp.lines)expect(stamp.settings.some(setting=>setting.id===line.settingId&&setting.code===line.code)).toBe(true);
+ }
  const names=new Map<string,string>([[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
+  ...settings.map(setting=>[setting.id,'pay-item:'+setting.code] as [string,string]),
   ...Object.entries(t.employments).map(([c,id])=>[id,'employment:'+c] as [string,string]),
   ...person.map(r=>[r.person_id as string,'person:'+code.get(r.id as string)] as [string,string]),
   ...cycles.map(c=>[c.id as string,'cycle:'+c.code] as [string,string]),
   ...selections.map(r=>[r.id as string,'tax-selection:'+code.get(r.employment_id as string)] as [string,string]),
   ...salaries.map(r=>[r.id as string,'compensation:'+code.get(r.employment_id as string)] as [string,string])]);
- const sort=<T,>(rows:T[])=>rows.map(r=>JSON.stringify(r).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
+ const sort=<T,>(rows:T[])=>rows.map(r=>JSON.stringify(r).replaceAll(settingsHash,'verified-settings-digest').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
  return{
   periods:sort(periods),
   batches:sort(batches.map(b=>Object.fromEntries(Object.entries(b).filter(([k])=>k!=='id')))),

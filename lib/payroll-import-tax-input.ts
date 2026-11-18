@@ -2,7 +2,7 @@
 import {classifyNonCashBenefit} from '../localization/noncash-benefits';
 import type {ImportCodeEntry} from './payroll-history-import-schema';
 import type {TaxBasisItemSetting} from '../localization/country-pack';
-export type ImportedTaxLine={rowNum:number;originalCode:string;code:string;settingId:string;amount:number;direction:'earning'|'deduction'|'noncash'};
+export type ImportedTaxLine={rowNum:number;originalCode:string;code:string;settingId:string;amount:number;direction:'earning'|'deduction'|'noncash';nonCashSource?:{source:'recurring'|'one_off';sourceId?:string}};
 export type ImportedTaxSetting=TaxBasisItemSetting&{displayCategory?:string|null;eaFormLine?:string|null};
 export class ImportedTaxSourceError extends Error{constructor(message:string){super(message);this.name='ImportedTaxSourceError';}}
 export const SYSTEM_BASIC_TAX_SETTING:ImportedTaxSetting={id:'system-basic-salary',code:'BASIC',name:'Basic salary',kind:'allowance',includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:null,isNonPayable:false,epfBonus2012:false,archivedAt:null};

@@ -5363,7 +5363,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
       for(const source of await taxBasisSourceRowsTx(tx,earlier.map(slip=>slip.id)))if(!taxOpeningPrefix.some(saved=>saved.id===source.id))taxOpeningPrefix.push(source);
-      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true});
+      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true,sameMonth:true});
       for (const r of earlier) {
         // Read what the original payslip charged before applying any tax-input correction.
         const savedStatutory: unknown = r.statutory;
@@ -5406,7 +5406,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // the room again (a recurring item's usage is re-folded here and is not read). An outstanding-payment
         // employment already carries the whole of each earlier slip's usage just above.
         if(!postEmploymentIds.has(r.employmentId)){
-          const oneOffUsed=(savedStatutory as {oneOffExemptionUsed?:Record<string,unknown>}|null)?.oneOffExemptionUsed;
+          const oneOffUsed=((correction?.statutory??savedStatutory) as {oneOffExemptionUsed?:Record<string,unknown>}|null)?.oneOffExemptionUsed;
           if(oneOffUsed&&typeof oneOffUsed==='object'){
             const used=exemptUsedByEmp.get(r.employmentId)??{};
             for(const [code,amount] of Object.entries(oneOffUsed))if(typeof amount==='number'&&Number.isFinite(amount)&&amount>0)used[code]=round2((used[code]??0)+amount);

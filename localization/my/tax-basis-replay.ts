@@ -1,11 +1,11 @@
 /** Explicit historical tax-input replay. Never executes compensation rules or computes a PCB deduction. */
-import {classifyNonCashBenefit,totalNonCash,taxableNonCash,readPcbNonCash,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
+import {classifyNonCashBenefit,createNonCashOwnershipReplay,readPcbNonCash,NonCashBenefitConfigurationError,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
 import type {TaxBasisItem,TaxBasisValue} from '../../lib/payroll-tax-basis';
 import type {StatutoryRuleset} from './statutory-tables';
 export class TaxBasisReplayError extends Error {constructor(message:string){super(message);this.name='TaxBasisReplayError';}}
 export type TaxBasisItemSetting={id:string;code:string;name:string;kind:string;includedInPcb:boolean;pcbRemunerationType:'normal'|'additional'|'optional_deduction'|null;pcbExemptionCode:string|null;isNonPayable:boolean;epfBonus2012:boolean;archivedAt?:unknown;displayCategory?:string|null;eaFormLine?:string|null};
-export type TaxBasisSourceSlip={id:string;period:string;runOrder:number;sourceLines:{code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;previousTreatment?:string|null}[];statutory:Record<string,unknown>;expectedGross:number;expectedOtherDeductions:number};
-export type TaxBasisReplayInput={year:number;upToMonth:number;slips:TaxBasisSourceSlip[];settings:TaxBasisItemSetting[];rulesByPeriod:Record<string,{rules:StatutoryRuleset;hash:string}>;openingExemptionUsed:Record<string,number>};
+export type TaxBasisSourceSlip={id:string;period:string;runOrder:number;sourceKind?:'import'|'native';sourceLines:{code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null}[];statutory:Record<string,unknown>;expectedGross:number;expectedOtherDeductions:number};
+export type TaxBasisReplayInput={year:number;upToMonth:number;slips:TaxBasisSourceSlip[];settings:TaxBasisItemSetting[];rulesByPeriod:Record<string,{rules:StatutoryRuleset;hash:string}>;openingExemptionUsed:Record<string,number>;nonCashPrefixComplete?:boolean};
 export type TaxBasisReplayRow={payslipId:string;period:string;basis:TaxBasisValue};
 function fail(message:string):never{throw new TaxBasisReplayError(message);}
 const round=(n:number)=>Math.round(n*100)/100;
@@ -20,6 +20,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
  const seen=new Set<string>(),order=new Set<string>();
  const slips=[...input.slips].sort((a,b)=>a.period.localeCompare(b.period)||a.runOrder-b.runOrder||a.id.localeCompare(b.id));
  if(!slips.length)fail('No saved history is available for this employee.');
+ const nonCashReplay=createNonCashOwnershipReplay(input.nonCashPrefixComplete??true);
  return slips.map(slip=>{
   if(seen.has(slip.id))fail('A source payroll record appears more than once.');seen.add(slip.id);
   if(!new RegExp(`^${input.year}-(0[1-9]|1[0-2])$`).test(slip.period)||Number(slip.period.slice(5))>input.upToMonth)fail('A source period is outside the reviewed selection.');
@@ -35,7 +36,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   if(nc!==undefined&&!readPcbNonCash(nc))fail(`${slip.period}: original noncash ownership is malformed.`);
   const nonCashEntries:NonCashEntry[]=[],nonCashEaEntries:NonCashEaEntry[]=[];
   let earned=0,deducted=0,normal=0,additional=0,exempt=0,declaredLp=0,pcbDeduct=0;
-  const exemptionUsed:Record<string,number>={},items:TaxBasisItem[]=[];
+  const exemptionUsed:Record<string,number>={},oneOffExemptionUsed:Record<string,number>={},items:TaxBasisItem[]=[];
   const consume=(code:string,amount:number,table:'pcb'|'lp')=>{
    if(!Object.prototype.hasOwnProperty.call(tables[table],code))fail(`${slip.period}: exemption ${code} is unsupported for this assessment year.`);
    const cap=tables[table][code];if(!Number.isFinite(cap))fail('The exemption limit is malformed.');
@@ -50,9 +51,11 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
     const kind=classifyNonCashBenefit({code:setting.code,kind:setting.kind,nonPayable:true,pcb:setting.includedInPcb,displayCategory:setting.displayCategory,eaFormLine:setting.eaFormLine,pcbRemunerationType:setting.pcbRemunerationType,epfBonus2012:setting.epfBonus2012});
     if(!kind)fail(`${slip.period}: ${line.code} has no supported BIK/VOLA classification.`);
     const itemExempt=setting.includedInPcb&&setting.pcbExemptionCode?consume(setting.pcbExemptionCode,amount,'pcb'):0;
-    const taxable=setting.includedInPcb?round(amount-itemExempt):0,sourceId=`${slip.id}:row:${line.rowNum}`;
-    if(setting.includedInPcb)nonCashEntries.push({kind,code:setting.code,source:'one_off',sourceId,entered:amount,exempt:itemExempt,taxable,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
-    nonCashEaEntries.push({kind,code:setting.code,source:'one_off',sourceId,entered:amount,reportableAmount:setting.includedInPcb?taxable:amount,exemptAmount:itemExempt,eaFormLine:setting.eaFormLine??null,subjectPCB:setting.includedInPcb,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
+    const taxable=setting.includedInPcb?round(amount-itemExempt):0;
+    if(!line.nonCashSource&&slip.sourceKind!=='import')fail(`${slip.period}: ${line.code} original noncash source identity is unavailable.`);
+    const source=line.nonCashSource??{source:'one_off' as const,sourceId:`${slip.id}:row:${line.rowNum}`};
+    if(setting.includedInPcb)nonCashEntries.push({kind,code:setting.code,...source,entered:amount,exempt:itemExempt,taxable,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
+    nonCashEaEntries.push({kind,code:setting.code,...source,entered:amount,reportableAmount:setting.includedInPcb?taxable:amount,exemptAmount:itemExempt,eaFormLine:setting.eaFormLine??null,subjectPCB:setting.includedInPcb,...(setting.pcbExemptionCode?{exemptionCode:setting.pcbExemptionCode}:{})});
     exempt=round(exempt+itemExempt);items.push({code:setting.code,name:setting.name,amount,previousTreatment:line.previousTreatment??null,latestTreatment:`Non-cash ${kind.toUpperCase()} · ${setting.includedInPcb?'Taxable':'Non-Taxable'}`,taxable,exempt:itemExempt});continue;
    }
    if(setting.isNonPayable)fail(`${slip.period}: ${line.code} cannot be treated as cash.`);
@@ -69,6 +72,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
     }else if(line.direction==='deduction'){pcbDeduct=round(pcbDeduct+amount);latestTreatment='Taxable remuneration deduction';}
     else{
      if(setting.pcbExemptionCode){if(!setting.pcbExemptionCode.startsWith('PCB_'))fail('The exemption classification conflicts with the remuneration stream.');itemExempt=consume(setting.pcbExemptionCode,amount,'pcb');}
+     if(slip.sourceKind==='import'&&stream==='additional'&&setting.pcbExemptionCode&&itemExempt>0)oneOffExemptionUsed[setting.pcbExemptionCode]=round((oneOffExemptionUsed[setting.pcbExemptionCode]??0)+itemExempt);
      taxable=round(amount-itemExempt);if(stream==='normal')normal=round(normal+taxable);else additional=round(additional+taxable);
      latestTreatment=`${itemExempt===amount?'Tax-Exempt':'Taxable'} · ${stream}${setting.pcbExemptionCode?' · '+setting.pcbExemptionCode:''}`;
     }
@@ -80,11 +84,12 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   if(pcbDeduct>normal)fail(`${slip.period}: taxable deductions exceed supported normal remuneration.`);normal=round(normal-pcbDeduct);
   let preservedLp=money(slip.statutory.lp??0,'Original relief');
   if(preservedLp>0){const detail=slip.statutory.lpDetail;if(!obj(detail)||typeof detail.tp1!=='number')fail(`${slip.period}: the original relief and Pay Item deduction split is unavailable.`);preservedLp=money(detail.tp1,'Saved TP1 relief');}
-  const nonCashAmounts=taxableNonCash(nonCashEntries);
   const savedNonCash=readPcbNonCash(nc);
-  if(savedNonCash&&(savedNonCash.owned.bik!==0||savedNonCash.owned.vola!==0)&&!nonCashEaEntries.length)fail(`${slip.period}: original noncash source detail is unavailable.`);
-  const nonCash:PcbNonCashSnapshot={version:1,current:totalNonCash(nonCashEntries),ownedCurrent:totalNonCash(nonCashEntries),owned:nonCashAmounts,cumulative:nonCashAmounts,before:{bik:0,vola:0},accumulated:{bik:0,vola:0,complete:false},cashNormal:normal,entries:nonCashEntries,ownedEntries:nonCashEntries,eaEntries:nonCashEaEntries,ownedEaEntries:nonCashEaEntries};
-  const basis:TaxBasisValue={version:1,period:slip.period,pcb:round(normal+additional),normal,additional,exempt,lp:round(preservedLp+declaredLp),exemptionUsed,items,rulesHash:resolution.hash,...(nonCashEaEntries.length?{pcbNonCash:nonCash}:{})};
+  let nonCash:PcbNonCashSnapshot;
+  try{nonCash=nonCashReplay({period:slip.period,cashNormal:normal,owned:nonCashEntries,ownedEa:nonCashEaEntries,original:savedNonCash,completeSource:slip.sourceKind==='import'||savedNonCash!==null});}
+  catch(error){fail(`${slip.period}: ${error instanceof NonCashBenefitConfigurationError?error.componentCode:'Noncash'} original month source ownership is incomplete or duplicated.`);}
+
+  const basis:TaxBasisValue={version:1,period:slip.period,pcb:round(normal+additional),normal,additional,exempt,lp:round(preservedLp+declaredLp),exemptionUsed,items,rulesHash:resolution.hash,...(slip.sourceKind==='import'?{oneOffExemptionUsed}:{}),...((nonCash.eaEntries.length||savedNonCash)?{pcbNonCash:nonCash}:{})};
   return {payslipId:slip.id,period:slip.period,basis};
  });
 }

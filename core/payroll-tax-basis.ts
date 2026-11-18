@@ -1,5 +1,5 @@
 /** Authorized, explicit historical tax-input corrections; original payslips are immutable inputs. */
-import {importedTaxSettingsTx,importedTaxNeedsOpening} from './payroll-import-tax-source';
+import {importedTaxSettingsTx,importedTaxNeedsOpening,importedTaxRulesStatesTx,importedTaxSettingEvidence} from './payroll-import-tax-source';
 import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting} from '../lib/payroll-import-tax-input';
 import {readPcbNonCash} from '../localization/noncash-benefits';
 import {resolveTaxOpeningEvidence} from '../lib/payroll-tax-opening-evidence';
@@ -38,8 +38,8 @@ type Settings=ImportedTaxSetting;
 async function settingsTx(tx:Tx,lock=false){if(lock)await tx.execute(sql`select id from pay_component order by id for share`);return importedTaxSettingsTx(tx);}
 const basicSetting=SYSTEM_BASIC_TAX_SETTING;
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
-type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;previousTreatment?:string|null};
-type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:{rowNums:number[];values:unknown;companyId:string;employmentId:string;period:string;cycleId:string}[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>};
+type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
+type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:{rowNums:number[];values:unknown;companyId:string;employmentId:string;period:string;cycleId:string}[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
 async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:string,settings:Settings[],cache:SourceCache,ctx:SessionContext):Promise<InputLine[]>{
  if(slip.historyAttemptId){
   let cached=cache.get(slip.historyAttemptId);
@@ -53,7 +53,7 @@ async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:strin
   const sourceRows=plans[0].rowNums.map(rowNum=>{const row=rows[rowNum-2];if(!row)fail(`${slip.period}: an original source row is missing.`);const amount=money(readHistoryField(row,'amount').replace(/[,_\s]/g,''));if(amount===null)fail(`${slip.period}: an original amount is not exact.`);return{rowNum,code:readHistoryField(row,'doe_code'),amount};});
   const lines=importedTaxInput(sourceRows,cache.codes,settings);
   const stamp=slip.statutory.importedTaxBasis;
-  if(object(stamp)&&Array.isArray(stamp.lines))for(const line of lines){const saved=stamp.lines.find((saved:unknown)=>object(saved)&&saved.rowNum===line.rowNum);if(!object(saved)||saved.settingId!==line.settingId||saved.code!==line.code)fail(`${slip.period}: original Pay Item identity changed for ${line.originalCode}. Review its import mapping.`);}
+  if(object(stamp)&&Array.isArray(stamp.lines))for(const line of lines){const saved=stamp.lines.find((saved:unknown)=>object(saved)&&saved.rowNum===line.rowNum);if(!object(saved)||saved.settingId!==line.settingId||saved.code!==line.code||saved.amount!==line.amount)fail(`${slip.period}: original Pay Item identity changed for ${line.originalCode}. Review its import mapping.`);if(line.direction==='noncash'){if(!object(saved.nonCashSource)||saved.nonCashSource.source!=='one_off'||typeof saved.nonCashSource.sourceId!=='string'||!/^import:[a-f0-9]{64}$/.test(saved.nonCashSource.sourceId))fail(`${slip.period}: original noncash source ownership is unavailable.`);line.nonCashSource={source:'one_off',sourceId:saved.nonCashSource.sourceId};}}
   return lines;
 
  }
@@ -72,7 +72,7 @@ async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:strin
   out.push({code:raw.code,amount,direction});
  }
  const nc=readPcbNonCash(slip.statutory.pcbNonCash);
- if(nc)for(const [index,entry] of nc.ownedEaEntries.entries()){const setting=settings.find(setting=>setting.code===entry.code);if(!setting)fail(`${slip.period}: ${entry.code} original noncash Pay Item is unavailable.`);out.push({code:entry.code,amount:entry.entered,direction:'noncash',settingId:setting.id,rowNum:1000000+index});}
+ if(nc)for(const [index,entry] of nc.ownedEaEntries.entries()){const setting=settings.find(setting=>setting.code===entry.code);if(!setting)fail(`${slip.period}: ${entry.code} original noncash Pay Item is unavailable.`);out.push({code:entry.code,amount:entry.entered,direction:'noncash',settingId:setting.id,rowNum:1000000+index,nonCashSource:{source:entry.source,...(entry.sourceId?{sourceId:entry.sourceId}:{})}});}
  if(!basicIncluded&&Number(slip.basic)!==0){if(settings.some(s=>s.code==='BASIC'&&s.id!=='system-basic-salary'))fail(`${slip.period}: the original basic Pay Item identity is unavailable.`);out.unshift({code:'BASIC',amount:Number(slip.basic),direction:'earning'});}
  return out;
 }
@@ -87,6 +87,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   // A changed exemption/relief prefix cannot silently reallocate a later saved month.
   const country=cache.country??(await tx.execute<{country:string}>(sql`select country from company where id=${selection.companyId}::uuid`))[0].country;
   const pack=requirePackFor(country);if(!pack.payroll.replayTaxBasis)fail('This country pack does not support historical income-tax corrections.');
+  const ruleStates=cache.rulesStates??await importedTaxRulesStatesTx(tx,[...new Set(included.map(slip=>slip.period))]);
   const rulesByPeriod:Record<string,{rules:StatutoryRuleset;hash:string}>={},rulesEvidence:Record<string,unknown>={};
   for(const period of [...new Set(included.map(s=>s.period))]){
    cache.rules??=new Map();
@@ -95,19 +96,24 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    rulesByPeriod[period]={rules:resolved.ruleset,hash:hash(resolved)};rulesEvidence[period]={version:resolved.version,source:resolved.source,effectiveFrom:resolved.effectiveFrom,packVersion:resolved.packVersion,signedKeyId:resolved.signedKeyId,pcbExemptions:resolved.ruleset.pcbExemptions};
   }
   const input=[];
-  for(const slip of included)input.push({id:slip.id,period:slip.period,runOrder:slip.runOrder,sourceLines:await linesTx(tx,slip,who.id,selection.companyId,settings,cache,ctx),statutory:slip.statutory,expectedGross:Number(slip.gross),expectedOtherDeductions:Number(slip.deductions)});
+  for(const slip of included)input.push({id:slip.id,period:slip.period,runOrder:slip.runOrder,sourceKind:slip.historyAttemptId?'import' as const:'native' as const,sourceLines:await linesTx(tx,slip,who.id,selection.companyId,settings,cache,ctx),statutory:slip.statutory,expectedGross:Number(slip.gross),expectedOtherDeductions:Number(slip.deductions)});
   const hashes=cache.sourceHashes??new Map((await taxBasisSourceRowsTx(tx,slips.map(slip=>slip.id))).map(source=>[source.id,importedSourceHash(source)]));
   const capped=input.some(row=>importedTaxNeedsOpening(row.sourceLines.map((line,index)=>({...line,originalCode:line.code,rowNum:line.rowNum??index,settingId:line.settingId??settings.find(setting=>setting.code===line.code)?.id??''})),settings,rulesByPeriod[row.period].rules));
   const opening=resolveTaxOpeningEvidence({year:selection.year,employmentId:who.id,companyId:selection.companyId,required:capped,requiredSourceIds:included.map(slip=>slip.id),sources:slips.map(slip=>({id:slip.id,sourceHash:hashes.get(slip.id)!,statutory:slip.statutory}))});
-  if(opening.state!=='known'){
-   const partialMonths=input.map(row=>({payslipId:row.id,period:row.period,items:row.sourceLines.map(line=>{const setting=settings.find(setting=>setting.code===line.code)!;return{code:line.code,name:setting.name,amount:line.amount,direction:line.direction,includedInPcb:setting.includedInPcb,remunerationType:setting.pcbRemunerationType,exemptionCode:setting.pcbExemptionCode};})}));
-   return{...blocked(opening.reason),recordCount:included.length,partialMonths,missingEvidence:[{field:'priorEmployerExemptionUsage',affects:['taxableWages','exemptWages','optionalDeductions','pcbComparison'],reason:opening.reason}]};
-  }
+  const partialMonths=()=>input.map(row=>({payslipId:row.id,period:row.period,items:row.sourceLines.map(line=>{const setting=settings.find(setting=>setting.code===line.code)!;return{code:line.code,name:setting.name,amount:line.amount,direction:line.direction,includedInPcb:setting.includedInPcb,remunerationType:setting.pcbRemunerationType,exemptionCode:setting.pcbExemptionCode};})}));
+  const heldDetail=(reason:string,field:string,affects:string[]):TaxBasisEmployee=>({...blocked(reason),recordCount:included.length,partialMonths:partialMonths(),missingEvidence:[{field,affects,reason}]});
+  if(opening.state!=='known')return heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
   const openingExemptionUsed=opening.used;
-  const replay=pack.payroll.replayTaxBasis({year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod,openingExemptionUsed});
+  let replay:ReturnType<typeof pack.payroll.replayTaxBasis>;
+  try{replay=pack.payroll.replayTaxBasis({year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod,openingExemptionUsed});}
+  catch(error){
+   if(!(error instanceof Error)||error.name!=='TaxBasisReplayError')throw error;
+   const noncash=/noncash/i.test(error.message),deduction=/relief|deduction split/i.test(error.message);
+   return heldDetail(error.message,noncash?'nonCashSourceOwnership':deduction?'optionalDeductionOwnership':'historicalTaxInputs',noncash?['noncashWages','pcbComparison']:deduction?['optionalDeductions','pcbComparison']:['taxableWages','exemptWages','pcbComparison']);
+  }
   let effective:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null=null;
   // A fresh correction may explicitly supersede a stale source. It must still be exactly reconstructible.
-  try{effective=cache.effective!==undefined?cache.effective:await readEffectiveTaxBasesTx(tx,ctx,included.map(s=>s.id),{includeImported:true});}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
+  try{effective=cache.effective!==undefined?cache.effective:await readEffectiveTaxBasesTx(tx,ctx,included.map(s=>s.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
   let superseded=cache.superseded;
   if(!superseded){
    superseded=new Map();
@@ -124,7 +130,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    const exempt=money(row.basis.exempt);if(exempt===null)fail('The country pack did not return exact exemption evidence.');
    const old=(superseded.get(source.id)??[]).map(id=>({id}));
    const items=row.basis.items.map((item,index)=>{const saved=previous?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
-   const basis:TaxBasisValue={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period]};
+   const basis:TaxBasisValue={...validatedTaxBasis(row.basis),items,supersedes:old.map(r=>r.id),settingsHash,appliedSettings:settings.filter(setting=>row.basis.items.some(item=>item.code===setting.code)),rulesEvidence:rulesEvidence[row.period],rulesState:ruleStates.get(row.period)};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
    const beforeNormal=previous?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
    const beforeAdditional=previous?.additional??money(source.bonus);
@@ -136,8 +142,8 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
     ||hash(nonCashInputs(previous?.pcbNonCash??st.pcbNonCash))!==hash(nonCashInputs(basis.pcbNonCash));
    months.push({payrollInputsChanged,payslipId:source.id,period:source.period,sourceHash:hashes.get(source.id)!,beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
   }
-  const comparison=(basis:TaxBasisValue)=>({pcb:basis.pcb,normal:basis.normal,additional:basis.additional,exempt:basis.exempt,lp:basis.lp,nonCash:nonCashInputs(basis.pcbNonCash),exemptionUsed:basis.exemptionUsed,items:basis.items.map(({previousTreatment,name,...item})=>item)});
-  const changed=months.some(month=>{const source=included.find(slip=>slip.id===month.payslipId)!,stamp=source.statutory.importedTaxBasis;const previous=effective?.get(month.payslipId)?.basis??(object(stamp)&&stamp.state==='ready'?validatedTaxBasis(stamp.basis):null);return !previous||hash(comparison(previous))!==hash(comparison(month.basis));});
+  const comparison=(basis:TaxBasisValue)=>({pcb:basis.pcb,normal:basis.normal,additional:basis.additional,exempt:basis.exempt,lp:basis.lp,nonCash:nonCashInputs(basis.pcbNonCash),exemptionUsed:basis.exemptionUsed,settings:importedTaxSettingEvidence(basis.appliedSettings),rulesState:basis.rulesState,rulesEvidence:basis.rulesEvidence,items:basis.items.map(({previousTreatment,name,...item})=>item)});
+  const changed=months.some(month=>{const source=included.find(slip=>slip.id===month.payslipId)!,stamp=source.statutory.importedTaxBasis;const previous=effective?.get(month.payslipId)?.basis??(object(stamp)&&stamp.state==='ready'?{...validatedTaxBasis(stamp.basis),appliedSettings:stamp.settings,rulesState:stamp.rulesState,rulesEvidence:stamp.rulesEvidence}:null);return !previous||hash(comparison(previous))!==hash(comparison(month.basis));});
   const beforeTaxable=months.some(m=>m.beforeTaxable===null)?null:round(months.reduce((n,m)=>n+m.beforeTaxable!,0)),taxable=round(months.reduce((n,m)=>n+m.taxable,0)),beforeExempt=months.some(m=>m.beforeExempt===null)?null:round(months.reduce((n,m)=>n+m.beforeExempt!,0)),exempt=round(months.reduce((n,m)=>n+m.exempt,0));
   if(changed&&slips.some(s=>s.period>cutoff)){
    const altersAllocation=months.some(m=>Object.keys(m.basis.exemptionUsed).length>0||object(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed)&&Object.keys(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed as object).length>0);
@@ -173,8 +179,9 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
    for(const retained of page){if(createHash('sha256').update(retained.content).digest('hex')!==retained.sourceHash)fail('A retained import source is unavailable or changed.');cache.set(retained.id,{retained,rows:await parsePayrollHistorySource(retained.name,retained.content)});}
   }
  }
+ cache.rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(allSlips.map(slip=>slip.period))]);
  cache.effective=null;
- try{cache.effective=await readEffectiveTaxBasesTx(tx,ctx,allSlips.map(slip=>slip.id),{includeImported:true});}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
+ try{cache.effective=await readEffectiveTaxBasesTx(tx,ctx,allSlips.map(slip=>slip.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
  cache.superseded=new Map();
  const old=employees.length?await tx.execute<{sourceId:string;id:string}>(sql`select current_source.id as "sourceId",r.id from payslip current_source join payroll_batch b on b.id=current_source.batch_id join payroll_tax_basis_revision r on r.company_id=b.company_id and r.employment_id=current_source.employment_id and r.period=b.pay_period where b.company_id=${selection.companyId}::uuid and current_source.employment_id=any(${uuidArray(employees.map(employee=>employee.id))}) and b.pay_period like ${selection.year+'-%'} and (r.payslip_id=current_source.id or r.payslip_id in(select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=current_source.id)) order by current_source.id,r.id`):[];
  for(const row of old)cache.superseded.set(row.sourceId,[...(cache.superseded.get(row.sourceId)??[]),row.id]);
@@ -278,7 +285,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    await tx.execute(sql`select id from payroll_tax_basis_batch where id=${opened.id}::uuid for update`);
    const prior=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and ((employment_id=${reviewed.id}::uuid and kind in ('employee_completed','employee_failed')) or kind in ('completed','completed_with_errors','failed'))`);if(prior.length)return;
    const settings=await settingsTx(tx,true);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);if(hash(settings)!==opened.preview.settingsHash)fail('Pay Item settings changed. Create a new preview for remaining employees.');
-   cache.rules=new Map();cache.codes=undefined;
+   cache.rules=new Map();cache.codes=undefined;cache.rulesStates=undefined;
    const fresh=await employeeTx(tx,ctx,opened.selection,{id:reviewed.id,name:reviewed.name,employeeNo:reviewed.employeeNo},settings,opened.preview.settingsHash,cache);
    if(hash(fresh)!==hash(reviewed))fail('Employee history, rules or opening balances changed. Create a new preview.');
    await recordEventTx(tx,ctx,opened.id,opened.selection.companyId,'processing');
