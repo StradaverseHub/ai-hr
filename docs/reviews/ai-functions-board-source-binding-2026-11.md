@@ -1513,3 +1513,12 @@ The owner's standing coordinator authorization for AI binding is retained as his
 R7 run44343542342 passed the whole compiler and 207/210 behavioral cases at its actual source3e691013a. The three diagnosed failures have reviewed SQL/fixture repairs; the bounded R8 run44348932617 is checking those failed/affected areas and the compiler at9175b59c. Final source/provider admission and production build remain separate required checks. The proposal supplies no runtime PASS, release, installation, staging acceptance, live payroll change or production authority.
 
 The repository owner answered the exact maintenance-fingerprint question in the Board chat on 19 November 2026 MYT: **"Approve this maintenance fingerprint"**, explicitly authorizing `b96ba7264189a0feef2b240106ed52cba56e563db9caf82732e1569402e28abd`. This resolves automatic approval review's refusal of this exact binding commit. It grants source binding only; the pending runtime/compiler/build checks retain their actual states.
+
+
+## Integrated approved board release — 19 November 2026
+
+The owner explicitly approved carrying the same 28 AI-provider approvals to source fingerprint `24b3d0d966b7ee5f1deea4f8857480573b41aed90da17cf69260bd73aee0c315` (1,824 covered files). The reviewed application source is `20c3e63ca647c59e053e650b97a96578a4ea1a06`. Every existing reviewer, review date, evidence reference and status remains unchanged; reversing only the 28 source-digest substitutions reproduces either approved parent registry byte for byte. Pending and retired entries are unchanged.
+
+Independent composition review found no new AI payload fields, purposes, serializers, transports, executable tools or financial-effect authority. The repair handles a native email recovery hold before consuming its sealed prerequisite. Rich email remains an intentional non-AI SMTP disclosure to its authorized recipients. The previously reviewed formula authoring metadata boundaries remain unchanged.
+
+This source binding does not renew stored evaluations, promote an agent release or claim staging installation. Original failed verification evidence remains failed; targeted recovery and the final authenticated release checks retain their actual producing source identities.
