@@ -80,6 +80,7 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_system_digest',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain private Contract digest provenance without exposing its content.'},
   {table:'contract_posting_producer',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain the first actual Contract posting producer through its actual retained Contract case and immutable workflow provenance.'},
   {table:'contract_shared_settings',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract configuration and its audit references.'},
   {table:'contract_access_member',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract role assignment history.'},
