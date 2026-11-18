@@ -21,6 +21,7 @@ export type HistoryRevisionRow = {
  impact?:import('./payroll-history-maintenance').PayrollHistoryMaintenanceImpact[];
  withdrawal?:boolean;restoreSnapshotId?:string|null;maintenanceMode?:NonNullable<HistoryRevisionPlan['maintenance']>['mode'];maintenanceReason?:string;
  contributions?:import('./payroll-history-maintenance-lineage').HistoryContributionState;
+ detachedNativeBaseline?:import('./payroll-history-native-baseline').DetachedNativeHistoryBaseline;
 };
 /** The identity a replacement is ticked by on the screen and confirmed by on the server. */
 export const historyRecordKey=(row:Pick<HistoryRevisionRow,'companyId'|'employmentId'|'period'|'cycleId'>)=>[row.companyId,row.employmentId,row.period,row.cycleId].join(':');

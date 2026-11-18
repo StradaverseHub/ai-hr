@@ -429,7 +429,7 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
 }
 
 export type HistoryMaintenanceSubject={recordId:string;companyId:string;employmentId:string;employeeNo:string;period:string;cycleId:string;hiredOn:string|null;terminatedOn:string|null;calendarEvidence?:'retained_segment'|'retained_record'|'unavailable';unavailableReason?:string|null;segment?:{companyId:string;from:string;to:string}|null};
-export type HistoryAnalyzeBatchContext={codes:Map<string,ImportCodeEntry>;inputs:Map<string,AnalyzeInputs>;taxSettings:Awaited<ReturnType<typeof importedTaxSettingsTx>>;rules:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>};
+export type HistoryAnalyzeBatchContext={codes:Map<string,ImportCodeEntry>;inputs:Map<string,AnalyzeInputs>;taxSettings:Awaited<ReturnType<typeof importedTaxSettingsTx>>;rules:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;ruleStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
 /** One set of scoped source reads for all requested companies, then canonical per-company views. */
 export async function historyAnalyzeBatchTx(ctx:SessionContext,tx:Tx,companyIds:string[]):Promise<HistoryAnalyzeBatchContext>{
  const codes=await resolveImportCodes(ctx,tx),all=await readAnalyzeInputs(tx,companyIds),inputs=new Map<string,AnalyzeInputs>();
@@ -980,7 +980,7 @@ async function analyze(
   // statutory amount. Confirmation recomputes this same projection and binds its settings/rules bytes.
   const taxSettings=options.batch?.taxSettings??await read(importedTaxSettingsTx);
   const pack=requirePackFor(targetCompany?.country);
-  const taxRuleStates=await read(tx=>importedTaxRulesStatesTx(tx,[...new Set(months.map(month=>month.period))]));
+  const taxRuleStates=options.batch?.ruleStates??await read(tx=>importedTaxRulesStatesTx(tx,[...new Set(months.map(month=>month.period))]));
   for(const period of targetCompany?.country==='MY'?[...new Set(months.map(month=>month.period))]:[]){
     const ruleKey=(targetCompany?.country??'')+':'+period;
     const resolution=options.batch?.rules.get(ruleKey)??await read(tx=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}));options.batch?.rules.set(ruleKey,resolution);

@@ -1,3 +1,4 @@
+import {nativeHistoryBaselineSourcesTx,nativeHistoryBaselineIds,type DetachedNativeHistoryBaseline} from './payroll-history-native-baseline';
 import {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 /** Canonical preprocessing for versioned maintenance. Originals and contribution chains stay immutable. */
 import {and,desc,eq,inArray,sql} from 'drizzle-orm';
@@ -10,7 +11,7 @@ import {historyMaintenanceStatesTx,maintenanceNativeItems,maintenanceSourceItems
 import {toIsoPeriod,type HistoryAnalyzeBatchContext,type HistoryMaintenanceSubject} from './payroll-history-import';
 export type MaintenanceOptions=NonNullable<HistoryRevisionPlan['maintenance']>;
 export type MaintenanceGroup={company:{id:string;name:string;label:string|null};cycle:{id:string;name:string;code:string|null};records:PayrollHistoryRecord[];indices:number[]};
-export type MaintenanceRecordPreparation={before:HistoryContributionState;after:HistoryContributionState;beforeValues:ImportedPayrollValues|null;withdrawal:boolean;restoreSnapshotId:string|null;restoreValues:ImportedPayrollValues|null;itemChanges:NonNullable<HistoryRevisionRow['itemChanges']>};
+export type MaintenanceRecordPreparation={detachedNativeBaseline?:DetachedNativeHistoryBaseline;before:HistoryContributionState;after:HistoryContributionState;beforeValues:ImportedPayrollValues|null;withdrawal:boolean;restoreSnapshotId:string|null;restoreValues:ImportedPayrollValues|null;itemChanges:NonNullable<HistoryRevisionRow['itemChanges']>};
 const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
 const up=(s:string)=>s.trim().toUpperCase();
 export const maintenanceIdentity=(value:{companyId:string;employmentId:string;period:string;cycleId:string})=>[value.companyId,value.employmentId,value.period,value.cycleId].join(':');
@@ -38,6 +39,7 @@ export async function preprocessHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,gr
  const latest=identities.length?await tx.selectDistinctOn([revision.recordId]).from(revision).where(inArray(revision.recordId,identities.map(row=>row.id))).orderBy(revision.recordId,desc(revision.ordinal)):[];
  const states=await historyMaintenanceStatesTx(tx,ctx,identities.map(row=>row.id));
  const collisions=keys.length?await tx.select({slip:payslip,batch:payrollBatch}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).where(and(inArray(payslip.employmentId,employmentIds),inArray(payrollBatch.companyId,companyIds),inArray(payrollBatch.payPeriod,periods))):[];
+ const nativeSources=new Map((await nativeHistoryBaselineSourcesTx(tx,ctx,collisions.filter(row=>!row.batch.historyImportAttemptId&&row.batch.status!=='closed').map(row=>row.slip.id))).map(row=>[row.sourcePayslipId,row]));
  const baselineIds=[...new Set([...states.values()].map(value=>value.state.baselineSnapshotId).filter((id):id is string=>!!id))];
  const baselines=new Map((baselineIds.length?await tx.select().from(snapshot).where(inArray(snapshot.id,baselineIds)):[]).map(row=>[row.id,row.values]));
  const netModes=new Map<MaintenanceGroup,Map<string,'separate'|'zakat_in_pcb'>>();
@@ -45,8 +47,8 @@ export async function preprocessHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,gr
  const output=new Map<MaintenanceGroup,{records:PayrollHistoryRecord[];indices:number[]}>();for(const group of groups)output.set(group,{records:[],indices:[]});
  for(const identity of keys){const key=maintenanceIdentity(identity),month=months.get(key)!,group=month.group,existing=identities.find(row=>maintenanceIdentity(row)===key),current=existing?latest.find(row=>row.recordId===existing.id):null,loaded=existing?states.get(existing.id):null;
   if(loaded?.unavailableReason)fail(loaded.unavailableReason);
-  let before=loaded?.state??baselineState(null,[]),beforeValues=loaded?.values??null;
-  if(!existing){const candidates=collisions.filter(row=>row.slip.employmentId===identity.employmentId&&row.batch.companyId===identity.companyId&&row.batch.payPeriod===identity.period&&(row.batch.payrollCycleId===null||row.batch.payrollCycleId===identity.cycleId));if(candidates.length>1)fail('More than one original payroll result matches this identity.');if(candidates.length===1){const original=candidates[0];if(original.batch.historyImportAttemptId)fail('The original import record identity is unavailable.');beforeValues=valuesOf(original.slip);before=baselineState(original.slip.id,maintenanceNativeItems(beforeValues,batch.codes));baselines.set(original.slip.id,beforeValues);}}
+  let before=loaded?.state??baselineState(null,[]),beforeValues=loaded?.values??null;let detachedNativeBaseline:DetachedNativeHistoryBaseline|undefined;
+  if(!existing){const candidates=collisions.filter(row=>row.slip.employmentId===identity.employmentId&&row.batch.companyId===identity.companyId&&row.batch.payPeriod===identity.period&&(row.batch.payrollCycleId===null||row.batch.payrollCycleId===identity.cycleId));if(candidates.length>1)fail('More than one original payroll result matches this identity.');if(candidates.length===1){const original=candidates[0];if(original.batch.historyImportAttemptId)fail('The original import record identity is unavailable.');beforeValues=valuesOf(original.slip);let baselineId=original.slip.id;if(original.batch.status!=='closed'){const source=nativeSources.get(original.slip.id)??fail('The open native payroll source is unavailable. Review its original run.');detachedNativeBaseline={...source,...nativeHistoryBaselineIds(attemptId,source.sourceBatchId,source.sourcePayslipId)};beforeValues=source.values;baselineId=detachedNativeBaseline.snapshotId;}before=baselineState(baselineId,maintenanceNativeItems(beforeValues,batch.codes));baselines.set(baselineId,beforeValues);}}
   const request=options.request;if(request&&request.operation!=='remove_batch'&&(!existing||request.recordId!==existing.id||request.expectedRevisionId!==current?.id))fail('The history revision changed. Review the current record.');
   const incoming=request?[]:maintenanceSourceItems(month.records.map(({record,row})=>({rowNum:row,code:readHistoryField(record,'doe_code'),amount:readHistoryField(record,'amount').replace(/[,_\s]/g,'')})),batch.codes);
   let after:HistoryContributionState;
@@ -59,7 +61,7 @@ export async function preprocessHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,gr
   const withdrawal=!Object.values(after.chains).some(entries=>entries[0]?.item&&entries[0].attemptId!==null);
   if(withdrawal){restoreSnapshotId=after.baselineSnapshotId;restoreValues=restoreSnapshotId?baselines.get(restoreSnapshotId)??fail('The adopted native baseline is unavailable.'):null;after=restoreValues?retainedNativeHistoryBaseline(before):baselineState(null,[]);items=effectiveHistoryItems(after);}
   const changes=historyContributionChanges(before,after,request?.operation==='remove_batch'?request.attemptId:undefined);
-  metadata.set(key,{before,after,beforeValues,withdrawal,restoreSnapshotId,restoreValues,itemChanges:changes});
+  metadata.set(key,{...(detachedNativeBaseline?{detachedNativeBaseline}:{}),before,after,beforeValues,withdrawal,restoreSnapshotId,restoreValues,itemChanges:changes});
   if(month.subject){const list=historical.get(group)??[];list.push({...month.subject});historical.set(group,list);}
   const canonicalCodes=new Map<string,string>();for(const item of items){const collision=canonicalCodes.get(up(item.code));if(collision&&collision!==item.key)fail(`Pay Item ${item.code} now identifies a different original owner.`);canonicalCodes.set(up(item.code),item.key);}
   const rows:HistoryOwnedItem[]=items.length?items:[{key:'destination:basic',code:'BASIC',label:'Basic salary',originalCodes:['BASIC'],amount:'0.00',destination:'basic',direction:'earning',sourceRows:[]},{key:'statutory:pcb',code:'PCB',label:'PCB',originalCodes:['PCB'],amount:'0.00',destination:'pcb',direction:'statutory',sourceRows:[]}];

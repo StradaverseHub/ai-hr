@@ -6,6 +6,8 @@ CREATE FUNCTION app.payroll_history_maintenance_revision_bind() RETURNS trigger 
 DECLARE identity public.payroll_history_import_record; source public.payroll_history_import_attempt; planned jsonb; permission_key text;
 BEGIN
  IF NEW.maintenance IS NULL THEN
+  IF app.current_user_id() IS NOT NULL AND NEW.kind IN('import','correction','adopted') AND(NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payroll_history_import_attempt a ON a.id=NEW.attempt_id AND a.tenant_id=r.tenant_id WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND a.created_by=app.current_user_id() AND app.payroll_history_maintenance_permission(r.company_id,'payroll.history.import'))) THEN RAISE EXCEPTION 'Payroll history import authority unavailable' USING ERRCODE='42501';END IF;
+  IF app.current_user_id() IS NOT NULL AND NEW.kind IN('import','correction') AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s JOIN public.payslip p ON p.id=s.id AND p.tenant_id=s.tenant_id JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id WHERE s.id=NEW.snapshot_id AND s.record_id=NEW.record_id AND s.tenant_id=NEW.tenant_id AND b.history_import_attempt_id=NEW.attempt_id AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_revision old WHERE old.record_id=NEW.record_id AND old.snapshot_id=NEW.snapshot_id)) THEN RAISE EXCEPTION 'A legacy correction must own its new accepted snapshot; use an authorized withdrawal for restoration' USING ERRCODE='42501';END IF;
   IF NEW.kind='revert' AND app.current_user_id() IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND app.payroll_history_maintenance_permission(r.company_id,'payroll.history.revert')) THEN RAISE EXCEPTION 'Payroll history withdrawal authority unavailable' USING ERRCODE='42501'; END IF;
   RETURN NEW;
  END IF;
@@ -39,6 +41,16 @@ CREATE TRIGGER payroll_history_maintenance_revision_binding BEFORE INSERT ON pub
 --> statement-breakpoint
 -- A contribution can refer only to an immutable accepted value of THIS record. This validates
 -- source ownership; the existing analyzer remains the one owner of import folding and payroll arithmetic.
+CREATE FUNCTION app.payroll_history_maintenance_code_owner(code_ text) RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH original AS(SELECT c.* FROM public.payroll_import_code c WHERE c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(code_)),
+ target AS(SELECT CASE WHEN original.alias_for IS NULL THEN code_ ELSE original.alias_for END code FROM original UNION ALL SELECT code_ WHERE NOT EXISTS(SELECT 1 FROM original)),
+ configured AS(SELECT t.code,c.id catalog_id,c.alias_for FROM target t LEFT JOIN public.payroll_import_code c ON c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(t.code))
+ SELECT coalesce(p.id,c.catalog_id) FROM configured c LEFT JOIN public.pay_component p ON p.tenant_id=app.current_tenant_id() AND upper(p.code)=upper(c.code) WHERE c.alias_for IS NULL
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.payroll_history_maintenance_code_owner(text) FROM PUBLIC;
+--> statement-breakpoint
 CREATE FUNCTION app.payroll_history_maintenance_item_proven(record_ uuid,baseline_ uuid,entry_ jsonb) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
 DECLARE item_ jsonb; source_ uuid; snapshot_ record; amount_ numeric; key_ text; property_ text; total_ numeric;
@@ -56,11 +68,14 @@ BEGIN
   IF property_ IS NOT NULL AND key_='statutory:'||(item_->>'destination') AND amount_=coalesce((snapshot_."values"->'statutory'->>property_)::numeric,0) THEN RETURN true;END IF;
   IF item_->>'direction'='noncash' THEN
    IF EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) line WHERE line->>'code'=item_->>'code' AND 'component:'||(line->>'settingId')=key_ AND (line->>'amount')::numeric=amount_ AND line->>'direction'='noncash') THEN RETURN true;END IF;
+   IF source_ IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'pcbNonCash'->'ownedEaEntries','[]'::jsonb)) line WHERE upper(line->>'code')=upper(item_->>'code') AND 'component:'||app.payroll_history_maintenance_code_owner(line->>'code')::text=key_ AND (line->>'entered')::numeric=amount_) THEN RETURN true;END IF;
   ELSE
-   SELECT coalesce(sum((line->>'amount')::numeric),0) INTO total_ FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedLines',snapshot_."values"->'statutory'->'componentLines','[]'::jsonb)) line
-    WHERE (line->>'code'=item_->>'code' OR (item_->'originalCodes')?(line->>'code'))
-     AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(line->'buckets','[]'::jsonb)) bucket WHERE bucket->>'bucket'=CASE item_->>'destination' WHEN 'allowance' THEN 'wage' WHEN 'overtime' THEN 'ot' WHEN 'bonus' THEN 'bonus' WHEN 'other_deduction' THEN 'deduct' ELSE '' END);
-   IF total_=amount_ AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedLines',snapshot_."values"->'statutory'->'componentLines','[]'::jsonb)) line WHERE line->>'code'=item_->>'code' OR(item_->'originalCodes')?(line->>'code')) AND EXISTS(SELECT 1 FROM public.pay_component c WHERE c.tenant_id=app.current_tenant_id() AND 'component:'||c.id::text=key_ AND upper(c.code)=upper(item_->>'code') UNION ALL SELECT 1 FROM public.payroll_import_code c WHERE c.tenant_id=app.current_tenant_id() AND 'component:'||c.id::text=key_ AND upper(c.code)=upper(item_->>'code') AND c.alias_for IS NULL) THEN RETURN true;END IF;
+   SELECT sum((line->>'amount')::numeric) INTO total_ FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedLines',snapshot_."values"->'statutory'->'componentLines','[]'::jsonb)) line
+    WHERE 'component:'||app.payroll_history_maintenance_code_owner(line->>'code')::text=key_
+     AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(line->'buckets','[]'::jsonb)) bucket WHERE bucket->>'bucket'=CASE item_->>'destination' WHEN 'allowance' THEN 'wage' WHEN 'overtime' THEN 'ot' WHEN 'bonus' THEN 'bonus' WHEN 'other_deduction' THEN 'deduct' ELSE '' END)
+     AND (NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) receipt WHERE receipt->>'originalCode'=line->>'code')
+      OR EXISTS(SELECT 1 FROM jsonb_array_elements(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines') receipt WHERE receipt->>'originalCode'=line->>'code' AND 'component:'||(receipt->>'settingId')=key_));
+   IF total_=amount_ AND 'component:'||app.payroll_history_maintenance_code_owner(item_->>'code')::text=key_ THEN RETURN true;END IF;
   END IF;
  END LOOP;
  RETURN false;
@@ -124,7 +139,7 @@ BEGIN
   ) chains;
   IF NOT app.payroll_history_maintenance_state_matches(projected_,original_."values") THEN RETURN false;END IF;
   FOR line_ IN SELECT value FROM jsonb_array_elements(coalesce(original_."values"->'statutory'->'importedLines',original_."values"->'statutory'->'componentLines','[]'::jsonb)) LOOP
-   IF NOT EXISTS(SELECT 1 FROM jsonb_each(projected_->'chains') chain CROSS JOIN LATERAL jsonb_array_elements(chain.value) entry WHERE (CASE WHEN original_.kind='adopted' THEN entry->>'attemptId' IS NULL ELSE entry->>'attemptId'=original_.attempt_id::text END) AND entry->'item'<>'null'::jsonb AND (upper(entry->'item'->>'code')=upper(line_->>'code') OR(entry->'item'->'originalCodes')?(line_->>'code'))) THEN RETURN false;END IF;
+   IF NOT EXISTS(SELECT 1 FROM jsonb_each(projected_->'chains') chain CROSS JOIN LATERAL jsonb_array_elements(chain.value) entry WHERE (CASE WHEN original_.kind='adopted' THEN entry->>'attemptId' IS NULL ELSE entry->>'attemptId'=original_.attempt_id::text END) AND entry->'item'<>'null'::jsonb AND entry->'item'->>'key'='component:'||app.payroll_history_maintenance_code_owner(line_->>'code')::text) THEN RETURN false;END IF;
   END LOOP;
  END LOOP;
  RETURN true;
@@ -167,6 +182,7 @@ BEGIN
     ELSE item_->>'direction'='statutory' AND chain_.key='statutory:'||(item_->>'destination') AND item_->>'destination'=ANY(ARRAY['epf_employee','epf_employer','socso_employee','socso_employer','socso_skbbk','eis_employee','eis_employer','pcb','cp38','zakat','lp','hrdf']) END
    THEN RAISE EXCEPTION 'Payroll history maintenance monetary kind changed' USING ERRCODE='23514';END IF;
    IF entry_->>'attemptId'=NEW.attempt_id::text THEN
+    IF item_<>'null'::jsonb AND item_->>'direction'<>'statutory' AND item_->>'destination'<>'basic' AND chain_.key IS DISTINCT FROM 'component:'||app.payroll_history_maintenance_code_owner(item_->>'code')::text THEN RAISE EXCEPTION 'Payroll history maintenance configured Pay Item identity changed' USING ERRCODE='23514';END IF;
     IF count_<>0 THEN RAISE EXCEPTION 'Payroll history maintenance cannot rewrite an earlier owner' USING ERRCODE='23514';END IF;
    ELSE
     IF NOT app.payroll_history_maintenance_item_proven(NEW.record_id,baseline_,entry_) THEN RAISE EXCEPTION 'Payroll history maintenance original item proof unavailable' USING ERRCODE='23514';END IF;
