@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "ตรวจสอบการแปลง · รุ่น {version}",
+      "inventoryHelp": "เก็บค่าที่บันทึกและแหล่งผู้ลงนามเดิม ค่าที่ยังไม่จับคู่ต้องผ่านการตรวจสอบ จดหมายที่เผยแพร่แล้วจะคงการตั้งค่าเดิม",
+      "savedValue": "ค่าที่บันทึก",
+      "proposedValue": "ค่าข้อมูลบุคลากรที่เสนอ",
+      "reviewRequired": "ต้องตรวจสอบ",
+      "migrationTitle": "ตรวจสอบบทบาทการลงนามเดิม",
+      "migrationHelp": "เลือกกฎหรือกลุ่ม On/Off Boarding สำหรับแต่ละบทบาทที่บันทึกไว้ จดหมายที่เผยแพร่แล้วจะใช้การตั้งค่าเดิมจนกว่าจะเผยแพร่ฉบับทดแทนที่สมบูรณ์",
+      "currentSource": "แหล่งที่มาปัจจุบัน",
+      "chooseSource": "เลือกแหล่งที่มา On/Off Boarding",
+      "applyMapping": "ใช้การจับคู่ที่ตรวจสอบแล้ว",
+      "sample": "กรณีตัวอย่างสมมติ — สำหรับแสดงตัวอย่างเท่านั้น"
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",

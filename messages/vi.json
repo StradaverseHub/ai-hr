@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "Rà soát chuyển đổi · phiên bản {version}",
+      "inventoryHelp": "Giữ nguyên giá trị và nguồn ký đã lưu. Giá trị chưa ánh xạ cần được rà soát; thư đã xuất bản giữ thiết lập hiện có.",
+      "savedValue": "Giá trị đã lưu",
+      "proposedValue": "Giá trị Nhân sự đề xuất",
+      "reviewRequired": "Cần rà soát",
+      "migrationTitle": "Rà soát vai trò ký hiện có",
+      "migrationHelp": "Chọn quy tắc hoặc nhóm Tiếp nhận/Nghỉ việc cho từng vai trò đã lưu. Thư đã xuất bản giữ thiết lập hiện tại cho đến khi bản thay thế đầy đủ được xuất bản.",
+      "currentSource": "Nguồn hiện tại",
+      "chooseSource": "Chọn nguồn Tiếp nhận/Nghỉ việc",
+      "applyMapping": "Dùng ánh xạ đã rà soát",
+      "sample": "Hồ sơ mẫu hư cấu — chỉ để xem trước."
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",

@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "转换审核 · 版本 {version}",
+      "inventoryHelp": "保留已保存的值和签署来源。未映射的值需明确审核；已发布信函保持现有设置。",
+      "savedValue": "已保存的值",
+      "proposedValue": "建议的人事值",
+      "reviewRequired": "需要审核",
+      "migrationTitle": "审核现有签署角色",
+      "migrationHelp": "为每个已保存的角色选择入职/离职规则或分配组。完整替代版本发布前，已发布信函继续使用现有设置。",
+      "currentSource": "当前来源",
+      "chooseSource": "选择入职/离职来源",
+      "applyMapping": "使用已审核映射",
+      "sample": "虚构示例个案，仅用于预览。"
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
