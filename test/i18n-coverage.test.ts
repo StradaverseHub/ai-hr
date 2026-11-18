@@ -5,7 +5,7 @@
  * Three structural, deterministic checks that fail CI before a half-translated screen ships:
  *   A. Locale completeness — every key in en.json exists in every other locale (no silent English fallback).
  *   B. Namespace existence — every getTranslations/useTranslations('ns') in code resolves to en.json.
- *   C. Static-key resolution — every literal t('a.b') in a single-namespace file resolves in en.json.
+ *   C. Static-key resolution — single-namespace keys and lexically bound custom-copy calls resolve.
  *
  * "en.json" means the catalogue the app serves: i18n/catalogs.ts merges messages/ai-centre/<locale>.json over
  * messages/<locale>.json, so the catalogue file list is read from that file rather than restated here.
@@ -15,6 +15,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import {personnelFormulaFieldDescriptor} from '../lib/pay-formula-personnel';
 import {PAY_FORMULA_FUNCTIONS,PAY_FORMULA_FIELD_TYPES} from '../lib/pay-formula-registry';
@@ -102,18 +103,92 @@ function namespaceOrphans(files: Source[], catalogue: Dict): string[] {
   return [...new Set(orphans)];
 }
 
-function missingStaticKeys(files: Source[], catalogue: Dict): string[] {
-  const missing: string[] = [];
-  for (const { file, src } of files) {
-    const uniq = [...new Set([...src.matchAll(NAMESPACE)].map((m) => m[1] ?? m[2]))];
-    if (uniq.length !== 1) continue; // multi-namespace files: skip (can't attribute keys statically)
-    const ns = uniq[0];
-    for (const key of staticTranslationKeys(src)) {
-      const full = `${ns}.${key}`;
-      if (getPath(catalogue, full) === undefined) missing.push(`${full}  (${file})`);
+// Track lexical bindings, rather than assigning every t() in a file to its one direct namespace.
+// This wrapper deliberately exposes a subset of probationEmailBuilder through its copy member.
+// The source-contract regression below ensures that its namespace/prefix cannot silently drift.
+const COPY_BINDINGS: Record<string, Record<string, string>> = {
+  useProbationEmailCopy: {copy: 'probationEmailBuilder.ui'},
+};
+function boundStaticTranslationKeys(source: string): string[] {
+  const tree = ts.createSourceFile('coverage.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const bindings = new Map<ts.Node, Map<string, string | null>>();
+  const aliases: {scope: ts.Node; name: ts.Identifier; target: ts.Identifier}[] = [];
+  const scopeOf = (node: ts.Node): ts.Node => {
+    while (!ts.isSourceFile(node) && !ts.isBlock(node) && !ts.isFunctionLike(node)) node = node.parent;
+    return node;
+  };
+  const bind = (scope: ts.Node, name: ts.BindingName, namespace: string | null) => {
+    let entries = bindings.get(scope);
+    if (!entries) bindings.set(scope, entries = new Map());
+    if (ts.isIdentifier(name)) entries.set(name.text, namespace);
+    else for (const element of name.elements) if (ts.isBindingElement(element)) bind(scope, element.name, null);
+  };
+  const collect = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node)) {
+      const scope = scopeOf(node.parent);
+      bind(scope, node.name, null); // A local non-translation variable must shadow an outer binding.
+      const initializer = node.initializer && ts.isAwaitExpression(node.initializer)
+        ? node.initializer.expression : node.initializer;
+      if (initializer && ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)) {
+        const factory = initializer.expression.text;
+        const argument = initializer.arguments[0];
+        if ((factory === 'useTranslations' || factory === 'getTranslations') && argument && ts.isStringLiteral(argument)) {
+          bind(scope, node.name, argument.text);
+        } else if (COPY_BINDINGS[factory] && ts.isObjectBindingPattern(node.name)) {
+          for (const element of node.name.elements) {
+            const property = element.propertyName ?? element.name;
+            if (ts.isIdentifier(property) && COPY_BINDINGS[factory][property.text]) {
+              bind(scope, element.name, COPY_BINDINGS[factory][property.text]);
+            }
+          }
+        }
+      } else if (initializer && ts.isIdentifier(initializer) && ts.isIdentifier(node.name)) {
+        aliases.push({scope, name: node.name, target: initializer});
+      }
+    } else if (ts.isParameter(node)) bind(scopeOf(node.parent), node.name, null);
+    ts.forEachChild(node, collect);
+  };
+  collect(tree);
+  const namespaceAt = (node: ts.Node, name: string): string | null => {
+    for (let ancestor: ts.Node | undefined = node; ancestor; ancestor = ancestor.parent) {
+      const entries = bindings.get(ancestor);
+      if (entries?.has(name)) return entries.get(name) ?? null;
     }
+    return null;
+  };
+  // Resolve simple lexical aliases without guessing a namespace for arbitrary parameters/functions.
+  // Multiple passes cover a forward-declared alias chain; cycles remain unresolved.
+  for (let pass = 0; pass < aliases.length; pass++) for (const alias of aliases) {
+    const namespace = namespaceAt(alias.target, alias.target.text);
+    if (namespace) bindings.get(alias.scope)!.set(alias.name.text, namespace);
   }
-  return [...new Set(missing)];
+  const keys: string[] = [];
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node)) {
+      const callee = ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === 'rich'
+        ? node.expression.expression : node.expression;
+      const argument = node.arguments[0];
+      if (ts.isIdentifier(callee) && argument && ts.isStringLiteral(argument)) {
+        const namespace = namespaceAt(node, callee.text);
+        if (namespace) keys.push(`${namespace}.${argument.text}`);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return keys;
+}
+function missingStaticKeys(files: Source[], catalogue: Dict): string[] {
+  return [...new Set(files.flatMap(({file, src}) => {
+    const namespaces = [...new Set([...src.matchAll(NAMESPACE)].map(match => match[1] ?? match[2]))];
+    const hasCustomCopy = Object.keys(COPY_BINDINGS).some(factory => new RegExp(`\\b${factory}\\s*\\(`).test(src));
+    // Preserve the existing guard exactly for unrelated files, including translators forwarded
+    // through props/helper parameters and the existing multi-namespace exclusion. Only custom-copy
+    // files need lexical attribution: their t() belongs to a different namespace from the direct hook.
+    const keys = hasCustomCopy ? boundStaticTranslationKeys(src)
+      : namespaces.length === 1 ? staticTranslationKeys(src).map(key => `${namespaces[0]}.${key}`) : [];
+    return keys.filter(full => getPath(catalogue, full) === undefined).map(full => `${full}  (${file})`);
+  }))];
 }
 
 describe('i18n coverage', () => {
@@ -167,6 +242,61 @@ describe('i18n coverage', () => {
       .toEqual(['missing.static','rich.key']);
   });
 
+  it('attributes custom copy and legacy aliases to their own bindings, including missing keys', () => {
+    const file = 'synthetic/mixed-copy.tsx';
+    const src = `function Editor() {
+      const legacyCopy = useTranslations('automation');
+      const {copy: t} = useProbationEmailCopy();
+      t('save'); t('missingBuilderKey'); t.rich('missingRichKey', {});
+      legacyCopy('templates.retire'); legacyCopy('templates.missingLegacyKey');
+      t('dynamic.' + value);
+      function Nested(t: (key: string) => string) { t('notATranslationBinding'); }
+      function DifferentNamespace() { const t = useTranslations('payFormula'); t('loading'); }
+    }`;
+    expect(boundStaticTranslationKeys(src)).toEqual([
+      'probationEmailBuilder.ui.save', 'probationEmailBuilder.ui.missingBuilderKey',
+      'probationEmailBuilder.ui.missingRichKey', 'automation.templates.retire',
+      'automation.templates.missingLegacyKey', 'payFormula.loading',
+    ]);
+    expect(missingStaticKeys([{file, src}], en)).toEqual([
+      `probationEmailBuilder.ui.missingBuilderKey  (${file})`,
+      `probationEmailBuilder.ui.missingRichKey  (${file})`,
+      `automation.templates.missingLegacyKey  (${file})`,
+    ]);
+  });
+
+  it('retains alias and forwarded-translator coverage outside custom-copy files', () => {
+    const file = 'synthetic/legacy-translators.tsx';
+    const src = `const translator = useTranslations('payFormula');
+      const t = translator; t('missingAliasKey');
+      function Forwarded(t: (key: string) => string) { t('missingForwardedKey'); }`;
+    expect(boundStaticTranslationKeys(src)).toEqual(['payFormula.missingAliasKey']);
+    expect(missingStaticKeys([{file, src}], en)).toEqual([
+      `payFormula.missingAliasKey  (${file})`, `payFormula.missingForwardedKey  (${file})`,
+    ]);
+    const mixed = `const translator=useTranslations('automation'); const legacy=translator;
+      const {copy:t}=useProbationEmailCopy();
+      legacy('templates.missingAliasKey'); t('save');
+      function Shadow(t: (key: string) => string) { t('notATranslationKey'); }`;
+    expect(missingStaticKeys([{file, src:mixed}], en)).toEqual([
+      `automation.templates.missingAliasKey  (${file})`,
+    ]);
+  });
+
+  it('checks all 34 actual Probation editor copy keys and both legacy aliases in every locale', () => {
+    const hook = fs.readFileSync(path.join(ROOT, 'app/automation/templates/use-probation-email-copy.ts'), 'utf8');
+    expect(hook).toMatch(/const t=useTranslations\('probationEmailBuilder'\)/);
+    expect(hook).toMatch(/const copy:EmailBuilderCopy=\(key,values\)=>t\('ui\.'\+key,values\)/);
+    const file = 'app/automation/templates/probation-email-editor.tsx';
+    const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const keys = [...new Set(boundStaticTranslationKeys(src))];
+    expect(keys.filter(key => key.startsWith('probationEmailBuilder.ui.'))).toHaveLength(34);
+    expect(keys.filter(key => key.startsWith('automation.')).sort()).toEqual([
+      'automation.templates.retire', 'automation.templates.retireConfirm',
+    ]);
+    for (const locale of ['en', ...LOCALES]) expect(missingStaticKeys([{file, src}], load(locale)), locale).toEqual([]);
+  });
+
   // Explicit timeout: measured 24.6 s against the global 30 s in main gate 42949200222.
   it('resolves the Formula editor dynamic catalogue in every locale', () => {
     const editor=fs.readFileSync(path.resolve(__dirname,'../app/payroll/formula-builder/condition-editor.tsx'),'utf8');
@@ -211,7 +341,7 @@ describe('i18n coverage', () => {
     }
   }, 90_000);
 
-  it('C. every static t() key in a single-namespace file resolves in en.json', () => {
+  it('C. every static translation key in covered files resolves in en.json', () => {
     const missing = missingStaticKeys(sources(), en);
     expect(missing, missing.join('\n')).toEqual([]);
   });
