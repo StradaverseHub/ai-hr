@@ -1,5 +1,6 @@
 'use server';
 import {revalidatePath} from 'next/cache';
+import {saveProbationLetterCompletion,overrideProbationLetterCompletion,refreshProbationLetterCompletion,reviewProbationLetterPersonnel} from '@/packs/probation/service';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,recordProbationLowResultAction,decideProbationOtherOutcome,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,editProbationLetterContent,actOnProbationLetter,resendProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover,requestProbationActivation,probationActivationRequest,supersedeProbationDateShift,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision,probationPublicationRetirement,retireProbationPublication,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,saveProbationSettingsScope,retireProbationCompanySetting,refreshProbationCompanySettings} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
@@ -67,3 +68,11 @@ export async function retireCompanySetting(input:Parameters<typeof retireProbati
 export async function refreshCompanySettings(companyId:string){return execute(async()=>refreshProbationCompanySettings(await requireScopedLifecycleModule(),companyId));}
 
 export async function editLetterContent(input:Parameters<typeof editProbationLetterContent>[1]){return execute(async()=>editProbationLetterContent(await requireScopedLifecycleModule(),input));}
+
+export async function saveLetterCompletion(input:Parameters<typeof saveProbationLetterCompletion>[1]){return execute(async()=>saveProbationLetterCompletion(await requireScopedLifecycleModule(),input));}
+
+export async function overrideLetterCompletion(input:Parameters<typeof overrideProbationLetterCompletion>[1]){return execute(async()=>overrideProbationLetterCompletion(await requireScopedLifecycleModule(),input));}
+
+export async function refreshLetterCompletion(input:Parameters<typeof refreshProbationLetterCompletion>[1]){return execute(async()=>refreshProbationLetterCompletion(await requireScopedLifecycleModule(),input));}
+
+export async function reviewLetterPersonnel(input:Parameters<typeof reviewProbationLetterPersonnel>[1]){return execute(async()=>reviewProbationLetterPersonnel(await requireScopedLifecycleModule(),input));}
