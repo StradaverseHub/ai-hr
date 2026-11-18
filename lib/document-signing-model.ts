@@ -108,9 +108,11 @@ export function signingStepFulfilled(document: SigningDocument, step: SigningSte
 /** Missing holders block; one real approval can fulfil its explicitly covered adjacent role. Steps sharing a stage act in parallel. */
 export function pendingSigningSteps(document: SigningDocument): SigningStep[] {
   if(signingSendBack(document))return [];
-  const remaining=document.route.steps.filter(step=>step.required&&!signingStepFulfilled(document,step));
-  const stage=Math.min(...remaining.map(step=>step.stage));
-  return remaining.filter(step=>step.stage===stage&&!step.coveredByStepId);
+  const remaining=document.route.steps.filter(step=>!signingStepFulfilled(document,step));
+  const stage=Math.min(...remaining.filter(step=>step.required).map(step=>step.stage));
+  // Optional routed steps may act alongside/before the next required stage, but never delay it.
+  // Existing subject routes without template routing retain their original required-only queue.
+  return remaining.filter(step=>!step.coveredByStepId&&Number.isFinite(stage)&&(step.required?step.stage===stage:!!document.routing&&step.stage<=stage));
 }
 export function signingComplete(document: SigningDocument, rules: SigningGuardrails): boolean {
   validateSigningRoute(document.route,rules);

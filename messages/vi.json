@@ -40813,6 +40813,7 @@
         "action": {
           "review": "Review",
           "approve": "Approve",
+          "acknowledge": "Xác nhận",
           "sign": "Sign"
         }
       }
@@ -40968,6 +40969,7 @@
       "action": "Action",
       "who": "Who",
       "owner": "Owns the document",
+      "required": "Bắt buộc",
       "pick": "Choose one person by",
       "pickAny": "Any member",
       "pickRoundRobin": "Round robin",
@@ -40975,11 +40977,13 @@
       "actions": {
         "review": "Review",
         "approve": "Approve",
+        "acknowledge": "Xác nhận",
         "sign": "Sign"
       },
       "hint": {
         "review": "Can edit the letter until the first signature. Shown in Approval Items.",
         "approve": "A decision with no signature. Shown in Approval Items.",
+        "acknowledge": "Nhân viên ký tên để xác nhận tài liệu này.",
         "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
         "owner": "Send-backs come to this step."
       },
