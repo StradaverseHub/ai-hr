@@ -164,3 +164,18 @@ it('reference resolution A→B→A cannot reactivate cached confirmation while t
  await screen.findByRole('alert');expect(confirm.disabled).toBe(true);
  finish(Response.json({selection:{ids:[rows[1].id],unmatched:[]},rows:[]}));expect(confirm.disabled).toBe(true);
 });
+
+it('pure picker browsing does not rerun the actual Generate preview or change its submitted employee set',async()=>{
+ const user=userEvent.setup(),payloads:{employmentIds:string[]}[]=[];
+ const preview=vi.fn(async(input:{employmentIds:string[]})=>{payloads.push(input);return {year:2026,employeesSelected:input.employmentIds.length,employeesReached:input.employmentIds.length,employeesPassed:input.employmentIds.length,employeesFailed:0,granted:input.employmentIds.length,skipped:0,forfeits:0,lines:[],decidedBy:[],accrual:null} as LeaveGenerationResult;});
+ render(<NextIntlClientProvider locale="en" messages={messages}><GenerateForm action={()=>{}} previewAction={preview} years={[2026]} defaultYear={2026} leaveTypes={[{value:'lt',label:'Annual Leave'}]} criteriaSections={[]} employees={[]} remoteEmployees/></NextIntlClientProvider>);
+ const t=messages.admin.leave;await user.click(screen.getByRole('button',{name:t.generateStepWho}));await user.click(screen.getByRole('radio',{name:t.adjustmentsByIndividual}));
+ await user.click(screen.getByRole('button',{name:t.generateEmployeePicker}));await user.click(await screen.findByRole('checkbox',{name:/Fictional employee 0000/}));
+ await waitFor(()=>expect(payloads.at(-1)?.employmentIds).toEqual([rows[0].id]));preview.mockClear();
+ await user.type(screen.getByPlaceholderText(t.generateEmployeeSearchPlaceholder),'0999');await screen.findByRole('checkbox',{name:/Fictional employee 0999/});
+ // Give the enclosing form's250ms debounce an opportunity to run: browsing has
+ // no named form value and must not spend a new entitlement-engine preview.
+ await new Promise(resolve=>setTimeout(resolve,350));expect(preview).not.toHaveBeenCalled();
+ const form=document.querySelector('input[name="employmentIds"]')!.closest('form')!;expect(new FormData(form).getAll('employmentIds')).toEqual([rows[0].id]);
+ expect(requests.some(input=>input.operation==='page'&&input.query==='0999')).toBe(true);
+});

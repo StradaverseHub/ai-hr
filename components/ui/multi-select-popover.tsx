@@ -299,7 +299,7 @@ export function MultiSelectPopover({
               type="text"
               value={search}
               maxLength={remote?200:undefined}
-              onChange={(e) => changeSearch(e.target.value)}
+              onChange={(e) => {e.stopPropagation();changeSearch(e.target.value);}}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
               className={`${inputCls} mb-2`}
