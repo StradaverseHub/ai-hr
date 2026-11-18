@@ -82,6 +82,30 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
 
 
+def bounded_file_sha256(base,path,limit):
+    """Fresh complete bytes on EVERY call, with bounded memory and stable no-follow identity.
+
+    Runtime verification must not allocate two copies of the 120MB executable at
+    each nested guard boundary. This is not a cache or a metadata-only byte proof.
+    """
+    identity=lambda s:tuple(getattr(s,k)for k in('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'))
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+    try:
+        before=os.fstat(fd)
+        base.check(stat.S_ISREG(before.st_mode)and before.st_nlink==1 and before.st_size<=limit,'bounded non-linked runtime input required')
+        base.check(identity(before)==identity(Path(path).lstat()),'runtime named/opened identity differs')
+        digest=hashlib.sha256();total=0
+        while True:
+            base.check(SLOT_DEADLINE is None or time.monotonic()<SLOT_DEADLINE,'aggregate proof slot expired')
+            block=os.read(fd,1024**2)
+            if not block:break
+            total+=len(block);base.check(total<=limit,'runtime input exceeds bound');digest.update(block)
+        base.check(total==before.st_size and identity(before)==identity(os.fstat(fd))==identity(Path(path).lstat()),'runtime bytes or named identity changed during fresh hash')
+        base.check(SLOT_DEADLINE is None or time.monotonic()<SLOT_DEADLINE,'aggregate proof slot expired')
+        return digest.hexdigest()
+    finally:os.close(fd)
+
+
 def epoch(value):
     return datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
 
@@ -130,6 +154,15 @@ def excluded(path, filters):
     return any(re.fullmatch(re.escape(p.strip('/')).replace(r'\*', '[^/]*'), path if p.startswith('/') else path.rsplit('/', 1)[-1]) is not None for p in filters)
 
 
+def source_excluder(filters):
+    """Compile the same closed canonical grammar once per complete observation."""
+    patterns=tuple((p.startswith('/'),re.compile(re.escape(p.strip('/')).replace(r'\*','[^/]*')))for p in filters)
+    def matches(path):
+        basename=path.rsplit('/',1)[-1]
+        return any(pattern.fullmatch(path if anchored else basename)is not None for anchored,pattern in patterns)
+    return matches
+
+
 def canonical_filters(base,root):
     """Read the actual owner's closed literal exclude arguments without executing web-owned JS as root.
     The ordinary preparation generator calls the owners themselves; this only refuses schema/filter drift.
@@ -149,6 +182,7 @@ def source_inventory(base, root, filters, deadline=None):
     base.check(filters and '.next' in filters and 'node_modules' in filters, 'canonical source filters required')
     for pattern in filters:
         base.check(isinstance(pattern,str) and not any(x in pattern for x in ('**','?','[')),'unsupported canonical source filter')
+    exclude_source=source_excluder(filters)
     root=Path(root);base.check(root.resolve(strict=True)==root,'canonical source root required')
     rows=[]
     def clock():base.check(deadline is None or time.time()<deadline,'source inventory operation deadline exceeded')
@@ -160,7 +194,7 @@ def source_inventory(base, root, filters, deadline=None):
         for name in names:
             clock();base.check(len(rows)<200000,'source inventory exceeds bound')
             child=relative+'/'+name if relative else name
-            if excluded(child,filters):continue
+            if exclude_source(child):continue
             initial=os.stat(name,dir_fd=fd,follow_symlinks=False);mode=stat.S_IMODE(initial.st_mode)
             if stat.S_ISDIR(initial.st_mode):
                 opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
@@ -351,7 +385,7 @@ class RuntimeObservation:
         base.check(a['identity']['source'] == args.source and a['identity']['build_id'] == args.build_id, 'authorization candidate differs')
         base.root_protected(Path(sys.argv[0]), regular=True)
         base.check(sha(base.read_bounded(Path(sys.argv[0]), 16*1024**2)) == a['helperSha256'] and
-                   sha(base.read_bounded(base.NODE, 128*1024**2)) == a['nodeSha256'], 'root-pinned helper/runtime differs')
+                   bounded_file_sha256(base,base.NODE,128*1024**2) == a['nodeSha256'], 'root-pinned helper/runtime differs')
         i = a['install']
         base.check(set(i) == {'id','buildRecordId','runId','controller','directory','uid','gid','device','inode'} and
                    isinstance(i['uid'], int) and i['uid'] > 0, 'exact native installation owner and selection required')
@@ -402,7 +436,7 @@ class RuntimeObservation:
         b.check(protected_private(b,Path(a['leaseFile']))==self.lease_identity and sha(b.read_bounded(Path(a['leaseFile']),4096))==a['leaseFileSha256'],'held lease credential identity/content changed')
         b.check(b.read_bounded(self.path,65536) == self.bytes, 'CI cutover authority changed')
         b.root_protected(Path(sys.argv[0]),regular=True);b.root_protected(b.NODE,regular=True)
-        b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'root-pinned helper/runtime changed')
+        b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and bounded_file_sha256(b,b.NODE,128*1024**2)==a['nodeSha256'],'root-pinned helper/runtime changed')
         b.root_protected(self.drain_operation/'drained.json',regular=True)
         b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
         b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + 900,
@@ -878,6 +912,7 @@ class RuntimeObservation:
                 b.check(stage=='O' and attempt<15,'bounded native metadata publication did not complete under strict O')
                 time.sleep(.02)
         filters=canonical_filters(b,SOURCE)
+        exclude_source=source_excluder(filters)
         roots=[SOURCE,SOURCE/'.next',SOURCE/'node_modules',RUNTIME_ROOT]
         metadata={}
         cache=SOURCE/'.next/cache'
@@ -886,16 +921,32 @@ class RuntimeObservation:
             st=cache.lstat()
             b.check(stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode) and not st.st_mode&0o022 and st.st_uid==self.owner.pw_uid,'unsafe compiled runtime cache')
             cache_state['metadata']={k:v for k,v in FENCES.metadata(st).items()if k in {'device','inode','mode','uid','gid'}}
-        for name,root,exclude in [('source',roots[0],lambda rel:excluded(rel,filters)),('compiled',roots[1],lambda rel:rel=='cache'),('dependencies',roots[2],lambda rel:False),('runtime',roots[3],lambda rel:False)]:
+        for name,root,exclude in [('source',roots[0],exclude_source),('compiled',roots[1],lambda rel:rel=='cache'),('dependencies',roots[2],lambda rel:False),('runtime',roots[3],lambda rel:False)]:
             metadata[name]=FENCES.capture_tree(str(root),exclude,[str(x)for x in roots],SLOT_DEADLINE)
-        covered={str(root/row['path'])for name,root in zip(('source','compiled','dependencies','runtime'),roots)for row in metadata[name]['entries']}
+        covered={str(root)+('/'+row['path']if row['path']else'')for name,root in zip(('source','compiled','dependencies','runtime'),roots)for row in metadata[name]['entries']}
         for name in ('source','compiled','dependencies','runtime'):
             for row in metadata[name]['entries']:
                 if row['kind']=='link':b.check(row['resolvedTarget']['path']in covered,'link target is inside an excluded/unobserved subtree')
         # Cache contents alone are excluded by the native policy. Membership and the
         # cache directory identity/mode stay pinned; compiled ROOT metadata is never waived.
         metadata['cache']=cache_state
-        b.check(self.metadata is None or metadata==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
+        # Every entry and resolved target has already been covered by TWO complete
+        # native walks and its canonical per-root digest. Retain those exact root
+        # commitments across A0/A1, rather than keeping 100k entry objects resident
+        # while the independent Node byte verifier needs the same server memory.
+        # Keep the original complete receipt hash unchanged; no observation drops.
+        metadata_sha256=sha(canonical(metadata))
+        commitments={}
+        for name in ('source','compiled','dependencies','runtime'):
+            tree=metadata[name]
+            b.check(set(tree)=={'format','root','nodes','links','metadataSha256','entries'} and tree['format']==1 and
+                    set(tree['root'])=={'canonicalpath','device','inode'} and tree['nodes']==len(tree['entries']) and
+                    re.fullmatch('[a-f0-9]{64}',tree['metadataSha256']),'closed complete root metadata commitment required')
+            commitments[name]={key:value for key,value in tree.items()if key!='entries'}
+        commitments['cache']=cache_state
+        b.check(self.metadata is None or commitments==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
+        metadata=commitments
+        del covered,tree
         if self.recovery is not None:b.check(FAST_PROBE.count('validateInstallGrant(grant);')==1,'closed read-only grant probe owner changed')
         observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE if self.recovery is None else FAST_PROBE.replace('validateInstallGrant(grant);','validateInstallGrant(grant,{allowExpired:true});',1),str(self.directory)],self.owner,self.environment,timeout=20)
         fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
@@ -906,7 +957,7 @@ class RuntimeObservation:
         self.check_authority();stage,raw=self.snapshot()
         b.check(self.stage_ranks()[stage]>=self.stage_ranks()[before] and (self.last is None or self.stage_ranks()[stage]>=self.stage_ranks()[self.last]),'native finish publication backslid')
         self.check_slot();self.metadata=metadata;self.last=stage
-        observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':sha(canonical(metadata)),'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
+        observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':metadata_sha256,'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
         self.guard.file_mutation();self.check_slot()
         b.write_new(self.operation/('ci-runtime-fence-%02d.json'%self.fence_count),self.fmt.canonical(observation),0o400)
         self.transitions.append(observation);self.fence_count+=1

@@ -127,6 +127,38 @@ class PreparedFlowTests(unittest.TestCase):
   self.assertFalse(any(isinstance(x,(list,tuple))and len(x)>1 and x[0]=='/usr/bin/systemctl'and x[1]in('start','daemon-reload','stop','disable','enable')for x in f.events));self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertFalse((f.app/'releases'/f.source).exists())
  def test_no_mutation_oracle_detects_actual_list_event(self):
   f=self.fixture();f.events.append(['/usr/bin/systemctl','start','aihr-bank-import.service']);self.assertRaises(AssertionError,self.assert_no_unit_mutation,f)
+ def test_full_fence_retains_exact_root_commitments_without_entry_arrays(self):
+  f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);original=f.boundary;seen=[]
+  def inspect(kind,count):
+   original(kind,count)
+   if kind=='fast'and count==2:
+    metadata=ci.ACTIVE_OPERATION_GUARD.observer.metadata
+    self.assertEqual(set(metadata),{'source','compiled','dependencies','runtime','cache'})
+    for name in('source','compiled','dependencies','runtime'):
+     self.assertEqual(set(metadata[name]),{'format','root','nodes','links','metadataSha256'});self.assertGreater(metadata[name]['nodes'],0);self.assertRegex(metadata[name]['metadataSha256'],'^[a-f0-9]{64}$')
+    seen.append(True)
+  f.boundary=inspect;self.assertTrue(f.invoke_live(f.live_record(a,proof))['serviceStable']);self.assertEqual(seen,[True])
+ def test_actual_root_commitments_detect_member_and_resolved_target_drift_after_native_audit(self):
+  for fault in('source','compiled','dependencies','runtime','link-literal','target-inode','unobserved-target'):
+   with self.subTest(fault=fault):
+    f=self.fixture();compiled=f.webroot/'.next/proof-marker';compiled.write_text('frozen')
+    runtime=f.runtime_root/'bin/proof-marker';runtime.write_text('frozen')
+    dep=f.webroot/'node_modules/dependency.js';other=dep.with_name('other.js');other.write_text('other dependency');alias=dep.with_name('alias.js');alias.symlink_to(dep.name)
+    cache=f.webroot/'.next/cache';cache.mkdir(mode=0o700);(cache/'hidden').write_text('unobserved cache')
+    a=f.prepare_record(True);proof=f.invoke_preparation(a);original=f.boundary;changed=[]
+    def alter(kind,count):
+     original(kind,count)
+     if kind=='fast'and count==2:
+      if fault=='source':target=f.webroot/'source-000';s=target.stat();os.utime(target,ns=(s.st_atime_ns,s.st_mtime_ns+1000000))
+      elif fault=='compiled':compiled.write_text('change')
+      elif fault=='dependencies':dep.write_text('changed dependency')
+      elif fault=='runtime':runtime.write_text('change')
+      elif fault=='link-literal':alias.unlink();alias.symlink_to(other.name)
+      elif fault=='target-inode':dep.rename(dep.with_name('old-dependency.js'));dep.write_text('frozen dependency')
+      else:alias.unlink();alias.symlink_to('../.next/cache/hidden')
+      changed.append(True)
+    f.boundary=alter;reason='excluded/unobserved subtree'if fault=='unobserved-target'else'complete source/compiled/dependency/runtime metadata changed'
+    self.assertRaisesRegex(ValueError,reason,f.invoke_live,f.live_record(a,proof));self.assertEqual(changed,[True]);self.assertGreaterEqual(f.native_calls,1);self.assert_no_unit_mutation(f)
  def test_normal_prepared_wrapper_full_graph(self):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a);self.assert_no_unit_mutation(f);r=f.invoke_live(f.live_record(a,proof));self.assertTrue(r['serviceStable']);self.assertFalse(r['journeyVerified']);self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
  def test_normal_preparation_normalizes_restrictive_umask(self):
