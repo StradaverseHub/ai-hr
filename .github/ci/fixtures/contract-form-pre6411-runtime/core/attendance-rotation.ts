@@ -1,0 +1,163 @@
+/** Schedule Group cycle owner. Immutable dated versions; raw attendance is never recalculated here. */
+import { createHash } from 'node:crypto';
+import { and, asc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
+import { lockLeaveDependencyConfigurationTx } from '../packs/leave/service';
+import { attendanceRotation, attendanceRule, attendanceRuleShift, employment, employmentShiftArrangement, rosterAssignment, shift } from '../db/schema';
+import { assertModuleGate } from './module-gate';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { normalizeRotation, rotationDayOn, rotationVersionOn, type RotationCycle } from './week-pattern';
+import { lockPayrollForScheduleChange, markPayrollForAttendanceChange } from '../packs/payroll/service';
+
+export type AttendanceRotationVersion = typeof attendanceRotation.$inferSelect;
+export type RotationShift = typeof shift.$inferSelect;
+export type RotationResolvedDay = { version: AttendanceRotationVersion; day: RotationCycle['days'][number]; shift: RotationShift | null };
+export async function rotationLookupTx(tx: Tx) {
+  const versions = await tx.select().from(attendanceRotation).orderBy(asc(attendanceRotation.ruleId), asc(attendanceRotation.effectiveFrom));
+  const ids = [...new Set(versions.flatMap(v => v.allowedShiftIds))];
+  const shifts = ids.length ? await tx.select().from(shift).where(inArray(shift.id, ids)) : [];
+  return rotationLookupFrom(versions, shifts);
+}
+/** rotationLookupTx over its two reads, for a caller that read every version and allowed shift in one statement. */
+export function rotationLookupFrom(versions: AttendanceRotationVersion[], shifts: RotationShift[]) {
+  const byShift = new Map(shifts.map(s => [s.id, s]));
+  const byRule = new Map<string, AttendanceRotationVersion[]>();
+  for (const v of versions) { const rows = byRule.get(v.ruleId) ?? []; rows.push(v); byRule.set(v.ruleId, rows); }
+  return Object.assign((ruleId: string | null | undefined, date: string): RotationResolvedDay | null => {
+    if (!ruleId) return null;
+    const version = rotationVersionOn(byRule.get(ruleId) ?? [], date);
+    const day = version ? rotationDayOn(version, date) : null;
+    if (!version || !day) return null;
+    const selected = day.shiftId ? byShift.get(day.shiftId) : null;
+    // Missing sources are a corruption error, never a silent fallback to another shift.
+    if (day.shiftId && !selected) throw new Error('The saved rotation shift is unavailable. Ask an administrator to check the Schedule Group.');
+    return { version, day, shift: selected ?? null };
+  }, { versions, shifts });
+}
+
+/** Adapter used by batched attendance displays and payroll clamping. A nonworking
+ * day has a sentinel empty week, so it cannot fall through to company working days. */
+export function rotationScheduleRow(rotation: RotationResolvedDay, date: string) {
+  const sh = rotation.shift;
+  const dow0 = new Date(`${date}T00:00:00Z`).getUTCDay(); const dow = dow0 || 7;
+  return {
+    id: sh?.id ?? '', shiftId: sh?.id ?? null, code: sh?.code ?? null, name: sh?.name ?? '',
+    start: sh?.startTime ?? null, end: sh?.endTime ?? null, brk: sh?.breakMinutes ?? 0,
+    crosses: sh?.crossesMidnight ?? false, rounding: sh?.normalHoursRoundingMinutes ?? null,
+    override: sh?.normalMinutesOverride ?? null, periods: sh?.breakPeriods ?? null,
+    pattern: rotation.day.kind === 'full' ? [dow] : [], halfPattern: rotation.day.kind === 'half' ? [dow] : [],
+    offPattern: rotation.day.kind === 'off' ? [dow] : [], ruleId: rotation.version.ruleId,
+    lateGrace: sh?.lateGraceMinutes ?? null, earlyLeaveGrace: sh?.earlyLeaveGraceMinutes ?? null,
+    otRule: sh?.otRule ?? null, halfDayFirstOut: sh?.halfDayFirstOut ?? null,
+    cutoffOn: sh?.dailyCutoffEnabled ?? false, cutoffAt: sh?.dailyCutoffTime ?? null,
+    flexOn: sh?.flexibleBreakEnabled ?? false, flexMin: sh?.flexibleBreakMinutes ?? null,
+    shiftType: sh?.type ?? 'normal', rotationKind: rotation.day.kind,
+  };
+}
+
+const revisionOf = (versions: readonly AttendanceRotationVersion[], memberships: readonly {shiftId:string}[]) =>
+ createHash('sha256').update(JSON.stringify({versions:versions.map(v=>v.id).sort(),pool:memberships.map(m=>m.shiftId).sort()})).digest('hex');
+export async function getScheduleRotation(ctx: SessionContext, ruleId: string, existingTx?:Tx) {
+  const read=async (tx:Tx)=>{
+    const versions = await tx.select().from(attendanceRotation).where(eq(attendanceRotation.ruleId, ruleId)).orderBy(asc(attendanceRotation.effectiveFrom));
+    const memberships = await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,ruleId)).orderBy(asc(attendanceRuleShift.shiftId));
+    return { versions, memberships, revision: revisionOf(versions, memberships) };
+  };
+  return existingTx?read(existingTx):withTenant(ctx,read);
+}
+/** Group and shift locks are already held, so the roster eligibility check and write cannot race. */
+export async function assertSchedulePoolExclusionsTx(tx:Tx,ruleId:string,removed:string[],effectiveFrom:string,checkFallback = true) {
+  if (!removed.length) return;
+  const members=tx.select({id:employment.id}).from(employment)
+    .where(and(eq(employment.attendanceRuleId,ruleId),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,effectiveFrom))));
+  const [rostered]=await tx.select({id:rosterAssignment.id}).from(rosterAssignment)
+    .where(and(inArray(rosterAssignment.employmentId,members),inArray(rosterAssignment.shiftId,removed),
+      eq(rosterAssignment.isRestDay,false),gte(rosterAssignment.shiftDate,effectiveFrom))).limit(1);
+  if(rostered)throw new Error('A shift being excluded is on an employee’s roster. Reassign that shift before excluding it.');
+  // A dated rotation supplies every day from its start, including Off and Rest days.
+  if(!checkFallback)return;
+  const [arranged]=await tx.select({id:employmentShiftArrangement.id}).from(employmentShiftArrangement)
+    .where(and(inArray(employmentShiftArrangement.employmentId,members),inArray(employmentShiftArrangement.shiftId,removed),
+      isNull(employmentShiftArrangement.supersededAt),
+      or(isNull(employmentShiftArrangement.validTo),gte(employmentShiftArrangement.validTo,effectiveFrom)))).limit(1);
+  const [backup]=await tx.select({id:employment.id}).from(employment)
+    .where(and(inArray(employment.id,members),inArray(employment.defaultShiftId,removed),
+      sql`not exists (select 1 from ${employmentShiftArrangement} a where a.employment_id=${employment.id} and a.superseded_at is null)`)).limit(1);
+  if(arranged||backup)throw new Error('A shift being excluded is assigned to an employee. Change the employee’s shift arrangement before excluding it.');
+}
+
+export async function saveScheduleRotation(ctx: SessionContext, p: {
+  ruleId: string; expectedRevision: string; allowedShiftIds: string[]; cycle: RotationCycle;
+},existingTx?:Tx) {
+  p=structuredClone(p);
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  // A new optional Attendance configuration write; shared tx readers stay available to core Leave.
+  assertModuleGate(ctx,'attendance');
+  const save=async (tx:Tx)=>{
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    const [authority] = await tx.execute(sql`select app.is_group_admin() as allowed`) as unknown as { allowed: boolean }[];
+    if (!authority?.allowed) throw new Error('A group-wide HR administrator is required to change tenant-wide schedule rotations.');
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    const [rule] = await tx.select().from(attendanceRule).where(eq(attendanceRule.id, p.ruleId)).for('update');
+    if (!rule || rule.isDefault) throw new Error('Choose a non-Standard Schedule Group in this tenant.');
+    const all = await tx.select().from(shift).orderBy(asc(shift.id)).for('update');
+    const versions = await tx.select().from(attendanceRotation).where(eq(attendanceRotation.ruleId, p.ruleId)).orderBy(asc(attendanceRotation.effectiveFrom));
+    const memberships=await tx.select({shiftId:attendanceRuleShift.shiftId}).from(attendanceRuleShift).where(eq(attendanceRuleShift.ruleId,p.ruleId));
+    if (p.expectedRevision !== revisionOf(versions, memberships)) throw new Error('This schedule was changed by another administrator. Reload before saving.');
+    if(new Set(p.allowedShiftIds).size!==p.allowedShiftIds.length)throw new Error('Select each allowed shift once.');
+    const pool = [...new Set(p.allowedShiftIds)].sort();
+    const cycle = normalizeRotation(p.cycle, pool);
+    if (cycle.effectiveFrom <= todayInKualaLumpur()) throw new Error('Choose an effective date tomorrow or later. Recorded attendance is not changed.');
+    if (versions.some(v => v.effectiveFrom >= cycle.effectiveFrom)) throw new Error('The effective date must be later than every saved version. Save a new dated revision instead of replacing history.');
+    const byId = new Map(all.map(s => [s.id, s]));
+    for (const id of pool) {
+      const sh = byId.get(id);
+      if (!sh) throw new Error('A selected shift is unavailable in this tenant.');
+      // Existing assignments may keep archived sources; a new revision must use active ones.
+      if (sh.archivedAt) throw new Error(`Shift ${sh.name} is archived. Select an active shift for the new rotation.`);
+    }
+    const previousPool=versions.at(-1)?.allowedShiftIds??memberships.map(m=>m.shiftId);
+    await assertSchedulePoolExclusionsTx(tx,rule.id,previousPool.filter(id=>!pool.includes(id)),cycle.effectiveFrom,false);
+    // Tenant-wide rules cannot bypass a company's payroll lock through payslip RLS.
+    // This seam returns only operational window/status facts and locks the runs.
+    const members = await tx.select({ id: employment.id }).from(employment).where(sql`${employment.attendanceRuleId} = ${rule.id} OR (${employment.attendanceRuleId} IS NULL AND (${employment.defaultShiftId} IN (SELECT id FROM shift WHERE rule_id=${rule.id}) OR EXISTS(SELECT 1 FROM employment_shift_arrangement a JOIN shift s ON s.id=a.shift_id WHERE a.employment_id=${employment.id} AND a.superseded_at IS NULL AND s.rule_id=${rule.id})))`).orderBy(asc(employment.id));
+    for (const member of members) {
+      const batches = await lockPayrollForScheduleChange(tx, member.id, cycle.effectiveFrom);
+      if (batches.some(b => b.status === 'closed')) throw new Error('This rotation would change a closed payroll attendance period. Choose a later effective date.');
+      await markPayrollForAttendanceChange(tx, ctx, batches, member.id);
+    }
+
+    // ruleId is also the inherited group for legacy employee assignments. Keep those
+    // links when a shift leaves the allowed pool; version.allowedShiftIds owns the pool.
+    const [version] = await tx.insert(attendanceRotation).values({ tenantId: ctx.tenantId, ruleId: rule.id,
+      ...cycle, allowedShiftIds: pool, createdBy: ctx.userId ?? 'system' }).returning();
+    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-rule', aggregateId: rule.id,
+      eventType: 'attendance-rule.rotation-saved', actor: actorOf(ctx),
+      payload: { versionId: version.id, effectiveFrom: cycle.effectiveFrom, anchorDate: cycle.anchorDate,
+        unit: cycle.unit, length: cycle.length, allowedShiftIds: pool, days: cycle.days, previousVersionIds: versions.map(v => v.id) } });
+    // 2f803985 — the Duty Roster block and its switch were folded into Working Day / Schedule Pattern. A group
+    // with a saved pattern is roster-controlled, so its first saved version turns Duty Roster Control on (it is
+    // never turned off here). Same transaction and lock as the version, with its own audit event.
+    if (!rule.dutyRosterControl) {
+      await tx.update(attendanceRule).set({ dutyRosterControl: true, updatedAt: new Date() }).where(eq(attendanceRule.id, rule.id));
+      await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'attendance-rule', aggregateId: rule.id,
+        eventType: 'attendance-rule.duty-roster-control.changed', actor: actorOf(ctx),
+        payload: { before: false, enabled: true, reason: 'schedule-pattern-saved', versionId: version.id } });
+    }
+    return { id: version.id, revision:revisionOf([...versions,version],memberships), effectiveFrom:version.effectiveFrom };
+  };
+  return existingTx?save(existingTx):withTenant(ctx,save);
+}
+
+/** Legacy shift/group writers must not mutate the pool behind a saved cycle. */
+export async function assertRotationPoolWriteTx(tx: Tx, from: string | null | undefined, to: string | null | undefined) {
+  if (from === to) return;
+  const ids = [...new Set([from,to].filter((id):id is string=>!!id))];
+  if (!ids.length) return;
+  await tx.select({id:attendanceRule.id}).from(attendanceRule).where(inArray(attendanceRule.id,ids)).orderBy(asc(attendanceRule.id)).for('update');
+  const [saved] = await tx.select({id:attendanceRotation.id}).from(attendanceRotation)
+    .where(inArray(attendanceRotation.ruleId,ids)).limit(1);
+  if (saved) throw new Error('Edit Shifts Allowed together with the dated rotation in its Schedule Group.');
+}

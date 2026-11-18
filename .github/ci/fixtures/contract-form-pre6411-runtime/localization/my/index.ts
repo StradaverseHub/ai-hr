@@ -1,0 +1,299 @@
+import {MY_DOCUMENT_MERGE_KEYS} from './document-merge';
+import {replayMyTaxBasis} from './tax-basis-replay';
+import {ocbcBankPaymentFiles} from './ocbc-payment';
+import {childReliefTableHeadCount} from './statutory-tables';
+import {getTaxSelectionMY,getTaxSelectionsMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
+import {listTaxSchemeDeclarationsMY,saveTaxSchemeDeclarationMY,revokeTaxSchemeDeclarationMY,resolveTaxSchemeMY} from './tax-scheme-declarations';
+import { MY_EA_REPORTING } from './ea-reporting';
+/**
+ * Malaysia localization pack (ADR-0008). Slice 1 ships the statutory profile; leave rules,
+ * holiday calendar, and payroll calculators (EPF/SOCSO/EIS/PCB) join here in later slices.
+ */
+import { validateEpfElection } from './epf-election';
+import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
+import { legacyTopupConversionCsv } from './epf-topup-conversion';
+import { readReviewedTp3OpeningMYTx,prepareReviewedTp3OpeningMYTx,canMaintainPassportProfileMY,canMaintainBankProfileMY,readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryProfilesMYTx, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, initializeHiredStatutoryMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
+import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
+import {
+  childReliefAmountFor,
+  eis,
+  epf,
+  foldPriorSlipIntoAccumulators,
+  hrdfLevy,
+  hrdfRate,
+  hrdfSubject,
+  openingAccumulatorsFromTp3,
+  overtimePay,
+  pcbMonth,
+  socso,
+  statutory,
+} from './payroll';
+// 04b88724 — the child-relief derivation's own leaf (db-free, so the client slice can serve it too).
+import { childReliefFor, childReliefPrices } from './child-relief';
+import {
+  DEFAULT_MY_STATUTORY,
+  MY_EPF_THIRD_SCHEDULE_PART_A,
+  MY_EPF_THIRD_SCHEDULE_PART_E,
+  MY_HRDF,
+  MY_LP_OPTIONAL_DEDUCTION_CODES,
+  MY_PCB_EXEMPTION_CODES,
+  MY_RELIEFS,
+  MY_TP1_2026,
+  MY_TP3_2026,
+  PCB_REMUNERATION_TYPES,
+  pcbExemptionCodesFor,
+} from './statutory-tables';
+import { MY_CONFIG_SECTIONS } from './config-sections';
+import { seedReferenceDataMY } from './provision';
+import { myClientPack } from './client';
+import { multiCycleWorksheetMY } from './multicycle-worksheet';
+import { BACKFILL_COMPONENT_CODES, MY_DEFAULT_PAY_COMPONENTS } from './pay-components';
+import { EA_FIELDS } from './reports';
+import {
+  archiveComponentOverrideMY,
+  archiveStatutoryRulesetMY,
+  getActiveStatutoryMY,
+  getActiveStatutoryResolvedMY,
+  listComponentOverridesMY,
+  listStatutoryPacksMY,
+  listStatutoryRulesetsMY,
+  MY_STATUTORY_SOURCES,
+  readActiveStatutoryMY,
+  saveStatutoryRulesetMY,
+  setComponentOverrideMY,
+  statutorySyncStatusMY,
+  validateStatutoryComponent,
+  validateStatutoryRuleset,
+} from './statutory-config';
+import { companyRegistrationReadinessMY } from './company-registration-readiness';
+import { initializeCompanyStatutoryMY, getCompanyStatutoryMY, listCompanyStatutoryMY, setCompanyStatutoryMY } from './company-statutory';
+import { eaCompaniesInYear, eaStatement, MY_PLANNED_FORMS, MY_REPORTS, MY_STATUTORY_LINKS } from './reports';
+import { cp39PaymentFile } from './cp39-file';
+import { pcb2iiStatement } from './pcb2ii';
+import type { CountryPack } from '../country-pack';
+
+// ADR-0080 D1: the pack implements the registry-owned CountryPack contract (previously the
+// registry derived its type FROM this object — backwards).
+export const myPack: CountryPack = {
+  eaReporting: MY_EA_REPORTING,
+  country: 'MY' as const,
+  documentMerge:{keys:MY_DOCUMENT_MERGE_KEYS},
+  displayClock: {timeZone:'Asia/Kuala_Lumpur',label:'MYT'},
+  // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
+  // components by localization/registry.client.ts (this reference makes it contract-declared).
+  client: myClientPack,
+  // Rung 5a (ADR-0080 D6) — jurisdiction state labels, consumed by holiday groups, location state
+  // overrides, and the profile-option 'state' catalog seed via the registry.
+  states: MY_STATES,
+  statutory: {
+    set: setStatutoryProfileMY,
+    initializeForHire: initializeHiredStatutoryMY,
+    withWrite:withStatutoryProfileWriteMY,
+    reviewed:{readEditable:readReviewedStatutoryEditableMYTx,choices:reviewedStatutoryChoiceMetadataMYTx,labels:readReviewedStatutoryLabelsMYTx,lockSubject:lockReviewedStatutoryProfileMYTx,prepare:prepareReviewedStatutoryProfileMYTx,confirm:confirmReviewedStatutoryProfileMYTx,readReference:readReviewedStatutoryProfileReferenceMYTx},
+    get: getStatutoryProfileMY,
+    // The set-wise form of `get`, for one caller-held snapshot over many people (the Personnel export).
+    getManyTx: getStatutoryProfilesMYTx,
+    getEditSnapshot: getStatutoryEditSnapshotMY,
+    // Partial save of only the four TP3 opening-balance columns (item a6a47698 — TP3 relocated to the
+    // Payroll tab with its own save; the full statutory overwrite no longer carries these).
+    setTp3: setTp3ProfileMY,
+    reviewedTp3Opening:{read:readReviewedTp3OpeningMYTx,prepare:prepareReviewedTp3OpeningMYTx},
+    // Partial save of only the salary-payment bank columns + custom-payment-holder controls (item ef720d3a —
+    // Bank Information split out of the statutory form into its own card with its own save).
+    setBank: setBankProfileMY,
+    bankEditAccess:canMaintainBankProfileMY,
+    reviewedBank:prepareReviewedBankMYTx,
+    setRegistrationNumbers:setRegistrationNumbersMY,
+    // Partial saves for the Identification & Tax card (item 8b5334db): IC relocated to the Profile tab (its own
+    // seed setter), and the tax columns split into their own card with a dedicated partial save.
+    setIc: setIcProfileMY,
+    // Item e3ce0d4d — non-Malaysian identity: save the passport identification block (skips MyKad IC validation).
+    // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
+    setPassport: setPassportProfileMY,
+    passportEditAccess:canMaintainPassportProfileMY,
+    reviewedPassport:{read:readReviewedPassportMYTx,prepare:prepareReviewedPassportMYTx},
+    validatePassport:validatePassportProfileMY,
+    setTax: setTaxProfileMY,
+    getTaxSelection:getTaxSelectionMY,
+    getTaxSelections:getTaxSelectionsMY,
+    saveTaxSelection:saveTaxSelectionMY,
+    initializeHiredTaxSelectionTx:initializeHiredTaxSelectionMYTx,
+    initializeTransferredTaxSelectionTx:initializeTransferredTaxSelectionMYTx,
+    listTaxSchemeDeclarations:listTaxSchemeDeclarationsMY,
+    saveTaxSchemeDeclaration:saveTaxSchemeDeclarationMY,
+    revokeTaxSchemeDeclaration:revokeTaxSchemeDeclarationMY,
+    // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview
+    // warns at filing time; the approved plan asks for the same warning on the screen where the number
+    // is typed, and the personnel page reads it through the pack rather than importing MY directly.
+    taxNumberSharedWith: taxNumberSharedWithMY,
+    // Feedback 0df0c635 — partial save of only the Others Statutory controls (today: subject_to_hrdf).
+    // The Others Statutory card on the Bank & Statutory tab saves through this, like setTp3/setBank/setTax.
+    setOthersStatutory: setOthersStatutoryMY,
+    // Feedback 57840a6e — the corrective step for the explicit "No" rows the OLD checkbox captured from
+    // the company default. Consumed by scripts/correct-hrdf-opt-outs.ts through the registry.
+    correctAccidentalHrdfOptOuts: correctAccidentalHrdfOptOutsMY,
+    // b6dbadc5 — the one-off conversion of pre-additive Top-up elections, consumed by
+    // scripts/convert-epf-topup-percentage.ts through the registry.
+    convertLegacyEpfTopups: convertLegacyEpfTopupsMY,
+    legacyEpfTopupCsv: legacyTopupConversionCsv,
+    validateIC: isValidIC,
+    canApplyIcChange:canApplyIcProfileChangeMY,
+    // Rung 5a (D6) — IC canonicalisation + MyKad-derived DOB, consumed by the bulk importer through
+    // the pack instead of a direct localization/my import.
+    normalizeIC,
+    dobFromIC,
+    // Rung 5c — the SOCSO/EIS blank-number default, consumed by the generic personnel + zakat screens
+    // through the pack (previously a direct localization/my/statutory import).
+    defaultSocsoEisNumber,
+    // r393 (685d2380 step 3b) — the EPF election pre-flight, from the db-free leaf the full-row setter
+    // itself calls (./epf-election.ts). `completeEmployeeDraft` reaches it through the registry.
+    validateEpfElection,
+  },
+  companyStatutory: {
+    initialize: initializeCompanyStatutoryMY,
+    set: setCompanyStatutoryMY,
+    get: getCompanyStatutoryMY,
+    // Rung 5c — the group Organization admin panel reads every company's statutory row through the pack.
+    list: listCompanyStatutoryMY,
+    readiness: companyRegistrationReadinessMY,
+  },
+  leave: {
+    types: MY_LEAVE_TYPES,
+    entitlement,
+    annualEntitlement,
+  },
+  holidays: MY_HOLIDAYS_2026,
+  payroll: {
+    replayTaxBasis: replayMyTaxBasis,
+    statutory,
+    resolveTaxScheme:resolveTaxSelectionMY,
+    // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle
+    // worksheet's model of an already-paid month. They were two copies and the copy drifted twice in two
+    // rounds (zakatRebateTp1, then Sigma(Y-K) moving off gross_pay onto bases.pcb); the fold's own header
+    // carries what each drift cost. The type it fills, PcbAccumulators, is this pack's, so the fold is too.
+    foldPriorSlipIntoAccumulators,
+    // r356 — and its twin: the year's opening balances from a previous employer's TP3. Same story, and
+    // the worksheet's copy was already a round behind (a hard 0 for sum-LP, which is item 20837372's
+    // defect verbatim).
+    openingAccumulatorsFromTp3,
+    epf,
+    socso,
+    eis,
+    pcbMonth,
+    overtimePay,
+    hrdfLevy,
+    // Feedback c2ea9567 — the rate hrdfLevy applies, stamped beside the HRDF wages on the payslip.
+    hrdfRate,
+    // Feedback 0df0c635 — effective per-employee HRDF subjectivity (tri-state subject_to_hrdf resolved
+    // against the employer's registration band). D6 vocabulary: the kernel consumes it via the pack.
+    hrdfSubject,
+    // Item d64d0df4 (D6) — an employee's keyed child-relief GRID → the total child deduction in RM,
+    // worked out category by category from the resolved ruleset (or the pack built-in). The kernel
+    // hands the stored grid straight back to the pack rather than naming a Malaysian relief figure.
+    childReliefAmountFor,
+    // 04b88724 (r340 fix pass) — the same derivation WITH the qualifying-children count and the working.
+    // `childReliefAmountFor` above is this function's `.amountRM`; the Personnel screen needs the count, so
+    // it calls this rather than dividing the money by a rate it would otherwise have to know. Putting both
+    // on the one function is what the approved plan asked for, and what stops the screen and the payslip
+    // disagreeing about the same child.
+    childReliefFor,
+    childReliefTableHeadCount:table=>childReliefTableHeadCount(table as Parameters<typeof childReliefTableHeadCount>[0]),
+    childReliefPrices,
+    epfReliefCap: MY_RELIEFS.epfReliefCap,
+    // Rung 5c (D6) — the built-in HRDF levy rates; the OT/HRDF config + Attendance-policy screens'
+    // fallback when a resolved ruleset predates the `hrdf` slice (they never name MY_HRDF directly).
+    hrdfDefault: MY_HRDF,
+    // Rung 5b (D6) — the built-in verified EPF Third Schedule tables; the statutory band-table
+    // editor's fallback for stored overrides that predate partA/partE (threaded down as props by
+    // the configuration pages).
+    epfThirdSchedule: { partA: MY_EPF_THIRD_SCHEDULE_PART_A, partE: MY_EPF_THIRD_SCHEDULE_PART_E },
+    // Rung 5a (D6 — the corrected R55 shape): the built-in LHDN PCB 2026 exemption/LP tables and the
+    // remuneration-type vocabulary. The kernel's ruleset fallback and the pay-component classification
+    // validator consume THESE, never the MY table names.
+    pcbExemptionTables: { pcb: MY_PCB_EXEMPTION_CODES, lp: MY_LP_OPTIONAL_DEDUCTION_CODES },
+    pcbRemunerationTypes: PCB_REMUNERATION_TYPES,
+    pcbExemptionCodesFor,
+    // Rung 5a (D6) — the TP1 categories with a VERIFIED LHDN cap (statutory-tables MY_RELIEFS).
+    // `children` / EPF are per-unit caps and deliberately absent (see core/tax-relief.ts rationale).
+    taxReliefCategoryCaps: { individual: MY_RELIEFS.individual, spouse: MY_RELIEFS.spouse },
+    // 7ad37961 (ADR-0081) — the full LHDN TP1 (1/2026) catalogue: C1–C17 with their lettered sub-lines
+    // and the annual limit the form itself prints against each, plus the Section D rebate lines. Every
+    // figure is transcribed from the agency's own form (STATUTORY-SOURCES.md §9); an item the form
+    // prints no figure against carries `limit: null` and is never blocked on (ADR-0008).
+    taxReliefCatalogue: MY_TP1_2026,
+    // df35d60d — LHDN TP3 (1/2026). Its `sectionD` IS `MY_TP1_2026.items`, the same array object: one
+    // relief taxonomy, consumed by the TP1 (claimed through THIS employer) and by the TP3 (claimed
+    // through the PREVIOUS one). See the header over MY_TP3_2026 in ./statutory-tables.
+    tp3Catalogue: MY_TP3_2026,
+    // Active-ruleset loader (ADR-0019): resolves the DB override or the verified default. The kernel
+    // calls this once per run and threads the result into the calculators above.
+    loadRuleset: getActiveStatutoryMY,
+    // Resolved loader (ADR-0020 §7): same resolution + pack provenance (packVersion/signedKeyId) so the
+    // kernel can snapshot which vendor pack + key produced each payslip.
+    loadRulesetResolved: getActiveStatutoryResolvedMY,
+    // ADR-0024 §7 — the read-only accountant sign-off worksheet over real payroll history. Exposed on
+    // the pack (not imported by the screen) because the whole question is Malaysian: Act 4 s.6(7)'s
+    // monthly unit and the EPF Third Schedule's monthly bands are what make two same-month runs a
+    // correctness question at all. Reading it changes nothing — see the module header.
+    multiCycleWorksheet: multiCycleWorksheetMY,
+  },
+  // Editable statutory configuration (ADR-0019): the admin view/edit/audit surface. The verified
+  // DEFAULT and per-section source metadata drive the transparency cards.
+  statutoryConfig: {
+    readActive: readActiveStatutoryMY,
+    list: listStatutoryRulesetsMY,
+    save: saveStatutoryRulesetMY,
+    archive: archiveStatutoryRulesetMY,
+    validate: validateStatutoryRuleset,
+    default: DEFAULT_MY_STATUTORY,
+    sources: MY_STATUTORY_SOURCES,
+    // Vendor pack distribution (ADR-0020): the pack panel + staleness signal.
+    listPacks: listStatutoryPacksMY,
+    syncStatus: statutorySyncStatusMY,
+    // Per-body overrides (ADR-0037, #6): each statutory body versions independently via an overlay.
+    listComponents: listComponentOverridesMY,
+    setComponent: setComponentOverrideMY,
+    archiveComponent: archiveComponentOverrideMY,
+    validateComponent: validateStatutoryComponent,
+  },
+  // Rung 5a (D6) — the default pay-component catalog (treatment flags are jurisdiction facts) and the
+  // backfill-critical code roles core/pay-components resolves through the registry.
+  payComponents: {
+    defaults: MY_DEFAULT_PAY_COMPONENTS,
+    backfillCodes: BACKFILL_COMPONENT_CODES,
+  },
+  // Rung 5a (D6) — the EA-form field vocabulary the EA-only amendment layer validates against.
+  eaFields: EA_FIELDS,
+  // Rung 5c (D4) — the country-admin configuration sections; the generic Statutory Configuration
+  // landing page renders these instead of a hardcoded MY body list, and the config routes 404 unless
+  // the acting company's pack declares their section.
+  configSections: MY_CONFIG_SECTIONS,
+  // Rung 5c (D5 / ADR-0079) — seed the MY leave-type catalog + holiday calendar into a new tenant;
+  // db/provision.ts + db/seed.ts invoke this through the registry instead of importing the MY pack.
+  seedReferenceData: seedReferenceDataMY,
+  reports: MY_REPORTS,
+  // 6babf4f6 (D4) — the shelf entries that are not generatable reports (the per-employee EA statement
+  // and the CP22/CP22A worklist). The Statutory Forms screen renders these from the catalog instead of
+  // hardcoding them, which is what it used to do for EA.
+  statutoryLinks: MY_STATUTORY_LINKS,
+  // 587ee719 (D4) — the forms this jurisdiction has that we have not built. Named on the shelf with a
+  // status and NO action, so the list an operator sees is complete without anything on it pretending to
+  // produce a document.
+  plannedForms: MY_PLANNED_FORMS,
+  eaStatement,
+  selfServiceEaStatement:(ctx,p)=>eaStatement(ctx,{...p,selfService:true}),
+  // 72b100cd — LHDN's PCB 2(II). Optional on the contract; Malaysia implements it.
+  pcb2iiStatement,
+  eaCompaniesInYear,
+  // 0d02d4a1 (D6) — the monthly statutory UPLOAD FILES this jurisdiction produces, keyed by the format id
+  // the generic Payment Submission registry asks for. This is the door that lets a country-neutral screen
+  // hand over LHDN's e-Data PCB file without naming this pack: before it existed that row had to be listed
+  // as unavailable while /payroll/reports served the identical file. The value is an ADAPTER over
+  // cp39FileForBatch, not a second producer — same read, same bytes, same file name (see cp39-file.ts).
+  // ⚠️ THE KEY IS THE GENERIC REGISTRY'S FORMAT ID and is pinned on both sides by
+  // test/r340-cp39-payment-submission-download.test.ts, so a rename on either side fails rather than
+  // silently taking the row's download away.
+  paymentFiles: { 'my.lhdn.cp39-edata': cp39PaymentFile },
+  bankPaymentFiles:ocbcBankPaymentFiles,
+};

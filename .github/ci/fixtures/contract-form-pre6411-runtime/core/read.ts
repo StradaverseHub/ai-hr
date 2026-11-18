@@ -1,0 +1,7431 @@
+import {PERSONNEL_COLUMN_SOURCES,PERSONNEL_DATE_COLUMNS} from '../lib/personnel-list-controls';
+import {isEmployeeColumnKey,type EmployeeColumnKey} from '../lib/employee-columns';
+import {privateSearchHash} from './personnel-private-search';
+import {personnelDuplicateIdsTx,type PersonnelQualityFlag} from './personnel-quality';
+import {readOrgChartEdgesTx} from './org-chart-window';
+import {payrollEmploymentPredicate,payrollCompensationEffectiveOn,payrollRunContextsTx,outstandingPaymentPredicate,payrollEmploymentEnd} from '../packs/payroll/service';
+import {settingEnabled} from './entitlements';
+import {foldEmployeeCode,EMPLOYEE_SEARCH_RESULT_CAP} from '../lib/employee-search';
+import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
+import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
+import {isCalendarDate} from '../lib/calendar-date';
+import {lockPayrollHistoryReadTx,tryLockPayrollHistoryReadTx} from './payroll-history-lock';
+import {ownPersonPredicate} from './own-person';
+import {lockAccessConfigurationWriteTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {withPersonnelRead,withPersonnelPresentationReadTx,withPersonnelOverviewRead,type PersonnelOverviewSnapshot} from './personnel-read-bounds';
+import {emergencyLeaveGroupOriginSql,cancellationSplitGroupSql} from './leave-group-origin-sql';
+import {formulaOvertimeForRowsTx} from '../packs/attendance/service';
+import {payrollPublicationState} from '../lib/payroll-publication';
+/** Read queries for the UI. Each runs via withTenant, so RLS scopes every result. */
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  like,
+  lte,
+  notInArray,
+  or,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { decodeJsonFieldRows, decodeJsonFields, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
+import { assertModuleGate } from './module-gate';
+import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
+import {assertReadCompositionPrincipalTx} from './read-composition-principal';
+
+/** Optional caller-owned read seam. Supplied transactions must bind an actual current login;
+ * this is not a bootstrap, migration or owner-pool capability. Ordinary calls are unchanged. */
+async function withReadTx<T>(ctx: SessionContext, existingTx: Tx | undefined, read: (tx: Tx) => Promise<T>, options?:{presentationSnapshot:true}): Promise<T> {
+  if (!existingTx) return withTenant(ctx, read);
+  await (options?.presentationSnapshot?assertReadCompositionPrincipalTx:assertAiPrincipalTx)(existingTx, ctx);
+  return read(existingTx);
+}
+
+/** Workforce projections own a consistent read-only snapshot. Other legacy read owners retain
+ * their established transaction contract; borrowed command transactions remain exclusive. */
+function withProjectionTx<T>(ctx:SessionContext,existingTx:Tx|undefined,purpose:'workforce'|undefined,read:(tx:Tx)=>Promise<T>){
+ return purpose?withPersonnelRead(ctx,read,{existingTx}):withReadTx(ctx,existingTx,read);
+}
+
+import { companyDeleteBlockSqlText } from './company-refs';
+import { isCompanyDeleteBlock, type CompanyDeleteBlock } from '../lib/company-delete';
+import {
+  aggregateTypesOfModule,
+  isApprovalHistoryAction,
+  type ApprovalHistoryAction,
+  type ApprovalHistoryModule,
+} from '../lib/approval-history';
+// f1b994e3 — the Audit Trail's Area filter resolves a module to its aggregate types from the SAME map
+// the row chip reads, so the filter and the chip can never disagree. Pure, no DB, safe to import here.
+import { MAPPED_AGGREGATE_TYPES, aggregateTypesForModule, type ModuleKey } from '../lib/audit-format';
+import {
+  // r303 (31492f74) — the Anniversary-to-Calendar correction's reason prefix, so classifyLedgerAdjustment
+  // treats its reversal row as the system correction it is.
+  A2C_RECALC_REASON_PREFIX,
+  AGED_FORFEIT_REASON,
+  CARRY_FORFEIT_REASON_CAP,
+  CARRY_FORFEIT_REASON_EXPIRY,
+  POLICY_RECALC_REASON_PREFIX,
+  PROFILE_RECALC_REASON_PREFIX,
+  // r389 (62a1bec1) — Earned to Date has ONE definition, in the kernel beside the engines' own "already
+  // granted" predicate: the breakdown walk and leaveBalances' `accrued` both read it, and a recalculation an
+  // Anniversary-to-Calendar correction superseded is decided by the same helper on both paths.
+  INELIGIBLE_GRANT_REVERSAL_REASON,
+  a2cSupersessionOf,
+  entitlementRecalcKind,
+  isEarnedToDateRow,
+  recalcAdjustmentReasonCond,
+  earnedCycleStart,
+  isEarnedMethod,
+  // r299 (3de1453a) — Earned Accrual covers Annual Leave only, so an earned method on any other type is
+  // STRANDED; the breakdown's status says so, decided here with the engine's own predicate.
+  isEarnedAccrualType,
+  // 31e39d74 — the bc36c768 not-configured marker, read (never written) so the breakdown can SAY that a
+  // type grants nothing because no earning method was chosen, instead of showing the 0.00 that causes.
+  isAccrualUnconfigured,
+  resolveLeaveYearCycle,
+  isLeaveEligible,
+  isProfileEligible,
+  displayEntitlementFor,
+  type DisplayEntitlement,
+  // r335 (6af80f5d) — the Rounding Method applied to the DISPLAYED Earned to Date. Same shape as
+  // displayEntitlementFor: a kernel helper this read PICKS, never arithmetic restated here.
+  displayEarnedToDateDays,
+  resolveCarryBreakdown,
+  // r303 (31492f74) — the Leave Summary explanation reads the engine's own join-year and carry decisions
+  // rather than restating them.
+  carryEnabled,
+  earnedAccrualStart,
+  hireYearGrantShape,
+  leaveCycleEnd,
+  applyLeaveTypeRules,
+  leaveTypeRuleColumns,
+  serviceYearsAt,
+  // 6e9a126e RELEASE TWO — the entitlement TEMPLATE overlay, for the balance breakdown's past-date read.
+  policyForDatedReader,
+  countedDatesForSpan,
+  countedDatesForSpans,
+  // r301 (83511d3b) — Cancel Approved Leave: the leave type's rule and THE button predicate, so the Team Leave
+  // Tracker (plannedAbsences) and /leave (employeeCancelOffers) offer exactly what the service accepts.
+  cancelApprovedSettingOf,
+  cancelApprovedTypeColumns,
+  employeeCancellableDates,
+  type LeaveEligibility,
+  // ad965821 — the probation rule lives in its OWN column, not the eligibility JSONB, so the apply-menu
+  // gate merges it in the same way requestLeave/editLeave do (core/leave.ts:2467 and :5356). The MERGE is
+  // identical; the AS-OF is not — see mayAppearInApplyMenu.
+  type ProbationEligibility,
+} from './leave';
+import {
+  buildTemplateEntitlementResolver,
+  emptyTemplateEntitlementResolver,
+  type TemplateEntitlementResolver,
+  eligibilityNoticeFrom,
+  explainEntitlementEligibility,
+} from './entitlement-template';
+import type { OwnLeaveInputs } from './own-leave-inputs';
+import { stagedHomeReads } from './calendar-window-inputs';
+// r303 (31492f74) — the per-line working HR's Leave Summary sentences are rendered from. Type only: the
+// renderer is a pure client-safe module and this read builds its input from the locals behind each figure.
+import type { LeaveSummaryDerivation } from '../lib/leave-summary-explain';
+// 31e39d74 — "configured but not yet generated" as a value, not as a silence. Pure + DB-free, so the
+// server read and the two presentation layers that show it share ONE definition (lib/entitlement-status.ts).
+import {
+  resolveEntitlementStatus,
+  type EligibilityNotice,
+  type EntitlementStatus,
+} from '../lib/entitlement-status';
+// r209 — the shared-pool descriptor. Declared in lib/ rather than here so the CLIENT-safe balance grids can
+// name the shape without importing a module that drags in db/client.
+import { holdsNothingOfItsOwn, isPoolBorrower, type SharedLeaveBalanceInfo } from '../lib/shared-leave-balance';
+import type { EmployeePickOption } from '../lib/employment-selection';
+// 1ae7f3ab + 4fdb69b2 — the ONE declaration of what references a leave type. listLeaveTypes' inUse
+// predicate is generated from it, and so is deleteLeaveType's guard; two hand-written lists are what
+// drifted into the bug both items describe.
+import { leaveTypeInUseSqlText } from './leave-type-refs';
+// 23ad620e — "the" emergency contact is now the highest-priority row of the per-person register.
+import { primaryEmergencyContactRow } from './emergency-contacts';
+// ADR-0082 §6 C4 — the per-employment holiday resolver behind `holidayDatesForEmployment` below.
+import { holidayDatesFor } from './holidays';
+import {
+  appUser,
+  assignment,
+  attendance,
+  attendanceAllowancePolicy,
+  businessUnit,
+  clockingLocation,
+  company,
+  compensation,
+  costCenter,
+  department,
+  domainEvent,
+  employeeStatutoryMy,
+  employment,
+  holiday,
+  holidayGroup,
+  jobGrade,
+  leaveCancellationRequest,
+  leaveCancellationStep,
+  leaveLedger,
+  leaveRequest,
+  leaveRequestDate,
+  leaveRequestStatusEnum,
+  leaveType,
+  location,
+  payComponent,
+  leaveSharedGroup,
+  leaveSharedGroupMember,
+  payrollBatch,
+  payrollCycle,
+  payrollPolicy,
+  payslip,
+  person,
+  position,
+  reportingLine,
+  reportingLineScope,
+  reportingLineTypeEnum,
+  toilAccrual,
+} from '../db/schema';
+import { payrollHistoryEffectiveBatch } from '../db/schema';
+import { ALL_ROW_CEILING } from '../lib/pagination';
+import { daysInMonth } from './payroll';
+import { filterDelegationOrgScopeTx } from './approvals';
+import { payslipReleaseAt } from './payroll-policy-config';
+import { evaluateAllowancesForPeriod } from './attendance-allowance';
+import { visibleLabelIdsCondition, labelCompanyIdsSql } from './system-labels';
+import { resolveEssView, type ResolvedEssView } from './ess-view';
+// 00307068: `resolveLeaveFormula` (the fixed nine-key resolver) is no longer imported here — every call site
+// in this file now resolves BY LEAVE TYPE CODE. The function itself is unchanged and still exported for the
+// pack facade and its own tests.
+import { resolveLeaveFormulaForCode, type LeaveFormulaEntry } from './leave-formula';
+import { resolvePlacement, resolveSharedGroupPlacement, type EssPlacement } from '../lib/leave-groups';
+import type { EmploymentStatus } from './employment-status';
+import { employmentStatusSql, type EmploymentStatusColumns } from './employment-status-sql';
+
+import { todayInKualaLumpur } from '../lib/hr-date';
+
+// Unpaginated — returns the whole employee set (transfer-target dropdowns, the payroll batch picker,
+// etc.). Do NOT swap in the paginated `listEmployeesPage`: the payroll picker needs every active
+// employee, not a page, or the checkbox set would silently drop people past the page boundary.
+export function listEmployees(ctx: SessionContext, companyIds?: string[],purpose?:'workforce',existingTx?:Tx) {
+  return withProjectionTx(ctx,existingTx,purpose,tx=>listEmployeesTx(tx,companyIds,purpose));
+}
+export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforce') {
+  return tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        // 44bc1c33 — the Card / Clocking ID a physical attendance device records for this employee, when it
+        // differs from the employee code. Additive; a column of the `employment` row already selected, so
+        // no extra join and no extra row. NULL means "this employee is matched by employee code / IC".
+        cardId: employment.cardId,
+        // The person behind the employment — the invite form (0279) binds an invitation to a PERSON,
+        // not an employment, so it needs this id. Additive; existing callers ignore it.
+        personId: employment.personId,
+        department: department.name,
+        departmentLabel: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name})`,
+        departmentCode: department.name,
+        // Current-assignment department id — the Individual Transaction wizard uses it (client-side) to
+        // filter Step-2 batches whose scope names departments the employee belongs to (a UX filter; the
+        // bulk service re-checks scope membership authoritatively). Nullable, like department.
+        departmentId: assignment.departmentId,
+        // Position title of the current assignment — used by the Individual Transaction wizard's Step-1
+        // employee card (Employee ID / Name / Department / Position). Nullable, like department.
+        position: position.title,
+        positionLabel: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), nullif(trim(${position.description}), ''), ${position.title})`,
+        // Current-assignment Business Unit — the Fixed / Individual Transaction screens filter Step-1 by it
+        // (a UX narrowing over the already access-fenced list). Nullable, like department.
+        businessUnit: businessUnit.name,
+        businessUnitLabel: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code})`,
+        businessUnitCode: businessUnit.code,
+        businessUnitId: assignment.businessUnitId,
+        company: company.legalName,
+        companyId: employment.companyId,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        // r256 — THE LIFECYCLE INPUTS THE STATUS DERIVER READS, the same set `listEmployeesPage` carries
+        // (R43 c26c3ce5 / R81). They are columns of the `employment` row this select already reads, so
+        // there is no extra join and no extra row.
+        //
+        // THEY ARE HERE BECAUSE THEIR ABSENCE WAS A TRAP. `terminatedOn` alone is enough to CALL
+        // deriveEmploymentStatus and enough for it to return something plausible, so the C.P.8A picker
+        // built its Status column out of that one field and could only ever print Active or Resigned:
+        // a probationer read "Active" beside their name while Personnel said "Probation" about the same
+        // person on the same day, and a blacklisted employment read "Active" too. Any consumer of this
+        // read that shows a status badge now has the whole ladder available (see core/employment-status.ts
+        // for why the two probation fallbacks are not optional — nothing writes a confirmation date at
+        // hire).
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
+      .orderBy(person.fullName);
+}
+
+// Keep the Payroll actions on the legacy list's RLS-visible population and join multiplicity.
+const payrollProcessEmployeeFrom = sql`
+  from ${employment}
+  inner join ${person} on ${person.id} = ${employment.personId}
+  inner join ${company} on ${company.id} = ${employment.companyId}
+  left join ${assignment} on ${assignment.employmentId} = ${employment.id}
+    and ${assignment.validTo} is null and ${assignment.supersededAt} is null
+  left join ${department} on ${department.id} = ${assignment.departmentId}
+  left join ${position} on ${position.id} = ${assignment.positionId}
+  left join ${businessUnit} on ${businessUnit.id} = ${assignment.businessUnitId}
+`;
+
+/** Leave inquiry uses this exact legacy list population, including NULL-ended
+ * assignments and ended employments. Its display rows do not need personal/card,
+ * position or lifecycle-detail columns from the general employee DTO. */
+export type LeaveInquiryEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+ 'employmentId'|'name'|'employeeCode'|'company'|'companyId'|'department'|'departmentId'|
+ 'businessUnit'|'businessUnitId'|'terminatedOn'>;
+export async function listLeaveInquiryEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],employmentIds?:readonly string[]):Promise<LeaveInquiryEmployee[]>{
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();employmentIds=employmentIds?.slice();
+ await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||employmentIds?.length===0)return [];
+ return tx.execute<LeaveInquiryEmployee>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",
+  ${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+   ${employmentIds?sql`and ${inArray(employment.id,employmentIds)}`:sql``} order by ${person.fullName}`);
+}
+
+
+/** Minimal exact legacy picker candidates. All company/org/status predicates are
+ * native; Unicode search candidates remain conservative until the JS matcher. */
+export type LeaveInquiryPickerIdentity=Pick<LeaveInquiryEmployee,'employmentId'|'name'|'employeeCode'|'company'|'companyId'>&{assignmentId:string|null};
+export type LeaveInquiryPickerFilters={query:string;companyId:string;businessUnitId:string;departmentId:string;status:string};
+export async function listLeaveInquiryPickerIdentitiesTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],filters:LeaveInquiryPickerFilters){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();filters={...filters};await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return [];
+ const q=filters.query.trim().toLowerCase(),escaped='%'+q.replace(/[\\%_]/g,char=>'\\'+char)+'%';
+ const unicode=sql`((${person.fullName} collate "C") ~ '[^ -~]' or (coalesce(${employment.employeeCode},'') collate "C") ~ '[^ -~]')`;
+ const search=!q?sql`true`:q.includes('\0')?sql`false`:/^[\x00-\x7f]*$/.test(q)?sql`(${unicode}
+   or lower(${person.fullName} collate "C") like ${escaped} escape '\\'
+   or lower(coalesce(${employment.employeeCode},'') collate "C") like ${escaped} escape '\\')`:unicode;
+ return tx.execute<LeaveInquiryPickerIdentity>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}
+  and ${filters.companyId?sql`${employment.companyId}=${filters.companyId}::uuid`:sql`true`}
+  and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`}
+  and ${filters.departmentId?sql`${assignment.departmentId}=${filters.departmentId}::uuid`:sql`true`}
+  and ${filters.status?filters.status==='active'?sql`${employment.terminatedOn} is null`:sql`${employment.terminatedOn} is not null`:sql`true`}
+  and ${search} order by ${person.fullName}`);
+}
+export type LeaveInquiryPickerFacet=Pick<LeaveInquiryEmployee,'companyId'|'company'|'departmentId'|'department'|'businessUnitId'|'businessUnit'>;
+export async function leaveInquiryPickerFacetsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length)return {populationTotal:0,rows:[] as LeaveInquiryPickerFacet[]};
+ // One complete native population walk retains exact multiplicity and distinct represented facets.
+ const rows=await tx.execute<LeaveInquiryPickerFacet&{populationTotal:number}>(sql`select distinct
+  ${employment.companyId} as "companyId",${company.legalName} as company,${assignment.departmentId} as "departmentId",${department.name} as department,
+  ${assignment.businessUnitId} as "businessUnitId",${businessUnit.name} as "businessUnit",(count(*) over())::int as "populationTotal"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)}`);
+ return {populationTotal:rows[0]?.populationTotal??0,rows:rows.map(({populationTotal,...row})=>row)};
+}
+/** Hydrate only retained candidate rows, preserving the legacy join identity. */
+export async function leaveInquiryPickerDisplayRowsTx(ctx:SessionContext,tx:Tx,companyIds:readonly string[],identities:readonly LeaveInquiryPickerIdentity[]){
+ ctx=structuredClone(ctx);companyIds=companyIds.slice();identities=identities.map(row=>({...row}));await assertReadCompositionPrincipalTx(tx,ctx);
+ if(!companyIds.length||!identities.length)return [];
+ if(identities.length>200)throw new Error('Inquiry picker display page exceeds 200 rows');
+ return tx.execute<LeaveInquiryEmployee&{assignmentId:string|null}>(sql`select ${employment.id} as "employmentId",${person.fullName} as name,
+  ${employment.employeeCode} as "employeeCode",${company.legalName} as company,${employment.companyId} as "companyId",
+  ${department.name} as department,${assignment.departmentId} as "departmentId",${businessUnit.name} as "businessUnit",${assignment.businessUnitId} as "businessUnitId",
+  ${employment.terminatedOn}::text as "terminatedOn",${assignment.id} as "assignmentId"
+  ${payrollProcessEmployeeFrom} where ${inArray(employment.companyId,companyIds)} and ${or(...identities.map(row=>sql`(${employment.id}=${row.employmentId}::uuid and ${assignment.id} is not distinct from ${row.assignmentId}::uuid)`))}`);
+}
+
+type PayrollTransactionEmployee = Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+  'employmentId' | 'name' | 'employeeCode' | 'company' | 'companyId' |
+  'department' | 'departmentLabel' | 'departmentCode' | 'departmentId' |
+  'businessUnit' | 'businessUnitLabel' | 'businessUnitCode' | 'businessUnitId' | 'terminatedOn'>;
+
+/** Transaction View needs only the fields used in its scope rail and filter validation. */
+export function listPayrollTransactionEmployees(ctx:SessionContext,companyIds:string[]){
+  return withTenant(ctx,tx=>tx.execute<PayrollTransactionEmployee>(sql`
+    select ${employment.id} as "employmentId", ${person.fullName} as name,
+      ${employment.employeeCode} as "employeeCode", ${company.legalName} as company,
+      ${employment.companyId} as "companyId", ${department.name} as department,
+      coalesce(nullif(trim(${department.label}), ''), nullif(trim(${department.description}), ''), ${department.name}) as "departmentLabel",
+      ${department.name} as "departmentCode", ${assignment.departmentId} as "departmentId",
+      ${businessUnit.name} as "businessUnit",
+      coalesce(nullif(trim(${businessUnit.label}), ''), nullif(trim(${businessUnit.name}), ''), ${businessUnit.code}) as "businessUnitLabel",
+      ${businessUnit.code} as "businessUnitCode", ${assignment.businessUnitId} as "businessUnitId",
+      ${employment.terminatedOn}::text as "terminatedOn"
+    ${payrollProcessEmployeeFrom}
+    ${companyIds.length?sql`where ${inArray(employment.companyId,companyIds)}`:sql``}
+    order by ${person.fullName}
+  `));
+}
+
+/** Intersect a posted selection with the exact RLS-visible company rows. Keep input order and duplicates. */
+export async function payrollProcessEmployeeSelection(ctx:SessionContext,companyId:string,submittedIds:string[]) {
+  // The legacy string comparison never matched alternate UUID spellings or malformed input.
+  const ids=[...new Set(submittedIds.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+  if(!ids.length)return [];
+  const visible=await withTenant(ctx,tx=>tx.execute<{id:string}>(sql`
+    select ${employment.id} as id ${payrollProcessEmployeeFrom}
+    where ${employment.companyId}=${companyId}::uuid
+      and ${employment.id}=any(${'{' + ids.join(',') + '}'}::uuid[])
+  `));
+  const allowed=new Set(visible.map(row=>row.id));
+  return submittedIds.filter(id=>allowed.has(id));
+}
+
+/** Exact count of the same legacy company list, including its join multiplicity and retained employments. */
+export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string) {
+  return withTenant(ctx,async tx=>{
+    const [row]=await tx.execute<{total:string}>(sql`
+      select count(*) as total ${payrollProcessEmployeeFrom}
+      where ${employment.companyId}=${companyId}::uuid
+    `);
+    return Number(row.total);
+  });
+}
+
+/**
+ * r289 — THE POPULATION THE "PICK INDIVIDUALLY" CONTROLS RESOLVE AGAINST, for the three WRITE PATHS.
+ *
+ * The three server pages read this list to fill their picker (`listCompanies` → `listEmployees` → three
+ * plain fields). Their three server actions now need the SAME list for a different job: turning a pasted
+ * `EMP-0008` into an employment id before handing the restriction to `resolveOrgCriteriaTargets`.
+ *
+ * ⚠️ WHY THE ACTION READS IT AGAIN INSTEAD OF TRUSTING THE POST. The browser already holds this list and
+ * already resolves against it for the live preview — but a resolution the client performs is a resolution
+ * the server cannot check, and the whole point of `lib/employment-selection.ts` is that the population the
+ * screen CONFIRMS and the population the write COVERS are computed by one rule from one input. Two
+ * different inputs would put them back out of step while both halves' tests stayed green. So the rule is
+ * shared and the input is read on each side from the same query.
+ *
+ * ⚠️ IT IS NOT AN AUTHORITY AND MUST NOT BECOME ONE. Nothing here decides who qualifies; it decides only
+ * what a typed reference NAMES. An unresolved token is still handed over, and `resolveOrgCriteriaTargets`
+ * still adjudicates every id under the session's own scope and the run's as-at date.
+ *
+ * SCOPED EXACTLY AS THE PAGES SCOPE IT, INCLUDING THE EMPTY CASE. `listEmployees` treats an empty
+ * `companyIds` as "no filter" (see `core/payroll-txn-import.ts` on why that is dangerous where it writes
+ * money). It is deliberately NOT guarded here: the three pages pass the same possibly-empty array to the
+ * same call, and a resolver that recognised fewer codes than the picker beside it offers is the drift this
+ * function exists to prevent. Recognising a code is not reaching a person.
+ */
+export async function listEmployeePickOptions(ctx: SessionContext): Promise<EmployeePickOption[]> {
+  const companies = await listCompanies(ctx);
+  const employments = await listEmployees(
+    ctx,
+    companies.map((c) => c.id),
+  );
+  return employments.map((e) => ({ id: e.employmentId, name: e.name, employeeCode: e.employeeCode }));
+}
+
+export type EmployeeListRow = {
+  employmentId: string;
+  name: string;
+  email: string;
+  employeeCode: string | null;
+  // R81 (9cbf5e0d): the legacy stored `status` field is GONE from this row — the column behind it was
+  // dropped (migration 0331). Every consumer already derived the badge from the lifecycle dates below via
+  // deriveEmploymentStatus; nothing read this field for display. Derive, do not re-add.
+  department: string | null;
+  departmentId: string | null;
+  position: string | null;
+  company: string;
+  companyId: string;
+  hiredOn: string;
+  terminatedOn: string | null;
+  // Employee Status redesign (R43 c26c3ce5) — lifecycle inputs so the list badge can derive status per row.
+  confirmationDate: string | null;
+  finalConfirmationDate: string | null;
+  resignationDate: string | null;
+  lastWorkingDate: string | null;
+  blacklistedAt: string | null;
+  // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────────
+  // The OPT-IN columns of the Personnel listing. Every one of them is information Personnel already
+  // holds; none is a new field. They hang off the SAME ≤1-row current-assignment join the department and
+  // position already use (plus three 1:1 master lookups), so the row count — and therefore the pager
+  // total — is untouched. `reportingTo` is the one exception and is a correlated SUBQUERY on purpose: an
+  // employment can carry several reporting_line edges, so joining that table would multiply rows and
+  // silently inflate the list.
+  //
+  // They are always SELECTED, never conditionally: a projection that changes shape with the reader's
+  // preferences is a query that is only tested in whichever shape the test happened to pick, and these
+  // are joins on indexed foreign keys against one page of rows.
+  jobGrade: string | null;
+  employmentType: string | null;
+  reportingTo: string | null;
+  businessUnit: string | null;
+  costCenter: string | null;
+  workLocation: string | null;
+  /** employment.join_date — the current company's joining date. Null = never captured (18 of 40 on
+   *  production carry one); `hiredOn` above is the GROUP join date and is never null. */
+  joinDate: string | null;
+};
+
+/** The narrowings the employee listing understands. Extracted from listEmployeesPage's inline parameter
+ *  bag (579255c3) so `countEmployeesByStatus` can take the SAME set and be guaranteed to count exactly
+ *  the population the table is about to show. Two filter vocabularies drifting apart is precisely how a
+ *  headcount card comes to disagree with the rows underneath it. */
+export type EmployeeListFilters = {
+  companyIds?: string[];
+  q?: string;
+  // #18 structured filters (each optional; combine with AND). status: 'active' = not terminated.
+  companyId?: string;
+  departmentId?: string;
+  status?: 'active' | 'terminated';
+  employmentType?: string;
+  // Employee Details listing (feedback 650b6eb8) — the SAME narrowings, multi-select. They sit
+  // ALONGSIDE the singular ones rather than replacing them: /personnel and /admin/personnel drive
+  // single-value pickers, and `filterCompanyIds` carries the clumsy prefix for the reason 8ec63139
+  // gave on the leave read — conflating "what the switcher lets you see" (`companyIds`) with "what
+  // you asked to see" would be a security bug, not a tidy-up.
+  filterCompanyIds?: string[];
+  departmentIds?: string[];
+  /** Derived Employee Status buckets (9cbf5e0d). A WHERE predicate cannot call the TypeScript
+   *  deriver, so it narrows through employmentStatusSql — the twin pinned equal by
+   *  test/personnel-status-sync.test.ts. There is no stored status column to confuse it with (R81). */
+  employmentStatuses?: EmploymentStatus[];
+  businessUnitIds?: string[]; parentCompanyIds?: string[]; businessGroupIds?: string[];
+  jobGrades?: string[]; positionIds?: string[]; confirmationState?: 'confirmed'|'unconfirmed';
+  probationEndFrom?: string; probationEndTo?: string; joinedFrom?: string; joinedTo?: string;
+  /** aa045103 — multi-select Employment Type (any of), the Personnel header and Filter dialog `type` param. */
+  employmentTypes?: string[];
+  /** aa045103 — "Blank / unassigned" ticked in a choice filter: that field may also be empty. With no ids
+   *  selected for the same field it narrows to the empty rows alone. */
+  blankChoices?: PersonnelBlankChoice[];
+  /** aa045103 — From/To ranges for the Group Join Date and Confirmation Date columns (inclusive). */
+  hiredFrom?: string; hiredTo?: string; confirmationFrom?: string; confirmationTo?: string;
+  qualityFlags?: PersonnelQualityFlag[];
+  /** Opaque, principal-bound five-minute result membership; never raw identity text. */
+  privateSearch?: string;
+  columnSort?: EmployeeColumnKey; sortDirection?: 'asc'|'desc';
+};
+
+/** Choice fields whose "Blank / unassigned" option the Personnel listing can combine with chosen values. */
+export const PERSONNEL_BLANK_CHOICES = ['department', 'businessUnit', 'position', 'jobGrade', 'employmentType'] as const;
+export type PersonnelBlankChoice = (typeof PERSONNEL_BLANK_CHOICES)[number];
+/** "Any of these values, or (when Blank is ticked) none at all". Undefined when the field is not narrowed. */
+function anyOfOrBlank<T>(column: SQL<T>, values: readonly NonNullable<T>[] | undefined, blank: boolean, text = false) {
+  const chosen = values?.length ? inArray(column, [...values]) : undefined;
+  const empty = blank ? (text ? sql`coalesce(${column}::text,'') = ''` : isNull(column)) : undefined;
+  return chosen && empty ? or(chosen, empty) : chosen ?? empty;
+}
+
+/** The current-assignment join (≤1 row per employment) — shared by every employee-listing query so the
+ *  department / employment-type filters apply identically to the rows, the pager total and the cards. */
+const currentAssignmentJoin = () =>
+  and(
+    eq(assignment.employmentId, employment.id),
+    lte(assignment.validFrom,todayInKualaLumpur()),
+    or(isNull(assignment.validTo),gt(assignment.validTo,todayInKualaLumpur())),
+    isNull(assignment.supersededAt),
+  );
+
+/** ONE WHERE for the employee listing: the rows, the pager count and the headcount cards all build it
+ *  from here, so no two of them can be answering slightly different questions. */
+type EmployeeListColumns = {
+  companyId: SQL<string>; departmentId: SQL<string | null>; employmentType: SQL<string | null>;
+  terminatedOn: SQL<string | null>; name: SQL<string>; email: SQL<string>; employeeCode: SQL<string | null>;
+  status: SQL<EmploymentStatus>;
+};
+const employeeListColumns = (): EmployeeListColumns => ({
+  companyId: sql`${employment.companyId}`, departmentId: sql`${assignment.departmentId}`,
+  employmentType: sql`${assignment.employmentType}`, terminatedOn: sql`${employment.terminatedOn}`,
+  name: sql`${person.fullName}`, email: sql`${person.primaryEmail}`, employeeCode: sql`${employment.employeeCode}`,
+  status: employmentStatusSql(),
+});
+function employeeListWhere(p: EmployeeListFilters, c: EmployeeListColumns = employeeListColumns()) {
+  const q = p.q?.trim();
+  return and(
+    p.companyIds && p.companyIds.length ? inArray(c.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(c.companyId, p.companyId) : undefined,
+    p.filterCompanyIds && p.filterCompanyIds.length ? inArray(c.companyId, p.filterCompanyIds) : undefined,
+    p.departmentId ? eq(c.departmentId, p.departmentId) : undefined,
+    anyOfOrBlank(c.departmentId, p.departmentIds, !!p.blankChoices?.includes('department')),
+    p.employmentStatuses && p.employmentStatuses.length ? inArray(c.status, p.employmentStatuses) : undefined,
+    p.status === 'terminated' ? isNotNull(c.terminatedOn) : p.status === 'active' ? isNull(c.terminatedOn) : undefined,
+    p.employmentType ? eq(c.employmentType, p.employmentType) : undefined,
+    anyOfOrBlank(c.employmentType, p.employmentTypes, !!p.blankChoices?.includes('employmentType'), true),
+    q ? sql`(${c.name} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.email} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'} or ${c.employeeCode} ilike ${'%' + q.replace(/[\\%_]/g,'\\$&') + '%'})` : undefined,
+  );
+}
+
+/** The JSON owner declares every field. Query expressions are fixed server source, never a caller's
+ * field/table selector. Reuse the exact status/filter owner above; no second interpretation in SQL. */
+const workforceListSource = sql`app.access_workforce_list_rows() as workforce_row(value)`;
+const personnelListSource = (companyIds?: string[], asOf = todayInKualaLumpur(), privateFilter = false) => {
+  const projection = privateFilter ? sql`app.personnel_list_rows` : sql`app.personnel_filter_rows`;
+  const scope = companyIds ? sql`ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]` : sql`null::uuid[]`;
+  return sql`${projection}(${asOf}::date,${scope}) as workforce_row(value)`;
+};
+// The extended projection verifies private membership. Preserve the ordinary list response shape.
+const privateFilterRowFields = [
+  'directSuperiorEmployeeCode', 'directSuperiorFullName', 'employmentFieldsPermitted', 'filterRevision',
+  'orgDivision', 'orgBranch', 'orgRegion', 'orgLine', 'orgSection', 'orgTeam', 'orgBase', 'employmentCategory',
+  'probationValue', 'probationUnit', 'extendedProbationValue', 'extendedProbationUnit', 'contractStartDate',
+  'contractEndDate', 'contractRemark', 'noticeBeforeConfirmationValue', 'noticeBeforeConfirmationUnit',
+  'noticeAfterConfirmationValue', 'noticeAfterConfirmationUnit', 'tenderResignationDate',
+];
+const workforceListValue = <T>(key: string): SQL<T> => sql<T>`workforce_row.value ->> ${key}`;
+const workforceListDate = (key: string) => sql<string | null>`(${workforceListValue(key)})::date`;
+const workforceListUuid = (key: string) => sql<string>`(${workforceListValue(key)})::uuid`;
+const workforceFieldAccess={value:workforceListValue,date:workforceListDate,uuid:workforceListUuid};
+const typedFieldValue=<T>(key:string):SQL<T>=>sql<T>`workforce_row.${sql.identifier(key)}`;
+const typedWorkforceFieldAccess={value:typedFieldValue,date:(key:string)=>sql<string|null>`(${typedFieldValue(key)})::date`,uuid:(key:string)=>sql<string>`(${typedFieldValue(key)})::uuid`};
+function workforceListColumns(asOf=todayInKualaLumpur(),read=workforceFieldAccess): EmployeeListColumns {
+  const status: EmploymentStatusColumns = {
+    finalConfirmationDate: read.date('finalConfirmationDate'), confirmationDate: read.date('confirmationDate'),
+    probationEndDate: read.date('probationEndDate'), provisionalEndOn: read.date('provisionalEndOn'),
+    resignationDate: read.date('resignationDate'), lastWorkingDate: read.date('lastWorkingDate'),
+    terminatedOn: read.date('terminatedOn'), blacklistedAt: read.date('blacklistedAt'),
+  };
+  return {
+    companyId: read.uuid('companyId'), departmentId: read.uuid('departmentId'),
+    employmentType: read.value('employmentType'), terminatedOn: read.date('terminatedOn'),
+    name: read.value('name'), email: read.value('email'), employeeCode: read.value('employeeCode'),
+    status: employmentStatusSql(asOf, status),
+  };
+}
+const workforceListWhere = (p: EmployeeListFilters, columns: EmployeeListColumns,duplicateIds:readonly string[]=[],read=workforceFieldAccess) =>
+  and(p.companyIds?.length === 0 ? sql`false` : undefined, employeeListWhere(p, columns),
+   anyOfOrBlank(read.uuid('businessUnitId'),p.businessUnitIds,!!p.blankChoices?.includes('businessUnit')),
+   p.parentCompanyIds?.length?inArray(read.uuid('parentCompanyId'),p.parentCompanyIds):undefined,
+   p.businessGroupIds?.length?inArray(read.uuid('businessGroupId'),p.businessGroupIds):undefined,
+   anyOfOrBlank(read.value<string>('jobGradeCode'),p.jobGrades,!!p.blankChoices?.includes('jobGrade'),true),
+   anyOfOrBlank(read.uuid('positionId'),p.positionIds,!!p.blankChoices?.includes('position')),
+   p.confirmationState?eq(read.value<string>('confirmationState'),p.confirmationState):undefined,
+   p.joinedFrom?gte(read.date('joinDate'),p.joinedFrom):undefined,
+   p.joinedTo?lte(read.date('joinDate'),p.joinedTo):undefined,
+   p.hiredFrom?gte(read.date('hiredOn'),p.hiredFrom):undefined,
+   p.hiredTo?lte(read.date('hiredOn'),p.hiredTo):undefined,
+   p.confirmationFrom?gte(read.date('confirmationDate'),p.confirmationFrom):undefined,
+   p.confirmationTo?lte(read.date('confirmationDate'),p.confirmationTo):undefined,
+   p.probationEndFrom?gte(read.date('probationEndDate'),p.probationEndFrom):undefined,
+   p.probationEndTo?lte(read.date('probationEndDate'),p.probationEndTo):undefined,
+   p.qualityFlags?.length?or(...p.qualityFlags.map(flag=>flag==='suspected_duplicate'?(duplicateIds.length?inArray(read.uuid('employmentId'),[...duplicateIds]):sql`false`):sql`(workforce_row.value->'quality'->>${flag})::boolean is true`)):undefined,
+   p.privateSearch?sql`app.personnel_column_search_matches(${privateSearchHash(p.privateSearch)??''},${read.uuid('employmentId')},${columns.companyId},${p.companyIds?sql`ARRAY[${sql.join(p.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`null::uuid[]`},${read.value('filterRevision')})`:undefined);
+
+export type PersonnelCompanyChoice = {
+  id: string; name: string; parentCompanyId: string | null; parentCompany: string | null;
+  businessGroupId: string | null; businessGroup: string | null; businessUnitId: string | null; businessUnit: string | null;
+};
+type PersonnelListInput = EmployeeListFilters & { sort?: 'name' | 'company'; limit: number; offset: number };
+type PersonnelChoiceRow = { businessUnitId: string | null; businessUnit: string | null; positionId: string | null; position: string | null };
+
+async function personnelCompanyChoicesTx(tx: Tx, companyIds: string[], asOf: string) {
+  const companies = await tx.execute<PersonnelCompanyChoice>(sql`select * from app.personnel_filter_companies(
+    ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[], ${asOf}::date)`);
+  const canInspectDuplicates = await personnelDuplicateAuthorityTx(tx, companies.map(company => company.id));
+  return { companies: [...companies], canInspectDuplicates };
+}
+
+async function personnelDuplicateAuthorityTx(tx: Tx, companyIds: string[]) {
+  const [duplicateAuthority] = await tx.execute<{ allowed: boolean }>(sql`select coalesce(
+    bool_or(app.access_workforce_projection_company(id) and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed
+    from unnest(ARRAY[${sql.join(companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]) id`);
+  return duplicateAuthority.allowed;
+}
+
+function personnelAssignmentChoices(source: SQL, companyIds: string[], asOf: string) {
+  return sql`select distinct ${workforceListUuid('businessUnitId')} as "businessUnitId",
+    ${workforceListValue('businessUnit')} as "businessUnit", ${workforceListUuid('positionId')} as "positionId",
+    ${workforceListValue('position')} as "position" from ${source}
+    where ${workforceListWhere({ companyIds }, workforceListColumns(asOf))}`;
+}
+
+/** Options are resolved before pagination through the current Workforce purpose scope. */
+export function personnelFilterChoices(ctx: SessionContext, companyIds: string[]) {
+  return withPersonnelRead(ctx, async tx => {
+    const asOf = todayInKualaLumpur();
+    const choices = await personnelCompanyChoicesTx(tx, companyIds, asOf);
+    const ids = choices.companies.map(company => company.id);
+    const rows = await tx.execute<PersonnelChoiceRow>(personnelAssignmentChoices(personnelListSource(ids, asOf), ids, asOf));
+    return { ...choices, rows: [...rows] };
+  });
+}
+
+async function workforcePersonnelPageQueryTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
+  facets?: { headcount: EmployeeListFilters; choiceIds?: string[] },
+) {
+  const columns = workforceListColumns(asOf);
+  const sameFacetScope = facets && JSON.stringify(input.companyIds) === JSON.stringify(facets.headcount.companyIds);
+  const duplicateIds = input.qualityFlags?.includes('suspected_duplicate')
+    ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+  const facetDuplicateIds = facets?.headcount.qualityFlags?.includes('suspected_duplicate')
+    ? input.qualityFlags?.includes('suspected_duplicate') && sameFacetScope
+      ? duplicateIds : await personnelDuplicateIdsTx(tx, ctx, { companyIds: facets.headcount.companyIds, asOf })
+    : [];
+  const filters = workforceListWhere(input, columns, duplicateIds);
+  const key=isEmployeeColumnKey(input.columnSort)?input.columnSort:undefined;
+  const sortValue = key === 'status' ? columns.status
+    : key && PERSONNEL_DATE_COLUMNS.has(key) ? workforceListDate(PERSONNEL_COLUMN_SOURCES[key])
+    : key ? sql`lower(${workforceListValue(PERSONNEL_COLUMN_SOURCES[key])})` : undefined;
+  const sort = sortValue
+    ? [sql`${sortValue} ${input.sortDirection === 'desc' ? sql`desc` : sql`asc`} nulls last`]
+    : input.sort === 'company'
+      ? [sql`lower(${workforceListValue('company')})`, sql`lower(${columns.name})`]
+      : [columns.name];
+  const order = sql.join([...sort, workforceListUuid('employmentId')], sql`, `);
+  // The projection evaluates dated organisation and access policy for every admitted employee.
+  // Evaluate it once even when the requested page is empty. The count is independent of pagination.
+  const source = sql`personnel_source as workforce_row`;
+  // The native scope applies before dated company projection. A different facet scope needs its own source.
+  const privateFilter = Boolean(input.privateSearch || (sameFacetScope && facets?.headcount.privateSearch));
+  const facetSource = !facets || sameFacetScope ? source
+    : personnelListSource(facets.headcount.companyIds, asOf, Boolean(facets.headcount.privateSearch));
+  const choiceIds = facets?.choiceIds ?? [];
+  const sameScope = input.companyIds !== undefined && input.companyIds.length === choiceIds.length &&
+    input.companyIds.every(id => choiceIds.includes(id));
+  const choiceSource = sameScope ? source : personnelListSource(choiceIds, asOf);
+  const publicRow = privateFilter
+    ? sql`value - ARRAY[${sql.join(privateFilterRowFields.map(field => sql`${field}`), sql`, `)}]::text[]`
+    : sql`value`;
+  return sql`
+    with personnel_source as materialized (select value from ${personnelListSource(input.companyIds, asOf, privateFilter)}),
+    matching as materialized (select value from ${source} where ${filters ?? sql`true`}),
+    page as (select value from matching as workforce_row order by ${order} limit ${input.limit} offset ${input.offset})
+    select
+      (select coalesce(jsonb_agg(${publicRow} order by ${order}), '[]'::jsonb) from page as workforce_row) as rows,
+      (select count(distinct ${workforceListUuid('employmentId')})::int from matching as workforce_row) as total
+      ${facets ? sql`,
+        (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
+          select ${columns.status} as status, count(distinct ${workforceListUuid('employmentId')})::int as count
+          from ${facetSource} where ${workforceListWhere(facets.headcount, columns, facetDuplicateIds) ?? sql`true`} group by 1
+        ) as counts) as "byStatus",
+        ${facets.choiceIds ? sql`(select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+          ${personnelAssignmentChoices(choiceSource, choiceIds, asOf)}
+        ) as choice)` : sql`'[]'::jsonb`} as choices` : sql``}
+  `;
+}
+
+type PersonnelOverviewInput = PersonnelListInput & { companyIds: string[] };
+
+const PERSONNEL_BOUNDED_ROW_LIMIT = 10_000, PERSONNEL_PAGE_ROWS_CHUNK = 2_000;
+/** Which typed fact relation the bounded overview reads: the 2701 projection, or the complete typed
+ * projection of migration 5020 (db/migrations/5020_personnel_overview_facts.sql) where it is installed. */
+type PersonnelFactSource = 'filter-fields' | 'facts';
+const personnelFactRelation: Record<PersonnelFactSource, SQL> = {
+  'filter-fields': sql`app.personnel_overview_filter_fields`, facts: sql`app.personnel_overview_facts`,
+};
+// Filters each typed relation evaluates with the canonical predicate. The route parser supplies empty
+// arrays when nothing is selected; those are no-op filters, not restrictions.
+const filterFieldsFilters = new Set<string>([
+  'companyIds', 'companyId', 'filterCompanyIds', 'q', 'status', 'employmentStatuses', 'sort', 'sortDirection',
+  'limit', 'offset', 'departmentId', 'departmentIds', 'employmentType', 'businessUnitIds', 'positionIds',
+  'confirmationState', 'probationEndFrom', 'probationEndTo', 'columnSort',
+  // aa045103: both typed relations carry employmentType and confirmationDate.
+  'employmentTypes', 'confirmationFrom', 'confirmationTo',
+]);
+const factsFilters = new Set<string>([
+  ...filterFieldsFilters, 'parentCompanyIds', 'businessGroupIds', 'jobGrades', 'joinedFrom', 'joinedTo',
+  'qualityFlags', 'privateSearch',
+  // aa045103: the 5020 facts carry hiredOn and every blank-able choice column (jobGradeCode included).
+  'blankChoices', 'hiredFrom', 'hiredTo',
+]);
+// Sorts whose JSON source key the 2701 relation carries as a typed column with the same value.
+const filterFieldsSorts = new Set<EmployeeColumnKey>([
+  'code', 'name', 'email', 'company', 'position', 'businessUnit', 'employmentType', 'status', 'confirmationDate',
+]);
+const typedQualityColumn: Record<Exclude<PersonnelQualityFlag, 'suspected_duplicate'>, string> = {
+  missing_business_unit: 'qualityMissingBusinessUnit', missing_job_grade: 'qualityMissingJobGrade',
+  missing_direct_superior: 'qualityMissingDirectSuperior', company_not_in_structure: 'qualityCompanyNotInStructure',
+};
+
+function personnelFactSource(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, snapshot: PersonnelOverviewSnapshot, asOf: string,
+): PersonnelFactSource | null {
+  // page_rows projects at most 2,000 subjects per call; larger pages (exports) are projected in chunks.
+  if (!Number.isSafeInteger(input.limit) || input.limit < 0 || input.limit > PERSONNEL_BOUNDED_ROW_LIMIT ||
+      !Number.isSafeInteger(input.offset) || input.offset < 0 || input.companyIds.length === 0) return null;
+  const active = (value: unknown) => value !== undefined && (!Array.isArray(value) || value.length > 0);
+  const supported = (allowed: Set<string>, sorts?: Set<EmployeeColumnKey>) => [input, facets].every(filters =>
+    Object.entries(filters).every(([key, value]) => !active(value) || allowed.has(key)) &&
+    (!sorts || !isEmployeeColumnKey(filters.columnSort) || sorts.has(filters.columnSort)));
+  if (supported(filterFieldsFilters, filterFieldsSorts)) return 'filter-fields';
+  // One token per statement: the page and its headcount facets read the same private membership.
+  if (input.privateSearch && facets.privateSearch && input.privateSearch !== facets.privateSearch) return null;
+  // The private filter's dated-company check is stated for the database's current Kuala Lumpur day.
+  const datedPrivate = !input.privateSearch && !facets.privateSearch || snapshot.databaseToday === asOf;
+  return snapshot.typedFacts && datedPrivate && supported(factsFilters) ? 'facts' : null;
+}
+
+/** workforceListWhere over typed facts. Its JSON-only arms (confirmation state, quality, private
+ * membership) are restated over the typed columns that carry the same values. */
+function personnelFactWhere(
+  p: EmployeeListFilters, asOf: string, source: PersonnelFactSource, duplicateIds: readonly string[],
+): SQL {
+  const read = typedWorkforceFieldAccess;
+  const { confirmationState, qualityFlags, privateSearch, ...ordinary } = p;
+  const confirmation = source === 'facts' ? read.value<string>('confirmationState')
+    : sql<string>`(case when coalesce(${read.date('finalConfirmationDate')},${read.date('confirmationDate')})<=${asOf}::date then 'confirmed' else 'unconfirmed' end)`;
+  // app.personnel_column_search_matches, set-wise: a verified token entry (identity entries only where
+  // identity search is permitted) and an entry whose filter fingerprint, if any, is still current. Each
+  // side is an uncorrelated set (search_members below), so it is hashed once rather than scanned per row.
+  const id = read.uuid('employmentId');
+  const member = sql`((${id} in (select employment_id from search_public)
+      or (${id} in (select employment_id from search_identity) and ${read.uuid('companyId')} in (select id from identity_companies)))
+    and ${id} in (select employment_id from search_current))`;
+  return and(
+    workforceListWhere(ordinary, workforceListColumns(asOf, read), [], read),
+    confirmationState ? eq(confirmation, confirmationState) : undefined,
+    qualityFlags?.length ? or(...qualityFlags.map(flag => flag === 'suspected_duplicate'
+      ? duplicateIds.length ? inArray(read.uuid('employmentId'), [...duplicateIds]) : sql`false`
+      : sql`${typedFieldValue(typedQualityColumn[flag])} is true`)) : undefined,
+    privateSearch ? member : undefined,
+  ) ?? sql`true`;
+}
+
+/** Caller-owned scalar expressions (and an administrator page-photo relation over the page's own
+ * employment ids) selected in the overview statement instead of separate statements. */
+export type PersonnelOverviewAttachments = { attach?: Record<string, SQL>; pagePhotos?: (employmentIds: SQL) => SQL | null };
+const attachedColumn = (attach: Record<string, SQL> | undefined) => attach && Object.keys(attach).length
+  ? sql`jsonb_build_object(${sql.join(Object.entries(attach).map(([key, value]) => sql`${key}::text, ${value}`), sql`, `)})`
+  : sql`'{}'::jsonb`;
+
+function personnelNarrowOverviewQuery(
+  input: PersonnelOverviewInput, facets: EmployeeListFilters, asOf: string, source: PersonnelFactSource,
+  duplicateIds: readonly string[], extras: PersonnelOverviewAttachments = {}, typedPageRows = false,
+): SQL {
+  const photos = extras.pagePhotos?.(sql`array(select employment_id from page)`) ?? null;
+  // The complete typed draft ships the same page projection with the set-wise organisation resolver.
+  const pageRows = typedPageRows ? sql`app.personnel_overview_page_rows_typed` : sql`app.personnel_overview_page_rows`;
+  const read = typedWorkforceFieldAccess, columns = workforceListColumns(asOf, read);
+  const scope = sql`array[${sql.join(input.companyIds.map(id => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const key = isEmployeeColumnKey(input.columnSort) ? input.columnSort : undefined;
+  const sortValue = key === 'status' ? columns.status
+    : key && PERSONNEL_DATE_COLUMNS.has(key) ? read.date(PERSONNEL_COLUMN_SOURCES[key])
+    : key ? sql`lower(${read.value(PERSONNEL_COLUMN_SOURCES[key])})` : undefined;
+  // The exact owner's order: the column sort (nulls last), else company then name, else name; then ID.
+  const order = sortValue ? sql`sort_value ${input.sortDirection === 'desc' ? sql`desc` : sql`asc`} nulls last, employment_id`
+    : input.sort === 'company' ? sql`company_sort, name_sort, employment_id` : sql`name_sort, employment_id`;
+  const privateHash = input.privateSearch ?? facets.privateSearch;
+  const privateSources = privateHash ? sql`
+    search_entries as materialized (
+      select * from app.personnel_private_search_entries(${privateSearchHash(privateHash) ?? ''}, ${scope})
+    ), identity_companies as materialized (
+      select id from companies where app.personnel_identity_search_permitted(id)
+    ), revision_subjects as materialized (
+      select coalesce(array_agg(distinct "employmentId"), '{}'::uuid[]) as ids, count(distinct "employmentId") as n
+      from search_entries where "hasFilterRevision"
+    ), search_revisions as materialized (
+      select (r.value->>'employmentId')::uuid as employment_id, r.value->>'filterRevision' as revision
+      from revision_subjects s cross join lateral app.personnel_list_rows_for_ids(${asOf}::date, ${scope}, s.ids) r(value)
+      where s.n between 1 and 2000
+      union all
+      select (r.value->>'employmentId')::uuid, r.value->>'filterRevision'
+      from app.personnel_list_rows(${asOf}::date, ${scope}) r(value) where (select n from revision_subjects) > 2000
+    ), search_public as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'public'
+    ), search_identity as materialized (
+      select "employmentId" as employment_id from search_entries where verified and kind = 'identity'
+    ), search_current as materialized (
+      select "employmentId" as employment_id from search_entries where not "hasFilterRevision"
+      union
+      select x."employmentId" from search_entries x
+      join search_revisions r on r.employment_id = x."employmentId" and r.revision = x."filterRevision"
+      where x."hasFilterRevision"
+    ),` : sql``;
+  // personnelDuplicateAuthorityTx's predicate. Over the requested scope it equals the value over the
+  // admitted companies: the projection conjunct is false for every requested company that was not
+  // admitted, so it is evaluated once for both answers.
+  const duplicateAuthority = sql`select coalesce(bool_or(app.access_workforce_projection_company(id)
+    and app.is_admin_for(id) and app.personnel_identity_search_permitted(id)), false) as allowed from companies`;
+  return sql`
+    with companies as materialized (
+      select c.* from app.personnel_filter_companies(${scope}, ${asOf}::date) with ordinality as
+        c(id, name, "parentCompanyId", "parentCompany", "businessGroupId", "businessGroup", "businessUnitId", "businessUnit", ordinality)
+    ), duplicate_authority as materialized (${duplicateAuthority}),
+    ${privateSources} personnel_facts as materialized (
+      select ${read.uuid('employmentId')} as employment_id,
+        ${sortValue ?? sql`null::text`} as sort_value,
+        lower(${read.value('company')}) as company_sort,
+        ${input.sort === 'company' ? sql`lower(${columns.name})` : columns.name} as name_sort,
+        (${personnelFactWhere(input, asOf, source, duplicateIds)}) as page_matches,
+        (${personnelFactWhere(facets, asOf, source, duplicateIds)}) as facet_matches,
+        ${columns.status} as status,
+        ${read.uuid('businessUnitId')} as "businessUnitId", ${read.value('businessUnit')} as "businessUnit",
+        ${read.uuid('positionId')} as "positionId", ${read.value('position')} as position
+      from ${personnelFactRelation[source]}(${asOf}::date, ${scope}) as workforce_row
+      where ${read.uuid('companyId')} in (select id from companies)
+    ), page as materialized (
+      -- A typed fact row is one employment: its key, at most one dated assignment (the reviewed
+      -- exclusion constraint both typed relations require) and one row per employment from each set.
+      -- The counts below are therefore counts of distinct employments.
+      select employment_id, sort_value, company_sort, name_sort from personnel_facts
+      where page_matches order by ${order} limit ${input.limit} offset ${input.offset}
+    ), page_details as materialized (${input.limit <= PERSONNEL_PAGE_ROWS_CHUNK ? sql`
+      select page.*, details.value from page
+      join ${pageRows}(${asOf}::date, ${scope},
+        array(select employment_id from page)) as details(value)
+        on (details.value->>'employmentId')::uuid=page.employment_id` : sql`
+      select page.*, details.value from (
+        select array_agg(employment_id) as ids from (
+          select employment_id, row_number() over (order by employment_id) as ordinal from page
+        ) as numbered group by (ordinal - 1) / ${PERSONNEL_PAGE_ROWS_CHUNK}
+      ) as chunk
+      cross join lateral ${pageRows}(${asOf}::date, ${scope}, chunk.ids) as details(value)
+      join page on (details.value->>'employmentId')::uuid=page.employment_id`}
+    )
+    select
+      (select coalesce(jsonb_agg(value order by ${order}), '[]'::jsonb) from page_details) as rows,
+      (select count(*)::int from personnel_facts where page_matches) as total,
+      (select coalesce(jsonb_object_agg(status, count), '{}'::jsonb) from (
+        select status, count(*)::int as count from personnel_facts
+        where facet_matches group by status
+      ) as counts) as "byStatus",
+      (select coalesce(jsonb_agg(to_jsonb(choice)), '[]'::jsonb) from (
+        select distinct "businessUnitId", "businessUnit", "positionId", position from personnel_facts
+      ) as choice) as choices,
+      (select count(*) from page_details)=(select count(*) from page) as "pageDetailsComplete",
+      (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'parentCompanyId', "parentCompanyId",
+        'parentCompany', "parentCompany", 'businessGroupId', "businessGroupId", 'businessGroup', "businessGroup",
+        'businessUnitId', "businessUnitId", 'businessUnit', "businessUnit") order by ordinality), '[]'::jsonb)
+        from companies) as companies,
+      (select allowed from duplicate_authority) as "canInspectDuplicates",
+      (select allowed from duplicate_authority) as "duplicateAuthority",
+      ${attachedColumn(extras.attach)} as attached,
+      ${photos ? sql`(select coalesce(jsonb_agg(to_jsonb(photo)), '[]'::jsonb) from (${photos}) as photo)` : sql`null::jsonb`} as photos
+  `;
+}
+
+type PersonnelNarrowResult = PersonnelPageResult & {
+  pageDetailsComplete: boolean; companies: PersonnelCompanyChoice[]; canInspectDuplicates: boolean; duplicateAuthority: boolean;
+  attached: Record<string, unknown>; photos: { employmentId: string; personId: string }[] | null;
+};
+
+async function personnelOverviewQueryTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+) {
+  const asOf = todayInKualaLumpur();
+  const choices = await personnelCompanyChoicesTx(tx, input.companyIds, asOf);
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf, {
+    headcount: { ...headcount, companyIds: input.companyIds },
+    choiceIds: choices.companies.map(company => company.id),
+  });
+  return { choices, query, asOf };
+}
+
+async function workforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput, asOf: string,
+) {
+  const query = await workforcePersonnelPageQueryTx(tx, ctx, input, asOf);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
+  return result;
+}
+
+type PersonnelPageResult = {
+  rows: EmployeeListRow[];
+  total: number;
+  byStatus: Partial<Record<EmploymentStatus, number>>;
+  choices: PersonnelChoiceRow[];
+};
+
+/** List, headcount and filter choices share one authorised snapshot and one page projection. */
+export function readPersonnelOverview(
+  ctx: SessionContext,
+  input: PersonnelOverviewInput,
+  headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  options?: { compareExact: true },
+) {
+  return withPersonnelOverviewRead(ctx, (tx, snapshot) => readPersonnelOverviewTx(tx, ctx, input, headcount, snapshot, options));
+}
+
+/** The overview inside a caller's Personnel overview snapshot (core/personnel-read-bounds.ts). */
+export async function readPersonnelOverviewTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelOverviewInput, headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  snapshot: PersonnelOverviewSnapshot, options?: { compareExact?: true } & PersonnelOverviewAttachments,
+) {
+  const asOf = todayInKualaLumpur();
+  const facets = { ...headcount, companyIds: input.companyIds };
+  // The exact reader is also the oracle in equivalence and hosted performance qualification.
+  const source = options?.compareExact ? null : personnelFactSource(input, facets, snapshot, asOf);
+  if (source) {
+    const duplicateIds = [input, facets].some(filters => filters.qualityFlags?.includes('suspected_duplicate'))
+      ? await personnelDuplicateIdsTx(tx, ctx, { companyIds: input.companyIds, asOf }) : [];
+    const [narrow] = await tx.execute<PersonnelNarrowResult>(personnelNarrowOverviewQuery(input, facets, asOf, source, duplicateIds, options, snapshot.typedFacts));
+    if (narrow?.pageDetailsComplete) return {
+      employees: { rows: narrow.rows, total: narrow.total },
+      headcount: { total: Object.values(narrow.byStatus).reduce((sum, count) => sum + count, 0), byStatus: narrow.byStatus },
+      duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate') ? !narrow.duplicateAuthority : false,
+      organisationChoices: { companies: narrow.companies, canInspectDuplicates: narrow.canInspectDuplicates, rows: narrow.choices },
+      attached: narrow.attached,
+      pagePhotos: narrow.photos ? new Map(narrow.photos.map(photo => [photo.employmentId, photo.personId])) : null,
+    };
+  }
+  // The snapshot interprets the bounded statement; the exact owner keeps the session's JIT setting.
+  if (snapshot.previousJit !== 'off') await tx.execute(sql`select set_config('jit', ${snapshot.previousJit}, true)`);
+  const { choices, query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+  const [result] = await tx.execute<PersonnelPageResult>(query);
+  const attached = options?.attach && Object.keys(options.attach).length
+    ? (await tx.execute<{ attached: Record<string, unknown> }>(sql`select ${attachedColumn(options.attach)} as attached`))[0].attached : {};
+  return {
+    employees: { rows: result.rows, total: result.total },
+    headcount: { total: Object.values(result.byStatus).reduce((sum, count) => sum + count, 0), byStatus: result.byStatus },
+    duplicateFilterUnavailable: input.qualityFlags?.includes('suspected_duplicate')
+      ? !await personnelDuplicateAuthorityTx(tx, input.companyIds)
+      : false,
+    organisationChoices: { ...choices, rows: result.choices },
+    attached,
+    pagePhotos: null as Map<string, string> | null,
+  };
+}
+
+/** Hosted benchmark diagnostic for the exact overview query, under the same authorized snapshot. */
+export function explainPersonnelOverview(
+  ctx: SessionContext,
+  input: PersonnelOverviewInput,
+  headcount: Omit<EmployeeListFilters, 'companyIds'>,
+  mode: 'estimate' | 'analyze' = 'analyze',
+) {
+  return withPersonnelRead(ctx, async tx => {
+    const [identity] = await tx.execute<{ role: string }>(sql`select current_user as role`);
+    if (identity.role !== 'ai_hr_app') throw new Error('Personnel plan must use the application role');
+    const { query } = await personnelOverviewQueryTx(tx, ctx, input, headcount);
+    // Allow a bounded analyzed capture even when the live reader hits its 20-second statement ceiling.
+    if (mode === 'analyze') await tx.execute(sql`select set_config('statement_timeout', '45000', true)`);
+    const rows = await tx.execute<{ 'QUERY PLAN': unknown }>(mode === 'analyze'
+      ? sql`explain (analyze, buffers, format json) ${query}`
+      : sql`explain (format json) ${query}`);
+    return { role: identity.role, plan: rows[0]?.['QUERY PLAN'] };
+  });
+}
+
+
+/** Whole authorized Workforce picker population. Do not repurpose the independent payroll/clocking
+ * picker or transfer its person/card identifiers into a new grant's screen props. */
+function workforcePickerColumns(){return {
+  employmentId: workforceListUuid('employmentId'), name: workforceListValue<string>('name'),
+  employeeCode: workforceListValue<string | null>('employeeCode'), companyId: workforceListUuid('companyId'),
+  company: workforceListValue<string>('company'), department: workforceListValue<string | null>('department'),
+  terminatedOn: workforceListValue<string | null>('terminatedOn'),
+};}
+export function listWorkforcePickOptions(ctx: SessionContext, companyIds?: string[]) {
+  return withPersonnelRead(ctx, async tx => {
+    const scope=companyIds===undefined?sql`null::uuid[]`:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+    return tx.select({
+      employmentId:sql<string>`workforce_row.employment_id`,name:sql<string>`workforce_row.name`,
+      employeeCode:sql<string|null>`workforce_row.employee_code`,companyId:sql<string>`workforce_row.company_id`,
+      company:sql<string>`workforce_row.company`,department:sql<string|null>`workforce_row.department`,
+      terminatedOn:sql<string|null>`workforce_row.terminated_on::text`,
+    }).from(sql`app.access_workforce_picker_facts(${scope}) workforce_row`)
+      .orderBy(sql`workforce_row.name`,sql`workforce_row.employment_id`);
+  });
+}
+/** Resolve an explicit bounded identity set through the same current Workforce projection. */
+export async function readWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ return workforcePickRowsTx(ctx,tx,ids,lockAccessConfigurationWriteTx);
+}
+/** Display-only counterpart: native identity and rows belong to an enforced RR/RO snapshot. */
+export async function readPresentationWorkforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[]){
+ ctx=structuredClone(ctx);ids=ids.slice();
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickRowsTx(ctx,tx,ids,async()=>{});
+}
+async function workforcePickRowsTx(ctx:SessionContext,tx:Tx,ids:string[],lock:typeof lockAccessConfigurationWriteTx){
+ if(ids.length>500||ids.some(id=>!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)))throw new RangeError('Invalid workforce identity selection');
+ if(!ids.length)return [];await lock(tx,ctx.tenantId);const columns=workforcePickerColumns();
+ const source=sql`app.access_workforce_list_rows_for_ids(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) as workforce_row(value)`;
+ return tx.select(columns).from(source).orderBy(columns.employmentId);
+}
+type WorkforcePickPageInput={companyIds:string[];q?:string;after?:string;limit:number;departmentId?:string;departmentSearch?:string;branch?:string;hiredFrom?:string;hiredTo?:string};
+/** A caller-owned transaction can write, so keep its exclusive barrier. */
+export function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationWriteTx);
+}
+
+/** The database must enforce read-only before this shared-barrier picker can run. */
+export async function listReadOnlyWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ const [state]=await tx.execute<{read_only:boolean}>(sql`select current_setting('transaction_read_only')='on' as read_only`);
+ if(state?.read_only!==true)throw Error('Workforce picker requires a read-only transaction.');
+ return workforcePickPageTx(ctx,tx,input,lockAccessConfigurationReadTx);
+}
+/** Explicit pure presentation seam. Existing borrowed command/shared-barrier callers stay unchanged. */
+export async function listPresentationWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput){
+ ctx=structuredClone(ctx);input=structuredClone(input);
+ await assertAiPresentationPrincipalTx(tx,ctx);
+ return workforcePickPageTx(ctx,tx,input,async()=>{});
+}
+
+/** Resolve a cursor only inside this exact authorized search. Equal names are ordered by employment ID. */
+async function workforcePickPageTx(ctx:SessionContext,tx:Tx,input:WorkforcePickPageInput,lock:typeof lockAccessConfigurationWriteTx){
+  if(!Number.isInteger(input.limit)||input.limit<1||input.limit>100||(input.q?.length??0)>200||input.after&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.after))throw new RangeError('Invalid workforce picker');
+  if((input.departmentSearch?.length??0)>200||(input.branch?.length??0)>200||input.departmentId&&!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.departmentId)||input.hiredFrom&&!isCalendarDate(input.hiredFrom)||input.hiredTo&&!isCalendarDate(input.hiredTo)||input.hiredFrom&&input.hiredTo&&input.hiredFrom>input.hiredTo)throw new RangeError('Invalid workforce picker filters');
+  await lock(tx,ctx.tenantId);
+  const source=sql`app.access_workforce_picker_rows(${input.branch?.trim()||null},${input.hiredFrom??null}::date,${input.hiredTo??null}::date) as workforce_row(value)`;
+  const departmentSearch=input.departmentSearch?.trim(),needle=departmentSearch?'%'+departmentSearch.replace(/[\\%_]/g,'\\$&')+'%':undefined;
+  const where=and(workforceListWhere({companyIds:input.companyIds,q:input.q,departmentId:input.departmentId},workforceListColumns()),needle?sql`${workforceListValue('department')} ilike ${needle}`:undefined),columns=workforcePickerColumns();
+  const [cursor]=input.after?await tx.select({name:columns.name}).from(source).where(and(where,eq(columns.employmentId,input.after))).limit(1):[];
+  if(input.after&&!cursor)return {rows:[],nextCursor:null};
+  const rows=await tx.select(columns).from(source).where(and(where,cursor?or(gt(columns.name,cursor.name),and(eq(columns.name,cursor.name),gt(columns.employmentId,input.after!))):undefined)).orderBy(columns.name,columns.employmentId).limit(input.limit+1);
+  return {rows:rows.slice(0,input.limit),nextCursor:rows.length>input.limit?rows[input.limit-1].employmentId:null};
+}
+
+
+/** Standalone switcher: authority and matching fields share one nonblocking read-only snapshot. */
+export function searchWorkforceEmployees(ctx:SessionContext,companyIds:string[],query:string){
+  return withPersonnelRead(ctx,tx=>searchWorkforceMatchesTx(ctx,tx,companyIds,query));
+}
+
+/** A borrowed transaction may later write, so keep its exclusive Access lock. */
+export function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
+  return searchWorkforceMatchesTx(ctx,tx,companyIds,query,lockAccessConfigurationWriteTx);
+}
+
+/** This deliberately offers no continuation: the switcher is an eight-result jump control. */
+async function searchWorkforceMatchesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string,lock?:typeof lockAccessConfigurationWriteTx){
+  if(query.length>200)throw new RangeError('Invalid employee search');
+  const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
+  if(!raw||!companyIds.length)return [];
+  if(lock)await lock(tx,ctx.tenantId);
+  const columns=workforcePickerColumns(),name=sql`workforce_row.search_name`,code=sql`workforce_row.search_code`;
+  const compact=sql`workforce_row.search_compact`;
+  const rank=sql<number>`case
+    when ${folded} <> '' and ${compact} <> '' and ${compact} = ${folded} then 0
+    when ${folded} <> '' and ${compact} <> '' and left(${compact},length(${folded})) = ${folded} then 1
+    when left(${name},length(${raw})) = ${raw} then 2
+    when position(${raw} in ${code}) > 0 or (${folded} <> '' and position(${folded} in ${compact}) > 0) then 3
+    when position(${raw} in ${name}) > 0 then 4 else 5 end`;
+  // Rank authorized typed facts before building detail JSON. Preserve the exact existing rank,
+  // name/ID ordering and eight-result contract; both sources retain their native purpose guard.
+  const source=sql`(
+    with normalized as materialized (
+      select workforce_row.employment_id,workforce_row.name,
+        lower(workforce_row.name) as search_name,
+        lower(coalesce(workforce_row.employee_code,'')) as search_code,
+        regexp_replace(lower(coalesce(workforce_row.employee_code,'')), '[[:space:]._-]', '', 'g') as search_compact
+      from app.access_workforce_list_facts() as workforce_row
+      where ${workforceListWhere({companyIds},personnelFactColumns())}
+    ), scored as materialized (
+      select workforce_row.employment_id,workforce_row.name,${rank} as search_rank
+      from normalized as workforce_row
+    ), selected as materialized (
+      select employment_id,name,search_rank from scored where search_rank<5
+      order by search_rank,name,employment_id limit ${EMPLOYEE_SEARCH_RESULT_CAP}
+    ), details(value) as materialized (
+      select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected)) r(value)
+    )
+    select details.value,selected.search_rank from selected
+    join details on (details.value->>'employmentId')::uuid=selected.employment_id
+  ) as workforce_row`;
+  return tx.select(columns).from(source).where(sql`workforce_row.search_rank < 5`)
+    .orderBy(sql`workforce_row.search_rank`,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
+}
+
+/**
+ * Headcount by DERIVED Employee Status over the whole filtered set (feedback 579255c3, point 5) —
+ * `{ active: 30, resigned: 9, probation: 1, … }` plus the grand total.
+ *
+ * Counted in SQL over every matching employment, NEVER over the page: a card that agreed with the 25
+ * rows on screen rather than with the 40 people on the books would answer no question worth asking.
+ * It takes the same EmployeeListFilters the table does MINUS the bucket narrowing, which is what makes
+ * the cards a facet of the current view — filter to one company and the cards describe that company.
+ *
+ * Buckets are `employmentStatusSql()`, the SQL twin of deriveEmploymentStatus pinned equal by
+ * test/personnel-status-sync.test.ts, so a card and the Status badge on a row it counted cannot disagree.
+ * DRAFTS ARE NOT HERE: a draft is a row of a different table with no employment behind it, so the Draft
+ * card is counted by the caller from listEmployeeDrafts.
+ */
+export function countEmployeesByStatus(
+  ctx: SessionContext,
+  p: EmployeeListFilters,
+  purpose?:'workforce',
+): Promise<{ total: number; byStatus: Partial<Record<EmploymentStatus, number>> }> {
+  if (purpose) return withPersonnelRead(ctx, async tx => {
+      const asOf=todayInKualaLumpur(),columns = workforceListColumns(asOf);
+      const duplicateIds=p.qualityFlags?.includes('suspected_duplicate')?await personnelDuplicateIdsTx(tx,ctx,{companyIds:p.companyIds,asOf}):[];
+      const rows = await tx.select({ status: columns.status, count: sql<number>`count(distinct ${workforceListUuid('employmentId')})::int` })
+        .from(personnelListSource(p.companyIds,asOf,Boolean(p.privateSearch))).where(workforceListWhere(p, columns,duplicateIds)).groupBy(sql`1`);
+      const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+      let total = 0;
+      for (const row of rows) { const count = Number(row.count); byStatus[row.status] = count; total += count; }
+      return { total, byStatus };
+  });
+  return withTenant(ctx, async tx => {
+    const rows = (await tx
+      .select({
+        status: employmentStatusSql(),
+        // count(distinct employment.id) for the same reason the pager total uses it: the assignment join
+        // is ≤1 row per employment, and distinct is the guard that keeps that a fact rather than a hope.
+        count: sql<number>`count(distinct ${employment.id})::int`,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignmentJoin())
+      .where(employeeListWhere(p))
+      // GROUP BY 1 — the ORDINAL, not a second copy of the expression, and this is load-bearing rather
+      // than terse. employmentStatusSql() carries the `today` value as a BIND PARAMETER, so rendering it
+      // twice produces `$1`/`$2` in the SELECT and `$3`/`$4` in the GROUP BY. Postgres matches a grouped
+      // expression structurally, decides those two are different expressions, and rejects the statement
+      // with "column employment.blacklisted_at must appear in the GROUP BY clause". Observed, not feared.
+      .groupBy(sql`1`)) as { status: EmploymentStatus; count: number }[];
+    const byStatus: Partial<Record<EmploymentStatus, number>> = {};
+    let total = 0;
+    for (const r of rows) {
+      const n = Number(r.count);
+      byStatus[r.status] = n;
+      total += n;
+    }
+    return { total, byStatus };
+  });
+}
+
+/** Typed fields for the same listing filters/status owner; full JSON is built only after paging. */
+function personnelFactColumns():EmployeeListColumns{
+  const dates:EmploymentStatusColumns={
+    finalConfirmationDate:sql`workforce_row.final_confirmation_date`,confirmationDate:sql`workforce_row.confirmation_date`,
+    probationEndDate:sql`workforce_row.probation_end_date`,provisionalEndOn:sql`workforce_row.provisional_end_on`,
+    resignationDate:sql`workforce_row.resignation_date`,lastWorkingDate:sql`workforce_row.last_working_date`,
+    terminatedOn:sql`workforce_row.terminated_on`,blacklistedAt:sql`workforce_row.blacklisted_at`,
+  };
+  return {companyId:sql`workforce_row.company_id`,departmentId:sql`workforce_row.department_id`,
+    employmentType:sql`workforce_row.employment_type`,terminatedOn:sql`workforce_row.terminated_on`,
+    name:sql`workforce_row.name`,email:sql`workforce_row.email`,employeeCode:sql`workforce_row.employee_code`,
+    status:employmentStatusSql(todayInKualaLumpur(),dates)};
+}
+
+const personnelFactFilterSupport = {
+  companyIds:true,q:true,companyId:true,departmentId:true,status:true,employmentType:true,
+  filterCompanyIds:true,departmentIds:true,employmentStatuses:true,
+  businessUnitIds:false,parentCompanyIds:false,businessGroupIds:false,jobGrades:false,positionIds:false,
+  confirmationState:false,probationEndFrom:false,probationEndTo:false,joinedFrom:false,joinedTo:false,
+  qualityFlags:false,privateSearch:false,columnSort:false,sortDirection:true,
+  employmentTypes:false,blankChoices:false,hiredFrom:false,hiredTo:false,confirmationFrom:false,confirmationTo:false,
+} satisfies Record<keyof EmployeeListFilters, boolean>;
+const personnelFactFilterKeys = Object.keys(personnelFactFilterSupport) as (keyof EmployeeListFilters)[];
+
+/** Conservative equality over filter inputs only. Paging/order are deliberately independent.
+ * Different but equivalent spellings may miss this optimization; they never broaden a filter. */
+function samePersonnelFilters(page:EmployeeListFilters,facets:EmployeeListFilters):boolean{
+  return personnelFactFilterKeys.every(key=>{
+    if(key==='sortDirection')return true;
+    const left=page[key],right=facets[key];
+    return Array.isArray(left)&&Array.isArray(right)
+      ?left.length===right.length&&left.every((value,index)=>value===right[index]):left===right;
+  });
+}
+
+/** One caller-scoped statement for authorized typed facts, exact total/facets and bounded detail rows.
+ * No cached permissions/results or raw-table grant; both native projections recheck Workforce purpose. */
+/** Legacy typed-fact diagnostic for native EXPLAIN comparisons; not the current Personnel row contract.
+ * Source SQL never comes from a request. Alternate relations must preserve the native purpose owner. */
+export function personnelListPageSql(
+  page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+  facts?:{source:SQL;materialized:boolean;projectPageFacts?:boolean},
+):SQL{
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+    // The shared query parser emits [] for absent multiselect filters. These are no-op filters,
+    // not unsupported restrictions. Nonempty unsupported filters must still be refused.
+    const active=(value:EmployeeListFilters[keyof EmployeeListFilters])=>value!==undefined&&(!Array.isArray(value)||value.length>0);
+    if (personnelFactFilterKeys.some(key => !personnelFactFilterSupport[key]
+      && (active(page[key]) || active(facets[key])))) {
+      throw new RangeError('The typed Personnel projection does not support these filters');
+    }
+    const columns=personnelFactColumns();
+    const pageWhere=workforceListWhere(page,columns)??sql`true`;
+    const facetWhere=workforceListWhere(facets,columns)??sql`true`;
+    const sourceNameSort=page.sort==='company'?sql`lower(${columns.name})`:columns.name;
+    // Evaluate canonical predicates/status before retaining compact page facts. Server-side
+    // profiling can still compare the original wide projection without duplicating those rules.
+    const projected=facts?.projectPageFacts===true;
+    const sameFilters=samePersonnelFilters(page,facets);
+    const source=facts?.source??sql`app.access_workforce_list_facts()`;
+    const sourceFacts=projected?sql`select workforce_row.employment_id,
+      lower(workforce_row.company)as company_sort,${sourceNameSort} as name_sort,
+      ${sameFilters?sql`true`:sql`(${pageWhere})`} as page_matches,${sameFilters?sql`true`:sql`(${facetWhere})`} as facet_matches,${columns.status} as status
+      from ${source} workforce_row where ${sameFilters?pageWhere:sql`(${pageWhere})or(${facetWhere})`}`:sql`select * from ${source}`;
+    const retainedPageWhere=projected?sql`workforce_row.page_matches`:pageWhere;
+    const retainedFacetWhere=projected?sql`workforce_row.facet_matches`:facetWhere;
+    const retainedStatus=projected?sql`workforce_row.status`:columns.status;
+    const nameSort=projected?sql`workforce_row.name_sort`:sourceNameSort;
+    const companySort=projected?sql`workforce_row.company_sort`:sql`lower(workforce_row.company)`;
+    const pageOrder=page.sort==='company'
+      ?sql`${companySort},${nameSort},workforce_row.employment_id`
+      :sql`${nameSort},workforce_row.employment_id`;
+    const aggregateOrder=page.sort==='company'
+      ?sql`chosen.company_sort,chosen.name_sort,chosen.employment_id`
+      :sql`chosen.name_sort,chosen.employment_id`;
+    return sql`
+      with workforce_facts as ${facts?.materialized===false?sql`not materialized`:sql`materialized`}(${sourceFacts}),
+      selected_page as materialized(
+        select workforce_row.employment_id,${companySort} as company_sort,${nameSort} as name_sort
+        from workforce_facts workforce_row where ${retainedPageWhere}
+        order by ${pageOrder} limit ${page.limit} offset ${page.offset}
+      ), page_projection(value)as materialized(
+        select value from app.access_workforce_list_rows_for_ids(array(select employment_id from selected_page))r(value)
+      ), status_counts as materialized(
+        select ${retainedStatus} as status,
+          count(distinct workforce_row.employment_id)filter(where ${retainedPageWhere})::int as page_count,
+          count(distinct workforce_row.employment_id)filter(where ${retainedFacetWhere})::int as facet_count
+        from workforce_facts workforce_row group by 1
+      )
+      select coalesce((select jsonb_agg(p.value order by ${aggregateOrder})
+        from selected_page chosen join page_projection p on (p.value->>'employmentId')::uuid=chosen.employment_id),'[]'::jsonb)as rows,
+      -- Status depends only on each employment's lifecycle dates (never its assignment),
+      -- so an employment has exactly one bucket. Keep DISTINCT against assignment fanout.
+      coalesce((select sum(page_count)::int from status_counts),0)as total,
+      coalesce((select jsonb_agg(jsonb_build_object('status',status,'count',facet_count))
+        from status_counts where facet_count>0),'[]'::jsonb)as status_counts
+    `;
+}
+
+export async function personnelListPage(
+  ctx:SessionContext,page:Parameters<typeof listEmployeesPage>[1],facets:EmployeeListFilters,
+){
+  if(!Number.isSafeInteger(page.limit)||page.limit<0||page.limit>ALL_ROW_CEILING||
+     !Number.isSafeInteger(page.offset)||page.offset<0)throw new RangeError('Invalid Personnel page');
+  return withPersonnelRead(ctx,async tx=>{
+    const query=await workforcePersonnelPageQueryTx(tx,ctx,page,todayInKualaLumpur(),{headcount:facets});
+    const [result]=await tx.execute<PersonnelPageResult>(query);
+    const byStatus=result.byStatus;
+    const total=Object.values(byStatus).reduce((sum,count)=>sum+Number(count),0);
+    return {rows:result.rows,total:Number(result.total),headcount:{total,byStatus}};
+  });
+}
+
+/** Paginated + searchable employee list for the People page. Returns the page rows plus the
+ *  total match count (for the pager). Search matches name or email (case-insensitive). The
+ *  unpaginated `listEmployees` stays for callers that genuinely need the whole set (transfer
+ *  target dropdowns, exports). */
+/** A presentation-only export may compose the same page projection with other reads. */
+export function listWorkforcePersonnelPresentationPageTx(
+  ctx: SessionContext, input: PersonnelListInput, asOf: string, tx: Tx, overviewSnapshot?: PersonnelOverviewSnapshot,
+) {
+  input = structuredClone(input);
+  return withPersonnelPresentationReadTx(ctx, tx, async (snapshot, current) => {
+    // Inside a Personnel overview snapshot the bounded reader serves the same rows and total.
+    if (overviewSnapshot && input.companyIds) {
+      const { employees } = await readPersonnelOverviewTx(snapshot, current, { ...input, companyIds: input.companyIds }, {}, overviewSnapshot);
+      return employees;
+    }
+    const { rows, total } = await workforcePersonnelPageTx(snapshot, current, input, asOf);
+    return { rows, total };
+  });
+}
+
+/** listEmployeesPage(…, 'workforce') inside a caller's Personnel overview snapshot. */
+export async function listWorkforcePersonnelPageTx(
+  tx: Tx, ctx: SessionContext, input: PersonnelListInput & { companyIds: string[] }, overviewSnapshot: PersonnelOverviewSnapshot,
+) {
+  return (await readPersonnelOverviewTx(tx, ctx, input, {}, overviewSnapshot)).employees;
+}
+
+export function listEmployeesPage(
+  ctx: SessionContext,
+  p: EmployeeListFilters & {
+    /** 'company' = company A→Z then employee name A→Z (650b6eb8's reading order); default is name. */
+    sort?: 'name' | 'company';
+    limit: number;
+    offset: number;
+  },
+  purpose?:'workforce',
+  existingTx?: Tx,
+): Promise<{ rows: EmployeeListRow[]; total: number }> {
+  if (purpose) return withPersonnelRead(ctx, async tx => {
+    const { rows, total } = await workforcePersonnelPageTx(tx, ctx, p, todayInKualaLumpur());
+    return { rows, total };
+  }, { existingTx });
+  const read = async (tx: Tx) => {
+    const currentAssignment = currentAssignmentJoin();
+    const where = employeeListWhere(p);
+    const rows = (await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        department: sql<string|null>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
+        departmentId: assignment.departmentId,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
+        company: company.legalName,
+        companyId: employment.companyId,
+        hiredOn: employment.hiredOn,
+        terminatedOn: employment.terminatedOn,
+        // R43 c26c3ce5 — lifecycle inputs for the derived status badge.
+        confirmationDate: employment.confirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        // R81 — the probation fallbacks. Nothing writes a confirmation date at hire, so without these two
+        // a new hire serving probation derived to "Active" on day one. See core/employment-status.ts.
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
+        resignationDate: employment.resignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        blacklistedAt: employment.blacklistedAt,
+        // ── Customize Columns (579255c3) ────────────────────────────────────────────────────────────
+        // The opt-in columns. Four 1:1 master lookups hung off the existing current-assignment join, so
+        // the row count is unchanged and the count query below needs no edit at all.
+        jobGrade: jobGrade.name,
+        employmentType: assignment.employmentType,
+        businessUnit: businessUnit.name,
+        costCenter: costCenter.name,
+        workLocation: location.name,
+        joinDate: employment.joinDate,
+        // "Reporting To". A SUBQUERY, not a join: reporting_line is 0..N per employment (administrative,
+        // functional, project, dotted, delegate), so joining it would return one LIST ROW PER EDGE and
+        // quietly show the same person two or three times — the class of fault that put 1 of 8 rows on
+        // the Companies screen for 24 days. It reads the SAME edge reportingLinesFor and the leave
+        // approver lookup read (administrative, still open, not superseded) rather than inventing a
+        // second notion of "manager" that could drift from the one the profile shows.
+        reportingTo: sql<string | null>`(
+          select mp.full_name from reporting_line rl
+          join employment me on me.id = rl.manager_employment_id
+          join person mp on mp.id = me.person_id
+          where rl.subordinate_employment_id = ${employment.id}
+            and rl.line_type = 'administrative'
+            and rl.valid_to is null and rl.superseded_at is null
+          order by rl.valid_from desc limit 1)`,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      // 579255c3 — the optional columns' masters. All four are FK → one row, so none of them can widen
+      // the result: `grade_id` on the employment, the other three on the CURRENT assignment.
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(costCenter, eq(costCenter.id, assignment.costCenterId))
+      .leftJoin(location, eq(location.id, assignment.locationId))
+      .where(where)
+      // lower() rather than the raw columns: the reading order must not put "acme" in a different half of
+      // the list from "Acme" — the same case-insensitivity lib/leave-inquiry.ts applies in TypeScript.
+      .orderBy(
+        ...(p.sort === 'company'
+          ? [sql`lower(${company.legalName})`, sql`lower(${person.fullName})`]
+          : [person.fullName]),
+      )
+      .limit(p.limit)
+      .offset(p.offset)) as EmployeeListRow[];
+    // count(distinct employment.id): the assignment join is ≤1/employment, but distinct is the safe guard.
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(distinct ${employment.id})::int` })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(assignment, currentAssignment)
+      .where(where);
+    return { rows, total: Number(count) };
+  };
+  return existingTx ? read(existingTx) : withTenant(ctx,read);
+}
+
+/** Which of `ids` the employee listing would return for these filters (the same FROM, joins and WHERE as
+ *  listEmployeesPage's rows, restricted to the given employments). RLS-scoped like the listing. */
+export async function employeeListMembersTx(tx: Tx, p: EmployeeListFilters, ids: readonly string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const rows = await tx
+    .select({ employmentId: employment.id })
+    .from(employment)
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .leftJoin(assignment, currentAssignmentJoin())
+    .where(and(employeeListWhere(p), inArray(employment.id, [...ids])));
+  return rows.map((row) => row.employmentId);
+}
+
+/**
+ * Hiring enhancement — flat picker of active (non-terminated) employments the new hire can report to.
+ * Scoped to the session's allowed companies (reuse the `companyIds` filter from listEmployeesPage); no
+ * extra company-subtree narrowing. Cross-company managers stay selectable on purpose — the reporting_line
+ * schema permits manager & subordinate to differ in company. RLS already fences this to the tenant.
+ */
+export type ManagerCandidate = { employmentId: string; name: string; employeeCode: string | null };
+
+export function listManagerCandidates(
+  ctx: SessionContext,
+  opts: { companyIds?: string[] } = {},
+): Promise<ManagerCandidate[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          opts.companyIds && opts.companyIds.length
+            ? inArray(employment.companyId, opts.companyIds)
+            : undefined,
+        ),
+      )
+      .orderBy(person.fullName),
+  );
+}
+
+/**
+ * Companies, with the full master row every company screen reads.
+ *
+ * SCOPE, AND WHY THERE ARE NOW TWO OF THEM (feedback ae3bd088). By default this is scoped to the
+ * TENANT and to nothing else — RLS's `tenant_id = app.current_tenant_id()` and no further predicate —
+ * which is right for the ~15 pickers and filters that call it: they hand the chosen company to a
+ * service call that does its own authorisation, and narrowing the picker would only hide options that
+ * are legitimately selectable.
+ *
+ * `adminOnly` adds `app.is_admin_for(company.id)` — the SAME function the company table's own WITH
+ * CHECK clause uses (migration 0016), so a screen that lists a company with this option can always
+ * also write to it. A GROUP-WIDE grant (`company_id` null on the role_assignment) satisfies it for
+ * every company, so this is not a narrowing for the ordinary group admin: it is all of them, exactly
+ * as before. It narrows only a company-scoped admin, to their company and its subtree.
+ *
+ * It exists because "tenant-wide" was the wrong contract for the Organization → Companies MANAGEMENT
+ * card. That card renders an editable panel per row — archive, delete, re-parent, bank profile,
+ * statutory identifiers — so listing a company a person cannot administer offers them controls the
+ * database will refuse, and discloses the group's size to someone whose access does not otherwise
+ * reveal it (the same objection feedback ab77dc1f raised against the dashboard's "N of M").
+ */
+/**
+ * One company's ISO-4217 currency, or 'MYR' when the company is out of scope / absent.
+ *
+ * r79a (4fb8b75a step 3): `company.currency` is now the company's ONE currency field. It absorbed
+ * company_payroll_config.default_currency (migration 0324) — the two were a genuine duplicate, with the
+ * Organization one editable-but-inert and the payroll one doing the real work. Owner: Organization →
+ * General. Reader: the Basic Salary form's currency preselect for a brand-new salary record. This is a
+ * single-column read so a form does not have to pull the whole listCompanies projection for it.
+ */
+export function getCompanyCurrency(ctx: SessionContext, companyId: string): Promise<string> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ currency: company.currency })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    return row?.currency ?? 'MYR';
+  });
+}
+
+export function listCompanies(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; adminOnly?: boolean } = {},
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
+      .select({
+        id: company.id,
+        name: company.legalName,
+        country: company.country,
+        currency: company.currency,
+        registrationNo: company.registrationNo,
+        // Enhance Company General Tab (bc5d4891) — Company + Contact master data for the General tab.
+        companyLabel: company.companyLabel,
+        industry: company.industry,
+        website: company.website,
+        businessType: company.businessType,
+        addressLine1: company.addressLine1,
+        addressLine2: company.addressLine2,
+        addressLine3: company.addressLine3,
+        city: company.city,
+        state: company.state,
+        addressCountry: company.addressCountry,
+        postcode: company.postcode,
+        phone: company.phone,
+        fax: company.fax,
+        leaveCycle: company.leaveCycle,
+        leaveHalfDayFullDeduction: company.leaveHalfDayFullDeduction,
+        // Organization Module (361e3b15) — the company's saved default payroll cycle (name), read by the
+        // General-tab picker and the Payroll Process wizard's Step-1 pre-select.
+        defaultPayrollCycle: company.defaultPayrollCycle,
+        // Shared System Labels flag (62de487d) — the grid shows/toggles per-company sharing.
+        sharedSystemLabels: company.sharedSystemLabels,
+        archivedAt: company.archivedAt,
+        // f00bd1eb — `inUse` STOOD HERE: three tables (department, employment, child company) against the
+        // forty-five that reference a company, so an unused company with its six seeded payroll cycles read
+        // "Not referenced anywhere" and was offered a Delete the database refused. Its one consumer, the
+        // company panel, now asks `companyDeleteStatus` below, which runs the delete guard's own SQL for the
+        // one company on screen — rather than forty-odd subqueries per row on every list of companies.
+        // hasLogo: EXISTS against the company_logo side table (NEVER the bytes — the blob is a different
+        // table, so this can only ever pull a boolean). Non-breaking, name-based add for existing callers.
+        hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
+      })
+      .from(company)
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(company.archivedAt),
+          // Raw SQL, and `company.id` unqualified, because that is the table's alias in this FROM —
+          // the same call shape adminCompanies() already uses.
+          opts.adminOnly ? sql`app.is_admin_for(company.id)` : undefined,
+        ),
+      )
+      .orderBy(company.legalName);
+  return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/**
+ * f00bd1eb — what pressing Delete on this company will do, asked BEFORE it is pressed.
+ *
+ * `blockedBy` is the delete guard's own answer — `companyDeleteBlockSqlText` is the one SQL text both this
+ * and `deleteCompany` run — so the panel opens the confirmation only when the delete will succeed, and
+ * otherwise the refusal with its reason. `canDelete` is the authority the delete requires (and migration 0511
+ * enforces): administering the company's parent, or the company itself at a group root. Null when the
+ * company is not visible.
+ */
+export function companyDeleteStatus(
+  ctx: SessionContext,
+  companyId: string,
+): Promise<{ blockedBy: CompanyDeleteBlock | null; canDelete: boolean } | null> {
+  return withTenant(ctx, async (tx) => {
+    // This one-row retention predicate expands many RLS checks. LLVM compilation cost dominates its
+    // execution on PostgreSQL 16; interpret it within this transaction without changing any guard.
+    await tx.execute(sql`SET LOCAL jit = off`);
+    const [row] = await tx
+      .select({
+        blockedBy: sql<string | null>`(${sql.raw(companyDeleteBlockSqlText('company.id'))})`,
+        canDelete: sql<boolean>`app.is_admin_for(coalesce(app.company_organisation_current_parent(company.id), company.id))`,
+      })
+      .from(company)
+      .where(eq(company.id, companyId))
+      .limit(1);
+    if (!row) return null;
+    return { blockedBy: isCompanyDeleteBlock(row.blockedBy) ? row.blockedBy : null, canDelete: row.canDelete === true };
+  });
+}
+
+export function listDepartments(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; companyIds?: string[]; usage?: false } = {},
+ outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
+      .select({
+        id: department.id,
+        name: department.name,
+        code: department.name,
+        label: department.label,
+        description: department.description,
+        companyId: department.companyId,
+        // Business Unit link (ADR-0068) — feeds the cascading hire-form department filter + the org admin
+        // BU dropdown. Null = unassigned (visible under every BU on the hire form).
+        businessUnitId: department.businessUnitId,
+        // f1bbc572 — the "All Companies" flag travels WITH the row so a client-side narrowing to one
+        // company can keep a global label instead of dropping it on origin (the resolver in the WHERE
+        // above already admits it; a picker that re-filtered on company_id alone threw it away again).
+        isGlobal: department.isGlobal,
+        assignedCompanyIds: labelCompanyIdsSql(department, 'department'),
+        archivedAt: department.archivedAt,
+        // `usage: false` is for choice lists that never show it (the Personnel filters): without an
+        // assignment department index this is a scan of every assignment per department.
+        inUse: opts.usage === false ? sql<boolean>`null::boolean` : sql<boolean>`exists (select 1 from assignment a where a.department_id = department.id and a.superseded_at is null)`,
+      })
+      .from(department)
+      .where(
+        and(
+          opts.includeArchived ? undefined : isNull(department.archivedAt),
+          // Shared System Labels (feedback 62de487d): filter by the resolver — origin ∪ shared-in ∪ global
+          // for companies allowed by the saved per-code Criteria — instead of raw origin company_id. With the
+          // flag OFF everywhere this collapses to inArray(company_id, companyIds): unchanged behaviour.
+          opts.companyIds && opts.companyIds.length
+            ? visibleLabelIdsCondition(department, 'department', opts.companyIds)
+            : undefined,
+        ),
+      )
+      .orderBy(department.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+export type PayrollRunEmployeeRow = {
+  employmentId: string;
+  name: string;
+  employeeCode: string | null;
+  companyId: string;
+  /** Company legal name — carried so the multi-company Step-2 list can show a Company column when the run
+   *  spans more than one company (single-company runs simply don't render the column). */
+  company: string;
+  departmentId: string | null;
+  businessUnitId: string | null;
+  positionId: string | null;
+  gradeId: string | null;
+  costCenterId: string | null;
+  employmentType: string | null;
+  /** R81: the DERIVED Employee Status bucket (core/employment-status.ts), never a stored column. */
+  status: string | null;
+  hiredOn: string;
+  terminatedOn: string | null;
+  /** True when the employment has a current (validTo/supersededAt null) compensation row — a comp-less
+   *  hire is silently dropped by generatePayslips' inner join, so the wizard warns before that happens. */
+  hasCurrentCompensation: boolean;
+  /** 7076f8af — the employee's assigned Payroll Policy name, or null when none is assigned.
+   *
+   *  The reporter asked for Payroll Policy on Step 1, as a property of the RUN. It is not one: the policy
+   *  is held per employment (employment.payroll_policy_id), and on the live tenant exactly two of forty
+   *  employments carry one — so a Step-1 line would have been blank for the whole run almost always. It
+   *  belongs beside each person instead, which is where it is actually decided. NULL is the normal case
+   *  and the picker renders it as an em dash, not as an empty cell. */
+  payrollPolicyName: string | null;
+  outstandingOnly?:boolean;
+};
+
+/**
+ * Payroll Process wizard (Step 2 population, plan §2) — the employee set for a company + 'YYYY-MM' pay
+ * period, using generatePayslips' OWN period predicate (hired on/before period end AND not terminated
+ * before period start) — NOT current-roster semantics — so this preview always equals what generation
+ * would pick up. A mid-period leaver appears by default; Employee Status is NOT part of generation's
+ * predicate, so a status filter narrowing this list is a visible user choice, not a silent drop. Read-only
+ * — no DomainEvent (derived recomputation, substrate's documented skip).
+ */
+/** Exact original wizard membership, shared with the minimal human run selector. Current company
+ * IDs are intentional: do not offer historical-company subjects this CREATE source cannot accept. */
+export function payrollRunCurrentCompanyPeriodPredicate(companyIds:string[],payPeriod:string){
+ const [year,month1]=payPeriod.split('-').map(Number),periodStart=`${payPeriod}-01`,periodEnd=`${payPeriod}-${String(daysInMonth(year,month1)).padStart(2,'0')}`;
+ return and(inArray(employment.companyId,companyIds),lte(employment.hiredOn,periodEnd),or(isNull(employment.terminatedOn),gte(employment.terminatedOn,periodStart)));
+}
+/** Same-Tx minimal period candidates only AFTER the caller's fresh native company/field guard.
+ * Literal text search has no filter language/wildcard expansion, contact lookup or salary query. */
+export async function reviewedPayrollRunEmployeeChoicesTx(tx:Tx,supplied:SessionContext,input:{companyId:string;payPeriod:string;query:string}){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={...input};await assertReviewedPayrollScopeCompanyTx(tx,ctx,p.companyId);await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');const q='%'+p.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
+ const rows=await tx.select({employmentId:employment.id,employeeCode:employment.employeeCode,fullName:person.fullName}).from(employment).innerJoin(person,eq(person.id,employment.personId))
+ .where(and(payrollRunCurrentCompanyPeriodPredicate([p.companyId],p.payPeriod),workforceEmploymentPredicate(sql`${employment.id}`,'view',[p.companyId]),sql`(${person.fullName} ilike ${q} escape ${'\\'} or ${employment.employeeCode} ilike ${q} escape ${'\\'})`)).orderBy(person.fullName,employment.employeeCode,employment.id).limit(21);
+ return{employees:rows.slice(0,20),truncated:rows.length>20};
+}
+export function listEmployeesForPayrollRun(
+  ctx: SessionContext,
+  companyIds: string | string[],
+  payPeriod: string,
+  payrollCycleId?:string,
+): Promise<PayrollRunEmployeeRow[]> {
+  // Multi-company (feedback 3653d14b): the wizard now scopes a run across one, several, or all of the
+  // admin's companies. Accept a single id (legacy callers) or an array; an empty array short-circuits to
+  // no rows. Each company id is still RLS-scoped by withTenant — this widens the preview, never the grant.
+  const ids = Array.isArray(companyIds) ? companyIds : [companyIds];
+  return withTenant(ctx, async (tx) => {
+    if (ids.length === 0) return [];
+    const contexts=await payrollRunContextsTx(tx,ids,payPeriod,payrollCycleId);
+    if(!contexts.length)return [];
+    const eligibility=contexts.map(run=>payrollEmploymentPredicate(run,settingEnabled(ctx,'payroll.individual_txn_pay_enabled')));
+    const currentAssignment = and(
+      eq(assignment.employmentId, employment.id),
+      isNull(assignment.validTo),
+      isNull(assignment.supersededAt),
+    );
+    const currentComp = and(
+      eq(compensation.employmentId, employment.id),
+      payrollCompensationEffectiveOn(payPeriod),
+    );
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        companyId: company.id,
+        company: company.legalName,
+        departmentId: assignment.departmentId,
+        businessUnitId: department.businessUnitId,
+        positionId: assignment.positionId,
+        gradeId: employment.gradeId,
+        costCenterId: assignment.costCenterId,
+        employmentType: assignment.employmentType,
+        // R81 (9cbf5e0d): the DERIVED Employee Status, not the dropped stored column. Step 2's Status filter
+        // now offers the same six buckets Personnel shows. It stays a FILTER, never a gate — generation's
+        // own predicate (hired-by-period-end, not-terminated-before-period-start) is unchanged, so nobody's
+        // pay eligibility moves; only the option labels in that dropdown do.
+        status: employmentStatusSql(),
+        hiredOn: employment.hiredOn,
+        terminatedOn: payrollEmploymentEnd,
+        hasCurrentCompensation: sql<boolean>`${compensation.id} is not null`,
+        // 7076f8af — the assigned Payroll Policy, shown per person in the wizard's Step-2 picker. A LEFT
+        // join on a nullable FK: it adds a column and can never add or drop a row, so the set this query
+        // returns (which must keep equalling what generation would pick up) is unchanged.
+        payrollPolicyName: payrollPolicy.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company,or(...contexts.map(run=>and(eq(company.id,run.companyId),or(and(eq(employment.companyId,run.companyId),payrollEmploymentPredicate(run,false)),outstandingPaymentPredicate(run,settingEnabled(ctx,'payroll.individual_txn_pay_enabled')))))))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(compensation, currentComp)
+      .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
+      .where(
+        or(...eligibility),
+      )
+      .orderBy(company.legalName, person.fullName);
+    return rows.map(row=>({...row,outstandingOnly:row.terminatedOn!==null&&row.terminatedOn<payPeriod+'-01'})) as PayrollRunEmployeeRow[];
+  });
+}
+
+export function listLeaveTypes(
+  ctx: SessionContext,
+  opts: { includeArchived?: boolean; locale?: string } = {},
+  outerTx?:Tx,
+) {
+  const run=async(tx:Tx)=>{
+    const rows = await tx
+      .select({
+        id: leaveType.id,
+        code: leaveType.code,
+        // 65f466e2 — the role marker travels with every leave-type read, because the callers that decide
+        // "is this Emergency Leave" (app/leave/actions.ts's attachment backstop, the admin panel's
+        // statutory gates) must ask the role. Production codes its Emergency type `EL`, so a caller left
+        // comparing the code answers "no" for the very type it is asking about.
+        role: leaveType.role,
+        name: leaveType.name,
+        // 9816a5ad step 2: the consolidated rule columns, so the Leave Type panel can EDIT them.
+        // Read here rather than via a second query — the panel renders one row per type already.
+        ...leaveTypeRuleColumns,
+        // 845903a3 (r313) — the ENTITLEMENT rounding rule, named explicitly rather than folded into
+        // `leaveTypeRuleColumns`: that map is the set the granting engines and the projection kernel must
+        // read IDENTICALLY, and these three must never reach a ledger write. The editor needs them, so
+        // this listing selects them on its own.
+        entitlementRoundingMethod: leaveType.entitlementRoundingMethod,
+        entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold,
+        entitlementRoundingBands: leaveType.entitlementRoundingBands,
+        // Leave Type master page (feedback 097de541): the free-text description shown in the master listing +
+        // the identity edit form (MUST be projected here or the field renders empty on every reload).
+        description: leaveType.description,
+        i18n: leaveType.i18n,
+        paid: leaveType.paid,
+        counting: leaveType.counting,
+        requiresDocument: leaveType.requiresDocument,
+        // Supporting-document config — feeds the admin panel and the /me form's static hints + pre-check.
+        mandatoryAfterDays: leaveType.mandatoryAfterDays,
+        allowedMimeTypes: leaveType.allowedMimeTypes,
+        maxDocBytes: leaveType.maxDocBytes,
+        employeeRemarkRequired: leaveType.employeeRemarkRequired,
+        hrRemarkRequired: leaveType.hrRemarkRequired,
+        // Unpaid payroll-impact: gates the on-approval payroll signal — feeds the admin "Payroll impact" sub-form.
+        sendToPayroll: leaveType.sendToPayroll,
+        // Configurable backdated-leave restriction (0133): feeds the admin panel's "Backdating limit (days)"
+        // input (MUST be projected here or the input renders empty on every reload — "my setting didn't save").
+        backdatingLimitDays: leaveType.backdatingLimitDays,
+        // Minimum advance-notice rule (0159): feeds the admin panel's "Minimum advance days" input (same
+        // MUST-be-projected reason as backdatingLimitDays above).
+        minAdvanceDays: leaveType.minAdvanceDays,
+        // Advance Notice — calendar days or working days (7daac043): feeds the same card's Day Type select.
+        // MUST be projected for the same reason as the line above — the select reads its state from this
+        // column, so an unprojected one renders as Calendar Days on every reload for a type actually
+        // configured in working days, and the next save of that card silently writes the wrong unit back.
+        minAdvanceDayType: leaveType.minAdvanceDayType,
+        // Application Limits (c6ffa725): feeds the admin panel's "Application Limits" card — the Unlimited /
+        // Limited radio reads its state from whether this is null, so it MUST be projected or the card
+        // renders as Unlimited on every reload for a type that actually has a limit ("my setting didn't
+        // save", the report this projection list has already had twice).
+        maxDaysPerLeaveYear: leaveType.maxDaysPerLeaveYear,
+        // ad9cb5c5 — the window that ceiling is counted over (NULL ⇒ leave year).
+        maxDaysPeriod: leaveType.maxDaysPeriod,
+        // Maximum Consecutive Leave (c6ffa725 rev 2): feeds the same card's Unlimited / Limited radio, its
+        // Maximum and its Unit. MUST be projected for the same reason as the line above — the radio reads
+        // its state from whether the figure is null, so an unprojected column renders as Unlimited on every
+        // reload for a type that actually has a cap ("my setting didn't save").
+        maxConsecutiveDays: leaveType.maxConsecutiveDays,
+        maxConsecutiveUnit: leaveType.maxConsecutiveUnit,
+        // Partial Leave Approval (ADR-0068): feeds the admin panel's per-date toggle (MUST be projected or the
+        // checkbox renders unchecked on every reload). counting is already selected above — the panel needs it
+        // to grey out the toggle for calendar-counted types where the feature can never fire.
+        perDateApproval: leaveType.perDateApproval,
+        // Duplicate Leave Application Restriction (d5e51c34): feeds the admin panel's duplicate-policy radio
+        // (MUST be projected or the radio renders at its default on every reload). null ⇒ 'allow' default.
+        duplicateApplicationPolicy: leaveType.duplicateApplicationPolicy,
+        // Configurable Negative Leave Balance Validation (0ef0defd): feeds the admin panel's "Allow Negative
+        // Balance" Yes/No radio (MUST be projected or the radio renders at its default on every reload).
+        allowNegativeBalance: leaveType.allowNegativeBalance,
+        // bc512dc3 — the floor under that switch (NULL ⇒ unbounded).
+        maxNegativeBalance: leaveType.maxNegativeBalance,
+        // 76ffdcf2 — the DEFAULT entitlement table (what an employee no benefit scheme covers receives).
+        // MUST be projected for the same reason as the columns above: the Entitlement step reads the
+        // picker's current value from it, and the health derivation reads it to decide whether "no scheme
+        // in force" still means nobody resolves. Unprojected, the picker renders empty on every reload
+        // and the health card calls a covered leave type blocked.
+        defaultEntitlementTemplateLineageId: leaveType.defaultEntitlementTemplateLineageId,
+        // Balance Deduction Source (cdf9ca48) / Allow Unpaid Leave (a7fab30b): feed the admin panel's two new
+        // Leave Application Rules cards (MUST be projected or both render at their defaults on every reload —
+        // the "my setting didn't save" report this list has already had twice).
+        balanceSourceTypeId: leaveType.balanceSourceTypeId,
+        allowUnpaidLeave: leaveType.allowUnpaidLeave,
+        // r301 (83511d3b) — the Cancel Approved Leave card. MUST be projected or the switch renders OFF (and
+        // the notice / approval / notify settings at their defaults) on every reload, and the card's next
+        // save writes those defaults back over what HR had set.
+        employeeCancelApproved: leaveType.employeeCancelApproved,
+        cancelNoticeDays: leaveType.cancelNoticeDays,
+        cancelAutoApprove: leaveType.cancelAutoApprove,
+        cancelNotify: leaveType.cancelNotify,
+        // Override Leave Application (56910869): feeds the admin panel's "Override Leave Application" card —
+        // every row's action select and its on/off switch read their state from here, so an unprojected
+        // column would render every configured rule as off on every reload (the "my setting didn't save"
+        // report this projection list has already had twice).
+        overrideRules: leaveType.overrideRules,
+        // Custom validation messages (custom-messages migration): feeds the admin panel's "Custom system
+        // message" textarea (MUST be projected or the textarea renders empty on every reload).
+        customMessages: leaveType.customMessages,
+        // Employee Leave View Configuration (65dec703): feeds the admin panel's ESS-view checklist (MUST be
+        // projected or every checkbox renders at its default on every reload). null ⇒ all-visible default.
+        essViewConfig: leaveType.essViewConfig,
+        // Leave Entitlement Formula Management (79011509): feeds the admin panel's formula editor (MUST be
+        // projected or every field renders empty on every reload). null ⇒ no explanations.
+        formulaExplanations: leaveType.formulaExplanations,
+        // Day Type Inclusion (ef6d7146): feeds the admin panel's "Day Type Inclusion" toggles (MUST be
+        // projected or every toggle renders unchecked on every reload). null ⇒ counting-mode default.
+        dayTypeInclusion: leaveType.dayTypeInclusion,
+        // Leave Type Visual Configuration (639fdf77): feeds the admin panel's visual sub-form (MUST be
+        // projected or the swatch/icon picker render empty on every reload). null ⇒ default styling.
+        color: leaveType.color,
+        icon: leaveType.icon,
+        // Leave Unit Configuration (e4980382): feeds the admin panel's "Leave Unit" select + the create-form
+        // default (MUST be projected or the select renders at its default on every reload). 'day' | 'hour'.
+        leaveUnit: leaveType.leaveUnit,
+        // Leave Year Type override (e1a51aea): feeds the General step's "Leave Year Type" select (MUST be
+        // projected or the select renders at its company-default on every reload). null ⇒ company cycle.
+        yearCycleOverride: leaveType.yearCycleOverride,
+        // Probation eligibility (d6bdbd55): feeds the admin panel's Probation select in the eligibility editor
+        // (MUST be projected or the select renders at its default on every reload). null ⇒ no restriction.
+        probationEligibility: leaveType.probationEligibility,
+        // Leave Type Employee Visibility (7b11f1c1): feeds the admin panel's two visibility checkboxes (MUST be
+        // projected or the checkboxes render at their default on every reload). null ⇒ visible / can-apply.
+        visibleToEmployee: leaveType.visibleToEmployee,
+        employeeCanApply: leaveType.employeeCanApply,
+        // Leave grouping visibility (b653ac1b): feeds the admin panel's placement control (MUST be projected
+        // or the control renders at its default on every reload). null ⇒ code-keyed default (the control
+        // resolves it via lib/leave-groups.ts, reading visibleToEmployee for the Hidden state).
+        essPlacement: leaveType.essPlacement,
+        eligibility: leaveType.eligibility,
+        durations: leaveType.durations,
+        archivedAt: leaveType.archivedAt,
+        // 1ae7f3ab + 4fdb69b2 — GENERATED, not hand-written, from core/leave-type-refs.ts. This predicate
+        // and deleteLeaveType's guard are the pair that had drifted (three tables here, five there, twelve
+        // in the database), which is the job-grade hazard documented at listJobGrades below happening again
+        // to leave types. Both sides now read historyReferrers(), so they cannot span different table sets;
+        // test/leave-type-referrers.test.ts fails if they ever do, and fails again if a new table starts
+        // referencing leave_type without a declared disposition.
+        //
+        // NOTE THE MEANING CHANGED with the cascade (4fdb69b2): inUse is now "this type has HISTORY", not
+        // "anything points at it". Configuration is cascaded by the delete, so a type carrying only
+        // policies and approval rules is deletable and correctly shows Delete.
+        inUse: sql<boolean>`${sql.raw(leaveTypeInUseSqlText('leave_type.id'))}`,
+        // 4fdb69b2 — WHAT THE CASCADE WILL TAKE, BY NAME. The reporter asked not to clear the references
+        // by hand; they did not ask not to be told. The confirmation names these rather than counting
+        // them, because one of them changes the behaviour of a DIFFERENT leave type that is NOT being
+        // deleted: any type drawing its balance from this one loses that source. Naming "Caregiver Leave"
+        // is the difference between an informed press and a surprise.
+        //
+        // Projected here rather than fetched per type on open: the panel renders every type already, and a
+        // confirmation that has to wait on a round trip is a confirmation people click through.
+        cascadeApprovalRules: sql<string[]>`coalesce((
+          select array_agg(coalesce(lap.rule_name, 'Approval rule') order by lap.rule_name nulls last)
+          from leave_approval_policy lap where lap.leave_type_id = leave_type.id), '{}')`,
+        cascadeBalanceSourceOf: sql<string[]>`coalesce((
+          select array_agg(o.name order by o.name)
+          from leave_type o where o.balance_source_type_id = leave_type.id), '{}')`,
+      })
+      .from(leaveType)
+      .where(opts.includeArchived ? undefined : isNull(leaveType.archivedAt));
+    // R37: localize the display name to the viewer's locale. Admin callers pass no locale, so the
+    // config screens keep the default English name (which is what gets edited).
+    //
+    // SORTED A-Z BY DISPLAY NAME (feedback c2a48426), and sorted HERE rather than in SQL for a reason
+    // the query cannot express: the name a viewer actually reads is resolved just above, in JS, from
+    // the i18n column. An `ORDER BY leave_type.name` would order by the ENGLISH name while the screen
+    // showed translated ones — alphabetical to nobody. Sorting the projected rows sorts what is read.
+    //
+    // Server-side rather than in the page, so the order is identical on first paint and after a
+    // revalidation. The item calls out that a newly created type must appear in its alphabetical place
+    // rather than at the end, and a client-only sort leaves it briefly misplaced on the round trip.
+    //
+    // localeCompare, not `<`: raw code-unit ordering puts every capital ahead of every lowercase letter
+    // ("Unpaid" before "annual") and files accented names past Z, neither of which is what an
+    // administrator scanning a list expects.
+    //
+    // There was no ordering at all before this — rows arrived in Postgres heap order, which is
+    // arbitrary and can change as rows are updated. So this is strictly more deterministic for every
+    // caller, including listVisibleLeaveTypes, which filters this same projection.
+    return rows
+      .map(({ i18n, ...r }) => ({ ...r, name: pickName(r.name, i18n, opts.locale) }))
+      .sort((a, b) => a.name.localeCompare(b.name, opts.locale));
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/**
+ * THE ONE EXPRESSION OF THE REQUEST-LEAVE DROPDOWN GATE (ad965821).
+ *
+ * Three independent questions decide whether a leave type may be OFFERED to an employee, and until this
+ * item they were three chained `.filter()`s inline inside `listEligibleLeaveTypesFor`:
+ *
+ *   1. the CONDITION criteria HR configured on the type — gender, marital status, minimum service,
+ *      probation status and the eight organisation-assignment keys — via `isLeaveEligible`, the pure
+ *      twin of the `assertEligible` that `requestLeave` throws from. Nothing here is keyed on MATERNITY
+ *      or PATERNITY: the engine is generic, which matters because production's catalogue codes those
+ *      types MTL / PTL and anything code-keyed would silently miss them.
+ *   2. `employee_can_apply = false` — HR has closed the type to employee applications (7b11f1c1).
+ *   3. a placement that resolves to 'hidden' — via `visible_to_employee = false` or the code-keyed
+ *      default-hidden set (6d78f373), resolved through lib/leave-groups `resolvePlacement`.
+ *
+ * IT IS ONE FUNCTION BECAUSE 464b58e6 SPENT A ROUND REMOVING A SECOND READER OF (3). Two surfaces now
+ * need this answer — the viewer's own dropdown (`listEligibleLeaveTypesFor`) and the on-behalf-of map
+ * (`eligibleLeaveTypeIdsFor`) — and a restated rule is how they would drift. No third switch is being
+ * introduced here: this names the switches that already exist.
+ *
+ * DEFENCE IN DEPTH ONLY. `requestLeave` re-derives all three server-side (core/leave.ts:2470 / :2493)
+ * and remains the authority, so a page left open too long still cannot submit an ineligible type.
+ *
+ * The probation rule is stored in `leave_type.probation_eligibility` (its own column, migration 0225)
+ * rather than the eligibility JSONB, so it is merged in here the way both enforcement chokepoints merge
+ * it. That closes a real gap: the read used to project `eligibility` alone, so a probation-gated type
+ * sat in the dropdown right up until the submit refused it.
+ *
+ * `today` IS THE AS-OF, AND IT IS NOT THE ONE requestLeave USES. `assertEligible` is called with the
+ * request's START DATE (core/leave.ts:2492); a menu has no start date to be called with — the employee has
+ * not picked one yet, and the dropdown is drawn before the date inputs are touched. So every time-dependent
+ * rule (probation, minServiceMonths) is answered as at today. The skew is one-directional and always
+ * conservative: a type whose gate OPENS between today and the intended start is absent from the menu until
+ * it opens, and one whose gate CLOSES in that window is offered and then refused on submit. Nothing
+ * ineligible can be booked either way — `assertEligible` at the real date remains the authority. This is
+ * pre-existing behaviour for minServiceMonths (the read has always gated on it at today); probation now
+ * shares it. Re-deriving the menu against a start date the employee is still editing would mean a round
+ * trip per keystroke and a list that changes under the cursor, which is a different item.
+ */
+type ApplyMenuType = {
+  code: string | null;
+  eligibility: unknown;
+  probationEligibility: string | null;
+  employeeCanApply: boolean | null;
+  visibleToEmployee: boolean | null;
+  essPlacement: string | null;
+  role: string | null;
+};
+/** The employee facts the gate reads — exactly `isLeaveEligible`'s own parameter, never a restated copy. */
+type ApplyMenuEmp = Parameters<typeof isLeaveEligible>[1];
+
+function mayAppearInApplyMenu(t: ApplyMenuType, emp: ApplyMenuEmp, today: string): boolean {
+  const baseElig = (t.eligibility ?? null) as LeaveEligibility | null;
+  const probation = (t.probationEligibility ?? null) as ProbationEligibility | null;
+  const elig: LeaveEligibility | null =
+    baseElig || probation ? { ...(baseElig ?? {}), ...(probation ? { probation } : {}) } : null;
+  return (
+    isLeaveEligible(elig, emp, today) &&
+    t.employeeCanApply !== false &&
+    resolvePlacement(t.code, t.essPlacement, t.visibleToEmployee, t.role) !== 'hidden'
+  );
+}
+
+const applyMenuTypeColumns = {
+  code: leaveType.code,
+  eligibility: leaveType.eligibility,
+  probationEligibility: leaveType.probationEligibility,
+  employeeCanApply: leaveType.employeeCanApply,
+  visibleToEmployee: leaveType.visibleToEmployee,
+  essPlacement: leaveType.essPlacement,
+  role: leaveType.role,
+} as const;
+
+/** The gate's employee-side projection, shared by both reads so neither can fetch a column the other
+ *  needs and silently answer a different question (a missing confirmation date reads as "confirmed"). */
+const applyMenuEmpColumns = {
+  gender: person.gender,
+  marital: person.maritalStatus,
+  hiredOn: employment.hiredOn,
+  confirmationDate: employment.confirmationDate,
+  finalConfirmationDate: employment.finalConfirmationDate,
+  orgDivision: employment.orgDivision,
+  orgBranch: employment.orgBranch,
+  orgRegion: employment.orgRegion,
+  orgLine: employment.orgLine,
+  orgSection: employment.orgSection,
+  orgTeam: employment.orgTeam,
+  orgBase: employment.orgBase,
+  employmentCategory: employment.employmentCategory,
+} as const;
+
+function applyMenuEmploymentTx(tx:Tx,employmentId:string) {
+  return tx.select(applyMenuEmpColumns).from(employment)
+    .innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,employmentId)).limit(1);
+}
+
+/** Home only needs to know whether it can show the application entry point. */
+export async function hasEligibleLeaveTypeForTx(tx:Tx,employmentId:string):Promise<boolean> {
+  const [types,[emp]]=await Promise.all([
+    tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt)),
+    applyMenuEmploymentTx(tx,employmentId),
+  ]);
+  const today=todayInKualaLumpur();
+  return types.some(type=>mayAppearInApplyMenu(type,emp,today));
+}
+/** hasEligibleLeaveTypeForTx over bundled own leave inputs: the same two selects, answered from the bundle. */
+export function hasEligibleLeaveTypeFrom(tx:Tx,employmentId:string,own:OwnLeaveInputs):Promise<boolean>{
+  if(!own.answers(tx,employmentId))return hasEligibleLeaveTypeForTx(tx,employmentId);
+  const types=own.typeRows<Awaited<ReturnType<typeof applyMenuTypesTx>>[number]>(applyMenuTypeColumns,type=>type.archivedAt===null);
+  const [emp]=own.employmentRows<Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number]>(applyMenuEmpColumns);
+  const today=todayInKualaLumpur();
+  return Promise.resolve(types.some(type=>mayAppearInApplyMenu(type,emp,today)));
+}
+const applyMenuTypesTx=(tx:Tx)=>tx.select(applyMenuTypeColumns).from(leaveType).where(isNull(leaveType.archivedAt));
+
+/**
+ * The leave types ONE employee may actually take — `listLeaveTypes` filtered through the eligibility
+ * gate (#25 visibility). This is the apply-dropdown source on /me so an employee never sees a type they
+ * can't request (e.g. a male sees no Maternity). It filters the SAME projection as `listLeaveTypes`, so
+ * `requiresDocument` / `id` / localized `name` are preserved.
+ *
+ * Defense-in-depth only: `requestLeave` still enforces `assertEligible` server-side and remains the
+ * authority. Strict equality means an employee whose gated attribute is undisclosed/NULL is excluded —
+ * the lawful conservative default (don't grant a restricted entitlement to someone whose attribute is
+ * unknown). Mirrors the leaveBalances no-activity tail (read.ts) and the requestLeave gate (leave.ts).
+ *
+ * Answered AS AT TODAY, where `requestLeave` answers as at the leave's start date — see
+ * `mayAppearInApplyMenu` above for why a menu has no other date to use and why the difference is safe.
+ */
+export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: string, locale?: string, existingTx?: Tx) {
+  const perform = async (tx: Tx) => {
+    const [types, [emp]] = await Promise.all([
+      tx
+        .select(ELIGIBLE_LEAVE_TYPE_FIELDS)
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      applyMenuEmploymentTx(tx,employmentId),
+    ]);
+    return eligibleLeaveTypesFrom(types, emp, locale);
+  };
+  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+}
+/** listEligibleLeaveTypesFor's catalogue select. */
+const ELIGIBLE_LEAVE_TYPE_FIELDS = {
+          id: leaveType.id,
+          ...applyMenuTypeColumns,
+          name: leaveType.name,
+          i18n: leaveType.i18n,
+          paid: leaveType.paid,
+          counting: leaveType.counting,
+          requiresDocument: leaveType.requiresDocument,
+          // Supporting-document config — the /me form's accept hint + the action's pre-check rule.
+          mandatoryAfterDays: leaveType.mandatoryAfterDays,
+          allowedMimeTypes: leaveType.allowedMimeTypes,
+          maxDocBytes: leaveType.maxDocBytes,
+          employeeRemarkRequired: leaveType.employeeRemarkRequired,
+          // Configurable backdated-leave restriction (0133): projected so the panel projection (which feeds
+          // off this select too) carries the value — same reason as listLeaveTypes above.
+          backdatingLimitDays: leaveType.backdatingLimitDays,
+          // Minimum advance-notice rule (0159): projected alongside backdatingLimitDays for the same reason.
+          minAdvanceDays: leaveType.minAdvanceDays,
+          // 7daac043 — the unit that requirement is read in, kept WITH it: the figure alone is ambiguous, so
+          // any consumer that gets one must be able to get the other from the same row.
+          minAdvanceDayType: leaveType.minAdvanceDayType,
+          // Feedback 9d8cf621: the apply-time custom message (applyNotice key) is read off this JSONB to show
+          // the HR-authored notice under the leave-type select on the /me apply form.
+          customMessages: leaveType.customMessages,
+          durations: leaveType.durations,
+          archivedAt: leaveType.archivedAt,
+          // ad965821 — Balance Deduction Source (cdf9ca48), already projected by listLeaveTypes at the top
+          // of this file. The /leave Request Leave option maps it into LeaveTypeOption.borrowsBalance, which
+          // is what drops Emergency Leave's decomposition-specific controls once EL has been pointed at
+          // another type's balance. Missing it here would have silently re-shown those controls the moment
+          // this became the dropdown's source.
+          balanceSourceTypeId: leaveType.balanceSourceTypeId,
+};
+type EligibleLeaveTypeRow = { [K in keyof typeof ELIGIBLE_LEAVE_TYPE_FIELDS]: (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['notNull'] extends true
+  ? (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] : (typeof ELIGIBLE_LEAVE_TYPE_FIELDS)[K]['_']['data'] | null };
+type ApplyMenuEmployment = Awaited<ReturnType<typeof applyMenuEmploymentTx>>[number];
+function eligibleLeaveTypesFrom(types: readonly EligibleLeaveTypeRow[], emp: ApplyMenuEmployment | undefined, locale?: string) {
+    const today = todayInKualaLumpur();
+    // ONE named gate (mayAppearInApplyMenu above) rather than three chained filters restated per surface.
+    return types
+      .filter((t) => mayAppearInApplyMenu(t, emp, today))
+      .map(
+        ({ i18n, eligibility, probationEligibility, employeeCanApply, visibleToEmployee, essPlacement, role, ...r }) => ({
+          ...r,
+          name: pickName(r.name, i18n, locale),
+        }),
+      );
+}
+/** listEligibleLeaveTypesFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): its
+ * two selects (the unarchived catalogue and the employment's gate projection) as one JSON value. */
+export function eligibleLeaveTypesBundleSql(employmentId: string) {
+  return sql`jsonb_build_object('types',${jsonRowsSql({ row: jsonFieldsSql(ELIGIBLE_LEAVE_TYPE_FIELDS), from: sql`${leaveType}`, where: isNull(leaveType.archivedAt) })},
+    'employment',(select ${jsonFieldsSql(applyMenuEmpColumns)} from ${employment} inner join ${person} on ${eq(person.id, employment.personId)}
+     where ${eq(employment.id, employmentId)} limit 1))`;
+}
+/** listEligibleLeaveTypesFor's result over eligibleLeaveTypesBundleSql's rows. */
+export function eligibleLeaveTypesFromBundle(value: unknown, locale?: string) {
+  const raw = value as { types: unknown; employment: Record<string, unknown> | null };
+  const emp = raw.employment ? decodeJsonFields(applyMenuEmpColumns, raw.employment) as ApplyMenuEmployment : undefined;
+  return eligibleLeaveTypesFrom(decodeJsonFieldRows(ELIGIBLE_LEAVE_TYPE_FIELDS, raw.types) as EligibleLeaveTypeRow[], emp, locale);
+}
+
+/**
+ * The same gate, answered for SEVERAL employments at once (ad965821) — `{ employmentId: [leaveTypeId…] }`.
+ *
+ * NO APP CODE CALLS THIS ANY MORE (5206539f) — read the next paragraph before writing one that does.
+ *
+ * It existed for ONE surface: the Leave page's on-behalf-of form, where a line manager picked WHO the leave
+ * was for and the type list had to re-draw for that person rather than staying the manager's own. 5206539f
+ * deleted that surface. Applying on somebody else's behalf is now the named permission
+ * `leave.apply_on_behalf` (lib/payroll-permissions.ts); a line manager holds nothing by virtue of being one,
+ * gets no employee selector at all, and app/leave/page.tsx offers the viewer their OWN eligible types
+ * (`listEligibleLeaveTypesFor`) and builds no union of anything. The function and its tests are kept because
+ * the multi-employment question is real and correct, not because anything is waiting on it.
+ *
+ * TWO QUERIES, NEVER N+1: one for the catalogue, one `inArray` for every given employment's attribute row,
+ * then `mayAppearInApplyMenu` per (type, employment) pair in memory — the SAME predicate the single-employee
+ * read uses, so for ONE employment this map and `listEligibleLeaveTypesFor` answer identically (pinned in
+ * test/leave-ess-eligible-dropdown.test.ts).
+ *
+ * WHAT THAT SENTENCE DOES NOT SAY, because rev 1 read it as if it did: it is a statement about one
+ * employment, not about two people being alike. The sets for two different employments genuinely differ —
+ * that is the point of the map — so composing this map with somebody's own list offers
+ * eligible(viewer) ∩ eligible(subject), which is nobody's answer. A FUTURE on-behalf surface must therefore
+ * hand its form this map's answer FOR THE SELECTED SUBJECT (or a superset it then narrows), never the
+ * viewer's list filtered by it. There is no such surface today and no union is built anywhere — that
+ * composition is the thing to write from scratch, not to go looking for.
+ *
+ * AS-OF IS TODAY, NOT THE LEAVE DATE — same caveat as `listEligibleLeaveTypesFor`; see its docblock.
+ *
+ * An employment the caller may not see (RLS trims the attribute select) comes back with an EMPTY list rather
+ * than the whole catalogue: offering nothing is the conservative direction, and requestLeave refuses the
+ * submission either way.
+ */
+export function eligibleLeaveTypeIdsFor(
+  ctx: SessionContext,
+  employmentIds: string[],
+): Promise<Record<string, string[]>> {
+  return withTenant(ctx, async (tx) => {
+    const ids = [...new Set(employmentIds)];
+    if (ids.length === 0) return {};
+    const [types, emps] = await Promise.all([
+      tx
+        .select({id:leaveType.id,...applyMenuTypeColumns})
+        .from(leaveType)
+        .where(isNull(leaveType.archivedAt)),
+      tx
+        .select({ employmentId: employment.id, ...applyMenuEmpColumns })
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(inArray(employment.id, ids)),
+    ]);
+    const today = todayInKualaLumpur();
+    // Every requested id gets a key, so a caller can tell "no types" from "unknown employment" only by
+    // looking at the array — both are empty, and both mean the same thing to the form: offer nothing.
+    const out: Record<string, string[]> = Object.fromEntries(ids.map((id) => [id, [] as string[]]));
+    for (const emp of emps) {
+      out[emp.employmentId] = types.filter((t) => mayAppearInApplyMenu(t, emp, today)).map((t) => t.id);
+    }
+    return out;
+  });
+}
+
+/**
+ * Shared leave-request history projection — used by BOTH the flat `listLeaveRequests` (approvals inbox,
+ * the /leave non-admin self-view) AND the paginated/filtered `listLeaveRequestsPage` (the /leave admin
+ * search & filter surface, feedback 0773bda9). One selection object means the two reads can never drift.
+ */
+const leaveRequestSelection = {
+  id: leaveRequest.id,
+  employmentId: leaveRequest.employmentId,
+  personId: employment.personId,
+  employee: person.fullName,
+  employeeCode: employment.employeeCode,
+  leaveType: leaveType.name,
+  // Edit/cancel-by-status (item c9a19e34): the type id so the /leave own-pending Edit dialog can prefill its
+  // leave-type <select>.
+  leaveTypeId: leaveRequest.leaveTypeId,
+  leaveCounting: leaveType.counting,
+  leaveDayTypeInclusion: leaveType.dayTypeInclusion,
+  typeCode: leaveType.code,
+  appliedOn: leaveRequest.createdAt,
+  startDate: leaveRequest.startDate,
+  endDate: leaveRequest.endDate,
+  days: leaveRequest.days,
+  // fef49b9a — THE SPLIT WAS ALWAYS STORED, IT WAS NEVER SHOWN. When a balance does not cover an
+  // application the engine charges what it can and records the shortfall here, on the SAME row: the
+  // request stays one request, with one date range and one approve action. Five production rows carry a
+  // non-zero value. Projecting it is the whole of the read-layer gap — every surface below renders the
+  // total under the original leave type, so four days Annual + one day Unpaid reads as five days Annual.
+  //
+  // NOT to be confused with the Emergency Leave decomposition, which genuinely creates ANNUAL + UNPAID
+  // CHILD ROWS under a shared parentGroupId and already displays as separate rows. Different mechanism;
+  // they must not be merged.
+  unpaidDays: leaveRequest.unpaidDays,
+  durationType: leaveRequest.durationType,
+  hours: leaveRequest.hours,
+  // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
+  // (app/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
+  // figure. NULL for full_day / half_day rows.
+  fromTime: leaveRequest.fromTime,
+  toTime: leaveRequest.toTime,
+  status: leaveRequest.status,
+  // Shared grouping ID for EL applications and partial-cancellation splits; it does not prove purpose.
+  parentGroupId: leaveRequest.parentGroupId,
+  isEmergencyGroup: emergencyLeaveGroupOriginSql,
+  // Phase-B #13 (ADR-0062): the EA s.37 maternity paid-allowance decision, so the approver sees whether
+  // the paid ALLOWANCE was withheld (and why). allowanceEligible is the per-request override
+  // (TRUE=paid, FALSE=withheld/unpaid, NULL=not a maternity decision or inputs unconfirmed); the reason
+  // is read off the submitted-event payload (qualifying_service | fifth_child | null).
+  allowanceEligible: leaveRequest.allowanceEligible,
+  survivingChildren: leaveRequest.survivingChildren,
+  confinementDate: leaveRequest.confinementDate,
+  maternityReason: sql<string | null>`(select (e.payload #>> '{maternityAllowance,reason}') from domain_event e where e.aggregate_id = leave_request.id and e.event_type = 'leave-request.submitted' order by e.sequence desc limit 1)`,
+  hasDocument: sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`,
+  currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+  // WHO the request is currently sitting with (feedback 567333b7). The panel could say "Pending" but not
+  // with whom, so an employee had no way to know who to chase.
+  //
+  // Resolved ONLY for a `direct_manager` step, and that limit is the design rather than a shortcut. A step
+  // stores an approver KIND, not a person: 'direct_manager' resolves to exactly one well-defined employee
+  // (the subject's open administrative reporting edge), while 'hr_admin', 'payroll' and the head kinds
+  // resolve to a SET whose membership is decided by the authorization rules in decideLeave. Naming one of
+  // those would tell the employee something untrue about who can act, and enumerating them would publish
+  // the tenant's HR roster to every employee. Those keep their role label via currentStepKind; only the
+  // manager case earns a name and a face.
+  //
+  // Reads the SAME edge reportingLinesFor uses (administrative, still open) rather than inventing a second
+  // notion of "manager" that could drift from the one the rest of the app shows.
+  currentApproverName: sql<string | null>`(
+    select mp.full_name from leave_approval_step s
+    join reporting_line rl on rl.subordinate_employment_id = leave_request.employment_id
+      and rl.line_type = 'administrative' and rl.valid_to is null
+    join employment me on me.id = rl.manager_employment_id
+    join person mp on mp.id = me.person_id
+    where s.leave_request_id = leave_request.id and s.status = 'pending'
+      and s.approver_kind = 'direct_manager'
+    order by s.step_index limit 1)`,
+  currentApproverPersonId: sql<string | null>`(
+    select me.person_id from leave_approval_step s
+    join reporting_line rl on rl.subordinate_employment_id = leave_request.employment_id
+      and rl.line_type = 'administrative' and rl.valid_to is null
+    join employment me on me.id = rl.manager_employment_id
+    where s.leave_request_id = leave_request.id and s.status = 'pending'
+      and s.approver_kind = 'direct_manager'
+    order by s.step_index limit 1)`,
+  // Approval Information (feedback 0773bda9): the final decider's employment id + name, so the admin
+  // history table can show "Approved by" and the advanced filter can narrow by approver. NULL until a
+  // request is decided (pending rows). Kept in the SHARED projection so the flat + paginated reads agree.
+  decidedByEmploymentId: leaveRequest.decidedByEmploymentId,
+  decidedByName: sql<string | null>`(select p.full_name from employment de join person p on p.id = de.person_id where de.id = leave_request.decided_by_employment_id)`,
+  // Employee Leave Record (feedback 953be4b0): WHEN the request reached its final decision — the
+  // "Final Approval Date" column. Stamped alongside decided_by, so a row that has a decider has a date;
+  // NULL while pending. In the SHARED projection so the flat and paginated reads agree.
+  decidedAt: leaveRequest.decidedAt,
+  stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+  // R23 (2F-3): the applicant's current balance for THIS leave type — the key context an approver
+  // needs ("do they have the days?"). Ledger sum (accrual + − debit −).
+  // r80: no table RENDERS this any more — the reporter asked for the "13.5d left" sub-line under the
+  // Approval Items Days column to go (33bf1a2d follow-up), so the value is computed but not shown there.
+  // It stays in the shared projection deliberately: it is a plain correlated subquery on a row the page
+  // already loads (no extra round trip), it is asserted by test/approver-context.test.ts, and dropping a
+  // field from the SHARED selection would change what the flat and paginated leave reads return.
+  applicantBalance: sql<string>`coalesce((select sum(ll.days) from leave_ledger ll where ll.employment_id = leave_request.employment_id and ll.leave_type_id = leave_request.leave_type_id), 0)`,
+  // Partial Leave Cancellation (ADR-0065): the pending cancellation request (if any) on this row, so the
+  // UI can show a "cancellation pending" pill and suppress a second cancel affordance. NULL when none.
+  pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+  pendingCancelDates: sql<string[] | null>`(select cancel_dates from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+  // R5 Build #2 (iterative cancellation): TRUE when this row is a SURVIVOR of a prior cancellation split —
+  // it carries a parent_group_id AND a sibling in the same group is 'cancelled'. Such a survivor is still
+  // cancellable (the employee can give back more days). Recorded EL origin excludes genuine EL children
+  // even if HR has cancelled a sibling.
+  isCancellationSplit: cancellationSplitGroupSql,
+  // R17 600be8ac ask #1: the applicant's own words — the free-text `reason` and (for types that require it) the
+  // mandatory `employeeRemark` — so the approver's summary shows WHY the leave was requested, not just the dates.
+  reason: leaveRequest.reason,
+  employeeRemark: leaveRequest.employeeRemark,
+  // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row. Drives the derived
+  // "Partially approved" display badge (an approved request with some dates rejected) — no new status enum;
+  // the DB status stays 'approved' and every consumer keeps reading per-date truth (§4A). NULL/false otherwise.
+  hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
+} as const;
+
+/** R5 Build #2 (Fix C — holiday/working-day-aware cancellable list): resolve each ELIGIBLE row's REAL
+ *  counted dates (calendar or roster/inclusion aware, the SAME frame requestLeaveCancellation validates against)
+ *  so the Leave page offers exactly the cancellable candidates — not a Mon–Fri heuristic. Only resolved for
+ *  approved full-day rows that are either a plain request (parentGroupId null) or a cancellation-split
+ *  survivor; others get []. Runs bounded to the passed page of rows (≤ page size). */
+async function resolveLeaveWorkingDates<
+  T extends {
+    status: string;
+    durationType: string;
+    parentGroupId: string | null;
+    isCancellationSplit: boolean;
+    employmentId: string;
+    leaveCounting: string | null;
+    leaveDayTypeInclusion: unknown;
+    startDate: string;
+    endDate: string;
+  },
+>(tx: Tx, rows: T[]): Promise<(T & { workingDates: string[] })[]> {
+  return Promise.all(
+    rows.map(async (r) => {
+      const eligibleShape =
+        r.status === 'approved' &&
+        r.durationType === 'full_day' &&
+        (r.parentGroupId == null || r.isCancellationSplit);
+      const workingDates = eligibleShape
+        ? await countedDatesForSpan(tx, r.employmentId, r.startDate, r.endDate, r.leaveCounting, r.leaveDayTypeInclusion)
+        : [];
+      return { ...r, workingDates };
+    }),
+  );
+}
+
+/** Every leave request in scope (RLS additionally trims to what the viewer may see:
+ *  admins everything, managers their reports, employees themselves). Recent first.
+ *
+ *  8cb7b089 pre-fix: `opts.status` narrows the read BEFORE the `limit` cap applies, so the Approvals
+ *  page can cap 200 PENDING rows rather than the 200 most recent rows of ANY status (where an older
+ *  still-pending request silently fell off the list on a large tenant). Omitting it is byte-identical
+ *  to today's behaviour, so every existing caller (/leave self-view, approvals-inbox count) is unaffected. */
+export function listLeaveRequests(
+  ctx: SessionContext,
+  companyIds?: string[],
+  limit = 200,
+  opts?: { status?: 'pending' | 'approved' | 'rejected' | 'cancelled'; requestId?:string; requestIds?:readonly string[] },
+) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({...leaveRequestSelection,personId:sql<string>`approval_subject.person_id`,employee:sql<string>`approval_subject.employee`,employeeCode:sql<string|null>`approval_subject.employee_code`})
+      .from(leaveRequest)
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .where(
+        and(
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
+          opts?.status ? eq(leaveRequest.status, opts.status) : undefined,
+          opts?.requestId ? eq(leaveRequest.id,opts.requestId) : undefined,
+          opts?.requestIds === undefined ? undefined : inArray(leaveRequest.id,[...opts.requestIds]),
+        ),
+      )
+      .orderBy(desc(leaveRequest.createdAt))
+      .limit(limit);
+    // R51 (baf56348): keep delegation-routed rows whose subject sits OUTSIDE the delegation's org coverage
+    // out of the approver-facing list (row visibility itself is unchanged — see filterDelegationOrgScopeTx).
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    return resolveLeaveWorkingDates(tx, scoped);
+  });
+}
+
+/** One row of the leave-request history table (shared projection + resolved workingDates). */
+export type LeaveRequestRow = Awaited<ReturnType<typeof listLeaveRequests>>[number];
+
+/** Minimal own-submission references for a server-side receipt reader. The caller must supply its
+ * current authenticated withTenant transaction; this neither establishes fresh Assistant authority
+ * nor reads an action record. Both canonical source rows must be visible through RLS, and the same
+ * delegation trim as the flat leave reader remains in force. Explicit own-person/actor predicates
+ * narrow that access even for HR admins. No reason, balance, status, approver or event payload is
+ * materialized. Returning references does not prove an enclosing command committed or authorize a
+ * new effect. The lifecycle owner must still bind them to its stored receipt/current identity. */
+export async function readOwnLeaveSubmissionReferenceTx(
+  tx: Tx, ctx: SessionContext, requestId: string, submittedEventId: string,
+) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  if (!ctx.userId || !ctx.personId) return null;
+  const rows = await tx.select({
+    request: { id: leaveRequest.id, tenantId: leaveRequest.tenantId,
+      employmentId: leaveRequest.employmentId, personId: employment.personId, companyId: employment.companyId },
+    event: { id: domainEvent.id, tenantId: domainEvent.tenantId, aggregateType: domainEvent.aggregateType,
+      aggregateId: domainEvent.aggregateId, eventType: domainEvent.eventType, actorType: domainEvent.actorType,
+      actorId: domainEvent.actorId, subjectEmploymentId: domainEvent.subjectEmploymentId },
+  }).from(leaveRequest)
+    .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+    .innerJoin(domainEvent, and(eq(domainEvent.id, submittedEventId),
+      eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.aggregateId, leaveRequest.id),
+      eq(domainEvent.aggregateType, 'leave-request'), eq(domainEvent.eventType, 'leave-request.submitted'),
+      eq(domainEvent.actorType, 'user'), eq(domainEvent.actorId, ctx.userId),
+      eq(domainEvent.subjectEmploymentId, leaveRequest.employmentId)))
+    .where(and(ownPersonPredicate(ctx), sql`app.current_user_id()=${ctx.userId}::uuid`,
+      sql`app.current_tenant_id()=${ctx.tenantId}::uuid`,
+      eq(leaveRequest.id, requestId), eq(leaveRequest.tenantId, ctx.tenantId),
+      eq(employment.personId, ctx.personId))).limit(1);
+  const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, row => row.request.employmentId);
+  return scoped[0] ?? null;
+}
+
+/**
+ * Advanced Search & Filter for Leave Management (feedback 0773bda9) — the paginated, filterable, sortable
+ * read behind the /leave admin surface. Mirrors `listEmployeesPage`: returns { rows, total } so the page can
+ * show "Showing X of Y" and page through arbitrarily large populations (Chin Hin ~4.5k staff), instead of the
+ * 200-row hard cap `listLeaveRequests` imposes. RLS (`withTenant`) is the authority for row visibility;
+ * `companyIds` is the narrowing scope fence from the company switcher (ALWAYS applied), and the individual
+ * filters below narrow further. Read-only — no DomainEvent (search/filter/paginate mutate nothing).
+ */
+/** r394 — the ONE filter for leave-request pages: the rows, their total and the per-status tab counts all
+ *  read this, so a tab's count and its rows can never disagree (r302's promise, now structural). */
+type LeaveRequestPageFilter = Parameters<typeof listLeaveRequestsPage>[1];
+function leaveRequestPageWhere(p: LeaveRequestPageFilter) {
+  const q = p.q?.trim();
+  // Current open assignment (≤1 row / employment) — copied from listEmployeesPage so department /
+  // business-unit / location filters resolve off the employee's CURRENT posting, shared by rows + count.
+  const currentAssignment = and(
+    eq(assignment.employmentId, employment.id),
+    isNull(assignment.validTo),
+    isNull(assignment.supersededAt),
+  );
+  // Statuses validated against the enum before hitting SQL (defence-in-depth; an unknown value would
+  // otherwise widen to nothing but a bad cast could throw). Same for the sort whitelist below.
+  const validStatuses = (p.statuses ?? []).filter((s) =>
+    (leaveRequestStatusEnum.enumValues as readonly string[]).includes(s),
+  ) as (typeof leaveRequestStatusEnum.enumValues)[number][];
+  // duration_type is a plain text column (ADR-0048), so the allow-list IS the validation.
+  const validDurations = (p.durationTypes ?? []).filter((d) =>
+    (['full_day', 'half_day_am', 'half_day_pm', 'hourly'] as readonly string[]).includes(d),
+  );
+  // uuid-prefix reference search: strip a leading '#', match when it looks like a (partial) uuid.
+  const refTerm = q?.replace(/^#/, '');
+  const isRef = !!refTerm && /^[0-9a-f-]{6,}$/i.test(refTerm);
+  const where = and(
+    p.companyIds && p.companyIds.length ? inArray(employment.companyId, p.companyIds) : undefined,
+    p.companyId ? eq(employment.companyId, p.companyId) : undefined,
+    p.businessUnitId ? eq(department.businessUnitId, p.businessUnitId) : undefined,
+    p.departmentId ? eq(assignment.departmentId, p.departmentId) : undefined,
+    p.locationId ? eq(assignment.locationId, p.locationId) : undefined,
+    // Multi-select column filters (feedback 8ec63139) — OR within a field, AND across fields, the same
+    // shape leaveTypeIds/statuses already had.
+    p.filterCompanyIds?.length ? inArray(employment.companyId, p.filterCompanyIds) : undefined,
+    p.businessUnitIds?.length ? inArray(department.businessUnitId, p.businessUnitIds) : undefined,
+    p.departmentIds?.length ? inArray(assignment.departmentId, p.departmentIds) : undefined,
+    p.locationIds?.length ? inArray(assignment.locationId, p.locationIds) : undefined,
+    p.employmentIds?.length ? inArray(leaveRequest.employmentId, p.employmentIds) : undefined,
+    // M07 (mobile v2 detail): exactly these requests. An empty list matches nothing, never everything.
+    p.ids ? (p.ids.length ? inArray(leaveRequest.id, p.ids) : sql`false`) : undefined,
+    validDurations.length ? inArray(leaveRequest.durationType, validDurations) : undefined,
+    p.leaveTypeIds && p.leaveTypeIds.length ? inArray(leaveRequest.leaveTypeId, p.leaveTypeIds) : undefined,
+    validStatuses.length ? inArray(leaveRequest.status, validStatuses) : undefined,
+    // Approval Information — "Approved by" is the stored final decider (exact match on a named person).
+    p.approvedBy ? eq(leaveRequest.decidedByEmploymentId, p.approvedBy) : undefined,
+    // "Pending with" narrows to rows whose CURRENT (first) pending approval step awaits this role. The
+    // value is whitelisted against the two approver kinds; an unknown value matches nothing rather than
+    // interpolating raw input. NB: only pending rows have a pending step, so this implicitly scopes to them.
+    p.pendingWith && (p.pendingWith === 'direct_manager' || p.pendingWith === 'hr_admin')
+      ? sql`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1) = ${p.pendingWith}`
+      : undefined,
+    // Leave-date window uses OVERLAP semantics so "July 2026" catches leave spanning a month boundary:
+    // startDate <= to AND endDate >= from.
+    p.to ? lte(leaveRequest.startDate, p.to) : undefined,
+    p.from ? gte(leaveRequest.endDate, p.from) : undefined,
+    // Application-date range compares on created_at::date (calendar day, TZ-agnostic for the admin view).
+    p.appliedFrom ? sql`${p.appliedTimezone ? sql`(${leaveRequest.createdAt} at time zone 'Asia/Kuala_Lumpur')::date` : sql`${leaveRequest.createdAt}::date`} >= ${p.appliedFrom}` : undefined,
+    p.appliedTo ? sql`${p.appliedTimezone ? sql`(${leaveRequest.createdAt} at time zone 'Asia/Kuala_Lumpur')::date` : sql`${leaveRequest.createdAt}::date`} <= ${p.appliedTo}` : undefined,
+    // Employee Leave Record (feedback 953be4b0) asks to search by leave CODE alongside employee id/name,
+    // so the code joins the existing OR. Widening only — every term that matched before still matches.
+    q
+      ? isRef
+        ? sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'} or ${leaveRequest.id}::text ilike ${refTerm + '%'})`
+        : sql`(${person.fullName} ilike ${'%' + q + '%'} or ${employment.employeeCode} ilike ${'%' + q + '%'} or ${leaveType.code} ilike ${'%' + q + '%'})`
+      : undefined,
+  );
+  return { where, currentAssignment };
+}
+
+/**
+ * r394 — per-status counts for the leave-request pages in ONE grouped query, with exactly the joins and
+ * filter `listLeaveRequestsPage` counts with. My Leave's four history tabs used to ask the list for one row
+ * per tab — four transactions, each a row read plus a count (and a working-day resolution for that row) —
+ * on every navigation to the page. `statuses` in `p` still narrows; a status with no rows is absent (0).
+ */
+export function countLeaveRequestsByStatus(ctx: SessionContext, p: Omit<LeaveRequestPageFilter, 'limit' | 'offset' | 'sort' | 'dir'>): Promise<Record<string, number>> {
+  return withTenant(ctx, async (tx) => {
+    const { where, currentAssignment } = leaveRequestPageWhere({ ...p, limit: 0, offset: 0 });
+    const rows = await tx
+      .select({ status: leaveRequest.status, count: sql<number>`count(distinct ${leaveRequest.id})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where)
+      .groupBy(leaveRequest.status);
+    return Object.fromEntries(rows.map((r) => [r.status, Number(r.count)]));
+  });
+}
+
+export type LeaveRequestPageOptions = {
+    companyIds?: string[]; // scope fence (company switcher) — ALWAYS applied
+    q?: string; // name / employeeCode / uuid-prefix reference
+    companyId?: string;
+    businessUnitId?: string;
+    departmentId?: string;
+    locationId?: string;
+    // Filter on EVERY column (feedback 8ec63139): the org narrowings became multi-select, so each also
+    // accepts a list. The singular forms above are kept — they are a different question ("exactly this
+    // one") that the fence test and the flat callers still ask — and both are ANDed when both are given.
+    // `filterCompanyIds` carries the clumsy prefix because `companyIds` is already taken by the fence:
+    // conflating "what the switcher lets you see" with "what you asked to see" would be a security bug.
+    filterCompanyIds?: string[];
+    businessUnitIds?: string[];
+    departmentIds?: string[];
+    locationIds?: string[];
+    /** Employee column filter, and the (employment, type) narrowing the Employee Leave Record page reads. */
+    employmentIds?: string[];
+    /** Days column filter — validated against full_day|half_day_am|half_day_pm|hourly. */
+    durationTypes?: string[];
+    leaveTypeIds?: string[]; // multi
+    statuses?: string[]; // multi — validated against pending|approved|rejected|cancelled
+    // Approval Information (feedback 0773bda9). `approvedBy` = the FINAL decider's employment id
+    // (leave_request.decided_by_employment_id — a stored named person, so this is exact). `pendingWith`
+    // = the ROLE the request is currently awaiting (the first pending approval step's approver_kind:
+    // 'direct_manager' | 'hr_admin'); the chain stores a role, not a named person, so this filter is by
+    // stage, which is the finest granularity the data supports.
+    approvedBy?: string;
+    pendingWith?: string;
+    from?: string;
+    to?: string; // leave-date window (overlap semantics)
+    appliedFrom?: string;
+    appliedTo?: string; // application (createdAt) date range
+    appliedTimezone?: 'Asia/Kuala_Lumpur'; // opt-in tenant calendar day; legacy readers retain their default
+    sort?: string;
+    dir?: string; // default: applied desc (today's order)
+    limit: number;
+    offset: number;
+    /** M07 (mobile v2 detail): narrow to these request ids (rows AND count). Empty ⇒ nothing. */
+    ids?: string[];
+    /**
+     * M07 (mobile v2 history paging): KEYSET page start — the rows strictly after this one in the start-desc
+     * order (start_date desc, created_at desc, id desc). The cursor row's own created_at is read in SQL, so
+     * no microsecond is lost to a JS Date. Rows only; `total` stays the filter's whole count. Requires
+     * sort 'start' + dir 'desc' and offset 0. A cursor row the caller can no longer read falls back to the
+     * dates strictly before its start date.
+     */
+    before?: { startDate: string; id: string };
+  };
+export function listLeaveRequestsPage(ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
+  return withTenant(ctx, tx => listLeaveRequestsPageTx(tx, ctx, p));
+}
+export async function listLeaveRequestsPageTx(tx: Tx, ctx: SessionContext, p: LeaveRequestPageOptions): Promise<{ rows: (LeaveRequestRow & { company: string; department: string | null })[]; total: number }> {
+    const { where, currentAssignment } = leaveRequestPageWhere(p);
+    // Sort whitelist — NEVER interpolate user input into the ORDER BY.
+    const sortCol: Record<string, AnyColumn> = {
+      applied: leaveRequest.createdAt,
+      start: leaveRequest.startDate,
+      end: leaveRequest.endDate,
+      name: person.fullName,
+      employeeCode: employment.employeeCode,
+      status: leaveRequest.status,
+    };
+    const col = sortCol[p.sort ?? 'applied'] ?? leaveRequest.createdAt;
+    const dir = p.dir === 'asc' ? asc : desc;
+    if (p.before && (p.sort !== 'start' || p.dir !== 'desc' || p.offset !== 0)) throw new Error('A keyset page needs the start-desc order and offset 0');
+    const keyset = p.before
+      ? sql`((${leaveRequest.startDate}, ${leaveRequest.createdAt}, ${leaveRequest.id}) < (select r.start_date, r.created_at, r.id from leave_request r where r.id = ${p.before.id}::uuid)
+          or (not exists (select 1 from leave_request r where r.id = ${p.before.id}::uuid) and ${leaveRequest.startDate} < ${p.before.startDate}::date))`
+      : undefined;
+    const rows = await tx
+      .select({ ...leaveRequestSelection, company: sql<string>`(select c.legal_name from company c where c.id = ${employment.companyId})`, department: department.name })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(keyset ? and(where, keyset) : where)
+      .orderBy(dir(col), desc(leaveRequest.createdAt), desc(leaveRequest.id))
+      .limit(p.limit)
+      .offset(p.offset);
+    // count(distinct leave_request.id): the assignment join is ≤1/employment, but distinct is the safe guard.
+    const [{ count }] = await tx
+      .select({ count: sql<number>`count(distinct ${leaveRequest.id})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .leftJoin(assignment, currentAssignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(where);
+    const withDates = await resolveLeaveWorkingDates(tx, rows);
+    return { rows: withDates, total: Number(count) };
+}
+
+/**
+ * Approval Information filter — distinct people who have DECIDED (final approver/rejecter) at least one
+ * leave request in scope, so the /leave admin "Approved by" filter can offer a named-person picker.
+ * Scoped by the REQUESTER's company (the same `companyIds` fence the history uses), and RLS trims further.
+ * Read-only (feedback 0773bda9). "Pending with" is by role (approver_kind), not a named person, so it needs
+ * no options query — the two stage values are fixed in the page.
+ */
+export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const decider = alias(employment, 'decider_emp');
+    const deciderPerson = alias(person, 'decider_person');
+    const rows = await tx
+      .selectDistinct({ id: decider.id, name: deciderPerson.fullName })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .innerJoin(decider, eq(decider.id, leaveRequest.decidedByEmploymentId))
+      .innerJoin(deciderPerson, eq(deciderPerson.id, decider.personId))
+      .where(
+        companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+      );
+    return rows.sort((a, b) => a.name.localeCompare(b.name));
+  });
+}
+
+/** ADR-0068 §5 — the per-date breakdown of ONE per-date-approval request, for the approvals detail view.
+ *  Returns ordered leave_request_date rows (date, days, status, reject_reason, decider name/at). RLS scopes
+ *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
+ *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
+ *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
+export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: leaveRequestDate.id,
+        leaveDate: leaveRequestDate.leaveDate,
+        days: leaveRequestDate.days,
+        status: leaveRequestDate.status,
+        rejectReason: leaveRequestDate.rejectReason,
+        decidedAt: leaveRequestDate.decidedAt,
+        decidedBy: person.fullName,
+      })
+      .from(leaveRequestDate)
+      .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
+      .leftJoin(person, eq(person.id, employment.personId))
+      .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
+      .orderBy(leaveRequestDate.leaveDate),
+  );
+}
+
+/** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card
+ *  shows the original leave dates, the date(s) being given back, the remaining dates, days, and reason. RLS
+ *  already scopes visibility (subject + manager + admin via can_see_employment); we additionally narrow to
+ *  the company scope the inbox is viewing. The decide authorization (manager/admin, no self-approval) lives
+ *  in decideLeaveCancellation. */
+export function listPendingLeaveCancellations(ctx: SessionContext, companyIds?: string[], locale?: string,requestId?:string,requestIds?:readonly string[]) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: leaveCancellationRequest.id,
+        leaveRequestId: leaveCancellationRequest.leaveRequestId,
+        employmentId: leaveCancellationRequest.employmentId,
+        personId: sql<string>`approval_subject.person_id`,
+        employee: sql<string>`approval_subject.employee`,
+        employeeCode: sql<string|null>`approval_subject.employee_code`,
+        leaveType: leaveType.name,
+        i18n: leaveType.i18n,
+        typeCode: leaveType.code,
+        originalStart: leaveRequest.startDate,
+        originalEnd: leaveRequest.endDate,
+        cancelDates: leaveCancellationRequest.cancelDates,
+        requestedDays: leaveCancellationRequest.requestedDays,
+        reason: leaveCancellationRequest.reason,
+        createdAt: leaveCancellationRequest.createdAt,
+        // r301 (83511d3b) — WHERE the cancellation is in its copied approval chain, the same three facts the
+        // leave-request projection carries: the current level's kind and index, and how many levels there
+        // are. stepCount 0 ⇒ a single-level chain (decided as a cancellation always was).
+        currentStepKind: sql<string | null>`(select approver_kind from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        currentStepIndex: sql<number | null>`(select step_index from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        stepCount: sql<number>`(select count(*)::int from leave_cancellation_step s where s.cancellation_request_id = leave_cancellation_request.id)`,
+      })
+      .from(leaveCancellationRequest)
+      .innerJoin(leaveRequest, eq(leaveRequest.id, leaveCancellationRequest.leaveRequestId))
+      .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .where(
+        and(
+          eq(leaveCancellationRequest.status, 'pending'),
+          requestId?eq(leaveCancellationRequest.id,requestId):undefined,
+          requestIds === undefined ? undefined : inArray(leaveCancellationRequest.id,[...requestIds]),
+          companyIds && companyIds.length ? sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])` : undefined,
+        ),
+      )
+      .orderBy(desc(leaveCancellationRequest.createdAt));
+    // R51 (baf56348): same org-coverage trim as listLeaveRequests (a cancellation is a leave pending item).
+    const scoped = await filterDelegationOrgScopeTx(tx, ctx, rows, (r) => r.employmentId);
+    return scoped.map(({ i18n, cancelDates, ...r }) => {
+      const cancel = (cancelDates as string[]) ?? [];
+      const cancelSet = new Set(cancel);
+      // The original full date span (every calendar day inclusive); remaining = original minus cancelled.
+      const allDays: string[] = [];
+      for (
+        let t = Date.parse(`${r.originalStart}T00:00:00Z`);
+        t <= Date.parse(`${r.originalEnd}T00:00:00Z`);
+        t += 86_400_000
+      ) {
+        allDays.push(new Date(t).toISOString().slice(0, 10));
+      }
+      return {
+        ...r,
+        leaveType: pickName(r.leaveType, i18n, locale),
+        cancelDates: cancel,
+        remainingDates: allDays.filter((d) => !cancelSet.has(d)),
+      };
+    });
+  });
+}
+
+/**
+ * r301 (board 83511d3b) — the "Cancel dates" offer for each of the viewer's OWN leave rows on /leave, computed on
+ * the server through the SAME predicate the Team Leave Tracker uses (employeeCancellableDates) and the SAME
+ * reading of the leave type the service gates on (cancelApprovedSettingOf). null ⇒ no button at all (type
+ * switched off, unpaid days, not a cancellable row, already pending); [] ⇒ the disabled "nothing left to
+ * cancel" button; otherwise the dates to offer. One read of the leave types behind the rows, never per row.
+ */
+export function employeeCancelOffers(
+  ctx: SessionContext,
+  rows: readonly {
+    id: string;
+    leaveTypeId: string;
+    status: string;
+    durationType: string | null;
+    parentGroupId: string | null;
+    isCancellationSplit?: boolean | null;
+    pendingCancellationId?: string | null;
+    unpaidDays?: string | number | null;
+    workingDates?: readonly string[];
+  }[],
+  today: string,
+): Promise<Map<string, string[] | null>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, string[] | null>();
+    const typeIds = [...new Set(rows.map((r) => r.leaveTypeId))];
+    if (typeIds.length === 0) return out;
+    const types = await tx
+      .select({ id: leaveType.id, ...cancelApprovedTypeColumns })
+      .from(leaveType)
+      .where(inArray(leaveType.id, typeIds));
+    const settingByType = new Map(types.map((t) => [t.id, cancelApprovedSettingOf(t)]));
+    // A per-date-approval request (ADR-0068) offers only its APPROVED dates — the rule requestLeaveCancellation
+    // applies and plannedAbsences already mirrors — so /leave never lists an interior rejected date the
+    // service would refuse as invalid.
+    const dateRows = await tx
+      .select({ leaveRequestId: leaveRequestDate.leaveRequestId, leaveDate: leaveRequestDate.leaveDate, status: leaveRequestDate.status })
+      .from(leaveRequestDate)
+      .where(inArray(leaveRequestDate.leaveRequestId, rows.map((r) => r.id)));
+    const approvedDatesByReq = new Map<string, Set<string>>();
+    for (const d of dateRows) {
+      const set = approvedDatesByReq.get(d.leaveRequestId) ?? new Set<string>();
+      if (d.status === 'approved') set.add(d.leaveDate);
+      approvedDatesByReq.set(d.leaveRequestId, set);
+    }
+    for (const r of rows) {
+      // A type this read cannot see reads as NOT allowed (cancelApprovedSettingOf(null)) — fail closed.
+      const setting = settingByType.get(r.leaveTypeId) ?? cancelApprovedSettingOf(null);
+      const approved = approvedDatesByReq.get(r.id);
+      const working = (r.workingDates ?? []).filter((d) => !approved || approved.has(d));
+      out.set(r.id, employeeCancellableDates(r, working, setting, today));
+    }
+    return out;
+  });
+}
+
+/**
+ * The leave type's give-back rule exactly as the service gates on it (cancelApprovedSettingOf), read inside the caller's
+ * transaction. A type this read cannot see reads as not allowed — fail closed. For the Assistant's approved-leave
+ * cancellation card (core/proposals/leave-cancel.ts), which reads leave rules through this read module.
+ */
+export async function readCancelApprovedSettingTx(tx: Tx, leaveTypeId: string) {
+  const [type] = await tx.select(cancelApprovedTypeColumns).from(leaveType).where(eq(leaveType.id, leaveTypeId)).limit(1);
+  return cancelApprovedSettingOf(type ?? null);
+}
+
+/** r301 — where one pending cancellation stands: when it was asked for, and each copied level's status. */
+export type PendingCancellationProgress = {
+  cancellationRequestId: string;
+  requestedAt: Date;
+  cancelDates: string[];
+  /** In level order. Empty for a single-level chain. */
+  levels: { stepIndex: number; status: string }[];
+};
+
+/**
+ * r301 (board 83511d3b) — the "Pending Cancellation" progress an employee sees on their own leave record:
+ * requested (date) → each level of the copied approval chain, approved or waiting → cancelled. Levels only,
+ * never the approver's name (an employee cannot read approver names today; that is a separate item). RLS
+ * scopes both reads to rows the caller may see; the page asks only about its own rows.
+ */
+export function pendingCancellationProgress(
+  ctx: SessionContext,
+  cancellationRequestIds: readonly string[],
+): Promise<Map<string, PendingCancellationProgress>> {
+  return withTenant(ctx, async (tx) => {
+    const out = new Map<string, PendingCancellationProgress>();
+    const ids = [...new Set(cancellationRequestIds)];
+    if (ids.length === 0) return out;
+    const crs = await tx
+      .select({
+        id: leaveCancellationRequest.id,
+        createdAt: leaveCancellationRequest.createdAt,
+        cancelDates: leaveCancellationRequest.cancelDates,
+      })
+      .from(leaveCancellationRequest)
+      .where(inArray(leaveCancellationRequest.id, ids));
+    const steps = await tx
+      .select({
+        cancellationRequestId: leaveCancellationStep.cancellationRequestId,
+        stepIndex: leaveCancellationStep.stepIndex,
+        status: leaveCancellationStep.status,
+      })
+      .from(leaveCancellationStep)
+      .where(inArray(leaveCancellationStep.cancellationRequestId, ids))
+      .orderBy(asc(leaveCancellationStep.cancellationRequestId), asc(leaveCancellationStep.stepIndex));
+    for (const cr of crs) {
+      out.set(cr.id, {
+        cancellationRequestId: cr.id,
+        requestedAt: cr.createdAt,
+        cancelDates: ((cr.cancelDates as string[]) ?? []).slice().sort(),
+        levels: steps
+          .filter((st) => st.cancellationRequestId === cr.id)
+          .map((st) => ({ stepIndex: st.stepIndex, status: st.status })),
+      });
+    }
+    return out;
+  });
+}
+
+/** Planned-absences timeline: every active employee in scope, each with their approved +
+ *  pending leave overlapping the [from, to] window. Powers the dashboard hero.
+ *
+ *  Partial Leave Cancellation from the calendar (ADR-0065): pass `today` (tenant-local MYT, from the caller —
+ *  keeps this a pure read) to seed each approved row's cancellable candidate dates (real working dates strictly
+ *  after today), so the dashboard can offer the SAME "Cancel dates" affordance the Leave page does. Omitting
+ *  `today` yields no candidate dates (candidateCancelDates=[]) — the affordance simply never renders.
+ *
+ *  eae550e9 step 1: `opts.personIds` narrows the read to those PEOPLE (the dashboard passes the viewer +
+ *  direct reports instead of loading every active employee in the company). Scoped by PERSON id, not
+ *  employment id, so a person's concurrent second employment is never dropped from the merged row below.
+ *  Omitting the option is byte-identical to today's full-scope behaviour. NOTE the deliberate departure
+ *  from the neighbouring `companyIds && companyIds.length` idiom: an EMPTY personIds array must match
+ *  NOTHING (the caller resolved "no viewer person"), never degrade to the whole company. */
+const NEVER_MATCHING_PERSON_ID = '00000000-0000-0000-0000-000000000000';
+export function plannedAbsences(
+  ctx: SessionContext,
+  companyIds: string[] | undefined,
+  range: { from: string; to: string },
+  today?: string,
+  opts?: { personIds?: string[] }, existingTx?: Tx,
+) {
+  const personIds = opts?.personIds;
+  const personScope =
+    personIds === undefined
+      ? undefined
+      : inArray(employment.personId, personIds.length ? personIds : [NEVER_MATCHING_PERSON_ID]);
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const emps = await tx
+      .select({
+        personId: employment.personId,
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode, // Employee ID left-of-name (feedback 38668d9b)
+        role: position.title,
+        company: company.legalName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          personScope,
+        ),
+      )
+      .orderBy(person.fullName);
+
+    const leaves = await tx
+      .select({
+        id: leaveRequest.id,
+        employmentId: leaveRequest.employmentId,
+        typeCode: leaveType.code,
+        typeName: leaveType.name,
+        paid: leaveType.paid,
+        status: leaveRequest.status,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+        days: leaveRequest.days,
+        durationType: leaveRequest.durationType,
+        hours: leaveRequest.hours,
+        // Leave Calendar Blocked View (c238010b): the hourly window, so the dashboard calendar can render an
+        // hourly pill's exact start/end in its hover tooltip. NULL for full/half-day rows (time cols unset).
+        fromTime: leaveRequest.fromTime,
+        toTime: leaveRequest.toTime,
+        // Shared grouping ID: EL applications and partial-cancellation splits both use this field.
+        parentGroupId: leaveRequest.parentGroupId,
+        // Partial Leave Cancellation from the calendar (ADR-0065): the same eligibility fields listLeaveRequests
+        // surfaces, so the dashboard calendar can gate a "Cancel dates" affordance identically to the Leave page.
+        // These are FRESH, independent lookups modelled on listLeaveRequests (read.ts:460-469) — deliberately NOT
+        // folded into the ADR-0068 per-date-approval leaveRequestDate expansion below (that join is a different
+        // feature). pendingCancellationId: an open give-back request already on this row (suppress a 2nd click).
+        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        // isCancellationSplit: TRUE when this row is a SURVIVOR of a prior cancellation split (carries a
+        // parent_group_id AND a cancelled sibling, without recorded EL origin) — still cancellable.
+        isCancellationSplit: cancellationSplitGroupSql,
+        // r301 (83511d3b) — what employeeCancellableDates needs beyond the row shape: the type's Cancel
+        // Approved Leave rule (role + code so Emergency Leave reads today's behaviour) and the unpaid days.
+        // Read for the candidate list below and NOT returned on the pill (stripped when the pills are built).
+        cancelRuleRole: leaveType.role,
+        cancelRuleAllowed: leaveType.employeeCancelApproved,
+        cancelRuleNoticeDays: leaveType.cancelNoticeDays,
+        cancelRuleUnpaidDays: leaveRequest.unpaidDays,
+        cancelRuleCounting: leaveType.counting,
+        cancelRuleDayTypeInclusion: leaveType.dayTypeInclusion,
+      })
+      .from(leaveRequest)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(
+        and(
+          inArray(leaveRequest.status, ['approved', 'pending']),
+          // overlaps the window: starts on/before `to` AND ends on/after `from`
+          lte(leaveRequest.startDate, range.to),
+          gte(leaveRequest.endDate, range.from),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          // eae550e9: same person filter as the emps query (this one already innerJoins employment), so
+          // the two selections stay one scope.
+          personScope,
+        ),
+      )
+      .orderBy(leaveRequest.startDate);
+
+    type LeaveRow = (typeof leaves)[number];
+    type Leave = Omit<LeaveRow, 'cancelRuleRole' | 'cancelRuleAllowed' | 'cancelRuleNoticeDays' | 'cancelRuleUnpaidDays' | 'cancelRuleCounting' | 'cancelRuleDayTypeInclusion'> & {
+      candidateCancelDates: string[];
+    };
+    // r301 (83511d3b) — the type's Cancel Approved Leave rule for one row, through the ONE resolver.
+    const cancelSettingFor = (l: LeaveRow) =>
+      cancelApprovedSettingOf({
+        role: l.cancelRuleRole,
+        code: l.typeCode,
+        employeeCancelApproved: l.cancelRuleAllowed,
+        cancelNoticeDays: l.cancelRuleNoticeDays,
+      });
+
+    // ADR-0068 §4A: a per-date-approval request is now a single row whose interior dates may be rejected.
+    // For APPROVED such requests, render ONLY the approved dates (as contiguous segments), not the raw span —
+    // otherwise a mid-span rejected date would still show on the calendar as an absence. Pending requests keep
+    // the whole span (no per-date decision has been made yet). Fetch the per-date rows for the visible leaves.
+    const leaveIds = leaves.map((l) => l.id);
+    const dateRows = leaveIds.length
+      ? await tx
+          .select({
+            leaveRequestId: leaveRequestDate.leaveRequestId,
+            leaveDate: leaveRequestDate.leaveDate,
+            status: leaveRequestDate.status,
+          })
+          .from(leaveRequestDate)
+          .where(inArray(leaveRequestDate.leaveRequestId, leaveIds))
+      : [];
+    const approvedDatesByReq = new Map<string, string[]>();
+    const hasDateRows = new Set<string>();
+    for (const dr of dateRows) {
+      hasDateRows.add(dr.leaveRequestId);
+      if (dr.status === 'approved') {
+        const arr = approvedDatesByReq.get(dr.leaveRequestId);
+        if (arr) arr.push(dr.leaveDate);
+        else approvedDatesByReq.set(dr.leaveRequestId, [dr.leaveDate]);
+      }
+    }
+
+    // Partial Leave Cancellation from the calendar (ADR-0065): each approved row carries the exact cancellable
+    // candidate dates — its REAL counted dates (calendar or roster/inclusion aware, via countedDatesForSpan
+    // the service validates against) strictly after `today` (MYT), AND — for a per-date-approval request — only
+    // the interior dates that were actually APPROVED (mirrors requestLeaveCancellation core/leave.ts:2115-2118,
+    // so an interior-REJECTED date never looks cancellable on the calendar but is rejected on submit). Computed
+    // ONCE per underlying leaveRequest.id off the ORIGINAL [startDate, endDate] (BEFORE the per-date expansion
+    // rewrites start/end per run), so every expanded pill from one request is seeded with the identical list —
+    // the CancelDatesDialog keys off leaveRequest.id, not the run. Eligible shape mirrors listLeaveRequests:
+    // approved + full_day + (plain request OR cancellation-split survivor) + no pending cancellation. Others
+    // (and, when `today` is omitted, all rows) get []. The service still re-validates every posted date.
+    const candidateByReq = new Map<string, string[]>();
+    if (today) {
+      // ee55f5fe step 2 — the per-leave N+1 fix that makes Month View viable. The old loop resolved the
+      // roster + holiday set PER LEAVE (2 sequential round-trips each — Promise.all does not parallelise
+      // on one tx). Group the ELIGIBLE leaves by employment and resolve each employment's roster + union-
+      // range holiday set ONCE via countedDatesForSpans: round-trips scale with the number of employments
+      // that have eligible leave, independent of leave count. Ineligible rows simply have no map entry —
+      // candidatesFor() already defaults them to []. Every request retains its counting/inclusion policy;
+      // the per-date-approval filter + `d > today` cut apply after, unchanged.
+      // r301 (83511d3b): the row shape is now ONE predicate shared with /leave — employeeCancellableDates with
+      // no dates answers "is this row offered at all" (approved full-day, plain or split survivor, nothing
+      // pending, the type's switch on, no unpaid days) — so a switched-off type is never resolved here.
+      const eligible = leaves.filter(
+        (l) =>
+          employeeCancellableDates(
+            { ...l, unpaidDays: l.cancelRuleUnpaidDays },
+            [],
+            cancelSettingFor(l),
+            today,
+          ) !== null,
+      );
+      const byEmployment = new Map<string, typeof eligible>();
+      for (const l of eligible) {
+        const arr = byEmployment.get(l.employmentId);
+        if (arr) arr.push(l);
+        else byEmployment.set(l.employmentId, [l]);
+      }
+      for (const [employmentId, empLeaves] of byEmployment) {
+        const spanDates = await countedDatesForSpans(
+          tx,
+          employmentId,
+          empLeaves.map((l) => ({
+            key: l.id,
+            start: l.startDate,
+            end: l.endDate,
+            counting: l.cancelRuleCounting,
+            dayTypeInclusion: l.cancelRuleDayTypeInclusion,
+          })),
+        );
+        for (const l of empLeaves) {
+          let working = spanDates.get(l.id) ?? [];
+          // Per-date-approval request (has date rows): restrict to the APPROVED interior dates only.
+          if (hasDateRows.has(l.id)) {
+            const approvedSet = new Set(approvedDatesByReq.get(l.id) ?? []);
+            working = working.filter((d) => approvedSet.has(d));
+          }
+          // r301 (83511d3b): the date cut is the shared predicate too — strictly after today AND at least the
+          // type's notice period away, counted per date — so the calendar offers exactly the dates /leave does.
+          candidateByReq.set(
+            l.id,
+            employeeCancellableDates({ ...l, unpaidDays: l.cancelRuleUnpaidDays }, working, cancelSettingFor(l), today) ?? [],
+          );
+        }
+      }
+    }
+    const candidatesFor = (id: string): string[] => candidateByReq.get(id) ?? [];
+
+    // Split an ordered list of ISO dates into maximal contiguous (calendar-adjacent) runs.
+    const contiguousRuns = (dates: string[]): { from: string; to: string }[] => {
+      const sorted = [...dates].sort();
+      const runs: { from: string; to: string }[] = [];
+      const nextDay = (iso: string) => new Date(Date.parse(`${iso}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      for (const d of sorted) {
+        const last = runs[runs.length - 1];
+        if (last && nextDay(last.to) === d) last.to = d;
+        else runs.push({ from: d, to: d });
+      }
+      return runs;
+    };
+    const expandedLeaves: Leave[] = [];
+    for (const row of leaves) {
+      // r301 — the rule columns were read for the candidate list only; the pill carries no new fields.
+      const { cancelRuleRole: _r, cancelRuleAllowed: _a, cancelRuleNoticeDays: _n, cancelRuleUnpaidDays: _u, cancelRuleCounting: _c, cancelRuleDayTypeInclusion: _i, ...l } = row;
+      const candidateCancelDates = candidatesFor(l.id);
+      // A per-date request that is APPROVED with per-date rows → emit one leave per contiguous approved run.
+      if (hasDateRows.has(l.id) && l.status === 'approved') {
+        const runs = contiguousRuns(approvedDatesByReq.get(l.id) ?? []);
+        for (const r of runs) {
+          expandedLeaves.push({ ...l, startDate: r.from, endDate: r.to, candidateCancelDates });
+        }
+        continue;
+      }
+      // Otherwise (pending, or no per-date rows) render the whole span unchanged.
+      expandedLeaves.push({ ...l, candidateCancelDates });
+    }
+
+    const byEmp = new Map<string, Leave[]>();
+    for (const l of expandedLeaves) {
+      const arr = byEmp.get(l.employmentId);
+      if (arr) arr.push(l);
+      else byEmp.set(l.employmentId, [l]);
+    }
+    // One row per person — concurrent employments merge their leave onto a single row.
+    // `employmentIds` carries every employment behind the person (My/Team calendar filter, item 8c739dda):
+    // Team view keeps rows whose employment set intersects the viewer's reporting team, INCLUDING people with
+    // no leave in the window (empty rows), which a per-leave employmentId alone could not express.
+    const byPerson = new Map<string, { id: string; name: string; employeeCode: string | null; role: string | null; employmentIds: string[]; leaves: Leave[] }>();
+    for (const e of emps) {
+      const empLeaves = byEmp.get(e.employmentId) ?? [];
+      const existing = byPerson.get(e.personId);
+      if (existing) {
+        existing.leaves.push(...empLeaves);
+        existing.employmentIds.push(e.employmentId);
+        if (!existing.role && e.role) existing.role = e.role;
+        // First non-null Employee ID wins for a person spanning concurrent employments (feedback 38668d9b).
+        if (!existing.employeeCode && e.employeeCode) existing.employeeCode = e.employeeCode;
+      } else {
+        byPerson.set(e.personId, { id: e.personId, name: e.name, employeeCode: e.employeeCode, role: e.role, employmentIds: [e.employmentId], leaves: empLeaves });
+      }
+    }
+    return [...byPerson.values()];
+  });
+}
+
+/**
+ * eae550e9 step 2 — the dedicated narrow count behind the manager "Team Away Today" card. Replaces the
+ * second full plannedAbsences projection (which existed only to guarantee a window covering today):
+ * count DISTINCT persons — excluding the viewer — with an APPROVED leave covering `todayIso` on an
+ * ACTIVE employment in scope. Population matches what teamAwayToday(lib/dashboard-cards.ts) counted
+ * over the company-scoped strip rows bit-for-bit, including the per-date-approval nuance: a request
+ * with per-date rows only covers today when TODAY's date row is itself approved (mirrors the
+ * approved-run expansion in plannedAbsences above). RLS additionally trims rows exactly as it does
+ * for the strip read, so the figure cannot widen past what the viewer could already see.
+ */
+export function awayTodayCount(
+  ctx: SessionContext,
+  companyIds: string[] | undefined,
+  todayIso: string,
+  excludePersonId?: string | null, existingTx?: Tx,
+): Promise<number> {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(distinct ${employment.personId})::int` })
+      .from(leaveRequest)
+      .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+      .where(
+        and(
+          eq(leaveRequest.status, 'approved'),
+          lte(leaveRequest.startDate, todayIso),
+          gte(leaveRequest.endDate, todayIso),
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          excludePersonId ? sql`${employment.personId} <> ${excludePersonId}` : undefined,
+          // ADR-0068 §4A parity: a per-date-approval request (has date rows) covers today only when
+          // today's own date row is approved — a mid-span rejected date is not an absence.
+          sql`(
+            not exists (select 1 from leave_request_date d where d.leave_request_id = ${leaveRequest.id})
+            or exists (
+              select 1 from leave_request_date d
+              where d.leave_request_id = ${leaveRequest.id} and d.leave_date = ${todayIso} and d.status = 'approved'
+            )
+          )`,
+        ),
+      );
+    return row?.n ?? 0;
+  });
+}
+
+/** Upcoming public holidays in scope (for the dashboard Upcoming-events card). */
+export function upcomingHolidays(ctx: SessionContext, opts: { from: string; limit?: number }, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, (tx) =>
+    tx
+      .select({ id: holiday.id, name: holiday.name, date: holiday.holidayDate })
+      .from(holiday)
+      .where(gte(holiday.holidayDate, opts.from))
+      .orderBy(holiday.holidayDate, holiday.id)
+      .limit(opts.limit ?? 5),
+  );
+}
+
+/**
+ * ADR-0082 §6 C4 — the holiday DATES this employment actually observes in a window, resolved business
+ * group -> state -> national.
+ *
+ * WHY IT EXISTS. `upcomingHolidays` directly above filters on the DATE and nothing else: no company, no
+ * state, no country, no holiday group — because its one caller is a dashboard card that already sits
+ * inside a company-scoped page. Answering "when is my next public holiday" from it alone therefore names
+ * days the asker does not get, which is a wrong answer stated confidently rather than a missing one.
+ *
+ * The real per-employee resolution has existed since ADR-0054 in `holidayDatesFor` (core/holidays.ts),
+ * but that takes a `Tx`, not a ctx. This is the ctx-first wrapper, added so a caller that may not open
+ * its own transaction can still ask the question. Sorted, so the caller gets a stable order.
+ */
+export function holidayDatesForEmployment(
+  ctx: SessionContext,
+  p: { employmentId: string; from: string; to: string }, existingTx?: Tx,
+): Promise<string[]> {
+  return withReadTx(ctx, existingTx, async (tx) =>
+    [
+      ...(await holidayDatesFor(tx, {
+        employmentId: p.employmentId,
+        startDate: p.from,
+        endDate: p.to,
+      })),
+    ].sort(),
+  );
+}
+
+/**
+ * Company-change gate (feedback 9464bd56) — TRUE when this employment has at least one operational
+ * transaction, i.e. it is PAST the pre-activity window where HR may still inline-correct its Company.
+ * One greppable `exists(...) or exists(...)` chain, ONE representative head per operational module (children
+ * hang off these), matching the house `inUse` idiom (see listCompanies / listDepartments / listLeaveTypes).
+ *
+ * A saved salary (compensation) counts as activity: `compensation.set` already lands in movement history, so
+ * treating a salaried-but-unpaid employee as "no activity yet" would contradict steering HR to Movement once
+ * anything is recorded.
+ *
+ * c063eea9 — EXCEPT THE HIRE-DATE SALARY, excluded exactly as the hire-time leave grant below is. Activation
+ * (core/employee-draft.ts, completeEmployeeDraft → setCompensation effectiveFrom = hiredOn) ALWAYS writes one
+ * compensation row dated on the hire date, so counting it made this gate trip the moment every wizard hire
+ * was activated: the pre-transaction Company correction it guards was unreachable for exactly the new joiners
+ * it exists for. The projection already treats that row as part of Hired, not a movement (core/movement.ts,
+ * `p.effectiveFrom === emp.hiredOn`). A salary dated AFTER the hire still counts — that is a pay change, and
+ * it is in the history. "No payslip yet" needs no clause of its own here: the payslip head above already
+ * locks the field the moment payroll has run, whatever the compensation rows say.
+ *
+ * leave_ledger: the SINGLE hire-time grant (entry_type='accrual' AND effective_on=hired_on — the row
+ * hireEmployee auto-inserts) is EXCLUDED. Any later accrual, or any adjustment/debit/in_lieu row (even an
+ * opening-balance adjustment stamped at hire), counts as activity and locks the field — conservative by
+ * intent.
+ *
+ * MODULE HEADS — one per operational module. A NEW operational module MUST add its head HERE (single edit
+ * site, so the next module cannot silently punch a hole):
+ *   payroll   → payslip · payroll_input · employee_cp38 · employment_pay_component · ea_override
+ *   attendance→ attendance            leave → leave_request · leave_cancellation_request · non-hire leave_ledger
+ *   claims    → claim_request         overtime → toil_accrual        loans → employee_loan
+ *   travel    → travel_request        roster   → roster_assignment   performance → performance_review
+ *     ⚠️ b833a077 (r362): the travel MODULE is retired — My Travel's row, screen, form and approvals
+ *     section are gone — but its head STAYS and the sub-select below MUST NOT be removed. The reporter
+ *     kept every travel_request row for audit, so an employment can still carry travel history that a
+ *     company change would orphan. test/employee-company-change.test.ts pins it with a real INSERT.
+ *   offboarding → resignation_request probation → employment_review  compensation → compensation (a saved salary
+ *     other than the hire-date row — c063eea9)
+ *
+ * Runs inside the caller's tx so the company-change writer can re-run the gate as its server-side source of
+ * truth without a nested transaction. RLS still scopes every sub-select to the tenant.
+ */
+export async function employmentCompanyBlockedTx(tx: Tx, employmentId: string): Promise<boolean> {
+  const [res] = await tx
+    .select({
+      blocked: sql<boolean>`(
+        exists (select 1 from payslip t where t.employment_id = ${employmentId})
+        or exists (select 1 from payroll_input t where t.employment_id = ${employmentId})
+        or exists (select 1 from employee_cp38 t where t.employment_id = ${employmentId})
+        or exists (select 1 from employment_pay_component t where t.employment_id = ${employmentId})
+        or exists (select 1 from ea_override t where t.employment_id = ${employmentId})
+        or exists (select 1 from attendance t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_cancellation_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from leave_ledger t where t.employment_id = ${employmentId} and not (t.entry_type = 'accrual' and t.effective_on = ${employment.hiredOn}))
+        or exists (select 1 from claim_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from toil_accrual t where t.employment_id = ${employmentId})
+        or exists (select 1 from employee_loan t where t.employment_id = ${employmentId})
+        or exists (select 1 from travel_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from roster_assignment t where t.employment_id = ${employmentId})
+        or exists (select 1 from performance_review t where t.employment_id = ${employmentId})
+        or exists (select 1 from resignation_request t where t.employment_id = ${employmentId})
+        or exists (select 1 from employment_review t where t.employment_id = ${employmentId})
+        or exists (select 1 from compensation t where t.employment_id = ${employmentId} and not (t.valid_from = ${employment.hiredOn}))
+      )`,
+    })
+    .from(employment)
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+  return !!res?.blocked;
+}
+
+/**
+ * Company-change gate (feedback 9464bd56) — is this employment still in the pre-transaction window where HR
+ * may inline-correct its Company? True ONLY when it exists AND has no operational transactions
+ * (employmentCompanyBlockedTx). Admin-only surface (the Personnel page only calls it for an admin viewer);
+ * RLS scopes the read to the tenant. NOT folded into employeeDetail: it would run for every viewer including
+ * non-admins who can never edit, and dozens of tests toEqual that projection row.
+ */
+export function employmentCompanyEditable(ctx: SessionContext, employmentId: string): Promise<boolean> {
+  return withTenant(ctx, async (tx) => {
+    const [emp] = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    if (!emp) return false;
+    return !(await employmentCompanyBlockedTx(tx, employmentId));
+  });
+}
+
+export function employeeDetail(ctx: SessionContext, employmentId: string,purpose?:'workforce', existingTx?: Tx) {
+  return withProjectionTx(ctx, existingTx, purpose, async (tx) => {
+    const emergencyContact = primaryEmergencyContactRow(tx);
+    const [row] = await tx
+      .select({
+        employmentId: employment.id,
+        employeeCode: employment.employeeCode,
+        // 44bc1c33 — the Card / Clocking ID field on the Attendance tab. Same column the Card Assignment
+        // screen edits; a column of the `employment` row already selected, so no extra join.
+        cardId: employment.cardId,
+        personId: employment.personId,
+        name: person.fullName,
+        email: person.primaryEmail,
+        phone: person.phone,
+        companyId: employment.companyId,
+        company: company.legalName,
+        hiredOn: employment.hiredOn,
+        // "Join Date" (feedback 24c4d02e) — current-company effective join; null = not captured (service
+        // length then falls back to hiredOn).
+        joinDate: employment.joinDate,
+        terminatedOn: employment.terminatedOn,
+        workState: employment.workState,
+        holidayGroupId: employment.holidayGroupId,
+        holidayGroupName: holidayGroup.name,
+        gradeId: employment.gradeId,
+        gradeName: jobGrade.name,
+        // #24 / Wave 2A-1: compliance-sensitive identity fields that drive leave eligibility
+        // (gender gates maternity, marital gates paternity). HR-set via the approval-gated path.
+        gender: person.gender,
+        marital: person.maritalStatus,
+        dateOfBirth: person.dateOfBirth,
+        // b4682879 — Personnel Profile redesign: personal / contact / structured-address / emergency fields.
+        // 8c284478 — Salutation (catalog-backed, before Full Name on the form); projected here so reports,
+        // correspondence and document templates can consume it as those features grow.
+        salutation: person.salutation,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        preferredName: person.preferredName,
+        religion: person.religion,
+        race: person.race,
+        nationality: person.nationality,
+        personalEmail: person.personalEmail,
+        addressLine1: person.addressLine1,
+        addressLine2: person.addressLine2,
+        addressLine3: person.addressLine3,
+        postcode: person.postcode,
+        city: person.city,
+        state: person.state,
+        country: person.country,
+        // 3a25f5ee — Permanent + Correspondence structured addresses (migration 0213).
+        permanentAddressLine1: person.permanentAddressLine1,
+        permanentAddressLine2: person.permanentAddressLine2,
+        permanentAddressLine3: person.permanentAddressLine3,
+        permanentPostcode: person.permanentPostcode,
+        permanentCity: person.permanentCity,
+        permanentState: person.permanentState,
+        permanentCountry: person.permanentCountry,
+        correspondenceAddressLine1: person.correspondenceAddressLine1,
+        correspondenceAddressLine2: person.correspondenceAddressLine2,
+        correspondenceAddressLine3: person.correspondenceAddressLine3,
+        correspondencePostcode: person.correspondencePostcode,
+        correspondenceCity: person.correspondenceCity,
+        correspondenceState: person.correspondenceState,
+        correspondenceCountry: person.correspondenceCountry,
+        // bf953339 — Mobile + Home phone pair (migration 0304): `phone` above IS the mobile number;
+        // homePhone sits beside it, and the Correspondence block carries its own independent pair.
+        homePhone: person.homePhone,
+        correspondenceMobilePhone: person.correspondenceMobilePhone,
+        correspondenceHomePhone: person.correspondenceHomePhone,
+        // 23ad620e — an employee may now hold SEVERAL emergency contacts (person_emergency_contact). These
+        // five names are kept exactly as they were so every consumer of employeeDetail is untouched; they
+        // now resolve to the HIGHEST-PRIORITY live record (Primary → Secondary → Other) instead of the
+        // retired person.emergency_contact_* columns. The full list is read with listEmergencyContacts.
+        emergencyContactName: emergencyContact.fullName,
+        emergencyContactRelationship: emergencyContact.relationship,
+        emergencyContactPhone: emergencyContact.mobilePhone,
+        emergencyContactPhone2: emergencyContact.homePhone,
+        emergencyContactAddress: emergencyContact.address,
+        // 2.1 Payroll Policy: the assigned named pay-processing template (null = monthly default).
+        payrollPolicyId: employment.payrollPolicyId,
+        payrollPolicyName: payrollPolicy.name,
+        payrollPolicyStatus: payrollPolicy.status,
+        // R46 79eb7151 — HOW this employee is paid (bank transfer / cheque / cash). Null = not specified.
+        paymentMethod: employment.paymentMethod,
+        // ec4cbf63: the employee's DEFAULT shift (null = company default schedule) — profile assignment.
+        defaultShiftId: employment.defaultShiftId,
+        // R17 3e8350db: the shift ARRANGEMENT — 'fixed' (follows defaultShiftId) or 'roster' (scheduled
+        // from /roster only). Kept in lockstep with defaultShiftId by assignEmployeeShift.
+        shiftType: employment.shiftType,
+        // ADR-0054: the location on the employee's CURRENT open assignment (null = none).
+        locationId: location.id,
+        locationCode: location.code,
+        locationName: location.name,
+        // ADR-0070: per-employee Clocking Location & Geofencing enforcement toggle + radius.
+        geofencingEnabled: employment.geofencingEnabled,
+        geofenceRadiusM: employment.geofenceRadiusM,
+        // r430 — per-employee Web Clocking photo requirement (Personnel › Attendance › Web Clocking card).
+        attendancePhotoSetting: employment.attendancePhotoSetting,
+        // Employment Information enhancement (2323f671, migration 0181): employment master-data captured on
+        // the Employment tab's Employment Information card (all nullable; null = not set).
+        probationMonths: employment.probationMonths,
+        probationDays: employment.probationDays,
+        confirmationDate: employment.confirmationDate,
+        resignationNoticeMonths: employment.resignationNoticeMonths,
+        resignationNoticeDays: employment.resignationNoticeDays,
+        resignationDate: employment.resignationDate,
+        shortNoticeMonths: employment.shortNoticeMonths,
+        shortNoticeDays: employment.shortNoticeDays,
+        // Enhance Employment Dates (955c7de4, migration 0213): redesigned value+unit periods + lifecycle
+        // dates. finalConfirmationDate is derived server-side (= extended ?? normal) on save.
+        probationValue: employment.probationValue,
+        probationUnit: employment.probationUnit,
+        extendedProbationValue: employment.extendedProbationValue,
+        extendedProbationUnit: employment.extendedProbationUnit,
+        noticeBeforeConfirmationValue: employment.noticeBeforeConfirmationValue,
+        noticeBeforeConfirmationUnit: employment.noticeBeforeConfirmationUnit,
+        noticeAfterConfirmationValue: employment.noticeAfterConfirmationValue,
+        noticeAfterConfirmationUnit: employment.noticeAfterConfirmationUnit,
+        extendedConfirmationDate: employment.extendedConfirmationDate,
+        finalConfirmationDate: employment.finalConfirmationDate,
+        // R81 — the probation fallbacks deriveEmploymentStatus needs. Nothing writes a confirmation date at
+        // hire, so without these two an employee serving probation reads "Active" on their own profile.
+        probationEndDate: employment.probationEndDate,
+        provisionalEndOn: employment.provisionalEndOn,
+        // 8590615a — the Contract Information group the Employment tab renders for contract employees.
+        // contractEndDate is the pre-existing employment-review column: projecting it here is what lets
+        // the Employment tab show (and re-save) the very date the Employment Review row already watches,
+        // instead of a second copy. provisionalEndOn stays — it is the display fallback for a contract
+        // employee hired before this shipped, and full_time/intern still depend on it elsewhere.
+        contractStartDate: employment.contractStartDate,
+        contractNumber: employment.contractNumber,
+        contractEndDate: employment.contractEndDate,
+        contractRemark: employment.contractRemark,
+        // 2260a06b — the Intern twin of the contract group: the Employment tab shows and re-saves it.
+        internshipEndDate: employment.internshipEndDate,
+        tenderResignationDate: employment.tenderResignationDate,
+        lastWorkingDate: employment.lastWorkingDate,
+        orgBranch: employment.orgBranch,
+        orgDivision: employment.orgDivision,
+        orgRegion: employment.orgRegion,
+        orgLine: employment.orgLine,
+        orgSection: employment.orgSection,
+        orgTeam: employment.orgTeam,
+        orgBase: employment.orgBase,
+        employmentCategory: employment.employmentCategory,
+        // Employee Status redesign (R43 c26c3ce5) — the Blacklist override read by deriveEmploymentStatus
+        // (null = not blacklisted). The derived buckets themselves need no column (they are pure functions of
+        // the lifecycle dates already projected above + today).
+        blacklistedAt: employment.blacklistedAt,
+        blacklistReason: employment.blacklistReason,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoinLateral(emergencyContact, sql`true`)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
+      .leftJoin(holidayGroup, eq(holidayGroup.id, employment.holidayGroupId))
+      .leftJoin(payrollPolicy, eq(payrollPolicy.id, employment.payrollPolicyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(location, eq(location.id, assignment.locationId))
+      .where(and(eq(employment.id,employmentId),purpose?workforceEmploymentPredicate(sql`${employment.id}`):undefined))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** ADR-0041 2E: the tenant grade catalog, most-senior first (rank asc), then name. */
+export function listJobGrades(ctx: SessionContext, opts: { includeArchived?: boolean;companyId?:string|null } = {}, outerTx?:Tx) {
+  const run=(tx:Tx)=>tx
+      .select({
+        id: jobGrade.id,
+        code: jobGrade.code,
+        name: jobGrade.name,
+        // Job Grade stores its configured Label in name; description is secondary detail.
+        label: jobGrade.name,
+        // e3c733df — MUST be projected or the Description cell renders empty on every reload, the same
+        // trap the leave-type projection documents field by field.
+        description: jobGrade.description,
+        rank: jobGrade.rank,
+        scopeCompanyIds:jobGrade.scopeCompanyIds,
+        archivedAt: jobGrade.archivedAt,
+        // Grade relocation to System Labels (b1b81a08): the in-use predicate spans ALL SIX referencing
+        // tables, not just employment + leave_policy. leave_approval_policy.grade_id and
+        // claim_policy.grade_id are plain FKs with no onDelete, so a grade used only by an approval rule or
+        // a claim limit used to report inUse=false, render an ENABLED Delete, and raise a raw 23503 at the
+        // admin; grade_group_member CASCADES, so the same delete silently dropped benefit-scheme group
+        // membership. Must stay byte-identical to deleteJobGrade's in-transaction re-check (core/admin.ts)
+        // so the button state and the guard agree.
+        //
+        // e7eb5d83 (0408) added the SIXTH: claim_mileage_rate.grade_id, a per-grade mileage rate table, and
+        // it is another plain FK with no onDelete. Every new grade_id FK anywhere in the schema has to be
+        // added HERE and in deleteJobGrade in the same commit that introduces it, or it re-opens exactly the
+        // 23503 this comment exists to describe.
+        //
+        // 6e9a126e RELEASE THREE — the `leave_policy` clause is REPOINTED at entitlement_eligibility_rule,
+        // not dropped. 0405 drops leave_policy, and a clause naming a dropped table does not degrade
+        // quietly: this projection is on the ONLY read of the grade catalog, so it raised
+        // `relation "leave_policy" does not exist` on every System Labels page load. The new clause reads
+        // the rule's `criteria` JSONB, which carries no foreign key — so this is the one referrer that
+        // could never have raised 23503 on its own, and the guard is the only thing standing between a
+        // delete and a rule that silently targets a grade id nothing resolves.
+        inUse: sql<boolean>`exists (select 1 from employment e where e.grade_id = job_grade.id)
+          or exists (select 1 from entitlement_eligibility_rule eer
+                     where eer.criteria -> 'gradeIds' @> to_jsonb(job_grade.id::text))
+          or exists (select 1 from leave_approval_policy lap where lap.grade_id = job_grade.id)
+          or exists (select 1 from claim_policy cp where cp.grade_id = job_grade.id)
+          or exists (select 1 from claim_mileage_rate cmr where cmr.grade_id = job_grade.id)
+          or exists (select 1 from grade_group_member ggm where ggm.grade_id = job_grade.id)`,
+      })
+      .from(jobGrade)
+      .where(opts.includeArchived ? undefined : and(isNull(jobGrade.archivedAt),sql`app.system_label_scope_applies(${jobGrade.scopeCompanyIds},${opts.companyId??null}::uuid)`))
+      .orderBy(jobGrade.rank, jobGrade.name);
+  return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/**
+ * Feedback 9d8cf621 — "Employee Selection" entitled-employee count. Count ACTIVE (not-terminated)
+ * employments whose company and/or grade fall within the selected scope, so HR sees how many people an
+ * entitlement they are about to save would cover. An empty companyIds/gradeIds axis means "all" on that
+ * axis (a group-default / all-grades scope). RLS scopes the result to the session's tenant + visible
+ * companies via withTenant. READ-ONLY — no DomainEvent (documented skip).
+ */
+export function countEmployeesInScope(
+  ctx: SessionContext,
+  p: { companyIds?: string[]; gradeIds?: string[] },
+): Promise<number> {
+  const companyIds = (p.companyIds ?? []).filter(Boolean);
+  const gradeIds = (p.gradeIds ?? []).filter(Boolean);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ count: sql<number>`count(distinct ${employment.id})::int` })
+      .from(employment)
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+          gradeIds.length ? inArray(employment.gradeId, gradeIds) : undefined,
+        ),
+      );
+    return row?.count ?? 0;
+  });
+}
+
+/** All effective-dated assignment versions (newest first) — the bitemporal history. */
+export function assignmentHistory(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: assignment.id,
+        department: sql<string>`coalesce(nullif(trim(${department.label}), ''), ${department.name})`,
+        departmentId: assignment.departmentId,
+        position: sql<string|null>`coalesce(nullif(trim(${position.label}), ''), ${position.title})`,
+        positionId: assignment.positionId,
+        // 1001ff61 — Business Unit on the assignment (nullable). Drives the Form A BU dropdown's default.
+        businessUnitId: assignment.businessUnitId,
+        // 570e3311 — BU display name (additive), so the detail page can label a pinned-current BU that is
+        // no longer in the company-scoped option list (legacy / later-unshared data).
+        businessUnit: sql<string|null>`coalesce(nullif(trim(${businessUnit.label}), ''), ${businessUnit.code})`,
+        // R81 (9cbf5e0d): no `status` here any more — the column is dropped (migration 0331). This read
+        // powers the dated org history (department / position / BU / type), which is what actually varies
+        // per version; the Movement tab replaced the old status column in this table back at 78853b97, so
+        // nothing rendered it. Current Employee Status is derived, once, from the lifecycle dates.
+        employmentType: assignment.employmentType,
+        locationCode:location.code,locationName:location.name,locationEffectiveFrom:assignment.validFrom,
+        validFrom: assignment.validFrom,
+        validTo: assignment.validTo,
+      })
+      .from(assignment)
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
+      .leftJoin(location,eq(location.id,assignment.locationId))
+      .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt)))
+      .orderBy(desc(assignment.validFrom),desc(assignment.id)),
+  );
+}
+
+/** R37 (2F-2): resolve a leave-type name to the viewer's locale, falling back to the default name.
+ *
+ *  EXPORTED for 46afcc48: `sharedLeaveGroupBalances` (core/leave-shared-group.ts) names a shared group's
+ *  member leave types on the employee's Leave tab and must resolve them the SAME way every other leave
+ *  surface does. Copying these two lines into that module would have been the second spelling of one rule
+ *  — the class of duplication this file's own leave-type reads were consolidated to remove. */
+export type LeaveTypeI18n = Record<string, { name: string }> | null;
+export function pickName(name: string, i18n: LeaveTypeI18n, locale?: string): string {
+  return (locale && locale !== 'en' && i18n?.[locale]?.name) || name;
+}
+
+/**
+ * r389 (62a1bec1) — THE RECALCULATION HALF OF `accrued` (Earned to Date) for `leaveBalances` and
+ * `leaveBalancesAll`, keyed `${employmentId}|${leaveTypeId}`.
+ *
+ * `accrued` is the SQL `filter` over accrual / in-lieu rows beside it PLUS this: the policy / profile
+ * recalculation adjustments the kernel's `isEarnedToDateRow` calls earned. The recalc rows are few (production
+ * 2026: 41 across 26 pairs) and the a2c supersession test needs a pair's rows side by side, so they are read
+ * here and decided by the SAME kernel function the breakdown walk calls — never by a second SQL spelling of
+ * the rule that could drift from it. The `sys:a2c_recalc:*` rows ride along only so `a2cSupersessionOf` can see
+ * them; they are never summed here (their accrual row is already in the SQL half, their reversal is an
+ * adjustment and not earned).
+ *
+ * Same date cut as the caller (`effective_on <= asOf`, none when absent), so an as-at read counts exactly the
+ * recalculations that had happened by then.
+ */
+async function earnedRecalcDaysBy(tx: Tx, employmentIds: string[], asOf?: string, own?: OwnLeaveInputs): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (employmentIds.length === 0) return out;
+  const answered = own && employmentIds.length === 1 && own.answers(tx, employmentIds[0]) ? own : undefined;
+  const recalcRows = answered ? answered.recalculationRows(asOf) : await tx
+    .select({
+      employmentId: leaveLedger.employmentId,
+      leaveTypeId: leaveLedger.leaveTypeId,
+      entryType: leaveLedger.entryType,
+      days: leaveLedger.days,
+      effectiveOn: leaveLedger.effectiveOn,
+      reason: leaveLedger.reason,
+    })
+    .from(leaveLedger)
+    .where(
+      and(
+        inArray(leaveLedger.employmentId, employmentIds),
+        asOf ? lte(leaveLedger.effectiveOn, asOf) : undefined,
+        or(recalcAdjustmentReasonCond(), like(leaveLedger.reason, `${A2C_RECALC_REASON_PREFIX}:%`)),
+      ),
+    );
+  const byPair = new Map<string, typeof recalcRows>();
+  for (const r of recalcRows) {
+    const k = `${r.employmentId}|${r.leaveTypeId}`;
+    const arr = byPair.get(k);
+    if (arr) arr.push(r);
+    else byPair.set(k, [r]);
+  }
+  for (const [k, pairRows] of byPair) {
+    const superseded = a2cSupersessionOf(pairRows);
+    let sum = 0;
+    for (const r of pairRows) {
+      // ADJUSTMENT rows only: an a2c ACCRUAL row is earned too, but the SQL half has already counted it.
+      if (r.entryType === 'adjustment' && isEarnedToDateRow(r, superseded)) {
+        sum = Math.round((sum + Number(r.days)) * 100) / 100;
+      }
+    }
+    if (sum !== 0) out.set(k, sum);
+  }
+  return out;
+}
+
+/** HR inquiry row membership only. Bounded employment chunks; figures remain owned by leaveBalances.
+ * Matches its includeHidden/includeArchived/includeIneligible HR contract, including zero eligible rows.
+ */
+export function leaveBalanceInquiryMembership(ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
+  return withTenant(ctx, tx => leaveBalanceInquiryMembershipTx(tx, ctx, employmentIds, asOf, locale));
+}
+export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContext, employmentIds: string[], asOf: string, locale: string) {
+  if (employmentIds.length > 100) throw new Error('Inquiry membership chunk exceeds 100 employments');
+    if (!employmentIds.length) return [];
+    return leaveBalanceInquiryMembershipRowsTx(tx,employmentIds,asOf,locale,leaveInquiryMembershipTypesTx(tx));
+}
+function leaveInquiryMembershipTypesTx(tx:Tx){
+ return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
+}
+/** The catalogue is private to this physical transaction/read invocation. It is
+ * neither caller-provided eligibility nor a cross-request authorization cache. */
+export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
+ ctx=structuredClone(ctx);await assertReadCompositionPrincipalTx(tx,ctx);
+ const types=await leaveInquiryMembershipTypesTx(tx);
+ return (employmentIds:readonly string[])=>{
+  const ids=employmentIds.slice();
+  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
+ };
+}
+async function leaveBalanceInquiryMembershipRowsTx(tx:Tx,employmentIds:string[],asOf:string,locale:string,
+ typeRead:ReturnType<typeof leaveInquiryMembershipTypesTx>|Awaited<ReturnType<typeof leaveInquiryMembershipTypesTx>>){
+    const [types, profiles, ledger, pending] = await Promise.all([
+      typeRead,
+      tx.select({ employmentId: employment.id, gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory }).from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, employmentIds)),
+      tx.selectDistinct({ employmentId: leaveLedger.employmentId, leaveTypeId: leaveLedger.leaveTypeId }).from(leaveLedger).where(and(inArray(leaveLedger.employmentId, employmentIds), lte(leaveLedger.effectiveOn, asOf))),
+      tx.selectDistinct({ employmentId: leaveRequest.employmentId, leaveTypeId: leaveRequest.leaveTypeId }).from(leaveRequest).where(and(inArray(leaveRequest.employmentId, employmentIds), eq(leaveRequest.status, 'pending'), lte(leaveRequest.startDate, asOf))),
+    ]);
+    const historical = new Set([...ledger, ...pending].map(r => `${r.employmentId}|${r.leaveTypeId}`));
+    return profiles.flatMap(emp => types.filter(lt => historical.has(`${emp.employmentId}|${lt.id}`) || (lt.archivedAt == null && isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude'))).map(lt => ({ employmentId: emp.employmentId, leaveTypeId: lt.id, code: lt.code ?? '', leaveType: pickName(lt.name, lt.i18n, locale) })));
+}
+
+/**
+ * One employment's balance per leave type — the source for the employee's own Leave page AND for the two
+ * admin surfaces (Employee Balances, the Personnel profile's leave card).
+ *
+ * Feedback 994a5287 added `opts.includeHidden`, and the reason is a gap this function's own comment
+ * previously denied. The 7b11f1c1 gate at the bottom drops any type HR has set `visible_to_employee = false`,
+ * and the comment there asserted that gating "is /me ONLY; admin/HR balance reads (leaveBalancesAll) do not
+ * call this". That was true when it was written and is not true now: `/leave/employee-balances` and
+ * `/admin/personnel/[id]` both read THIS function, so a type HR had hidden from self-service also vanished
+ * from the two screens HR uses to answer "what is this person entitled to" — reproduced with a seeded
+ * `visible_to_employee = false` type that was absent from the admin rows while an eligible-but-inactive type
+ * showed correctly at 0.00.
+ *
+ * So `includeHidden: true` is passed by the ADMIN callers and only by them. Employee self-service keeps the
+ * default and its behaviour is byte-identical.
+ *
+ * NOTE for anyone reading 994a5287's plan: its stated root cause — that this function selects only FROM
+ * leave_ledger and so cannot produce a row for a type with no ledger entry — does NOT hold. The
+ * eligible-but-inactive tail below has existed since R18 (2F-1) and is pinned by
+ * test/leave-balances-all-types.test.ts. The hidden-type gate was the whole of the real defect.
+ *
+ * ── 3ddae357: `opts.asOf` — POINT-IN-TIME, AND WHY THIS FUNCTION IS WHERE IT BELONGS ────────────────
+ *
+ * Employee Balances offers an "As at" date and threaded it into ONE of its two reads. The breakdown
+ * (`leaveEntitlementBreakdown`) was date-aware; THIS function had no date argument at all, so it summed the
+ * WHOLE ledger whatever date was typed. Five columns moved with the date and four — Taken, Pending
+ * Approval, Overutilized and BALANCE — silently did not, while the Date column echoed the typed date and
+ * made the screen look like it had responded. Reproduced on production: FARAH's ANNUAL ledger is four rows
+ * (+10.67 on 2025-05-01, −0.67 carry cap on 2026-01-01, +11.00 on 2026-08-01, −1.50 recalc on 2026-08-04),
+ * summing to 19.50 — exactly the Balance the screen showed for every date, where the true point-in-time
+ * figures are 10.67 at 2025-12-31 and 10.00 at 2026-07-31.
+ *
+ * The fix lives here rather than in a second dated resolver for HR, for the same reason `includeHidden`
+ * does: HR's screen and the employee's own screen must keep ONE derivation, or the number HR quotes and
+ * the number the employee reads eventually disagree.
+ *
+ * ABSENT ⇒ BYTE-IDENTICAL. Every other caller (the employee's own /leave page, the dashboard, both
+ * personnel profiles, `subordinateLeaveSummary`) passes no `asOf` and is provably untouched — the `where`
+ * is assembled from the same terms in the same order, with one extra term only when a date is supplied.
+ *
+ * FUTURE DATES need no extra logic and get none: `effective_on <= asOf` counts an accrual already POSTED
+ * with a future effective date once that date is inside the window, and nothing is forecast or projected.
+ * "Already on record" is the whole promise.
+ *
+ * WHAT IS DELIBERATELY *NOT* DATED, so a later reader does not read it as an oversight:
+ *   • the eligible-but-inactive tail still tests eligibility as of TODAY. It decides which leave types
+ *     APPEAR (each at 0.00 with no ledger row), not what any figure is, and re-deriving eligibility at an
+ *     arbitrary date would need the employment's dated profile, not today's — a different question, and
+ *     not one this screen asks.
+ *   • the leave-type NAME, visual and ESS-placement joins are present-tense metadata, not figures. A type
+ *     renamed since `asOf` should read under the name HR uses now.
+ */
+export type LeaveBalanceReadOptions = {
+  /** Keep leave types HR has hidden from employee self-service. Two callers, and only two:
+   *
+   *  1. ADMIN reads (Employee Balances, the Personnel leave card, 994a5287). A hidden type is hidden from
+   *     the EMPLOYEE by design (7b11f1c1); it was never meant to vanish from HR's own screens.
+   *
+   *  2. 46afcc48 — `sharedLeaveGroupBalances`, which is a SELF-SERVICE caller and passes this ON PURPOSE.
+   *     It does NOT display these rows: it sums them into ONE pooled figure for a shared leave group. The
+   *     reporter's requirement is that hiding a member type is a display decision that changes nothing
+   *     about the pool, and the group guard (`enforceSharedLeaveGroupLimit`, core/leave.ts) has never
+   *     consulted visibility either — so summing the FILTERED list would make the number on screen
+   *     disagree with the verdict the engine gives, which is the one thing that must not happen. No
+   *     hidden type's own name or figure reaches the employee through this path.
+   *
+   *  Any THIRD caller on an employee-facing path is a leak until it can say which of these it is. */
+  includeHidden?: boolean;
+  /**
+   * ⚠️ d272834b — KEEP LEAVE TYPES THIS EMPLOYEE IS NOT ELIGIBLE FOR. Default false: an employee's own
+   * screens never draw a card for a leave type that is not theirs, however the rows got into the ledger.
+   *
+   * THE DEFECT THIS EXISTS FOR. The eligible-but-inactive tail below has gated on `isProfileEligible`
+   * since 508d3acd, but it only decides whether to INVENT a row. A row that came from the ledger or from
+   * a pending request was never asked the question at all — so a male employee (EMP-0002 on the
+   * reporting account) kept a Maternity Leave card reading Entitlement 98.00 / Balance 0.00, because a
+   * pre-508d3acd year-open had credited him 98 days and the corrective adjustment had taken them back
+   * again. Both rows are still in the ledger; the card was summing them. The apply dropdown
+   * (`mayAppearInApplyMenu`) HAD always gated, which is why the same screen said he could apply for 0.00
+   * of a type it was still showing him.
+   *
+   * WHY IT IS A FLAG AND NOT AN UNCONDITIONAL FILTER, which is the part that must not be simplified
+   * away. HR has to be able to SEE those rows — they are the 5,390 days of wrongly-granted Maternity
+   * Leave this item's remediation report lists (`scripts/report-ineligible-leave-balances.ts`), and a
+   * reversal nobody can see is a reversal nobody can check. So it follows `includeHidden` exactly: the
+   * restrictive answer is the default, employee self-service keeps it, and the two ADMIN screens plus
+   * the shared-pool summer opt out and say why at their call sites.
+   *
+   * IT IS THE IDENTITY HALF ONLY — `isProfileEligible`, never `isLeaveEligible`. Minimum service and
+   * probation say when somebody may TAKE leave, not whose leave it is, and the reporter asked in these
+   * words that minimum service must not hide a card. See 508d3acd's note on the tail below.
+   */
+  includeIneligible?: boolean;
+  /**
+   * ec991c2a — keep leave types an administrator has ARCHIVED. Default false: self-service does not show
+   * a retired type, which is the whole of this item.
+   *
+   * WHY THE DEFAULT IS THE RESTRICTIVE ONE, matching `includeHidden`: every one of the three tails below
+   * can only produce an archived row from HISTORY (an old ledger entry or an old pending request) — the
+   * eligible-but-inactive tail reads `types`, which has excluded archived types since R18. So "archived"
+   * on this read always means "a type this employee once used and HR has since retired", and an employee
+   * choosing from this list must not be offered it. A future caller that forgets the flag therefore gets
+   * the employee-safe answer, and only a caller that can say why opts out.
+   *
+   * WHO OPTS OUT, and there are three:
+   *   1. Employee Balances and 2. the Personnel leave card — the ADMIN screens, same reason as
+   *      `includeHidden`: retiring a type is a statement about what EMPLOYEES see, and HR answering
+   *      "what does this person hold" must still see the 759 days sitting under a retired ANNUAL.
+   *   3. `sharedLeaveGroupBalances` — the shared-pool summer, which displays no type name at all and must
+   *      keep summing every member type or the figure on screen stops matching the engine's verdict.
+   *
+   * WHAT THIS DOES NOT TOUCH: `leaveRequestsFor` / the ledger. A request already applied for or approved
+   * under an archived type keeps rendering in leave history exactly as it does today
+   * (test/leave-archived-type-hidden.test.ts pins it). This hides the type from the list an employee
+   * CHOOSES from; it does not rewrite what they have already taken.
+   */
+  includeArchived?: boolean;
+  /**
+   * 3ddae357 — POINT-IN-TIME cut-off, `YYYY-MM-DD`. Ledger rows count when `effective_on <= asOf`, and a
+   * pending request counts when it STARTS on or before it. OMIT for the running total: absent ⇒ the
+   * whole ledger and every pending request, which is what every caller but Employee Balances wants.
+   */
+  asOf?: string;
+};
+export function leaveBalances(ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, existingTx?: Tx, inputs?: OwnLeaveInputs) {
+  return withReadTx(ctx, existingTx, tx => leaveBalancesTx(tx, ctx, employmentId, locale, opts, inputs),{presentationSnapshot:true});
+}
+/** Explicit transaction seam for snapshot report consumers; the same canonical calculation and defaults.
+ *  `inputs` (bundled own leave inputs, core/own-leave-inputs.ts) answers each statement below for the employment and
+ *  transaction they were read for; every line of the calculation is the same either way. */
+export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId: string, locale?: string, opts: LeaveBalanceReadOptions = {}, inputs?: OwnLeaveInputs) {
+    const asOf = opts.asOf;
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const [rows, pend, takenFiled, unpaidFiled, recalcEarnedBy] = await Promise.all([
+      own ? own.ledgerTotalsByType(asOf) : tx
+        .select({
+          leaveTypeId: leaveType.id,
+          leaveType: leaveType.name,
+          // r389 (62a1bec1): the accrual / in-lieu HALF of Earned to Date. The recalculation half is
+          // `recalcEarnedBy` below, added in the row map — see `earnedRecalcDaysBy`.
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual', 'in_lieu_accrual')), 0)`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        })
+        .from(leaveLedger)
+        .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
+        // `effective_on` is NOT NULL, so the dated cut needs no schema change and no null branch. With no
+        // `asOf` this is the single-term `where` it always was — see the byte-identical note above.
+        .where(
+          asOf
+            ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
+            : eq(leaveLedger.employmentId, employmentId),
+        )
+        .groupBy(leaveType.id, leaveType.name)
+        // Ordered by leave type id, here and in the bundled answer: the row order decides the order of `out`, and so of
+        // a pool's `contributingLeaveTypes`; without an ORDER BY it was whatever the grouping plan produced.
+        .orderBy(leaveType.id),
+      own ? own.pendingDaysByType(asOf) : tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          leaveType: leaveType.name,
+          pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+        })
+        .from(leaveRequest)
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        // A pending request has no ledger row yet, so it has no `effective_on` to cut on — its LEAVE DATES
+        // are the only date it carries. Bounding on `start_date <= asOf` is "pending approval affecting the
+        // position at this date": a request that has not begun by `asOf` was not yet weighing on it. The
+        // request's whole `days` then counts, not the part before `asOf` — a pending request is an
+        // all-or-nothing claim on the balance until it is decided, and splitting it would report a figure
+        // no approval could ever produce.
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'pending'),
+            ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
+          ),
+        )
+        .groupBy(leaveRequest.leaveTypeId, leaveType.name)
+        .orderBy(leaveRequest.leaveTypeId),
+      /**
+       * 39136455 — TAKEN, ATTRIBUTED TO THE LEAVE CODE IT WAS FILED UNDER.
+       *
+       * A pooled type spends the SOURCE's ledger (core/leave.ts `balanceTypeId`), so an Emergency Leave
+       * application lands as a debit on Annual Leave's rows and `rows` above counts it as Annual taken.
+       * That is correct about the POOL and useless to HR, who asked how much Emergency Leave this person
+       * has actually taken.
+       *
+       * `leave_ledger.source_request_id` already carries the request, and the request carries the type the
+       * employee chose. So the attribution needs no new column and no new write — COALESCE back to the
+       * ledger's own type for every row that has no request behind it (a grant, an adjustment, a carry, an
+       * expiry), which belongs to the pool and is not a share of anything.
+       *
+       * Identical to `rows`'s own filter and date cut, or the two would disagree about which rows exist.
+       */
+      own ? own.debitsByFiledType(asOf) : tx
+        .select({
+          filedTypeId: sql<string>`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+        })
+        .from(leaveLedger)
+        .leftJoin(leaveRequest, eq(leaveRequest.id, leaveLedger.sourceRequestId))
+        .where(
+          asOf
+            ? and(eq(leaveLedger.employmentId, employmentId), lte(leaveLedger.effectiveOn, asOf))
+            : eq(leaveLedger.employmentId, employmentId),
+        )
+        .groupBy(sql`coalesce(${leaveRequest.leaveTypeId}, ${leaveLedger.leaveTypeId})`),
+      /**
+       * 690d4400 — THE UNPAID HALF OF "TAKEN", WITHOUT WHICH THE COLUMN UNDER-REPORTS ABSENCE.
+       *
+       * `finalizeLeaveApproval` writes the ledger debit as `-(approvedDays - unpaidDays)`: only the part
+       * that came OUT OF A BALANCE. For a fully unpaid leave those are equal, so the debit row is written
+       * with 0.00 — the row exists, it is zero — and a Taken column that reads debits faithfully reports
+       * 0.00 for someone who was absent all week. That is the reported fault, and it is not UPL-specific:
+       * any request with non-zero `unpaid_days` under-reports by exactly that much, including a PAID type
+       * that went part-unpaid when the balance ran out.
+       *
+       * `leave_request.unpaid_days` carries the missing half (schema: "Anything that reads `days` as 'days
+       * deducted from the balance' must subtract this"), so absence = debit + unpaid, and no new stored
+       * figure is needed. Summed from the REQUEST rather than joined onto the ledger so a request can never
+       * be counted twice, and grouped by the type it was FILED under — the same attribution r306 chose.
+       *
+       * Split survivors (r302) each carry their own `days` and `unpaid_days`, so a partially cancelled
+       * leave contributes only what actually survived.
+       */
+      own ? own.unpaidDaysByType(asOf) : tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          unpaid: sql<string>`coalesce(sum(${leaveRequest.unpaidDays}), 0)`,
+        })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'approved'),
+            // The same cut the ledger debits use: a debit is dated on the request's start date.
+            ...(asOf ? [lte(leaveRequest.startDate, asOf)] : []),
+          ),
+        )
+        .groupBy(leaveRequest.leaveTypeId),
+      // r389 (62a1bec1) — the automatic recalculations the engines granted, decided by the kernel's
+      // `isEarnedToDateRow` exactly as the breakdown walk decides them. Same date cut as `rows`.
+      earnedRecalcDaysBy(tx, [employmentId], asOf, own),
+    ]);
+    const pendingBy = new Map(pend.map((p) => [p.leaveTypeId, Number(p.pending)]));
+    // 690d4400 — TAKEN IS ABSENCE, not balance spend: the days the employee was away. `taken` from the
+    // debits is only the part that came out of a balance; the unpaid remainder is added back here so the
+    // column answers the question its heading asks. Balance is untouched by this — it is
+    // `sum(leave_ledger.days)` and is never re-derived from these columns (6574c6b4).
+    const unpaidFiledBy = new Map(unpaidFiled.map((u) => [u.leaveTypeId, Number(u.unpaid)]));
+    const takenFiledBy = new Map<string, number>();
+    for (const t of takenFiled) {
+      takenFiledBy.set(t.filedTypeId, Number(t.taken));
+    }
+    for (const [typeId, unpaid] of unpaidFiledBy) {
+      if (unpaid === 0) continue;
+      takenFiledBy.set(typeId, Math.round(((takenFiledBy.get(typeId) ?? 0) + unpaid) * 100) / 100);
+    }
+    const out = rows.map((r) => {
+      const pending = pendingBy.get(r.leaveTypeId) ?? 0;
+      const balance = Number(r.balance);
+      // r389 (62a1bec1) — EARNED TO DATE, both halves. Before r389 this was the accrual/in-lieu sum alone, so
+      // the Personnel record's "of N" and My Team's Entitled column left out every automatic recalculation
+      // the engines had granted. Untouched (to the byte) for a type with no recalculation.
+      const recalc = recalcEarnedBy.get(`${employmentId}|${r.leaveTypeId}`);
+      return {
+        leaveTypeId: r.leaveTypeId,
+        leaveType: r.leaveType,
+        accrued: recalc == null ? Number(r.accrued) : Math.round((Number(r.accrued) + recalc) * 100) / 100,
+        // 690d4400 — the ABSENCE figure, filed-type attributed. Falls back to the ledger's own debit total
+        // only for a type that produced no request rows at all (a pure adjustment history).
+        taken: takenFiledBy.get(r.leaveTypeId) ?? Number(r.taken),
+        pending,
+        balance,
+        // What the employee can still book: ledger balance minus not-yet-decided requests.
+        // r355 (4c63b37e) — ROUNDED TO 2dp AT THE SOURCE, which is where core/leave.ts's twin already rounds
+        // (`availableLeaveBalance` :1744 and `leaveTypeApplySummary` :1843, both `round2(balance - pending)`).
+        // The two terms are each exact — `Number()` of a Postgres `numeric` sum — but their DIFFERENCE is
+        // binary floating point: 0.30 − 0.10 is 0.19999999999999998 here. That is not a rendering nit.
+        // lib/day-format.ts states as its first rule that it "MUST NOT ROUND ANYTHING THE ENGINE COMPUTED …
+        // every value that reaches it is already 2dp", so an unrounded figure makes `formatDays` narrow rather
+        // than widen — the one thing it says it may not do — and `deriveBalanceRow` derives Overutilized as
+        // `Math.max(0, -available)`, which turns a −1e-16 residue into a non-zero overdraw. Rounded HERE, not
+        // at a column, so every consumer of `leaveBalances().available` reads the digits the guard would.
+        available: Math.round((balance - pending) * 100) / 100,
+        // Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
+        // resolved (missing key ⇒ visible). Placeholder = all-visible; overwritten in the final pass once
+        // the active-type configs are fetched below, so render sites gate without a second query.
+        essView: resolveEssView(null) as ResolvedEssView,
+        // Leave Type Visual Configuration (639fdf77): DISPLAY-ONLY colour theme + icon + code, filled in the
+        // final pass below (one select over the seen type ids). null ⇒ default styling / code-keyed icon.
+        color: null as string | null,
+        icon: null as string | null,
+        code: null as string | null,
+        // 5ff7daff: the ROLE marker travels with the balance for the same reason it travels with every other
+        // leave-type read (65f466e2) — the surfaces that decide what an employee SEES for a type (My Leave's
+        // Replacement Leave card and its per-credit panel) must ask the role, not a code the tenant never
+        // used. null = unclassified ⇒ callers fall back to the code, i.e. pre-5ff7daff behaviour exactly.
+        role: null as string | null,
+        // Leave grouping visibility (b653ac1b): the HR-resolved placement ('primary'|'secondary'|'hidden')
+        // for this type on the /me Leave tab. Placeholder; overwritten in the final pass once code +
+        // ess_placement + visible_to_employee are known (resolvePlacement, lib/leave-groups.ts). The planned
+        // cards-and-groups renderer (6d78f373) reads this to decide the type's card/group/hidden slot.
+        placement: 'secondary' as EssPlacement,
+        // r209 — filled in the pooling pass below; null for every type that spends its own balance.
+        sharedBalance: null as SharedLeaveBalanceInfo | null,
+        // 39136455 — the pooled TRANSFER, filled in the same pass. 0 for every type that is not in a pool:
+        // a type that spends its own balance shares nothing with anybody, which is an honest 0.00 rather
+        // than a null, because the question "how many days moved" always has an answer for such a type.
+        share: 0,
+        pendingShare: 0,
+      };
+    });
+    // Types with pending requests but no ledger entries yet (e.g. non-accrued sick leave)
+    // must still surface, or the pending request is invisible.
+    const seen = new Set(out.map((r) => r.leaveTypeId));
+    for (const p of pend) {
+      if (seen.has(p.leaveTypeId)) continue;
+      const pending = Number(p.pending);
+      out.push({
+        leaveTypeId: p.leaveTypeId,
+        leaveType: p.leaveType,
+        accrued: 0,
+        taken: 0,
+        pending,
+        balance: 0,
+        available: -pending,
+        essView: resolveEssView(null) as ResolvedEssView,
+        color: null as string | null,
+        icon: null as string | null,
+        code: null as string | null,
+        role: null as string | null,
+        // Leave grouping visibility (b653ac1b): placeholder, overwritten in the final pass. See rows.map above.
+        placement: 'secondary' as EssPlacement,
+        sharedBalance: null as SharedLeaveBalanceInfo | null,
+        share: 0,
+        pendingShare: 0,
+      });
+      seen.add(p.leaveTypeId);
+    }
+    // 2F-1 (R18): surface every active leave type the employee is ELIGIBLE for — even with no activity
+    // yet — so the list is the full menu, not just types they've already accrued or requested.
+    const typePresentation = {
+      id: leaveType.id, color: leaveType.color, icon: leaveType.icon, code: leaveType.code,
+      role: leaveType.role, essPlacement: leaveType.essPlacement, visibleToEmployee: leaveType.visibleToEmployee,
+      balanceSourceTypeId: leaveType.balanceSourceTypeId, archivedAt: leaveType.archivedAt,
+      eligibility: leaveType.eligibility,
+    };
+    const typeColumns = { ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig };
+    const profileColumns = { gender: person.gender, marital: person.maritalStatus, hiredOn: employment.hiredOn, orgDivision: employment.orgDivision, orgBranch: employment.orgBranch, orgRegion: employment.orgRegion, orgLine: employment.orgLine, orgSection: employment.orgSection, orgTeam: employment.orgTeam, orgBase: employment.orgBase, employmentCategory: employment.employmentCategory };
+    // Ordered by id for the same reason as `rows`: the eligible-but-inactive tail below follows this order.
+    const typesQuery = tx.select(typeColumns).from(leaveType).where(isNull(leaveType.archivedAt)).orderBy(leaveType.id);
+    const profileQuery = tx
+        .select(profileColumns)
+        .from(employment)
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(eq(employment.id, employmentId))
+        .limit(1);
+    type TypeRow = Awaited<typeof typesQuery>[number];
+    const [types, [emp]] = own
+      ? ([own.typeRows<TypeRow>(typeColumns, (type) => type.archivedAt === null, true), own.employmentRows<Awaited<typeof profileQuery>[number]>(profileColumns)] as const)
+      : await Promise.all([typesQuery, profileQuery]);
+    const today = todayInKualaLumpur();
+    for (const lt of types) {
+      if (seen.has(lt.id)) continue;
+      // 508d3acd — `isProfileEligible`, NOT `isLeaveEligible`. The reporter asked in these words that
+      // minimum service must not hide a card, and it could: Annual Leave carries a one-month rule on this
+      // account, so a brand-new joiner with no activity yet would have had no Annual Leave card at all.
+      // Identity conditions still hide one, which is the whole point of the item.
+      //
+      // ⚠️ AN UNRECORDED ATTRIBUTE DOES NOT MATCH A CONFIGURED LIST. `emp.gender ?? ''` is compared
+      // against the type's list, so an employee whose gender is blank fails every gender-restricted type.
+      // On the reporting account that is 55 of 75 active employees, and it is why the plan said so in
+      // plain words rather than letting them discover it: the fix is to fill the profiles in, not to
+      // soften the gate.
+      if (!isProfileEligible(lt.eligibility as LeaveEligibility | null, emp, 'exclude')) continue;
+      out.push({ leaveTypeId: lt.id, leaveType: lt.name, accrued: 0, taken: 0, pending: 0, balance: 0, available: 0, essView: resolveEssView(null) as ResolvedEssView, color: null as string | null, icon: null as string | null, code: null as string | null, role: null as string | null, placement: 'secondary' as EssPlacement, sharedBalance: null as SharedLeaveBalanceInfo | null, share: 0, pendingShare: 0 });
+    }
+    // R37 (2F-2): resolve every leave-type name to the viewer's locale (active types come from `types`;
+    // archived types with old ledger entries fall back to their stored English name).
+    const localName = new Map(types.map((t) => [t.id, pickName(t.name, t.i18n, locale)]));
+    // Employee Leave View Configuration (65dec703): resolve each active type's ESS-view config (missing ⇒
+    // all-visible). Archived types with only old ledger entries keep the all-visible placeholder set above.
+    const essViewByType = new Map(types.map((t) => [t.id, resolveEssView(t.essViewConfig as Record<string, boolean> | null)]));
+    // The active catalogue already carries presentation and pooling metadata. Only retained
+    // ledger or pending rows outside that catalogue need a second lookup.
+    const visualByType = new Map(types.map(type => [type.id, type] as const));
+    const retainedIds = out.map(row => row.leaveTypeId).filter(id => !visualByType.has(id));
+    if (retainedIds.length > 0) {
+      const retained = own
+        ? own.typeRows<TypeRow>(typeColumns, (type) => retainedIds.includes(type.id))
+        : await tx.select({
+        ...typePresentation, name: leaveType.name, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig,
+      }).from(leaveType).where(inArray(leaveType.id, retainedIds));
+      for (const type of retained) visualByType.set(type.id, type);
+    }
+    for (const r of out) {
+      r.leaveType = localName.get(r.leaveTypeId) ?? r.leaveType;
+      r.essView = essViewByType.get(r.leaveTypeId) ?? r.essView;
+      const v = visualByType.get(r.leaveTypeId);
+      if (v) {
+        r.color = v.color;
+        r.icon = v.icon;
+        r.code = v.code;
+        r.role = v.role;
+      }
+      // Leave grouping visibility (b653ac1b): resolve the HR-editable placement for this type. Precedence
+      // (single source of truth for hidden = visible_to_employee): flag false ⇒ 'hidden'; else an explicit
+      // ess_placement ('primary'|'secondary') wins; else the code-keyed default (lib/leave-groups.ts). This
+      // is PRESENTATION metadata only — it does not filter `out` here (7b11f1c1's flag gate below owns the
+      // ESS drop); the planned 6d78f373 cards-and-groups renderer consumes r.placement.
+      // 5ff7daff: the ROLE goes in too. `PRIMARY_CODES` holds the codes the seed writes, and this tenant's
+      // replacement type is coded `RL` — so a role-classified type with an unseeded code used to fall out
+      // of the Primary cards and into an "Other" group. Role is a DEFAULT only: an explicit ess_placement
+      // and the visibility flag still win, above.
+      r.placement = resolvePlacement(
+        v?.code ?? r.code,
+        v?.essPlacement ?? null,
+        v?.visibleToEmployee ?? null,
+        v?.role ?? r.role ?? null,
+      );
+    }
+    /**
+     * r209 — THE SHARED POOL, READ AS ONE FIGURE.
+     *
+     * `leave_type.balance_source_type_id` has worked in the ENGINE since cdf9ca48: `resolveBalanceSourceTypeId`
+     * moves the submit guard and the approval debit to the source type, and `balanceSpenderTypeIds` reserves
+     * the pending days of EVERY type that spends it. This read did none of that — it grouped the ledger by
+     * leave type and stopped — so a borrowing type showed a permanently empty ledger of its own. On
+     * production that is Emergency Leave reading 0.00 next to the Annual Leave balance it actually spends.
+     *
+     * WHAT THIS PASS DOES, and each part matches a line of the engine it has to agree with:
+     *   · `balance` / `accrued` / `taken` come from the SOURCE row, because the source's ledger IS the pool —
+     *     every debit for every member landed there (core/leave.ts, `balanceTypeId`).
+     *   · `pending` is the sum over the SOURCE AND EVERY BORROWER, which is exactly `balanceSpenderTypeIds`'
+     *     reservation. This corrects the source type too: a pending Emergency application reserves Annual
+     *     days at approval time, and until now Annual's own "Available" did not know it.
+     *   · `available = balance − pending`, so the figure on screen is the one the submit guard will use, and
+     *     an application that the screen says fits cannot be refused for not fitting.
+     *   · `sharedBalance` names the pool and every type in it, so the employee is never left guessing whether
+     *     a number is per type or shared.
+     *
+     * NO SECOND POOLING MECHANISM. This reads the column the product already has; shared leave GROUPS
+     * (core/leave-shared-group.ts) are a different, TAKING-side limit and are untouched.
+     *
+     * A tenant with no `balance_source_type_id` anywhere takes the `pools.size === 0` exit and every figure
+     * is byte-identical to before.
+     */
+    const pools = new Map<string, string[]>(); // source type id → member type ids (source included)
+    for (const r of out) {
+      const src = visualByType.get(r.leaveTypeId)?.balanceSourceTypeId;
+      if (!src) continue;
+      const members = pools.get(src);
+      if (members) members.push(r.leaveTypeId);
+      else pools.set(src, [src, r.leaveTypeId]);
+    }
+    if (pools.size > 0) {
+      const rowById = new Map(out.map((r) => [r.leaveTypeId, r]));
+      for (const [sourceId, memberIds] of pools) {
+        const source = rowById.get(sourceId);
+        // The source type is archived, hidden from this employee's eligible set, or otherwise absent from
+        // `out`. There is no pooled figure to show and inventing one from the borrowers alone would be a
+        // number no ledger holds — leave every member exactly as it was.
+        if (!source) continue;
+        const members = memberIds.map((id) => rowById.get(id)).filter((x): x is typeof source => x != null);
+        const pooledPending = members.reduce((n, m) => n + m.pending, 0);
+        /**
+         * 39136455 — EACH ROW TELLS ITS OWN STORY, AND THE TRANSFER IS A COLUMN.
+         *
+         * r209 gave every member the SOURCE's figures, because before it a borrower showed its own
+         * permanently-empty ledger (Emergency Leave 0.00 beside an Annual balance it could in fact spend)
+         * with nothing naming the connection. That was the right fix for the wrong half of the problem: it
+         * made the Emergency row readable and made it impossible to see how much Emergency Leave anybody
+         * had actually taken, because the figure shown was the pool's.
+         *
+         * So the mirroring stops, and Share / Pending Share carry what it was hiding:
+         *   · `taken` is now the days filed under THIS code (takenFiledBy, above).
+         *   · `pending` is this code's own reservation — `pendingBy` already grouped by the FILED type; it
+         *     was only the line below that overwrote it with the pool's.
+         *   · `share` is the finalised transfer: what a borrower took, and on the source the sum of what every
+         *     borrower took. ⚠️ 2a57a007 REMOVED THE MINUS the source used to carry — see the comment on the
+         *     line that decides the sign, below, which also restates why the balance invariant is unaffected.
+         *   · `pendingShare` is the same for days still awaiting approval.
+         *   · a borrower's `accrued` and `balance` are 0.00 — it has no entitlement and no balance of its
+         *     own, which is the honest statement and the one the reporter asked for. The POOL's balance
+         *     stays on the source, shown once, on the row that owns it.
+         *
+         * ⚠️ `available` STAYS POOLED FOR EVERY MEMBER, and that is not an inconsistency with `balance`
+         * being 0. They answer different questions: `balance` is "what does this code hold" (nothing — it
+         * borrows) and `available` is "how much can this person still book against it" (the pool's). The
+         * submit guard and the apply form read `available`; zeroing it would make Emergency Leave
+         * unapplyable for everyone, which is the defect this change is one careless line away from.
+         *
+         * THE INVARIANT: across a pool, sum(balance) equals the pool's own ledger balance. It holds because
+         * a borrower's `balance` is 0 and the source keeps its own — NOT because of the sign on `share`,
+         * which is a display column nothing sums. 2a57a007 flipped that sign and this invariant did not move.
+         */
+        const borrowers = members.filter((m) => m.leaveTypeId !== sourceId);
+        const lentOut = borrowers.reduce((n, m) => n + (takenFiledBy.get(m.leaveTypeId) ?? 0), 0);
+        const lentPending = borrowers.reduce((n, m) => n + m.pending, 0);
+        /**
+         * 2a57a007 — the pool's Share is a SUM over the borrowers, and a sum cannot say who spent it. The
+         * same figures, itemised by the code the days were filed under, so the badge beside the figure, the
+         * Explain panel's per-type list and the export's two source columns read ONE list instead of three
+         * derivations of it. Positive, like the columns they add up to. `|| 0` for the same `-0` reason the
+         * columns carry it. Built from `takenFiledBy` / `m.pending` — the very maps the columns come from,
+         * never a second query — so an itemised list that disagreed with its own total is not representable.
+         */
+        const contributions = borrowers
+          .map((m) => ({
+            leaveTypeId: m.leaveTypeId,
+            leaveType: m.leaveType,
+            code: m.code,
+            share: (takenFiledBy.get(m.leaveTypeId) ?? 0) || 0,
+            pendingShare: m.pending || 0,
+          }))
+          // ORDERED, because badges sit side by side and a set that reorders between two requests reads as
+          // the figures having changed. The key is the grid's OWN default sort key (`r.code || r.leaveType`,
+          // app/leave/employee-balances/rows.ts), so the badges name the borrowers in the order their rows
+          // appear below — never the order the query happened to return them in.
+          .sort((x, y) =>
+            (x.code || x.leaveType).localeCompare(y.code || y.leaveType, locale, { sensitivity: 'base' }),
+          );
+        const info: SharedLeaveBalanceInfo = {
+          sourceLeaveTypeId: sourceId,
+          sourceLeaveTypeName: source.leaveType,
+          contributingLeaveTypes: members.map((m) => m.leaveType),
+          contributions,
+        };
+        for (const m of members) {
+          const isSource = m.leaveTypeId === sourceId;
+          const ownTaken = takenFiledBy.get(m.leaveTypeId) ?? 0;
+          m.taken = ownTaken;
+          /**
+           * 2a57a007 — THE SIGN IS DECIDED HERE, AND IT IS NO LONGER SIGNED. READ THIS BEFORE RESTORING A MINUS.
+           *
+           * 39136455 (the header above) modelled the pooled transfer as a SIGNED one: the pool carried −N and
+           * the borrower +N, so the two cancelled. The reporter reads the pool row as a deduction taken twice —
+           * Annual Leave already shows the days under its own Balance, and a −1.00 beside it says the pool lost
+           * them again. Every other figure on this grid is a magnitude; Share is the only column that was not.
+           *
+           * ⚠️ THE INVARIANT IN THE HEADER ABOVE IS ABOUT `balance`, NOT ABOUT THIS COLUMN, and it is untouched.
+           * "Across a pool, sum(balance) equals the pool's own ledger balance" still holds for the reason it
+           * always did: a borrower's `balance` is set to 0 eight lines below and the source keeps its own ledger
+           * figure. NOTHING sums `share` or `pendingShare` — they are rendered (app/leave/employee-balances/
+           * page.tsx, components/leave/leave-balance-table.tsx), passed through (rows.ts, leave-balance-row.ts)
+           * and exported (export/route.ts), and no consumer performs arithmetic on either. Flipping the DISPLAY
+           * sign therefore cannot move a balance, and test/2a57a007-el-shared-pool-display.test.ts pins both
+           * halves: the columns are positive AND the pool's balance is byte-identical.
+           *
+           * ⚠️ `|| 0` IS STILL NOT REDUNDANT, and it is not here for the negation that used to be above it.
+           * `-0` is a real JavaScript value that formats as "-0.00" on the grid, and `takenFiledBy` holds
+           * `Math.round(x * 100) / 100` values, which is a `-0` factory for any tiny negative. A row that lent
+           * nothing out must print "0.00"; `|| 0` is what guarantees it, on BOTH halves and in `contributions`.
+           */
+          m.share = isSource ? lentOut || 0 : ownTaken || 0;
+          m.pendingShare = isSource ? lentPending || 0 : m.pending || 0;
+          if (!isSource) {
+            m.accrued = 0;
+            m.balance = 0;
+          }
+          // What this person can still BOOK against this code is the pool's, for every member.
+          // r355 (4c63b37e) — rounded for the same reason the unpooled expression above is: `pooledPending`
+          // is a sum over every member, so it accumulates residue faster than the single-type case.
+          m.available = Math.round((source.balance - pooledPending) * 100) / 100;
+          m.sharedBalance = info;
+        }
+      }
+    }
+
+    // Leave Type Employee Visibility (7b11f1c1) — visibility gate. HR can hide a whole leave type from the
+    // /me Leave tab (visible_to_employee=false) — its balance, its pending request, and its no-activity menu
+    // entry all disappear. SINGLE choke point covering all three ways a row enters `out` (ledger rows, the
+    // pending-only tail, the eligible-no-activity tail): build the hidden-type-id set from the active `types`
+    // select and filter `out` once here. NULL ⇒ visible (backward compatible). Archived types (present only
+    // via old ledger rows, not in `types`) are never flagged hidden — they are dropped by the SEPARATE
+    // archived gate immediately below (ec991c2a), which is a different question with a different flag.
+    //
+    // 994a5287: the gate is SELF-SERVICE ONLY, which is what `includeHidden` now makes true rather than
+    // merely asserted. Hiding a leave type from employees is a statement about what THEY see; it was never
+    // meant to remove the type from HR's own Employee Balances screen, and doing so is exactly the "some
+    // Leave Types may not appear" the reporter raised. Admin callers pass includeHidden and see everything.
+    // Because a hidden type is dropped here for self-service, leaveEntitlementBreakdown is never requested
+    // for it on that path (it is called per surviving balance row), so no separate change is needed there.
+    const hiddenTypeIds = new Set(types.filter((t) => t.visibleToEmployee === false).map((t) => t.id));
+    const visible =
+      opts.includeHidden || hiddenTypeIds.size === 0
+        ? out
+        : out.filter((r) => !hiddenTypeIds.has(r.leaveTypeId));
+
+    /**
+     * a0b90c81 — A MEMBER OF A PLACED SHARED GROUP DRAWS NO CARD OF ITS OWN.
+     *
+     * The reporter asked for the six Special Leave reason cards to come off My Leave, leaving the one
+     * pooled card. The switch that hides a type — `visible_to_employee` — could not do it: hiding a card
+     * and removing the type from Request Leave are the SAME flag (`mayAppearInApplyMenu` excludes any type
+     * resolving to 'hidden'), so using it would have taken every Special Leave reason out of the apply
+     * dropdown, including the per-reason Apply buttons built for them in the same round. That was reported
+     * back rather than worked around, and this is the mechanism approved in its place.
+     *
+     * The rule is structural, so it cannot be misconfigured and it applies to a group created next year
+     * without anyone remembering a switch: if a type's balance IS the pool's, a separate card for it was
+     * never telling the employee anything the pooled card does not already say.
+     *
+     * ⚠️ THREE THINGS THIS MUST NOT TOUCH, each of which is a way it could ship wrong.
+     *
+     *  1. THE POOLED FIGURE. `sharedLeaveGroupBalances` calls this read with `includeHidden: true`
+     *     precisely so that member visibility is not an input to any figure — see that flag's note above.
+     *     Gating on the SAME flag keeps it that way: the summer takes the unfiltered list, so the number on
+     *     screen still cannot drift from the verdict `enforceSharedLeaveGroupLimit` gives. A filter applied
+     *     unconditionally here would make the pool depend on which cards happen to be drawn.
+     *  2. APPLYING. `mayAppearInApplyMenu` is untouched. Every reason stays in Request Leave — grouped
+     *     under the pool's name by the <optgroup> in components/leave-duration-fields.tsx — so this drops a
+     *     CARD, never a right to apply. That distinction is the whole item.
+     *     ⚠️ r355 (8d3a7bff): this sentence used to read "Request Leave AND the details screen". The
+     *     details screen (/leave/shared/[groupId]) is deleted, so the Request Leave picker is now the ONLY
+     *     apply path for a folded reason and the clause naming a second one would have been false. The
+     *     claim this paragraph makes is unchanged and is now carried by one surface instead of two.
+     *  3. HR's SCREENS. Employee Balances and the Personnel leave card pass `includeHidden`, so they keep
+     *     showing every member type for every employee, which is what 994a5287 established.
+     *
+     * A GROUP THAT IS ITSELF HIDDEN CHANGES NOTHING. Its members keep their own cards — dropping them
+     * would leave the employee with no way to see those balances at all, since the group draws no card to
+     * absorb them. Placement defaults to Hidden (migration 0438), so no existing group starts folding its
+     * members the morning after this release.
+     *
+     * ACTIVITY DOES NOT SAVE A CARD, AND THAT IS A DECISION RATHER THAN AN ORDERING ACCIDENT. r315
+     * established that activity on a type keeps its card (508d3acd, edge case 1). POOLING wins here:
+     * the pooled card already reflects that activity, because every debit for a borrower landed on the
+     * pool's own ledger. Pinned in both directions in test/a0b90c81-shared-group-cards.test.ts.
+     *
+     * ⚠️ AND MEMBERSHIP ALONE DOES NOT COST A CARD — see the gate at the bottom of this block, which is
+     * where the WHOLE rule lives, both halves of it (r341 8d3a7bff, r343 1478c281). A member keeps its own
+     * card while it holds its own days. It is folded when its balance IS the pool's, and also when its own
+     * ledger holds no days at all — there is then no balance on it the merged card is not already showing.
+     */
+    const pooledAway = await (async () => {
+      if (opts.includeHidden) return visible;
+      const members = own ? own.sharedGroupMembers() : await tx
+        .select({
+          leaveTypeId: leaveSharedGroupMember.leaveTypeId,
+          placement: leaveSharedGroup.essPlacement,
+        })
+        .from(leaveSharedGroupMember)
+        .innerJoin(leaveSharedGroup, eq(leaveSharedGroup.id, leaveSharedGroupMember.groupId));
+      const folded = new Set(
+        members
+          .filter((m) => resolveSharedGroupPlacement(m.placement) !== 'hidden')
+          .map((m) => m.leaveTypeId),
+      );
+      /**
+       * ⚠️ r341 (8d3a7bff) — THE GATE IS THE POOLING POINTER, AND MEMBERSHIP ALONE IS NOT ENOUGH.
+       *
+       * The header above says the rule is "if a type's balance IS the pool's" — structural, keyed on where
+       * the days live. The first cut did not implement that: it folded EVERY member of a placed group, so
+       * membership alone took a card away. Re-measured on production 2026-09-26: the "Special Leave" group
+       * holds CGL CPL EXM GD MRL NDL STD and is placed 'primary', while only CPL and NDL carry
+       * `balance_source_type_id` → SP. Marriage Leave holds 177.00 days of its OWN across 59 employments and
+       * was being folded into a pooled card that does not contain them — 59 people could not see a balance
+       * they can actually spend. CGL/EXM/GD/STD sit at 0.00 today, which r341 took to be no reason to fold
+       * them either: the day an entitlement table is written for one of them the same defect returns.
+       * ⚠️ THAT LAST SENTENCE IS NO LONGER THE RULE — r343 folds them and answers the objection a different
+       * way. Read the r343 paragraph below before acting on this one.
+       *
+       * `isPoolBorrower` is the ONE named answer to "is this row's balance somebody else's" (r340,
+       * lib/shared-leave-balance.ts) and the pooling pass eight lines above has already set it from
+       * `balance_source_type_id`. So a folded card is only ever one whose figures the pool's card repeats
+       * verbatim — which is the whole justification the header gives for folding at all.
+       *
+       * ⚠️ DO NOT WIDEN THIS BACK TO `folded.has(r.leaveTypeId)` ALONE. The two member sets differ BY
+       * DESIGN: a shared GROUP is a combined CEILING on what may be taken (`enforceSharedLeaveGroupLimit`),
+       * `balance_source_type_id` is a LEDGER ROUTE. Reconciling them would either put five types on a
+       * balance they do not draw or drop five from a ceiling that caps them. A member that keeps its card
+       * says so on the card instead (the group's ceiling line, app/leave/page.tsx).
+       * Pinned in test/8d3a7bff-special-leave-one-card.test.ts.
+       *
+       * ⚠️ r343 (1478c281) — AND THE SECOND CONDITION, IN THIS SAME GATE: A MEMBER THAT HOLDS NOTHING OF ITS
+       * OWN DRAWS NO CARD EITHER.
+       *
+       * r341 was right about Marriage Leave and wrong about the four members sitting at 0.00. The paragraph
+       * above argued that a zero today is no reason to fold, because "the day an entitlement table is written
+       * for one of them the same defect returns" — and that is answered, not ignored: the condition is keyed
+       * on the LEDGER, so the day one of them is granted a day its card is back, carrying that day AND its
+       * caption, with nobody un-hiding anything. What r341 actually shipped was FIVE new cards on a ticket
+       * asking for fewer: Marriage (the point) plus Caregiver, Examination, Graduation and Study, each with a
+       * balance of 0.00.
+       *
+       * TWO REASONS TO FOLD, BOTH HERE, AND THEY ARE NOT THE SAME REASON:
+       *   · `isPoolBorrower(r)` — this row's balance IS the pool's, so its own card would repeat the pool's
+       *     card verbatim. True however many days have been FILED under it.
+       *   · `holdsNothingOfItsOwn(r)` — this row's own LEDGER holds no days (`accrued`, `taken`, `pending`
+       *     and `balance` each 0.00), so its card shows no balance the merged card is not already showing.
+       *     Read that function before touching this: it states WHICH FOUR figures it reads, the two kinds of
+       *     "nothing" it deliberately does NOT read (an unconfigured entitlement table — r209's trap — and a
+       *     cycle that has not opened), and ⚠️ WHAT THE CARD PRINTS THAT IT NEVER SEES. That last part is the
+       *     one to read before calling this cheap: the card also prints an Entitlement row and the r209
+       *     entitlement-status caption. MEASURED 2026-09-26, correcting an earlier unchecked claim here: the
+       *     reporter's four carry NO entitlement template at all (zero rows, NULL max_balance_days), so they
+       *     are not `capped_by_max_balance`. A capped table clamped
+       *     to 0.00 — `capped_by_max_balance`, a notice-bearing status. So the cards this drops read
+       *     "Entitlement 3.00 / Balance 0.00" under an amber sentence explaining the clamp, and folding takes
+       *     that sentence with them. Measured and recorded in (f) of
+       *     test/1478c281-empty-member-cards.test.ts; HR keeps both via `includeHidden` (994a5287).
+       *
+       * ⚠️ `||`, NOT `&&`, AND THE TWO REASONS MUST NOT BE COLLAPSED BY A LATER READER. Marriage Leave
+       * satisfies NEITHER and keeps its 177.00 days. CPL and NDL satisfy the FIRST whatever they hold — a
+       * borrower with filed days holds something, so `&&` would put their cards back. CGL/EXM/GD/STD satisfy
+       * the SECOND while borrowing from nobody. Each reason is asserted on its own in
+       * test/1478c281-empty-member-cards.test.ts, and so is the card returning with its first granted day.
+       *
+       * ⚠️ STILL ONLY A CARD, FOR BOTH CONDITIONS. `mayAppearInApplyMenu` is not on this path and neither
+       * condition reaches it: every member stays in Request Leave. That is the whole of item a0b90c81 and it
+       * has now survived two narrowings of this gate.
+       */
+      return folded.size === 0
+        ? visible
+        : visible.filter(
+            (r) => !(folded.has(r.leaveTypeId) && (isPoolBorrower(r) || holdsNothingOfItsOwn(r))),
+          );
+    })();
+
+    // ec991c2a — ARCHIVED gate. An administrator archiving a leave type means it is retired; until this
+    // item it still sat in the employee's balance list beside the live ones, because the two ledger/pending
+    // selects above join `leave_type` with no `archived_at` predicate. (The third tail, eligible-but-
+    // inactive, reads `types` and has excluded archived types since R18 — so only HISTORY could produce
+    // one of these rows.) Filtered at the SAME single choke point as the visibility gate, and for the same
+    // reason: three ways into `out` and one place that decides what leaves it.
+    //
+    // WHY HERE AND NOT IN THE TWO `where`s. Adding `archived_at is null` to the joins would have been the
+    // narrower diff and the wrong one: `includeArchived` has to be able to put those rows BACK for the two
+    // admin screens, and a predicate in the SQL cannot be un-applied by a flag without writing each `where`
+    // twice. One gate, one flag, one place to read.
+    //
+    // WHY IT RUNS AFTER THE POOLING PASS (r209), which is load-bearing. When a live type draws its balance
+    // from an archived source, the pool is still the archived type's ledger — that is what the submit guard
+    // and the approval debit actually spend (core/leave.ts, `resolveBalanceSourceTypeId`). Pooling first
+    // and dropping after means the surviving borrower keeps the engine's figure; dropping first would leave
+    // it reading its own empty ledger, i.e. a number no approval could produce.
+    const archivedTypeIds = new Set(
+      [...visualByType.entries()].filter(([, v]) => v.archivedAt != null).map(([id]) => id),
+    );
+    const live =
+      opts.includeArchived || archivedTypeIds.size === 0
+        ? pooledAway
+        : pooledAway.filter((r) => !archivedTypeIds.has(r.leaveTypeId));
+
+    /**
+     * ⚠️ d272834b — THE IDENTITY GATE, ON EVERY ROW RATHER THAN ONLY ON THE ONE IT INVENTS.
+     *
+     * The eligible-but-inactive tail above has asked `isProfileEligible` since 508d3acd, and it answers a
+     * different question from this one:
+     *   · the tail asks "should a card be INVENTED for a type this employee has no activity on?" — always
+     *     gated, no flag, because inventing a Maternity card for a man is never right for anybody;
+     *   · this asks "should a card built from HISTORY be shown TO THIS PERSON?" — gated for self-service,
+     *     kept for HR, because the history is real and somebody has to be able to see it.
+     * They are the SAME predicate called twice, never two copies of the matching logic. That matters: the
+     * gate's own reading of a rule changed in this item (`eligibilityRuleList` — a list holding every
+     * option the picker offers restricts nobody), and a second copy here would have kept the old reading.
+     *
+     * THE SAME CHOKE POINT AS THE OTHER TWO GATES, and for the identical reason: three ways into `out`
+     * and one place that decides what leaves it. It runs AFTER the pooling pass for the reason the
+     * archived gate does — a live borrower must keep the engine's figure even when its source is dropped
+     * here — and it takes the `emp` row already fetched for the tail, so it costs no extra query.
+     *
+     * ⚠️ THIS REVERSES 508d3acd's EDGE CASE 1, which said in those words that activity keeps the card "so
+     * her history is never hidden". The reporter has since asked for the opposite on their own screen, in
+     * this item, and both halves of what they asked for are honoured rather than one: the employee no
+     * longer sees a type that is not theirs, and the history is not hidden — it moved to the screens whose
+     * job is to show it. Pinned in both directions in test/508d3acd-ineligible-grants.test.ts.
+     */
+    const forThisPerson =
+      opts.includeIneligible
+        ? live
+        : live.filter((r) =>
+            isProfileEligible(
+              (visualByType.get(r.leaveTypeId)?.eligibility ?? null) as LeaveEligibility | null,
+              emp,
+              'exclude',
+            ),
+          );
+
+    return forThisPerson.sort((a, b) => a.leaveType.localeCompare(b.leaveType));
+}
+
+// ── Manager Leave Summary (item 726ac8c2) ─────────────────────────────────────────────────────────
+/** One leave type on the read-only Leave Summary section of a subordinate's Personnel profile. */
+export type SubordinateLeaveSummaryRow = {
+  leaveTypeId: string;
+  leaveType: string;
+  /** Ledger balance — the SAME figure `leaveBalances` shows the employee on their own Leave page. */
+  balance: number;
+  /** Requests awaiting a decision: a COUNT OF REQUESTS, not the sum of days `leaveBalances.pending` holds. */
+  pendingCount: number;
+  /** Next approved leave that has not finished yet (inclusive span), or null. */
+  upcomingFrom: string | null;
+  upcomingTo: string | null;
+};
+
+/**
+ * Manager Leave Summary (item 726ac8c2) — the read behind the Leave Summary section on a subordinate's
+ * Personnel profile.
+ *
+ * The reporting-hierarchy restriction is enforced HERE, on the data, and not by hiding the section:
+ * a UI-only check would let a manager read another manager's reports' balances by editing the
+ * employment id in the URL. The gate is the manager branch of `app.can_see_employment` (migration 0109)
+ * verbatim — the same recursive `app.is_admin_report_of` predicate, resolved over EVERY employment the
+ * caller holds — so the section's reach can never drift from the RLS reach it sits inside. `null` ⇒ the
+ * caller does not manage this employment and the page renders nothing.
+ *
+ * The gate is deliberately NARROWER than RLS: self and plain HR-admin viewers get `null` too, because
+ * this is a manager affordance. An employee already has their own Leave page and an admin already has
+ * the full balance card on /admin/personnel; neither needs a second, thinner copy here.
+ *
+ * Balances come from `leaveBalances` — the resolver the employee's own Leave page uses — so a manager
+ * and an employee can never read different numbers for the same leave type.
+ */
+export async function subordinateLeaveSummary(
+  ctx: SessionContext,
+  employmentId: string,
+  todayIso: string,
+  locale?: string, existingTx?: Tx,
+): Promise<SubordinateLeaveSummaryRow[] | null> {
+  const managed = await withReadTx(ctx, existingTx, async (tx) => {
+    const res = await tx.execute(sql`
+      select exists (
+        select 1 from employment me
+          join app_user u on u.person_id = me.person_id
+        where u.id = app.current_user_id()
+          and me.tenant_id = app.current_tenant_id()
+          and me.terminated_on is null
+          and app.is_admin_report_of(${employmentId}::uuid, me.id)
+      ) as ok
+    `);
+    return (res as unknown as { ok: boolean }[])[0]?.ok === true;
+  });
+  if (!managed) return null;
+
+  // ec991c2a — NO `includeArchived`, and that is the deliberate answer rather than an omission. This
+  // section's whole contract (see the docblock) is that a manager and the employee read the same numbers
+  // for the same leave type; the moment the employee's own list stops carrying an archived type, a manager
+  // summary that still carried it would be the two disagreeing. HR's full picture lives on the Personnel
+  // profile and Employee Balances, which both opt in.
+  // d272834b — NO `includeIneligible`, and that is the deliberate answer for the same reason the line
+  // above gives for `includeArchived`: this section's whole contract is that a manager and the employee
+  // read the same numbers for the same leave type. HR's full picture lives on the Personnel profile and
+  // Employee Balances, which both opt in; a manager is not who reverses a wrong grant.
+  const balances = await leaveBalances(ctx, employmentId, locale, { includeArchived: false }, existingTx);
+  if (balances.length === 0) return [];
+
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const [pending, dated, spans] = await Promise.all([
+      tx
+        .select({ leaveTypeId: leaveRequest.leaveTypeId, n: sql<string>`count(*)` })
+        .from(leaveRequest)
+        .where(and(eq(leaveRequest.employmentId, employmentId), eq(leaveRequest.status, 'pending')))
+        .groupBy(leaveRequest.leaveTypeId),
+      // Per-date-approval requests (ADR-0068): only the dates that were actually APPROVED count as
+      // upcoming, so a partially-rejected span never advertises days the employee is not taking.
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          requestId: leaveRequest.id,
+          from: sql<string>`min(${leaveRequestDate.leaveDate})`,
+          to: sql<string>`max(${leaveRequestDate.leaveDate})`,
+        })
+        .from(leaveRequestDate)
+        .innerJoin(leaveRequest, eq(leaveRequest.id, leaveRequestDate.leaveRequestId))
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequestDate.status, 'approved'),
+            gte(leaveRequestDate.leaveDate, todayIso),
+          ),
+        )
+        .groupBy(leaveRequest.leaveTypeId, leaveRequest.id),
+      // Whole-span requests (no per-date rows) — the (a)/(b) split approvedLeaveDates uses. Unlike that
+      // helper this does NOT filter to full_day: a manager planning cover wants to see an upcoming
+      // half-day or hourly absence too; "is this person out all day" is a different question.
+      tx
+        .select({
+          leaveTypeId: leaveRequest.leaveTypeId,
+          from: leaveRequest.startDate,
+          to: leaveRequest.endDate,
+        })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.status, 'approved'),
+            gte(leaveRequest.endDate, todayIso),
+            sql`NOT EXISTS (SELECT 1 FROM leave_request_date x WHERE x.leave_request_id = ${leaveRequest.id})`,
+          ),
+        ),
+    ]);
+    const pendingBy = new Map(pending.map((p) => [p.leaveTypeId, Number(p.n)]));
+    // Earliest-starting upcoming span per type. Both sources feed the same reduction, so a type that has
+    // one of each keeps whichever starts first.
+    const upcomingBy = new Map<string, { from: string; to: string }>();
+    for (const r of [...dated, ...spans]) {
+      const prev = upcomingBy.get(r.leaveTypeId);
+      if (!prev || r.from < prev.from) upcomingBy.set(r.leaveTypeId, { from: r.from, to: r.to });
+    }
+    return balances.map((b) => ({
+      leaveTypeId: b.leaveTypeId,
+      leaveType: b.leaveType,
+      balance: b.balance,
+      pendingCount: pendingBy.get(b.leaveTypeId) ?? 0,
+      upcomingFrom: upcomingBy.get(b.leaveTypeId)?.from ?? null,
+      upcomingTo: upcomingBy.get(b.leaveTypeId)?.to ?? null,
+    }));
+  });
+}
+
+// ── Leave entitlement breakdown (read-only ledger reconstruction) ──────────────────────────────────
+/**
+ * A read-only "how is this balance built up?" view over the existing flat leave_ledger for ONE
+ * (employment, leave-type) as at a chosen date. It RECONSTRUCTS — never tags or mutates — the carry/
+ * forfeit components the year-boundary crons already compute (ADR-0038 model: no new schema, no enum
+ * value), so the figures here can never diverge from what openLeaveYear / expireCarriedLeave produce.
+ *
+ * Date semantics: every ledger read filters `effective_on <= asOf` (a CLOSED interval). A row dated
+ * exactly ON `asOf` — including a forfeit adjustment posted on the carry-expiry date — is therefore
+ * INCLUDED. Picking `asOf` on the expiry date shows the carry already swept (remaining 0, forfeit
+ * realised). The view looks backwards accurately; it does NOT project a future, not-yet-opened year —
+ * such a year simply shows zero fresh entitlement (its open run hasn't happened).
+ *
+ * RLS: runs under withTenant, so leave_ledger / leave_policy / leave_request / company are all scoped
+ * by can_see_employment — a peer who cannot see the employment gets an empty/zero breakdown, never a leak.
+ */
+export type LeaveEntitlementBreakdown = {
+  leaveTypeId: string;
+  leaveType: string;
+  asOf: string;
+  /** Cycle/leave-year start used for the in-scope reconstruction (calendar or hire-anniversary). */
+  cycleStart: string;
+  /** Feedback 1f6fd6d8 — "Eligible (Full Year Entitlement)": the days the WINNING policy grants for a whole
+   *  leave year at this employee's company / grade / service band, BEFORE any proration, carry, adjustment or
+   *  usage. It is the top line of the redesigned Leave Summary and the only figure there that is not
+   *  ledger-derived: the ledger records what has been granted, never what a full year would grant. 0 when no
+   *  policy resolves for this (type, grade, company) — i.e. the employee holds the type but earns nothing on it. */
+  eligibleDays: number;
+  /** 845903a3 (r313) — THE ENTITLEMENT COLUMN'S figure and the working behind it: the table allowance,
+   *  whether it was prorated, the eligible calendar days and divisor, the unrounded result and the final
+   *  rounded one. `eligibleDays` above is deliberately unchanged and still means the whole year's
+   *  allowance — every grant and projection resolves against THAT, and this is derived from it for one
+   *  column and its explanation. See displayEntitlementFor for why it is display-only by construction. */
+  entitlement: DisplayEntitlement;
+  // ── 31e39d74: why this figure is what it is ────────────────────────────────────────────────────────
+  /** Whether the entitlement behind these figures has been GENERATED, is configured-but-not-yet-generated,
+   *  is blocked on a missing earning method, or is simply not configured. Derived from three facts, none of
+   *  which the ledger can supply on its own — see lib/entitlement-status.ts for why, and for why
+   *  `earning_method_missing` outranks `not_generated`. The reporter's requirement is that a
+   *  configured-but-ungenerated type reads as such rather than as a silent 0.00. */
+  entitlementStatus: EntitlementStatus;
+  /** The winning entitlement table's name when one is in force for this pair at `asOf`, else null. Shown
+   *  beside the status so HR can see WHICH table is waiting to be generated. Display-only. */
+  entitlementTemplateName: string | null;
+  /**
+   * r212 (8ebf77ae) — "NO ELIGIBILITY RULE REACHES YOU", WITH THE RULES NAMED.
+   *
+   * `entitlementStatus` says WHAT happened in one word; this is the list of reasons behind it — every
+   * eligibility rule the leave type has, whether each is in force, and for each one that was actually
+   * tested the first criterion this employee fails. It is the half of the reporter's ticket that had
+   * nowhere to go while the status was a single word, and it reaches the employee's own side-sheet through
+   * `EntitlementBreakdown` without any host page knowing about it.
+   *
+   * ⚠️ PRESENT ONLY FOR `no_eligibility_match`, and that is a cost decision as much as an editorial one.
+   * This function runs ONCE PER LEAVE TYPE per screen (a tenant has eleven to twenty-four), and the
+   * explanation costs a handful of queries plus one per rule tested. `no_eligibility_match` is the only
+   * status these sentences answer — every other one has a winner, and "which rule missed you" is not the
+   * question being asked. Undefined everywhere else, and the panel then renders exactly what it did before.
+   */
+  eligibility?: EligibilityNotice;
+  /** EARNED TO DATE, exact: the sum of every row effective within [cycleStart, asOf] that the kernel's
+   *  `isEarnedToDateRow` (core/leave.ts) calls earned — accrual and in-lieu (Leave Credit) rows, and, since
+   *  r389 (62a1bec1), the automatic policy / profile RECALCULATION adjustments the engines already counted as
+   *  granted (unless an Anniversary-to-Calendar correction has superseded them). EXACT, and it stays exact:
+   *  it is one of the six buckets that tile the ledger, so `totalEntitlement` and the reconciliation
+   *  identity are computed from THIS figure. r335 (6af80f5d) deliberately did not round it — see
+   *  `currentYearEntitlementRounded` below for what the screens show and why the two differ. */
+  currentYearEntitlement: number;
+  /**
+   * r335 (6af80f5d) — WHAT "EARNED TO DATE" SHOWS: `currentYearEntitlement` put through the leave type's
+   * own Rounding Method (`leave_type.rounding_method` + `rounding_threshold` + `rounding_bands`), by the
+   * kernel's `displayEarnedToDateDays`. Equal to `currentYearEntitlement` to the byte whenever no rule is
+   * configured, whenever the rule is `custom` with no table, and whenever the figure is already whole.
+   *
+   * The reporter's case: EMP-0004 / Annual Leave / as at 23-09-2026 read 11.18 under a `custom` table
+   * whose first band maps 0.00–0.38 to 0.00. The rule was already REPORTED to the Explain panel
+   * (`derivation.earned.rounding`) and never APPLIED to any figure — that asymmetry was the bug.
+   *
+   * ⚠️ THIS IS NOT AN ADDEND. `totalEntitlement`, `adjustments`, the RECONCILIATION_ADDENDS identity and
+   * every sentence in lib/leave-summary-explain.ts read `currentYearEntitlement`, the exact figure, so the
+   * Explain panel's column still closes onto the real Available Balance. The consequence is stated openly
+   * on the screens rather than papered over: with 11.18 earned and 5.00 taken the grid prints Earned to
+   * Date 11.00 and Balance 6.18, because the balance is an identity, not an agreement
+   * (components/leave/entitlement-panel-config.ts) and is surfaced from the ledger, never re-derived
+   * (components/leave/leave-balance-row.ts, 6574c6b4).
+   *
+   * Consumed by: the Employee Balances / My Profile grid column (`deriveBalanceRow` → `ytdEntitled`), the
+   * employee's own "Earned so far" card (core/my-leave.ts), the Explain panel's rounded sub-line, and the
+   * assistant tool — so no two surfaces can quote different numbers for one question.
+   */
+  currentYearEntitlementRounded: number;
+  /** Earned types only: the prorated-to-date accrual within the current cycle. Null for grant-on-open.
+   *  r335 (6af80f5d) left this EXACT on purpose: it renders on no screen (both mirror types declare it and
+   *  neither panel descriptor selects it), its one live consumer is `core/assistant-tools.ts`, and an AI
+   *  context that reported a rounded accrual beside an exact `balance` would be internally inconsistent.
+   *  The rounded figure travels beside it as `currentYearEntitlementRounded`. */
+  monthlyAccruedToDate: number | null;
+  /** Balance carried into the current cycle, capped at the policy's carryForwardMax. */
+  carriedForward: number;
+  /** How much of `carriedForward` is still un-consumed in the window (the weaker, balance-based rule). */
+  carryForwardRemaining: number;
+  /** {cycleYear}-{expiry.month}-{expiry.day}, or null when carryMax = 0 / no expiry configured. */
+  carryForwardExpiryDate: string | null;
+  /** Days forfeited for the in-scope cycle (cap-excess at open + any realised expiry lapse) as at asOf. */
+  forfeited: number;
+  /** ADR-0066: net `adjustment` days within the current cycle that are NOT the boundary forfeit — i.e.
+   *  festive / one-off grants (and any manual +/- adjustment). Surfaced as its own line so the displayed
+   *  breakdown reconciles with `balance` (accrual aggregates exclude `adjustment`). 0 when none.
+   *  COMMINGLED by construction (positive-or-recalc filter). r389 (62a1bec1): NO SCREEN READS IT — the grid's
+   *  Adjustment column and the panel's Adjustments line both read `adjustments` below. It is still returned
+   *  because its client mirror and existing tests name it; do not put it back on a screen. */
+  otherAdjustments: number;
+  /** Signed ledger balance as at asOf (Σ days over every row ≤ asOf) — the headline figure the
+   *  RECONCILIATION PARTITION below closes onto. Same expression leaveBalances/leaveBalancesAll use. */
+  balance: number;
+  /** Pending (not-yet-approved) request days for this (employment, type) — `balance − pendingApproval =
+   *  totalAvailable`, the last line of the reconciliation block.
+   *
+   *  r285: bounded by `start_date <= asOf`, the SAME predicate leaveBalances applies (3ddae357). It has to
+   *  be the same one: the panel's own Available Balance line is leaveBalances' `available`, so any second
+   *  rule here makes the explanation column miss the total printed underneath it. */
+  pendingApproval: number;
+  // ── Reconciliation partition (feedback 0315dac7) ────────────────────────────────────────────────────
+  // The six DISJOINT buckets every ledger row ≤ asOf falls into EXACTLY ONE of, so the identity
+  //   broughtForward + currentYearEntitlement + configAdjustments + systemAdjustments
+  //     − forfeitedThisCycle − takenThisCycle = balance
+  // closes BY CONSTRUCTION rather than by re-deriving the carry arithmetic. That matters: the derived
+  // identity (carriedForward/forfeited from resolveCarryBreakdown) is algebraically FALSE whenever a
+  // year-open cap forfeit fired — openLeaveYear posts a real negative `adjustment`
+  // (CARRY_FORFEIT_REASON_CAP) while `carried` is already post-cap AND `forfeited` re-adds the cap excess,
+  // double-subtracting it. The same holds for the maxBalanceDays clamp and an overdrawn (negative) carry-in.
+  // Sourcing every bucket from the RAW rows makes those divergences vanish.
+  /** Σ days over rows dated STRICTLY BEFORE cycleStart — what actually carried into the cycle, uncapped and
+   *  signed (so an overdrawn carry-in stays negative instead of being floored to 0 like `carriedForward`). */
+  broughtForward: number;
+  /** Σ days over in-cycle `adjustment` rows whose reason is NOT a `sys:` machine reason — the festive /
+   *  one-off / manual grants HR enters on Leave Config → Entitlement → Adjustment. BOTH signs. Itemised as
+   *  HR's own rows in the explanation (`configAdjustmentItems`). r389 (62a1bec1): it is NOT what any
+   *  Adjustment line shows on its own any more — the grid read this and the panel read `adjustments`, which
+   *  is how the two screens came to print different Adjustment figures for one row. Both read `adjustments`. */
+  configAdjustments: number;
+  /** Σ days over in-cycle `adjustment` rows that are AUTOMATIC CORRECTIONS (`classifyLedgerAdjustment` ⇒
+   *  'system'): the Anniversary-to-Calendar correction's reversal, the reversal of a grant the employee was
+   *  never eligible for, and any policy/profile recalculation that correction superseded. BOTH signs.
+   *  r389 (62a1bec1): an UNSUPERSEDED policy/profile recalculation is no longer here — it is earned
+   *  entitlement and is counted in `currentYearEntitlement`. */
+  systemAdjustments: number;
+  /** Σ −days over in-cycle `adjustment` rows stamped one of the THREE forfeit reasons (carry cap, carry
+   *  expiry, aged type expiry), as a POSITIVE magnitude, taken from the actual ledger rows. */
+  forfeitedThisCycle: number;
+  /** Σ −days over in-cycle `debit` rows, as a POSITIVE magnitude. Unlike `debitsInWindow` (which the carry
+   *  arithmetic bounds by the carry-expiry date) this covers EVERY debit in the cycle, including ones dated
+   *  after carry expiry — otherwise those days would silently drop out of the identity. */
+  takenThisCycle: number;
+  /** The individual CONFIG adjustment rows behind `configAdjustments`, so a user can point at exactly where
+   *  each adjusted day came from ("CNY 2026: +2.00"). Config rows only — system corrections are automatic
+   *  and stay a single summarised line. */
+  configAdjustmentItems: { effectiveOn: string; days: number; reason: string | null }[];
+  // ── Redesigned Leave Summary roll-ups (feedback 1f6fd6d8) ───────────────────────────────────────────
+  // The reporter's summary is ONE column that adds up, so the two subtotals it needs are computed HERE, on
+  // the server, beside the buckets they sum. They are not new facts — they are sums of the partition above —
+  // but computing them here keeps the panel descriptor a pure PICK (its standing no-hardcoded-formula
+  // mandate) and keeps the arithmetic in the one place the reconciliation identity is already proven.
+  /** configAdjustments + systemAdjustments — the ONE "Adjustments" figure, on EVERY screen.
+   *  The employee never needed the config/system split the old §4 drew; the partition is retained above
+   *  because the identity is keyed off it. r389 (62a1bec1): the Employee Balances / My Profile grid's
+   *  Adjustment column reads THIS field too (components/leave/leave-balance-row.ts), so the grid and the
+   *  Explain panel cannot print two different Adjustment figures for one row again. */
+  adjustments: number;
+  /** broughtForward + currentYearEntitlement + adjustments — the summary's "Total" subtotal line.
+   *  Because the six buckets tile the ledger, `totalEntitlement − takenThisCycle − forfeitedThisCycle
+   *  = balance` and hence `… − pendingApproval = totalAvailable`: the reporter's column closes onto the
+   *  authoritative Available Balance BY CONSTRUCTION, not by agreement. */
+  totalEntitlement: number;
+  /** Ledger balance as at asOf minus pending requests (mirrors leaveBalances' `available`). */
+  totalAvailable: number;
+  /** Raw in-scope ledger rows so the UI can show the source of each component. */
+  transactions: { effectiveOn: string; entryType: string; days: number; sourceRequestId: string | null; reason: string | null }[];
+  /** Employee Leave View Configuration (65dec703): per-component ESS visibility for this leave type,
+   *  resolved (missing key ⇒ visible). The shared EntitlementBreakdown gates rows against this ONLY when
+   *  its `applyEssConfig` prop is set (i.e. on /me); admin/HR pass it false and see every row. */
+  essView: ResolvedEssView;
+  /** Leave Entitlement Formula Management (79011509): HR-authored per-component explanations for this leave
+   *  type, resolved (missing / all-empty ⇒ null). The breakdown panel shows a per-row info icon only where an
+   *  explanation exists (feedback b8b665ff). Explanation layer only — never a computed figure.
+   *
+   *  00307068 widened the declared type from `ResolvedLeaveFormula` (the nine summary keys) to a plain
+   *  string-keyed map, because the key set is now resolved BY LEAVE TYPE CODE: a REPLACEMENT type resolves
+   *  its five per-credit TABLE COLUMNS, every other type resolves the same nine summary items as before.
+   *  The render sites already index this by a string field key, so nothing downstream changes shape. */
+  formulaExplanations: Record<string, LeaveFormulaEntry | null>;
+  /**
+   * r303 (31492f74) — THE WORKING BEHIND EACH OF THE NINE FIGURES, for HR's Leave Summary sentences.
+   *
+   * Present ONLY when the caller asks (`{ derivation: true }`): the Employee Leave Inquiry rows and the Personnel
+   * record, which mount the HR explanation. The employee's own My Leave read never asks, so its breakdown object
+   * — and everything the dashboard is handed — is exactly what it was.
+   *
+   * BUILT FROM THE SAME LOCALS AS THE FIGURES. Each itemised record is pushed in the same branch of the same
+   * ledger walk that adds it to its figure; the pending list is the rows of the query whose sum IS
+   * `pendingApproval`; the table, band and service length are the ones `eligibleDays` was resolved from. So a
+   * list cannot describe a different set of rows than the figure beside it (lib/leave-summary-explain.ts checks
+   * the sums again before printing, and test/r303-leave-summary-explain.test.ts pins them on engine ledgers).
+   */
+  derivation?: LeaveSummaryDerivation;
+};
+
+/**
+ * Feedback 0315dac7 — which bucket a `leave_ledger` `adjustment` row belongs to, decided from its `reason`
+ * ALONE (never its sign). The three classes are mutually exclusive and exhaustive, which is what makes the
+ * reconciliation partition close:
+ *   • 'forfeit' — one of the THREE machine forfeit reasons. Enumerating all three matters: treating only the
+ *     cap forfeit as a boundary row would leave the carry-EXPIRY forfeit counted as an adjustment AND as a
+ *     forfeit (a second double-count).
+ *   • 'system'  — an automatic correction: the Anniversary-to-Calendar first-year correction
+ *     (`sys:a2c_recalc:<leaveTypeId>`, r303), the reversal of a grant the employee was never eligible for
+ *     (`sys:ineligible_grant_reversal`, r389), and a policy / profile recalculation (`sys:policy_recalc:<id>`,
+ *     `sys:profile_recalc:<id>`) that an Anniversary-to-Calendar correction has since SUPERSEDED. Invisible on
+ *     the Adjustment configuration screen, so never presented as something HR typed. The a2c prefix was missing
+ *     until r303 (its REVERSAL row read as a typed adjustment); the ineligible-grant reversal was missing until
+ *     r389 — 19 production rows read as manual HR adjustments.
+ *   • 'config'  — everything else: the festive / one-off / manual grants HR actually enters. A NULL reason
+ *     falls here (a hand-written ledger row with no reason is a manual adjustment, not a machine one).
+ *
+ * ⚠️ r389 (62a1bec1) — ASK `isEarnedToDateRow` (core/leave.ts) FIRST. An UNSUPERSEDED policy/profile
+ * recalculation is not an adjustment at all: it is entitlement the engines granted (the accrual run tops up
+ * around it, the reprojection's delta includes it), so the ledger walk counts it under Earned to Date and it
+ * never reaches this function. This classifier still answers 'system' for those reasons because the only
+ * recalc rows that DO reach it are the superseded ones, which sit beside the a2c reversal that cancels them.
+ * Exported so the tests can assert the partition directly against the reason constants.
+ */
+export type LedgerAdjustmentClass = 'config' | 'system' | 'forfeit';
+
+/** r303 — WHICH automatic correction a `sys:` reason names, or null for anything else. The 'system' class
+ *  below IS "this returns non-null", so the Leave Summary can name the kind of correction without a second
+ *  reading of the prefixes. r389: the two recalc kinds are read off the kernel's `entitlementRecalcKind`, the
+ *  same function the Earned to Date predicate uses, so the two can never disagree about which rows they are. */
+export function systemCorrectionKind(
+  reason: string | null,
+): 'policy_recalc' | 'profile_recalc' | 'a2c_recalc' | 'ineligible_grant_reversal' | null {
+  const recalc = entitlementRecalcKind(reason);
+  if (recalc) return recalc;
+  const r = reason ?? '';
+  if (r.startsWith(`${A2C_RECALC_REASON_PREFIX}:`)) return 'a2c_recalc';
+  // An exact match, as the script that writes it stamps it (scripts/reverse-ineligible-leave-grants.ts).
+  if (r === INELIGIBLE_GRANT_REVERSAL_REASON) return 'ineligible_grant_reversal';
+  return null;
+}
+
+/** r303 — the forfeit class, named: which of the THREE forfeit reasons a row carries, or null. */
+export function forfeitKind(reason: string | null): 'carry_cap' | 'carry_expiry' | 'type_expiry' | null {
+  if (reason === CARRY_FORFEIT_REASON_CAP) return 'carry_cap';
+  if (reason === CARRY_FORFEIT_REASON_EXPIRY) return 'carry_expiry';
+  if (reason === AGED_FORFEIT_REASON) return 'type_expiry';
+  return null;
+}
+
+export function classifyLedgerAdjustment(reason: string | null): LedgerAdjustmentClass {
+  if (forfeitKind(reason) != null) return 'forfeit';
+  if (systemCorrectionKind(reason) != null) return 'system';
+  return 'config';
+}
+
+export function leaveEntitlementBreakdown(
+  ctx: SessionContext,
+  employmentId: string,
+  leaveTypeId: string,
+  asOf: string,
+  locale?: string,
+  /** r303 (31492f74) — `derivation: true` attaches the per-line working HR's Leave Summary sentences read. Only
+   *  the HR mounts ask; see `LeaveEntitlementBreakdown.derivation`. */
+  opts: { derivation?: boolean } = {}, existingTx?: Tx,
+): Promise<LeaveEntitlementBreakdown | null> {
+  return withReadTx(ctx, existingTx, (tx) => leaveEntitlementBreakdownTx(tx, employmentId, leaveTypeId, asOf, locale, opts));
+}
+
+/**
+ * The leave-type columns the breakdown reads — ONE definition for the single read and the batched one.
+ *
+ * ⚠️ A FUNCTION, NOT A MODULE CONSTANT, and that is load-bearing. `leaveTypeRuleColumns` comes from ./leave,
+ * which imports this module back: evaluated at module load, the spread can run while ./leave is still
+ * initialising and silently spread NOTHING — every carry/accrual rule column vanishes from the select and the
+ * breakdown reports no carry forward. Measured in r397: test/carry-forward-report.test.ts (i) read 0 carried
+ * against the engine's 5. Built at call time, exactly as the inline select always was.
+ */
+const breakdownTypeColumns = () => ({
+  id: leaveType.id, name: leaveType.name, code: leaveType.code, role: leaveType.role, i18n: leaveType.i18n, essViewConfig: leaveType.essViewConfig, formulaExplanations: leaveType.formulaExplanations, yearCycleOverride: leaveType.yearCycleOverride,
+  // 845903a3 (r313) — the ENTITLEMENT rounding trio, named here rather than added to
+  // `leaveTypeRuleColumns`. That map exists so the granting engines and the projection kernel
+  // read the IDENTICAL rule set; a rule one reads and the other does not posts a permanent
+  // oscillating delta on every reproject. These three must never reach a ledger write — the
+  // item's whole promise is that Earned to Date does not move — so they ride THIS read only.
+  entitlementRoundingMethod: leaveType.entitlementRoundingMethod, entitlementRoundingThreshold: leaveType.entitlementRoundingThreshold, entitlementRoundingBands: leaveType.entitlementRoundingBands,
+  ...leaveTypeRuleColumns,
+});
+/** The employment basics the breakdown reads — likewise one definition for both. */
+const breakdownEmploymentColumns = { hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn, gradeId: employment.gradeId, companyId: employment.companyId, leaveCycle: company.leaveCycle };
+const selectBreakdownTypes = (tx: Tx) => tx.select(breakdownTypeColumns()).from(leaveType);
+const selectBreakdownEmployment = (tx: Tx, employmentId: string) =>
+  tx
+    .select(breakdownEmploymentColumns)
+    .from(employment)
+    .innerJoin(company, eq(company.id, employment.companyId))
+    .where(eq(employment.id, employmentId))
+    .limit(1);
+type BreakdownTypeRow = Awaited<ReturnType<typeof selectBreakdownTypes>>[number];
+type BreakdownEmploymentRow = Awaited<ReturnType<typeof selectBreakdownEmployment>>[number];
+
+/**
+ * r397 — WHAT A BATCH MAY HAND THE BREAKDOWN INSTEAD OF IT READING THEM: the leave-type row, the employment row
+ * and the template resolver. Each is the result of the very query (or the very resolver build) the breakdown
+ * makes for itself when `pre` is absent; the batch reads them ONCE for every type of one employee instead of
+ * once per type. Everything after these three reads is untouched.
+ */
+type BreakdownPreloaded = {
+  type: BreakdownTypeRow | undefined;
+  emp: BreakdownEmploymentRow | undefined;
+  templates: TemplateEntitlementResolver;
+  /** Bundled own leave inputs, already checked to answer this employment in this transaction: the four
+   *  ledger/request statements below are answered from them. */
+  own?: OwnLeaveInputs;
+};
+
+export async function leaveEntitlementBreakdownTx(
+  tx: Tx,
+  employmentId: string,
+  leaveTypeId: string,
+  asOf: string,
+  locale: string | undefined,
+  opts: { derivation?: boolean },
+  pre?: BreakdownPreloaded,
+): Promise<LeaveEntitlementBreakdown | null> {
+  {
+    // The type + the employment basics. RLS gates the employment row; a peer who can't see it gets null
+    // here (employment join returns nothing) → a defined empty state, never an error or a leak.
+    const [[type], [emp]] = pre
+      ? [[pre.type], [pre.emp]]
+      : await Promise.all([
+          // 9816a5ad step 2: the type's own rules ride along — the carry cap and expiry this panel shows
+          // must be the ones openLeaveYear / expireCarriedLeave actually enforce.
+          selectBreakdownTypes(tx).where(eq(leaveType.id, leaveTypeId)).limit(1),
+          selectBreakdownEmployment(tx, employmentId),
+        ]);
+    if (!type || !emp) return null;
+
+    // Leave Year Type override (e1a51aea): this TYPE's effective cycle — a per-type 'a2a'/'c2c' override
+    // wins over the company cycle; null falls back to the company cycle (byte-identical to before).
+    // r303: the effective cycle is held as a local so the explanation names the SAME leave year this read uses.
+    const effectiveCycle = resolveLeaveYearCycle(type.yearCycleOverride, emp.leaveCycle);
+    const cycleStart = earnedCycleStart(emp.hiredOn, asOf, effectiveCycle);
+
+    // Active ANNUAL/standing policy versions for this type as at asOf, resolved to the employee's grade.
+    // 6e9a126e RELEASE TWO — the entitlement TEMPLATE version in force ON `asOf`, with the employee's
+    // department / position / employment type resolved as at that same date. This is the third of the
+    // three PAST-DATE readers: /me and the admin balance breakdown both accept an `asOf`, and a breakdown
+    // for a closed year that quietly explained itself with today's configuration would be exactly the
+    // capability the request said to keep ("maintaining all existing calculation capabilities").
+    //
+    // ⚠️ RLS: entitlement_template and entitlement_eligibility_rule are TENANT-READ, admin-write (0396),
+    // deliberately — this screen is reached by an ordinary employee looking at their own balance, and an
+    // admin-gated read would leave them looking at a breakdown that contradicts their own ledger.
+    const templates =
+      pre?.templates ??
+      (await buildTemplateEntitlementResolver(tx, {
+        employmentIds: [employmentId],
+        leaveTypeIds: [leaveTypeId],
+        asOf,
+      }));
+    // ADR-0066: resolve under the employee's company so /me + admin show the per-company entitlement.
+    // Leave Entitlement Rules Engine: service measured at cycleStart keeps carryMax/expiry/earned-flag and
+    // the tie-break consistent with the banded winner. This does NOT change currentYearEntitlement below
+    // (ledger-derived) — the banded number reaches /me only via the ledger, after a hire grant/year-open.
+    // 9816a5ad step 2: days from the winning policy row, every RULE from the leave type.
+    // 6e9a126e RELEASE THREE — the policy layer is gone, so the winning TEMPLATE BAND is the only source
+    // of days. `policyForDatedReader` is what stops a past date reporting "everything forfeited" while
+    // nothing is configured: with no band it still materialises the leave TYPE's own carry rules, at zero
+    // days, so `applyLeaveTypeRules` has something to overlay onto. See its header for why days are the
+    // one thing that must not be invented.
+    // r303: the service length and the band are held as locals (unchanged expressions) so the Full Entitlement
+    // sentence names the very band `eligibleDays` below was read from, measured at the SAME date (cycle start).
+    const serviceYearsAtCycleStart = serviceYearsAt(emp.hiredOn, cycleStart);
+    const band = templates.bandFor(employmentId, leaveTypeId, serviceYearsAtCycleStart);
+    const policy = applyLeaveTypeRules(policyForDatedReader(band, type), type);
+    // 31e39d74 — the WINNER, not just its band. `bandFor` above returns null both when nothing is
+    // configured and when the employee's service length falls outside every band of a table that DOES
+    // apply to them; only `winnerFor` separates "no table" from "a table with no band for you", and the
+    // first of those is the one that legitimately means 0.00. It is the SAME resolver instance already
+    // built for `policy`, so this costs no query.
+    const entitlementWinner = templates.winnerFor(employmentId, leaveTypeId);
+    const earned = isEarnedMethod(policy?.method);
+    // 7cd914b1: these used to be forced to 0/null for anything but ANNUAL, matching the engine's own
+    // Annual-only gate. Both gates are gone — a non-annual type that is configured to carry DOES carry, and
+    // a breakdown that still reported 0 would contradict the ledger it is explaining.
+    const carryMax = policy?.carryMax ?? 0;
+    const carryPercent = policy?.carryPercent ?? null;
+    const expiry = policy?.carryExpiry ?? null;
+    // ed6f7a7b — THE CARRY-ENABLED GATE. Asked ONCE for this whole breakdown, and asked with the ENGINE's
+    // own function so the two sides cannot drift: `resolveCarryAllowance` (core/leave-compute.ts) gates on
+    // `carryEnabled` BEFORE it reaches `carryAllowanceFrom`, and this read path reached the arithmetic
+    // directly. A type configured "carry forward: None" while still holding the maximum the editor
+    // deliberately RETAINS (CarryPolicyForm's 'none' branch keeps it so switching carry back on restores
+    // it) therefore printed a brought-forward figure that openLeaveYear forfeits in FULL.
+    // THE GATE BELONGS HERE, NOT IN THE ARITHMETIC: `carryAllowanceFrom` is the arithmetic alone and is
+    // shared with `reconstructCarry`, which is precisely what stops the report contradicting the ledger.
+    // Zeroing the INPUTS also suppresses the expiry DATE through `carryConfigured` inside the shared
+    // helper — the right outcome, reached without editing a helper two engines depend on.
+    // The STORED figures stay in `carryMax`/`carryPercent` for the derivation node below, which is the one
+    // place HR can read what is configured while it is dormant.
+    const carryOn = carryEnabled(policy);
+    const carryMaxIfOn = carryOn ? carryMax : 0;
+    const carryPercentIfOn = carryOn ? carryPercent : null;
+    // R4 Build #1: the expiry date is clamped to the real last day of `expiry.month` in this cycle year
+    // (months-mode day=31 sentinel, and any 29-Feb-in-a-common-year) inside the shared helper below —
+    // computed once here (pre-aggregates, for the debit-window bound) via the same helper so the two
+    // computations can never drift.
+    const { carryForwardExpiryDate } = resolveCarryBreakdown({
+      cycleStart,
+      carryMax: carryMaxIfOn,
+      carryPercent: carryPercentIfOn,
+      expiry,
+      priorBalanceAtCycleStart: 0,
+      debitsInWindow: 0,
+      currentBalance: 0,
+      asOf,
+    });
+
+    // The aggregates, all bounded by `effective_on <= asOf` (closed interval). One round-trip.
+    const num = (x: unknown) => Number(x ?? 0);
+    const own = pre?.own;
+    const [[agg], [debitAgg], pendingRows, rows] = own
+      ? ([[own.breakdownTotals(leaveTypeId, asOf, cycleStart)],
+          [own.breakdownDebits(leaveTypeId, cycleStart, carryForwardExpiryDate && carryForwardExpiryDate < asOf ? carryForwardExpiryDate : asOf)],
+          own.breakdownPending(leaveTypeId, asOf), own.breakdownLedger(leaveTypeId, cycleStart, asOf)] as const)
+      : await Promise.all([
+      tx
+        .select({
+          // r303: "fresh entitlement granted within the current cycle" (accruals + in-lieu top-ups) used to be
+          // an aggregate here. It is now summed in the ledger walk below over `rows` — the identical
+          // [cycleStart, asOf] window — so each credit HR's explanation lists is pushed in the branch that adds
+          // it to the figure.
+          // ADR-0066: positive `adjustment` credits within the current cycle (festive / one-off grants). The
+          // accrual aggregates above exclude `adjustment`, so these are surfaced separately to reconcile the
+          // breakdown with `balance`. Negative adjustments (boundary forfeits) are accounted via `forfeited` —
+          // EXCEPT the policy-correction recalc rows (feedback 49809272, reason `sys:policy_recalc:*`), which
+          // are signed ± and belong here in BOTH directions so a downward correction still reconciles
+          // (component sum = balance); the reason filter is additive — no other row carries that prefix.
+          otherAdjustments: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and (${leaveLedger.days} > 0 or ${leaveLedger.reason} like ${`${POLICY_RECALC_REASON_PREFIX}:%`}) and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // Leave Type Expiry Field (fec49317): aged-expiry forfeits within the current cycle. These are a
+          // NEW class of negative adjustment (reason = AGED_FORFEIT_REASON, non-ANNUAL types only) that
+          // resolveCarryBreakdown below does NOT see (its carryMax is 0 for non-ANNUAL). Aggregated here as a
+          // positive magnitude and folded into `forfeited` so the displayed breakdown still reconciles with
+          // `balance` (component sum = balance) and expired days remain visible in reports. otherAdjustments
+          // above is positive-only, so it never picks these up.
+          agedForfeited: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'adjustment' and ${leaveLedger.reason} = ${AGED_FORFEIT_REASON} and ${leaveLedger.effectiveOn} >= ${cycleStart}), 0)`,
+          // Signed balance as at asOf (the headline number this view explains).
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+          // Signed balance strictly before the cycle start = what carried into the cycle.
+          priorBalance: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.effectiveOn} < ${cycleStart}), 0)`,
+        })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            lte(leaveLedger.effectiveOn, asOf),
+          ),
+        ),
+      // ANNUAL debits inside the carry window [cycleStart, min(expiry, asOf)] — they reduce un-consumed
+      // carry (weaker rule: no ordering claim). When no expiry, the window runs to asOf.
+      tx
+        .select({ taken: sql<string>`coalesce(-sum(${leaveLedger.days}), 0)` })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            eq(leaveLedger.entryType, 'debit'),
+            gte(leaveLedger.effectiveOn, cycleStart),
+            lte(
+              leaveLedger.effectiveOn,
+              carryForwardExpiryDate && carryForwardExpiryDate < asOf ? carryForwardExpiryDate : asOf,
+            ),
+          ),
+        ),
+      // r285 — THE SAME DATE BOUND leaveBalances' pending query carries, and for the same reason.
+      // A pending request has no ledger row yet, so it has no `effective_on` to cut on — its LEAVE DATES
+      // are the only date it carries. `start_date <= asOf` is "pending approval affecting the position at
+      // this date": a request that has not begun by `asOf` was not yet weighing on it. The request's whole
+      // `days` then counts, not the part before `asOf` — a pending request is an all-or-nothing claim on
+      // the balance until it is decided, and splitting it would report a figure no approval could ever
+      // produce. (`asOf` is required here, so there is no undated branch to mirror.)
+      //
+      // WITHOUT THE BOUND THE PANEL CONTRADICTED ITSELF. This figure is the panel's "Pending Approval"
+      // line; the panel's last line, Available Balance, is leaveBalances' `available` — which subtracts
+      // the BOUNDED pending. An unbounded figure here therefore made the explanation column miss the
+      // total printed at the bottom of the same panel by exactly the days of every pending request
+      // starting after `asOf`. Production: Mei Ling / ANNUAL / asOf 2026-08-04 read 6.00 here against the
+      // grid's 4.00, and the column implied −12.50 beside an Available Balance of −10.50.
+      //
+      // r303 (31492f74): the REQUESTS, not only their sum. `pendingApproval` below is the sum of exactly these
+      // rows, so the list HR's explanation prints is by construction the set the figure counts.
+      tx
+        .select({ startDate: leaveRequest.startDate, endDate: leaveRequest.endDate, days: leaveRequest.days })
+        .from(leaveRequest)
+        .where(
+          and(
+            eq(leaveRequest.employmentId, employmentId),
+            eq(leaveRequest.leaveTypeId, leaveTypeId),
+            eq(leaveRequest.status, 'pending'),
+            lte(leaveRequest.startDate, asOf),
+          ),
+        )
+        .orderBy(asc(leaveRequest.startDate), asc(leaveRequest.id)),
+      tx
+        .select({
+          // r303: the row id, so an unlinked debit can be matched to the Leave Credit it settled or reversed.
+          id: leaveLedger.id,
+          effectiveOn: leaveLedger.effectiveOn,
+          entryType: leaveLedger.entryType,
+          days: leaveLedger.days,
+          sourceRequestId: leaveLedger.sourceRequestId,
+          // 0315dac7: the reason drives the adjustment partition below (config vs system vs forfeit) and
+          // labels each itemised config adjustment, so it must travel with the row.
+          reason: leaveLedger.reason,
+        })
+        .from(leaveLedger)
+        .where(
+          and(
+            eq(leaveLedger.employmentId, employmentId),
+            eq(leaveLedger.leaveTypeId, leaveTypeId),
+            gte(leaveLedger.effectiveOn, cycleStart),
+            lte(leaveLedger.effectiveOn, asOf),
+          ),
+        )
+        // The id breaks a same-date tie, here and in the bundled answer, instead of the scan order.
+        .orderBy(asc(leaveLedger.effectiveOn), asc(leaveLedger.id)),
+    ]);
+
+    const balance = num(agg?.balance);
+    const priorBalance = num(agg?.priorBalance);
+    const debitsInWindow = num(debitAgg?.taken);
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    // r303 — Pending Approval IS the sum of the rows HR's explanation lists.
+    const pendingApproval = pendingRows.reduce((s, r) => r2(s + Number(r.days)), 0);
+    // Delegates to the shared helper (core/leave.ts#resolveCarryBreakdown) so this view can never diverge
+    // from carryForwardReport (core/analytics.ts) — byte-identical output to the pre-extraction inline
+    // arithmetic (existing test suite is the regression gate).
+    const { carried, unconsumedCarry: carryForwardRemaining, forfeited: carryForfeited } = resolveCarryBreakdown({
+      cycleStart,
+      carryMax: carryMaxIfOn,
+      carryPercent: carryPercentIfOn,
+      expiry,
+      priorBalanceAtCycleStart: priorBalance,
+      debitsInWindow,
+      currentBalance: balance,
+      asOf,
+    });
+    // Leave Type Expiry Field (fec49317): fold the aged-expiry lapse into the single `forfeited` figure. For
+    // ANNUAL, agedForfeited is always 0 (the sweep excludes ANNUAL), so this is a no-op there and the carry
+    // forfeit stands alone. For non-ANNUAL the two can now BOTH be non-zero (7cd914b1 lets such a type carry),
+    // and they are different forfeits over disjoint windows — cap-excess at year open, aged lapse from the
+    // earning date — so summing them is still right and still keeps
+    // `entitlement + carried + otherAdjustments − taken − forfeited = balance`.
+    const forfeited = Math.round((carryForfeited + num(agg?.agedForfeited)) * 100) / 100;
+
+    // ── Reconciliation partition (feedback 0315dac7) ──────────────────────────────────────────────────
+    // `rows` is EXACTLY the in-cycle window [cycleStart, asOf] the aggregates above use, so walking it once
+    // splits every in-cycle row into one — and only one — bucket. Together with `priorBalance` (everything
+    // strictly before cycleStart) the six buckets tile the whole ledger ≤ asOf, which is what makes
+    //   broughtForward + entitled + config + system − forfeited − taken = balance
+    // an identity rather than an approximation. Derived carry figures deliberately take NO part here.
+    //
+    // r303 (31492f74) — EACH BRANCH ALSO PUSHES THE RECORD IT JUST COUNTED. HR's Leave Summary sentences list
+    // these records under the figure they make up; pushing them here, beside the `+=`, is what makes "the listed
+    // amounts add up to the figure" a property of this loop rather than of a second query.
+    let cycleAccrual = 0;
+    let configAdjustments = 0;
+    let systemAdjustments = 0;
+    let forfeitedThisCycle = 0;
+    let takenThisCycle = 0;
+    let takenOnLeave = 0;
+    const configAdjustmentItems: LeaveEntitlementBreakdown['configAdjustmentItems'] = [];
+    const credits: LeaveSummaryDerivation['earned']['credits'] = [];
+    const systemItems: LeaveSummaryDerivation['adjustments']['system'] = [];
+    const forfeitItems: LeaveSummaryDerivation['forfeited'] = [];
+    const otherDebits: (LeaveSummaryDerivation['taken']['other'][number] & { ledgerId: string })[] = [];
+    // r389 (62a1bec1) — WHICH recalculations an Anniversary-to-Calendar correction in this window has
+    // superseded. Asked of `rows` itself, so it can only see corrections dated inside [cycleStart, asOf]: an
+    // as-at date before the correction shows the recalculation as the earned entitlement it then was.
+    const supersededByA2c = a2cSupersessionOf(rows);
+    for (const r of rows) {
+      const days = Number(r.days);
+      // r389 (62a1bec1) — EARNED TO DATE IS THE KERNEL'S PREDICATE, not a list of entry types restated here.
+      // Until r389 this branch was `accrual || in_lieu_accrual` and an automatic recalculation fell through to
+      // the 'system' bucket below — while the engines had counted it as granted entitlement all along. That is
+      // the reported fault: EMP-0004's +0.32 `sys:profile_recalc` read as an Adjustment in this panel and as
+      // nothing at all in the grid, beside an accrual run that had topped up AROUND it to 12.00.
+      if (isEarnedToDateRow(r, supersededByA2c)) {
+        cycleAccrual = r2(cycleAccrual + days);
+        credits.push({
+          effectiveOn: r.effectiveOn,
+          days,
+          kind:
+            r.entryType === 'in_lieu_accrual'
+              ? 'leave_credit'
+              : r.entryType === 'adjustment'
+                ? // isEarnedToDateRow admits an adjustment ONLY for a policy/profile recalc reason.
+                  entitlementRecalcKind(r.reason)!
+                : systemCorrectionKind(r.reason) === 'a2c_recalc'
+                  ? 'a2c_correction'
+                  : 'grant',
+        });
+        continue;
+      }
+      if (r.entryType === 'debit') {
+        takenThisCycle = r2(takenThisCycle - days); // debits are negative ⇒ positive magnitude
+        if (r.sourceRequestId != null) takenOnLeave = r2(takenOnLeave - days);
+        else otherDebits.push({ ledgerId: r.id, effectiveOn: r.effectiveOn, days: r2(-days), kind: null, reason: r.reason });
+        continue;
+      }
+      if (r.entryType !== 'adjustment') continue;
+      switch (classifyLedgerAdjustment(r.reason)) {
+        case 'forfeit':
+          forfeitedThisCycle = r2(forfeitedThisCycle - days); // forfeits are negative ⇒ positive magnitude
+          forfeitItems.push({ effectiveOn: r.effectiveOn, days: r2(-days), kind: forfeitKind(r.reason)! });
+          break;
+        case 'system':
+          systemAdjustments = r2(systemAdjustments + days);
+          systemItems.push({ effectiveOn: r.effectiveOn, days, kind: systemCorrectionKind(r.reason)! });
+          break;
+        case 'config':
+          configAdjustments = r2(configAdjustments + days);
+          configAdjustmentItems.push({ effectiveOn: r.effectiveOn, days, reason: r.reason });
+          break;
+      }
+    }
+
+    // Feedback 1f6fd6d8 — the two roll-ups the redesigned Leave Summary reads, computed beside the buckets
+    // they sum so the client descriptor stays a pure pick. See the type docs above for why they close.
+    const adjustments = r2(configAdjustments + systemAdjustments);
+    const totalEntitlement = r2(priorBalance + cycleAccrual + adjustments);
+
+    // 31e39d74 — the ROW test, not the SUM test. `cycleAccrual === 0` is NOT "never generated": the
+    // `accrual_unconfigured` path writes a real 0.00 accrual row on purpose (it is openLeaveYear's own
+    // idempotency marker), and so does the max-balance clamp when the cap is already reached. Counting
+    // ROWS is what separates "the year was opened and it came to nothing" from "the year was never
+    // opened". `rows` is already exactly the [cycleStart, asOf] window, so this needs no extra query.
+    const hasAccrualRowInCycle = rows.some(
+      (r) => r.entryType === 'accrual' || r.entryType === 'in_lieu_accrual',
+    );
+    const entitlementStatus = resolveEntitlementStatus({
+      hasTemplateInForce: entitlementWinner != null,
+      // r209 — THE FACT THAT SEPARATES THE TWO ZEROES. `entitlementWinner == null` is true both when the
+      // leave type has no day table at all and when it has six of them and no eligibility rule reaches this
+      // employee. Those call for opposite actions, and until this line both rendered as one silent 0.00 —
+      // which is how a single rule expiring on 13 August 2026 took a whole tenant's entitlement out with no
+      // signal anywhere. Read off the resolver already built above, so it costs nothing.
+      leaveTypeHasTemplates: templates.hasTemplatesFor(leaveTypeId),
+      // r209 — the SAME cap `applyMaxBalance` will clamp the grant against (band's own, or the leave type's
+      // rule overlaid by `applyLeaveTypeRules`). A cap of 0 clamps every granted day away while still
+      // writing the accrual row, so without this the screen reads "generated" over 0.00.
+      maxBalanceDays: policy?.maxBalanceDays ?? null,
+      accrualUnconfigured: isAccrualUnconfigured(type),
+      // ⚠️ THE TWO INPUTS THE FIRST CUT OF THIS LACKED, AND WHY IT WAS WRONG WITHOUT THEM. "A table is in
+      // force and no accrual row exists" was read as "generation has not run", but `openLeaveYear` has
+      // FIVE no-row branches and only one of them is answered by pressing Generate Entitlement. An EARNED
+      // method (the ordinary Annual Leave shape) is logged `earned_method` and skipped by every year-open
+      // there will ever be — its days come from `accrueEarnedLeave` — so the old derivation captioned
+      // every earned type "Not yet generated" from cycle rollover until the first accrual, and offered a
+      // remedy that would skip it. `days <= 0` (a band that covers nobody at this length of service) is
+      // the same shape of mistake. Both are decided HERE off the policy this function already resolved,
+      // which is the same policy the engine composes — no second definition, no extra query.
+      earnedMethod: earned,
+      // r299 (3de1453a) — THE SAME TWO PREDICATES EVERY ENGINE SKIPS A STRANDED TYPE ON (accrueEarnedLeave's
+      // filter, the profile recalculation's guard, Leave Balance Health's finding): an earned method on a type
+      // that is not Annual Leave gets no days from anything, so it must not read "Accrues through the year".
+      // `type` carries `role` and `code`, which is all `isEarnedAccrualType` reads. False for Annual Leave, so
+      // its status is exactly what it was.
+      earnedMethodNotAnnualLeave: earned && !isEarnedAccrualType(type),
+      entitlementDays: policy?.days ?? 0,
+      hasAccrualRowInCycle,
+    });
+
+    /**
+     * r212 — …AND THE REASONS BEHIND THAT ONE WORD, for the one status that is a list of reasons.
+     *
+     * `explainEntitlementEligibility` is handed the winner this function ALREADY resolved (`null` here by
+     * construction — `no_eligibility_match` is only reachable with no winner), so it does not build a
+     * second resolver for the same pair. Everything else it asks is the same `resolveOrgCriteriaTargets`
+     * the resolver decides with; there is no second matcher anywhere on this path.
+     */
+    const eligibility: EligibilityNotice | undefined =
+      entitlementStatus === 'no_eligibility_match'
+        ? eligibilityNoticeFrom(
+            await explainEntitlementEligibility(tx, {
+              employmentId,
+              leaveTypeId,
+              asOf,
+              winner: entitlementWinner,
+            }),
+            // No `href`: an employee's own side-sheet has nowhere to send anybody, and the admin who reads
+            // the same panel on /admin/personnel/[id] opens rules from the Entitlement Tables screen.
+            {},
+          )
+        : undefined;
+
+    const i18n = type.i18n as Record<string, { name: string }> | null;
+    const eligibleDays = r2(policy?.days ?? 0);
+
+    /**
+     * 845903a3 (r313) — THE DISPLAYED ENTITLEMENT. `eligibleDays` above is the year's allowance from the
+     * entitlement table, which is what the column headed "Full Entitlement" has always shown. For an
+     * employee who joined part way through the leave year that is not their entitlement FOR THIS YEAR,
+     * and the reporter asked for the column to say what it claims to.
+     *
+     * The arithmetic is the kernel's own a2c helper, not a copy — see displayEntitlementFor. Nothing here
+     * is written anywhere: `eligibleDays` is still what every grant, projection and accrual reads, and
+     * this is a second figure DERIVED from it for one column and its explanation.
+     */
+    const entitlementView = displayEntitlementFor({
+      type,
+      annualEntitlementDays: eligibleDays,
+      hiredOn: emp.hiredOn,
+      cycleStart,
+      asOf,
+      serviceEnd: emp.terminatedOn,
+      rounding: {
+        method: type.entitlementRoundingMethod,
+        threshold: type.entitlementRoundingThreshold,
+        bands: type.entitlementRoundingBands,
+      },
+    });
+
+    /**
+     * r335 (6af80f5d) — THE DISPLAYED EARNED TO DATE, derived beside the displayed Entitlement above for
+     * the same reason and by the same shape: a kernel helper is CALLED, no arithmetic is restated here,
+     * and the exact ledger figure it is derived FROM (`cycleAccrual`) is returned unchanged.
+     *
+     * The rule is the one this function already resolves and already REPORTS to the Explain panel a few
+     * lines below (`derivation.earned.rounding` reads this same `policy.roundingMethod`, and names
+     * `custom_no_table` when the table is missing). Until now it was reported and never applied; handing
+     * the very same three columns to `applyRounding` — via the kernel, never a sixth hand-written band
+     * walk — is the whole of the fix.
+     *
+     * `policy == null` (no entitlement table reaches this employee) ⇒ no rule ⇒ the figure is untouched,
+     * which is also exactly what `derivation.earned.rounding` reports as `null` for the same case.
+     */
+    const currentYearEntitlementRounded = displayEarnedToDateDays(cycleAccrual, {
+      method: policy?.roundingMethod ?? null,
+      threshold: policy?.roundingThreshold ?? null,
+      bands: policy?.roundingBands,
+    });
+
+    /**
+     * r303 (31492f74) — HR's per-line working, assembled ONLY when asked and ONLY from what this read already
+     * holds: the winner and band `eligibleDays` came from, the policy every rule came from, and the records the
+     * ledger walk above pushed beside each figure. The single extra read is the Leave Credit register, asked
+     * only about this leave year's unlinked debits, so an expired / paid-out / reversed credit can be named
+     * rather than listed as "reason not recorded".
+     */
+    let derivation: LeaveSummaryDerivation | undefined;
+    if (opts.derivation) {
+      if (otherDebits.length > 0) {
+        const ids = otherDebits.map((o) => o.ledgerId);
+        const leaveCredits = await tx
+          .select({
+            status: toilAccrual.status,
+            settledLedgerEntryId: toilAccrual.settledLedgerEntryId,
+            reversalLedgerEntryId: toilAccrual.reversalLedgerEntryId,
+          })
+          .from(toilAccrual)
+          .where(or(inArray(toilAccrual.settledLedgerEntryId, ids), inArray(toilAccrual.reversalLedgerEntryId, ids)));
+        const kindByLedgerId = new Map<string, LeaveSummaryDerivation['taken']['other'][number]['kind']>();
+        for (const c of leaveCredits) {
+          if (c.reversalLedgerEntryId) kindByLedgerId.set(c.reversalLedgerEntryId, 'credit_reversed');
+          if (c.settledLedgerEntryId) {
+            kindByLedgerId.set(
+              c.settledLedgerEntryId,
+              c.status === 'converted_to_pay' ? 'credit_paid_out' : c.status === 'lapsed' ? 'credit_expired' : null,
+            );
+          }
+        }
+        for (const o of otherDebits) o.kind = kindByLedgerId.get(o.ledgerId) ?? null;
+      }
+      const cycleEnd = leaveCycleEnd(cycleStart);
+      const override = type.yearCycleOverride;
+      const joinedThisLeaveYear = emp.hiredOn >= cycleStart && emp.hiredOn <= cycleEnd;
+      const roundingMethod = policy?.roundingMethod ?? 'none';
+      derivation = {
+        entitlement: {
+          tableName: entitlementWinner?.templateName ?? null,
+          via: !entitlementWinner
+            ? null
+            : entitlementWinner.viaSoleTemplate
+              ? 'sole_table'
+              : entitlementWinner.viaDefaultTemplate
+                ? 'default_table'
+                : 'scheme',
+          schemeName: entitlementWinner?.ruleName ?? null,
+          winReason: entitlementWinner?.winReason ?? null,
+          hiredOn: emp.hiredOn,
+          serviceYears: serviceYearsAtCycleStart,
+          band: band ? { fromYears: band.fromYears, toYears: band.toYears } : null,
+          days: eligibleDays,
+        },
+        earned: {
+          method: policy == null ? null : isEarnedMethod(policy.method) ? policy.method : 'up_front',
+          leaveYear: effectiveCycle === 'anniversary' ? 'anniversary' : 'calendar',
+          leaveYearOverride: override === 'a2a' || override === 'c2c' || override === 'a2c' ? override : null,
+          cycleEnd,
+          rounding:
+            policy == null
+              ? null
+              : roundingMethod === 'custom' && policy.roundingBands == null
+                ? 'custom_no_table'
+                : roundingMethod,
+          // An EARNED method on an a2c ANNUAL type in its hire year is the one combination where the engines
+          // disagree today (projectExpectedEntitlement's bc36c768 note: the accrual engine credits slices, the
+          // a2c kernel projects the up-front figure). There is no single join-year rule to name, so none is
+          // named; the credits listed below are still exactly what was posted.
+          joinYear:
+            joinedThisLeaveYear &&
+            policy != null &&
+            !(
+              isEarnedMethod(policy.method) &&
+              hireYearGrantShape({ typeCode: type.code, yearCycleOverride: override, hiredOn: emp.hiredOn }) === 'a2c_up_front'
+            )
+              ? isEarnedMethod(policy.method)
+                ? {
+                    hiredOn: emp.hiredOn,
+                    rule: 'earned_from',
+                    earnedFrom: earnedAccrualStart({ method: policy.method, cycleStart, hiredOn: emp.hiredOn, leaveCycle: effectiveCycle }),
+                  }
+                : {
+                    hiredOn: emp.hiredOn,
+                    rule: hireYearGrantShape({ typeCode: type.code, yearCycleOverride: override, hiredOn: emp.hiredOn }),
+                    earnedFrom: null,
+                  }
+              : null,
+          credits,
+        },
+        // ed6f7a7b — `carryOn` is the SAME decision the two resolveCarryBreakdown calls above were gated on,
+        // reused rather than re-asked. maxDays/percent stay the STORED configuration on purpose: this node is
+        // what lets HR see a retained maximum while it is dormant, which the zeroed inputs above hide.
+        carry: { rule: policy == null ? 'not_recorded' : carryOn ? 'on' : 'off', maxDays: carryMax, percent: carryPercent },
+        adjustments: { manual: configAdjustmentItems, system: systemItems },
+        taken: { leaveDays: takenOnLeave, other: otherDebits.map(({ ledgerId: _id, ...o }) => o) },
+        pending: pendingRows.map((r) => ({ startDate: r.startDate, endDate: r.endDate, days: Number(r.days) })),
+        forfeited: forfeitItems,
+      };
+    }
+
+    return {
+      leaveTypeId: type.id,
+      leaveType: pickName(type.name, i18n, locale),
+      asOf,
+      cycleStart,
+      // 1f6fd6d8: the full-year grant from the SAME winning policy row every other figure here resolves
+      // against (`policy`), so Eligible and the accrual that lands in the ledger can never describe
+      // different policies.
+      eligibleDays,
+      // 845903a3 (r313) — the prorated, rounded figure the ENTITLEMENT column renders, plus the working
+      // the Explain panel prints. `eligibleDays` above is deliberately still returned unchanged: it is
+      // what the grant engines resolve against, and every existing consumer of it keeps its meaning.
+      entitlement: entitlementView,
+      // 31e39d74: the state behind the figure, and the table it came from. Both DESCRIBE the tenant's own
+      // configuration — nothing here changes it (the plan is explicit: surface, do not fix silently).
+      entitlementStatus,
+      entitlementTemplateName: entitlementWinner?.templateName ?? null,
+      eligibility,
+      currentYearEntitlement: cycleAccrual,
+      // r335 (6af80f5d): the SAME figure through the type's Rounding Method — what every screen prints
+      // under "Earned to Date". `currentYearEntitlement` above stays exact so the six buckets keep tiling.
+      currentYearEntitlementRounded,
+      monthlyAccruedToDate: earned ? cycleAccrual : null,
+      carriedForward: carried,
+      carryForwardRemaining,
+      carryForwardExpiryDate,
+      forfeited,
+      otherAdjustments: num(agg?.otherAdjustments),
+      balance,
+      pendingApproval,
+      broughtForward: priorBalance,
+      configAdjustments,
+      systemAdjustments,
+      forfeitedThisCycle,
+      takenThisCycle,
+      configAdjustmentItems,
+      adjustments,
+      totalEntitlement,
+      totalAvailable: Math.round((balance - pendingApproval) * 100) / 100,
+      transactions: rows.map((r) => ({
+        effectiveOn: r.effectiveOn,
+        entryType: r.entryType,
+        days: Number(r.days),
+        sourceRequestId: r.sourceRequestId,
+        reason: r.reason,
+      })),
+      essView: resolveEssView(type.essViewConfig as Record<string, boolean> | null),
+      // 00307068: resolved over THIS type's own key set — the six Replacement Leave columns for the
+      // replacement type, the nine summary items for everything else.
+      // 5ff7daff: by ROLE first (the row is passed whole, not just its code), so a tenant whose replacement
+      // type is coded `RL` gets its COLUMN wording resolved instead of nine summary keys that name nothing
+      // on its table.
+      formulaExplanations: resolveLeaveFormulaForCode(type, type.formulaExplanations as Record<string, LeaveFormulaEntry> | null),
+      // r303: attached only when asked, so a caller that did not ask receives the object it always did.
+      ...(derivation ? { derivation } : {}),
+    };
+  }
+}
+
+/**
+ * r397 — `leaveEntitlementBreakdown` for SEVERAL leave types of ONE employee, in ONE transaction: the same
+ * answer, item for item, as calling the single read once per item (the My Leave dashboard did exactly that, one
+ * transaction per leave type, each re-reading the same employment row).
+ *
+ * WHAT IS SHARED, AND WHY THE ANSWER CANNOT MOVE:
+ *   · the employment row — one employee, so one row; the single read selects the same columns by the same id;
+ *   · the leave-type rows — `where id in (…)` over the SAME column set (`breakdownTypeColumns`) instead of one
+ *     `where id = …` each; a row the caller cannot see is absent from both;
+ *   · the template resolver — built once per DISTINCT asOf over every type asked at that asOf. Every answer it
+ *     gives is per (employment, leave type): templates are keyed by their own leave type, rules are matched per
+ *     employment, and a winner is chosen among the candidates OF THAT TYPE, so including more types in the
+ *     build changes no type's band, winner or has-a-table answer.
+ *   · everything else — the four ledger/request reads, the walk and every figure — is the single read's own
+ *     body (`leaveEntitlementBreakdownTx`), run once per item. No arithmetic is restated here.
+ * No `derivation`: the batched caller (core/my-leave.ts) never asks for it.
+ */
+export function leaveEntitlementBreakdowns(
+  ctx: SessionContext,
+  employmentId: string,
+  items: readonly { leaveTypeId: string; asOf: string }[],
+  locale?: string,
+  existingTx?: Tx,
+  inputs?: OwnLeaveInputs,
+): Promise<(LeaveEntitlementBreakdown | null)[]> {
+  if (items.length === 0) return Promise.resolve([]);
+  const read = async (tx: Tx) => {
+    const typeIds = [...new Set(items.map((i) => i.leaveTypeId))];
+    // Bundled own leave inputs answer the type and employment selects, the four per-item statements and the
+    // entitlement resolver's table, rule and default reads; the rules' organisation matches are one statement per
+    // resolver (buildTemplateEntitlementResolver with preloaded inputs). Under withStagedHomeReads a leave type with a
+    // table in force builds its resolver live, as before.
+    const own = inputs?.answers(tx, employmentId) ? inputs : undefined;
+    const [types, [emp]] = own
+      ? ([own.typeRows<BreakdownTypeRow>(breakdownTypeColumns(), (type) => typeIds.includes(type.id)),
+          own.employmentRows<BreakdownEmploymentRow>(breakdownEmploymentColumns)] as const)
+      : await Promise.all([
+      selectBreakdownTypes(tx).where(inArray(leaveType.id, typeIds)),
+      selectBreakdownEmployment(tx, employmentId),
+    ]);
+    const typeById = new Map(types.map((t) => [t.id, t]));
+    // The single read returns null before building a resolver when either row is missing; so does this.
+    if (!emp) return items.map(() => null);
+    const resolverByAsOf = new Map<string, TemplateEntitlementResolver>();
+    for (const asOf of [...new Set(items.map((i) => i.asOf))]) {
+      const ids = [...new Set(items.filter((i) => i.asOf === asOf && typeById.has(i.leaveTypeId)).map((i) => i.leaveTypeId))];
+      resolverByAsOf.set(asOf, own && ids.length > 0 && !own.templatesInForce(asOf, ids)
+        ? emptyTemplateEntitlementResolver()
+        : await buildTemplateEntitlementResolver(tx, { employmentIds: [employmentId], leaveTypeIds: ids, asOf }, own && !stagedHomeReads() ? own : undefined));
+    }
+    return Promise.all(
+      items.map((i) =>
+        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, {}, {
+          type: typeById.get(i.leaveTypeId),
+          emp,
+          templates: resolverByAsOf.get(i.asOf)!,
+          own,
+        }),
+      ),
+    );
+  };
+  return withReadTx(ctx, existingTx, read,{presentationSnapshot:true});
+}
+
+// RL Control Engine (0113): the active-vs-expired replacement-leave split, sourced from the toil_accrual
+// register (which step-0 consumption makes authoritative). active = Σ(daysCredited − daysTaken) over active
+// rows; taken = Σ daysTaken (the partial-consumption tally + the fully-taken rows); expired = lapsed;
+// convertedToPay = converted_to_pay — each with worked/expiry dates for the admin panel.
+export type ReplacementLeaveLedger = {
+  active: number;
+  taken: number;
+  expired: number;
+  convertedToPay: number;
+  soonestExpiry: string | null;
+  /** 00307068: the REPLACEMENT leave type's configured labelling unit ('day' | 'hour'), so the per-credit
+   *  table can render the Number column in the unit HR named it in. Deliberately labelling-only — it does
+   *  NOT change how any figure is calculated (see leave_type.leave_unit, e4980382). 'day' when the type does
+   *  not exist for this tenant yet. */
+  leaveUnit: 'day' | 'hour';
+  rows: {
+    id: string;
+    workedDate: string;
+    expiresOn: string;
+    daysCredited: number;
+    daysTaken: number;
+    // 3fb1a611 (r299): 'reversed' — HR reversed an unused credit on the Leave Credit screen. The row stays (a
+    // reversal never deletes) and counts toward nothing below: it was never banked.
+    status: 'active' | 'taken' | 'converted_to_pay' | 'lapsed' | 'reversed';
+    remaining: number;
+    // ── 00307068 additions. Kept ADDITIVE: test/replacement-leave-controls.test.ts asserts against the
+    // shape above and every field it names is untouched.
+    /** The day the credit was asked for. NULL on a row banked before migration 0354 could know it. */
+    requestedOn: string | null;
+    /** The instant a line manager's approval banked it, ISO-8601. NULL for the same reason. */
+    approvedOn: string | null;
+    /** The raw overtime minutes behind `daysCredited` — what the Number column shows when the type's unit
+     *  is 'hour' (otMinutes / 60), rather than re-deriving hours from a rounded day figure. */
+    otMinutes: number;
+  }[];
+};
+
+export function replacementLeaveLedger(ctx: SessionContext, employmentId: string, existingTx?: Tx): Promise<ReplacementLeaveLedger> {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: toilAccrual.id,
+        workedDate: toilAccrual.workedDate,
+        expiresOn: toilAccrual.expiresOn,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        status: toilAccrual.status,
+        // 00307068: the two dates the employee's per-credit table shows, plus the raw minutes the 'hour'
+        // unit renders from.
+        requestedOn: toilAccrual.requestedOn,
+        approvedOn: toilAccrual.approvedOn,
+        otMinutes: toilAccrual.otMinutes,
+      })
+      .from(toilAccrual)
+      .where(eq(toilAccrual.employmentId, employmentId))
+      .orderBy(asc(toilAccrual.expiresOn), asc(toilAccrual.workedDate));
+
+    // 00307068: the replacement type's labelling unit. One narrow read rather than threading the whole
+    // leave-type row: this function's callers ask for a credit register, not a type. Absent type ⇒ 'day'
+    // (the column default), which is also what every tenant that has never touched the setting has.
+    // 5ff7daff: ROLE FIRST, seeded code as the fallback — the same precedence as `leaveTypeIs` and as
+    // ensureReplacementLeaveType. On a tenant whose replacement type is coded `RL` the old code-only match
+    // read the labelling unit off the wrong type (or off none), so an HR admin who set the type to Hour saw
+    // the register keep rendering days.
+    const [rlType] = await tx
+      .select({ leaveUnit: leaveType.leaveUnit })
+      .from(leaveType)
+      .where(
+        and(
+          sql`(${leaveType.role} = 'replacement' or (coalesce(${leaveType.role}, '') = '' and lower(${leaveType.code}) = 'replacement'))`,
+          isNull(leaveType.archivedAt),
+        ),
+      )
+      .orderBy(sql`case when ${leaveType.role} = 'replacement' then 0 else 1 end`)
+      .limit(1);
+    const leaveUnit: 'day' | 'hour' = rlType?.leaveUnit === 'hour' ? 'hour' : 'day';
+
+    let active = 0;
+    let taken = 0;
+    let expired = 0;
+    let convertedToPay = 0;
+    let soonestExpiry: string | null = null;
+    const out: ReplacementLeaveLedger['rows'] = [];
+    for (const r of rows) {
+      const credited = Number(r.daysCredited);
+      const dTaken = Number(r.daysTaken);
+      const remaining = Math.round((credited - dTaken) * 100) / 100;
+      // taken accumulates the per-accrual consumed quantity regardless of status (active rows can carry a
+      // partial tally; fully-taken rows carry the whole credited amount).
+      taken = Math.round((taken + dTaken) * 100) / 100;
+      if (r.status === 'active') {
+        active = Math.round((active + remaining) * 100) / 100;
+        if (remaining > 0 && (soonestExpiry === null || r.expiresOn < soonestExpiry)) soonestExpiry = r.expiresOn;
+      } else if (r.status === 'lapsed') {
+        expired = Math.round((expired + remaining) * 100) / 100;
+      } else if (r.status === 'converted_to_pay') {
+        convertedToPay = Math.round((convertedToPay + remaining) * 100) / 100;
+      }
+      out.push({
+        id: r.id,
+        workedDate: r.workedDate,
+        expiresOn: r.expiresOn,
+        daysCredited: credited,
+        daysTaken: dTaken,
+        status: r.status,
+        remaining,
+        requestedOn: r.requestedOn ?? null,
+        approvedOn: r.approvedOn ? r.approvedOn.toISOString() : null,
+        otMinutes: r.otMinutes ?? 0,
+      });
+    }
+    return { active, taken, expired, convertedToPay, soonestExpiry, leaveUnit, rows: out };
+  });
+}
+
+// RL Control Engine (0113): company-scoped replacement-leave totals for the admin panel (the active-vs-expired
+// split aggregated over everyone in scope). Same status semantics as replacementLeaveLedger, summed.
+export type ReplacementLeaveSummary = {
+  active: number;
+  taken: number;
+  expired: number;
+  convertedToPay: number;
+  soonestExpiry: string | null;
+  activeAccruals: number;
+};
+
+export function replacementLeaveSummary(ctx: SessionContext, companyIds?: string[]): Promise<ReplacementLeaveSummary> {
+  return withTenant(ctx, async (tx) => {
+    const scope =
+      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined;
+    const rows = await tx
+      .select({
+        status: toilAccrual.status,
+        daysCredited: toilAccrual.daysCredited,
+        daysTaken: toilAccrual.daysTaken,
+        expiresOn: toilAccrual.expiresOn,
+      })
+      .from(toilAccrual)
+      .innerJoin(employment, eq(employment.id, toilAccrual.employmentId))
+      .where(scope);
+    let active = 0;
+    let taken = 0;
+    let expired = 0;
+    let convertedToPay = 0;
+    let soonestExpiry: string | null = null;
+    let activeAccruals = 0;
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    for (const r of rows) {
+      const remaining = r2(Number(r.daysCredited) - Number(r.daysTaken));
+      taken = r2(taken + Number(r.daysTaken));
+      if (r.status === 'active') {
+        active = r2(active + remaining);
+        if (remaining > 0) {
+          activeAccruals += 1;
+          if (soonestExpiry === null || r.expiresOn < soonestExpiry) soonestExpiry = r.expiresOn;
+        }
+      } else if (r.status === 'lapsed') {
+        expired = r2(expired + remaining);
+      } else if (r.status === 'converted_to_pay') {
+        convertedToPay = r2(convertedToPay + remaining);
+      }
+    }
+    return { active, taken, expired, convertedToPay, soonestExpiry, activeAccruals };
+  });
+}
+
+/**
+ * Per-employee × leave-type balances for everyone in scope — the all-employee pivot.
+ *
+ * NO SCREEN READS THIS TODAY. The /leave page dropped it (test/leave-balance-relocation.test.ts pins that);
+ * Employee Balances reads the per-employment `leaveBalances` instead. It survives as the bulk read and is
+ * covered by the reconciliation test, which asserts it reports the same ledger balance as `leaveBalances`
+ * and the breakdown.
+ *
+ * It DELIBERATELY has no eligible-but-inactive tail, and 994a5287 left it that way. `leaveBalances` can
+ * afford one because it resolves eligibility for ONE employment; doing the same here is an employees ×
+ * leave-types cross product, and it would change the row count of a read whose only current consumers are
+ * tests. If a screen ever adopts this function, that tail has to be added first — the two must agree about
+ * which types exist for a person, and today they only agree about the FIGURES.
+ */
+export function leaveBalancesAll(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async (tx) => {
+    const scope = and(
+      isNull(employment.terminatedOn),
+      companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+    );
+    const [rows, pend] = await Promise.all([
+      tx
+        .select({
+          employmentId: employment.id,
+          personId: employment.personId,
+          name: person.fullName,
+          leaveTypeId: leaveType.id,
+          leaveType: leaveType.name,
+          accrued: sql<string>`coalesce(sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} in ('accrual', 'in_lieu_accrual')), 0)`,
+          taken: sql<string>`coalesce(-sum(${leaveLedger.days}) filter (where ${leaveLedger.entryType} = 'debit'), 0)`,
+          balance: sql<string>`coalesce(sum(${leaveLedger.days}), 0)`,
+        })
+        .from(leaveLedger)
+        .innerJoin(employment, eq(employment.id, leaveLedger.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .innerJoin(leaveType, eq(leaveType.id, leaveLedger.leaveTypeId))
+        .where(scope)
+        .groupBy(employment.id, employment.personId, person.fullName, leaveType.id, leaveType.name)
+        .orderBy(person.fullName, leaveType.name),
+      tx
+        .select({
+          employmentId: leaveRequest.employmentId,
+          personId: employment.personId,
+          name: person.fullName,
+          leaveTypeId: leaveRequest.leaveTypeId,
+          leaveType: leaveType.name,
+          pending: sql<string>`coalesce(sum(${leaveRequest.days}), 0)`,
+        })
+        .from(leaveRequest)
+        .innerJoin(employment, eq(employment.id, leaveRequest.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+        .where(and(eq(leaveRequest.status, 'pending'), scope))
+        .groupBy(
+          leaveRequest.employmentId,
+          employment.personId,
+          person.fullName,
+          leaveRequest.leaveTypeId,
+          leaveType.name,
+        ),
+    ]);
+    const pendingBy = new Map(pend.map((p) => [`${p.employmentId}|${p.leaveTypeId}`, Number(p.pending)]));
+    // r389 (62a1bec1) — the SAME Earned to Date as `leaveBalances`: no screen reads this bulk pivot today, but
+    // two `accrued` figures under one name for one pair would be the defect this item closes, waiting.
+    const recalcEarnedBy = await earnedRecalcDaysBy(tx, [...new Set(rows.map((r) => r.employmentId))]);
+    const out = rows.map((r) => {
+      const pending = pendingBy.get(`${r.employmentId}|${r.leaveTypeId}`) ?? 0;
+      const balance = Number(r.balance);
+      const recalc = recalcEarnedBy.get(`${r.employmentId}|${r.leaveTypeId}`);
+      return {
+        employmentId: r.employmentId,
+        personId: r.personId,
+        name: r.name,
+        leaveTypeId: r.leaveTypeId,
+        leaveType: r.leaveType,
+        accrued: recalc == null ? Number(r.accrued) : Math.round((Number(r.accrued) + recalc) * 100) / 100,
+        taken: Number(r.taken),
+        pending,
+        balance,
+        available: balance - pending,
+      };
+    });
+    // Pending-only (employment, type) combos — e.g. non-accrued sick leave — must surface too.
+    const seen = new Set(out.map((r) => `${r.employmentId}|${r.leaveTypeId}`));
+    for (const p of pend) {
+      if (seen.has(`${p.employmentId}|${p.leaveTypeId}`)) continue;
+      const pending = Number(p.pending);
+      out.push({
+        employmentId: p.employmentId,
+        personId: p.personId,
+        name: p.name,
+        leaveTypeId: p.leaveTypeId,
+        leaveType: p.leaveType,
+        accrued: 0,
+        taken: 0,
+        pending,
+        balance: 0,
+        available: -pending,
+      });
+    }
+    return out;
+  });
+}
+
+export function leaveRequestsFor(ctx: SessionContext, employmentId: string, locale?: string, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: leaveRequest.id,
+        // Edit/cancel-by-status (item c9a19e34): the employment behind the row + the leave type id, so the /me
+        // list can gate + prefill the status-gated Edit dialog and resolve the approved give-back candidates.
+        employmentId: leaveRequest.employmentId,
+        leaveTypeId: leaveRequest.leaveTypeId,
+        leaveCounting: leaveType.counting,
+        leaveDayTypeInclusion: leaveType.dayTypeInclusion,
+        leaveType: leaveType.name,
+        i18n: leaveType.i18n,
+        startDate: leaveRequest.startDate,
+        endDate: leaveRequest.endDate,
+        days: leaveRequest.days,
+        durationType: leaveRequest.durationType,
+        hours: leaveRequest.hours,
+        // Hourly-leave time window (0129): the employee sees their own window on the /me history row.
+        fromTime: leaveRequest.fromTime,
+        toTime: leaveRequest.toTime,
+        status: leaveRequest.status,
+        typeCode: leaveType.code,
+        // Edit/cancel-by-status: the applicant's own words prefill the Edit dialog.
+        reason: leaveRequest.reason,
+        employeeRemark: leaveRequest.employeeRemark,
+        // EL applications and partial cancellations both group rows; recorded origin identifies EL.
+        parentGroupId: leaveRequest.parentGroupId,
+        isEmergencyGroup: emergencyLeaveGroupOriginSql,
+        hasDocument: LEAVE_REQUEST_HAS_DOCUMENT,
+        currentStepKind: sql<string | null>`(select approver_kind from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        currentStepIndex: sql<number | null>`(select step_index from leave_approval_step s where s.leave_request_id = leave_request.id and s.status = 'pending' order by s.step_index limit 1)`,
+        stepCount: sql<number>`(select count(*)::int from leave_approval_step s where s.leave_request_id = leave_request.id)`,
+        // Edit/cancel-by-status: an open give-back already on this approved row suppresses a second cancel click.
+        pendingCancellationId: sql<string | null>`(select id from leave_cancellation_request c where c.leave_request_id = leave_request.id and c.status = 'pending' order by c.created_at desc limit 1)`,
+        // R5 Build #2: TRUE when this row is a SURVIVOR of a prior cancellation split (still cancellable).
+        isCancellationSplit: cancellationSplitGroupSql,
+        // R17 600be8ac ask #4: TRUE when this request has ≥1 REJECTED per-date sub-row → the /me + personnel
+        // history renders the derived "Partially approved" badge instead of a flat "Approved" (no status enum).
+        hasRejectedDates: sql<boolean>`exists (select 1 from leave_request_date d where d.leave_request_id = leave_request.id and d.status = 'rejected')`,
+      })
+      .from(leaveRequest)
+      .innerJoin(leaveType, eq(leaveType.id, leaveRequest.leaveTypeId))
+      .where(eq(leaveRequest.employmentId, employmentId))
+      .orderBy(desc(leaveRequest.startDate));
+    // Edit/cancel-by-status: resolve each approved full-day plain/split row's counted dates (the give-back
+    // candidate set), calendar or roster/inclusion aware, exactly as the /leave page does — so the /me approved-cancel dialog offers
+    // the same dates the service will accept.
+    const withDates = await resolveLeaveWorkingDates(tx, rows);
+    return withDates.map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n, locale) }));
+  });
+}
+const LEAVE_REQUEST_HAS_DOCUMENT = sql<boolean>`exists (select 1 from leave_request_attachment lra where lra.leave_request_id = leave_request.id)`;
+/** The fields of leaveRequestsFor the Before payroll checklist reads (core/pre-salary/person-items.ts). */
+const LEAVE_REQUEST_CHECKLIST_FIELDS = { id: leaveRequest.id, leaveTypeId: leaveRequest.leaveTypeId, leaveType: leaveType.name, i18n: leaveType.i18n,
+  startDate: leaveRequest.startDate, endDate: leaveRequest.endDate, days: leaveRequest.days, status: leaveRequest.status, hasDocument: LEAVE_REQUEST_HAS_DOCUMENT };
+/** leaveRequestsFor in the one-statement Before payroll read (core/pre-salary/before-payroll-bundle.ts): the same rows
+ * (the owner's join, predicate and order) with the fields the checklist reads, the type name localized the same way.
+ * The working dates the owner resolves after its select feed only the give-back dialog, so they are not read. */
+export function leaveRequestsChecklistBundleSql(employmentId: string) {
+  return jsonRowsSql({ row: jsonFieldsSql(LEAVE_REQUEST_CHECKLIST_FIELDS),
+    from: sql`${leaveRequest} inner join ${leaveType} on ${eq(leaveType.id, leaveRequest.leaveTypeId)}`,
+    where: eq(leaveRequest.employmentId, employmentId), order: sql`${leaveRequest.startDate} desc` });
+}
+export function leaveRequestsChecklistFromBundle(value: unknown, locale?: string) {
+  // Non-null columns of the owner's inner-joined select: each decoded row has the owner's own types.
+  type Row = { id: string; leaveTypeId: string; leaveType: string; i18n: unknown; startDate: string; endDate: string; days: string;
+    status: (typeof leaveRequest.$inferSelect)['status']; hasDocument: boolean };
+  return (decodeJsonFieldRows(LEAVE_REQUEST_CHECKLIST_FIELDS, value) as Row[]).map(({ i18n, ...r }) => ({ ...r, leaveType: pickName(r.leaveType, i18n as Parameters<typeof pickName>[1], locale) }));
+}
+
+/** The reporting-line vocabulary as the edge stores it, in the enum's DECLARATION order — which is also
+ *  the order Postgres sorts the column in, and therefore the order `reportingLinesFor` has always
+ *  returned. Kept as an array so the union below can re-sort without changing what callers saw. */
+type ReportingLineKind = (typeof reportingLineTypeEnum.enumValues)[number];
+const reportingLineKindRank = (k: ReportingLineKind): number => reportingLineTypeEnum.enumValues.indexOf(k);
+
+/** One edge from `app.own_reporting_managers` — the caller's own supervisor, named. */
+export type OwnReportingManager = {
+  id: string;
+  lineType: ReportingLineKind;
+  employmentId: string;
+  personId: string;
+  name: string;
+  employeeCode: string | null;
+  validFrom: string;
+  validTo: string | null;
+};
+
+/**
+ * r375 (board 7c972a40) — THE ONE PLACE AN EMPLOYEE'S OWN SUPERVISORS ARE NAMED, and the only new
+ * authority in this round.
+ *
+ * WHY IT EXISTS. Visibility flows DOWNWARD: `app.can_see_employment` (0109) admits admins, self, the
+ * recursive administrative down-walk and the head-of-department tree, and `app.can_see_person` (0029 /
+ * 0099) delegates to it. `reporting_line` SELECT is tenant-wide, so the subordinate sees the EDGE — the
+ * inner joins to `employment` and `person` are what drop the name. So for a plain employee the `managers`
+ * array below came back EMPTY, and every screen that asks "who is my supervisor" fell through to a
+ * fallback. The fix cannot live in a screen.
+ *
+ * WHY NOT A POLICY. `person` carries date_of_birth, gender, marital_status, religion, race (PDPA 2010
+ * s.40 sensitive), address_line1..3, personal_email and phone, and `can_see_person` additionally gates
+ * the statutory row, dependents, TP1, TP3, the photo and emergency contacts. Widening it would hand a
+ * subordinate all of that, through every read in the product. Migration 0472 refused exactly that for
+ * the leave approver names; 0498 refuses it again and adds a narrow SECURITY DEFINER reader instead,
+ * following `app.self_delegations` (0196) and `app.own_leave_request_approvals` (0472).
+ *
+ * WHAT IT WILL NOT ANSWER. Rows come back ONLY for an employment of the signed-in user's own person,
+ * inside the session tenant: one hop up, current lines only (judged in the tenant's Asia/Kuala_Lumpur
+ * calendar, not the server's), never a `delegate` edge, display identity only. Anything else is NO ROWS
+ * rather than an error, so it cannot be used to probe which ids exist. See 0498's header for the four
+ * fences and `test/r375-own-supervisor-name.test.ts` for both directions.
+ *
+ * Takes a `tx` rather than a ctx so the two readers that need it — `reportingLinesFor` here and
+ * `myRosterWindow` in core/roster.ts — share ONE expression of the rule instead of each growing a
+ * private exception.
+ */
+export async function ownReportingManagersTx(tx: Tx, employmentId: string): Promise<OwnReportingManager[]> {
+  const res = (await tx.execute(
+    sql`SELECT * FROM app.own_reporting_managers(${employmentId}::uuid)
+        ORDER BY line_type, valid_from, reporting_line_id`,
+  )) as unknown as {
+    reporting_line_id: string;
+    line_type: ReportingLineKind;
+    manager_employment_id: string;
+    manager_person_id: string;
+    full_name: string;
+    employee_code: string | null;
+    valid_from: string;
+    valid_to: string | null;
+  }[];
+  return res.map((r) => ({
+    id: r.reporting_line_id,
+    lineType: r.line_type,
+    employmentId: r.manager_employment_id,
+    personId: r.manager_person_id,
+    name: r.full_name,
+    employeeCode: r.employee_code,
+    validFrom: r.valid_from,
+    validTo: r.valid_to,
+  }));
+}
+
+/** Current reporting edges for an employment: who they report to, and their direct reports. Excludes
+ *  `delegate` edges (approver-routing, surfaced separately by delegationsFor — ADR-0052).
+ *
+ *  `managers` is the UNION, by reporting-line id, of what this session can reach through RLS and what
+ *  `ownReportingManagersTx` adds when the employment is the caller's OWN (r375). A union, not a
+ *  replacement, because the two sets are not nested: the RLS query admits a FUTURE-DATED open line
+ *  (it filters `valid_to IS NULL` and never checks `valid_from`), while 0498 answers only for the line
+ *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
+ *  takes nothing away. */
+/** reportingLinesFor's `managers` predicate: the current, unsuperseded, non-delegate lines above `employmentId`. */
+const visibleReportingManagersWhere = (employmentId: string) => and(
+  eq(reportingLine.subordinateEmploymentId, employmentId),
+  isNull(reportingLine.validTo),
+  isNull(reportingLine.supersededAt),
+  sql`${reportingLine.lineType} <> 'delegate'`,
+);
+/** The manager employment ids of reportingLinesFor's `managers` (the rows this session's row-level security reaches,
+ *  and the rows ownReportingManagersTx adds for the caller's own employment), as one jsonb value of a bundled statement
+ *  (Today's At a glance, docs/adr/2026-11-10-home-request-read-scope.md decision 13). Each read keeps its select, joins
+ *  and predicate; only the ids are carried, the one field that reader uses. */
+export function reportingManagerIdsBundleSql(employmentId: string): SQL {
+  return sql`jsonb_build_object('visible',(select coalesce(jsonb_agg(${reportingLine.managerEmploymentId}),'[]'::jsonb) from ${reportingLine}
+    inner join ${employment} on ${eq(employment.id, reportingLine.managerEmploymentId)} inner join ${person} on ${eq(person.id, employment.personId)}
+    where ${visibleReportingManagersWhere(employmentId)}),
+   'own',(select coalesce(jsonb_agg(manager_employment_id),'[]'::jsonb) from app.own_reporting_managers(${employmentId}::uuid)))`;
+}
+/** The set of manager employment ids reportingLinesFor's `managers` maps to, from reportingManagerIdsBundleSql's value. */
+export function reportingManagerIdsFromBundle(value: unknown): string[] {
+  const raw = value as { visible?: unknown; own?: unknown } | null;
+  if (!raw || !Array.isArray(raw.visible) || !Array.isArray(raw.own) || ![...raw.visible, ...raw.own].every((id) => typeof id === 'string'))
+    throw new Error('Bundled reporting managers are malformed.');
+  return [...new Set([...raw.visible, ...raw.own] as string[])];
+}
+
+export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const visibleManagers = await tx
+      .select({
+        id: reportingLine.id,
+        lineType: reportingLine.lineType,
+        employmentId: reportingLine.managerEmploymentId,
+        // eae550e9: the person behind the edge (both queries already innerJoin person — one extra column).
+        personId: employment.personId,
+        name: person.fullName,
+        // Direct Superior (dce55aff): the manager's Employee ID, so the card/header can render
+        // "EMP-0008 – John Tan". Additive — existing callers ignore it.
+        employeeCode: employment.employeeCode,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(visibleReportingManagersWhere(employmentId))
+      .orderBy(reportingLine.lineType);
+    // r375 — the caller's OWN supervisors, which the query above cannot reach (see ownReportingManagersTx).
+    // Keyed by reporting-line id so a row both reads return appears ONCE: `test/direct-superior.test.ts`
+    // and `test/slice0.test.ts` both assert exactly one active administrative manager, and a duplicate
+    // here would read as a second supervisor rather than as the same edge seen twice.
+    const byLineId = new Map(visibleManagers.map((m) => [m.id, m]));
+    for (const own of await ownReportingManagersTx(tx, employmentId)) {
+      if (byLineId.has(own.id)) continue;
+      byLineId.set(own.id, {
+        id: own.id,
+        lineType: own.lineType,
+        employmentId: own.employmentId,
+        personId: own.personId,
+        name: own.name,
+        employeeCode: own.employeeCode,
+      });
+    }
+    // Enum declaration order, which is what `ORDER BY line_type` gave before the union (Postgres sorts an
+    // enum by declaration, not alphabetically), then name and id so the array is fully determined —
+    // within one line type the old query left the order to the planner (CLAUDE.md §8).
+    const managers = [...byLineId.values()].sort(
+      (a, b) =>
+        reportingLineKindRank(a.lineType) - reportingLineKindRank(b.lineType) ||
+        a.name.localeCompare(b.name) ||
+        a.id.localeCompare(b.id),
+    );
+    const reports = await tx
+      .select({
+        id: reportingLine.id,
+        lineType: reportingLine.lineType,
+        employmentId: reportingLine.subordinateEmploymentId,
+        // eae550e9: the person behind the edge — feeds the dashboard calendar's person-scoped read.
+        personId: employment.personId,
+        name: person.fullName,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.subordinateEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.managerEmploymentId, employmentId),
+          isNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+          sql`${reportingLine.lineType} <> 'delegate'`,
+        ),
+      )
+      .orderBy(person.fullName);
+    return { managers, reports };
+  });
+}
+
+/** Direct Superior history (dce55aff): the CLOSED administrative reporting lines for an employment —
+ *  every prior direct superior with the window they held the role. Read-only feed for the compact
+ *  history disclosure on the Personnel Employment tab; the effective-dating stays internal (the screen
+ *  no longer asks admins to manage dates), but the audit visibility is preserved here. Excludes the
+ *  open line (that is the CURRENT superior, rendered separately) and superseded corrections. */
+export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    return tx
+      .select({
+        id: reportingLine.id,
+        managerEmploymentId: reportingLine.managerEmploymentId,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, employmentId),
+          eq(reportingLine.lineType, 'administrative'),
+          isNotNull(reportingLine.validTo),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(desc(reportingLine.validFrom), desc(reportingLine.validTo));
+  });
+}
+
+/** Active approval delegations FROM this employment (ADR-0052): rows where this employment is the
+ *  delegator (subordinate of a `delegate` edge), naming the stand-in delegate (the edge's manager) and
+ *  the window. RLS scopes the join through employment (admin/self/manager visibility). */
+export function delegationsFor(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    return tx
+      .select({
+        id: reportingLine.id,
+        delegateEmploymentId: reportingLine.managerEmploymentId,
+        delegateName: person.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+      })
+      .from(reportingLine)
+      .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, employmentId),
+          eq(reportingLine.lineType, 'delegate'),
+          isNull(reportingLine.supersededAt),
+        ),
+      )
+      .orderBy(desc(reportingLine.validFrom));
+  });
+}
+
+export type DelegationScopedRow = {
+  id: string;
+  delegatorEmploymentId: string;
+  delegatorName: string;
+  delegateEmploymentId: string;
+  delegateName: string;
+  validFrom: string;
+  validTo: string | null;
+  ended: boolean;
+  // R44 delegation (Phase 2): the reason + the per-module/task scope. `scopes` empty = whole-scope (all
+  // approvals). Both are attached post-query (attachDelegationScopeInfo) for admin + self-service alike.
+  reason: string | null;
+  scopes: { module: string; taskType: string | null }[];
+  // R51 (baf56348): org coverage ids + display names — consumed ONLY by the HR edit-form defaults (the
+  // list-table coverage column was deliberately cut). All-null = unrestricted.
+  orgScope: {
+    companyId: string | null;
+    companyName: string | null;
+    businessUnitId: string | null;
+    businessUnitName: string | null;
+    departmentId: string | null;
+    departmentName: string | null;
+  };
+};
+
+type DelegationRawRow = {
+  id: string;
+  delegatorEmploymentId: string;
+  delegatorName: string;
+  delegateEmploymentId: string;
+  delegateName: string;
+  validFrom: string;
+  validTo: string | null;
+  supersededAt: Date | string | null;
+};
+
+/** Shape a raw delegation row (either source) into the page row, deriving `ended` from asOf. `reason` /
+ *  `scopes` start empty and are filled by attachDelegationScopeInfo (one batched query for all rows). */
+function shapeDelegationRow(r: DelegationRawRow, asOf: string): DelegationScopedRow {
+  return {
+    id: r.id,
+    delegatorEmploymentId: r.delegatorEmploymentId,
+    delegatorName: r.delegatorName,
+    delegateEmploymentId: r.delegateEmploymentId,
+    delegateName: r.delegateName,
+    validFrom: r.validFrom,
+    validTo: r.validTo,
+    ended: r.supersededAt != null || (r.validTo != null && r.validTo <= asOf),
+    reason: null,
+    scopes: [],
+    orgScope: {
+      companyId: null,
+      companyName: null,
+      businessUnitId: null,
+      businessUnitName: null,
+      departmentId: null,
+      departmentName: null,
+    },
+  };
+}
+
+/**
+ * R44 delegation (Phase 2) — batch-attach reason + scope rows to a set of delegation rows, in the caller's
+ * tx. reporting_line + reporting_line_scope are tenant-readable (RLS USING is tenant-only), so this works
+ * for both the admin path and a self-service user. A delegation with no scope rows keeps scopes: [].
+ */
+async function attachDelegationScopeInfo(tx: Tx, rows: DelegationScopedRow[]): Promise<DelegationScopedRow[]> {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => r.id);
+  const [reasons, scopeRows] = await Promise.all([
+    tx
+      .select({
+        id: reportingLine.id,
+        reason: reportingLine.reason,
+        // R51 (baf56348): org coverage ids + names in ONE left-joined pass (company/BU/department SELECT is
+        // tenant-wide under RLS, so this resolves for self-service viewers too).
+        scopeCompanyId: reportingLine.scopeCompanyId,
+        scopeCompanyName: company.legalName,
+        scopeBusinessUnitId: reportingLine.scopeBusinessUnitId,
+        scopeBusinessUnitName: businessUnit.name,
+        scopeDepartmentId: reportingLine.scopeDepartmentId,
+        scopeDepartmentName: department.name,
+      })
+      .from(reportingLine)
+      .leftJoin(company, eq(company.id, reportingLine.scopeCompanyId))
+      .leftJoin(businessUnit, eq(businessUnit.id, reportingLine.scopeBusinessUnitId))
+      .leftJoin(department, eq(department.id, reportingLine.scopeDepartmentId))
+      .where(inArray(reportingLine.id, ids)),
+    tx
+      .select({
+        rid: reportingLineScope.reportingLineId,
+        module: reportingLineScope.module,
+        taskType: reportingLineScope.taskType,
+      })
+      .from(reportingLineScope)
+      .where(inArray(reportingLineScope.reportingLineId, ids)),
+  ]);
+  const infoById = new Map(reasons.map((r) => [r.id, r]));
+  const scopesById = new Map<string, { module: string; taskType: string | null }[]>();
+  for (const s of scopeRows) {
+    const list = scopesById.get(s.rid) ?? [];
+    list.push({ module: s.module, taskType: s.taskType });
+    scopesById.set(s.rid, list);
+  }
+  return rows.map((r) => {
+    const info = infoById.get(r.id);
+    return {
+      ...r,
+      reason: info?.reason ?? null,
+      scopes: scopesById.get(r.id) ?? [],
+      orgScope: {
+        companyId: info?.scopeCompanyId ?? null,
+        companyName: info?.scopeCompanyName ?? null,
+        businessUnitId: info?.scopeBusinessUnitId ?? null,
+        businessUnitName: info?.scopeBusinessUnitName ?? null,
+        departmentId: info?.scopeDepartmentId ?? null,
+        departmentName: info?.scopeDepartmentName ?? null,
+      },
+    };
+  });
+}
+
+/**
+ * Global Delegation (Phase 1) — the /delegations listing. Unlike `delegationsFor` (one delegator's active
+ * rows), this returns delegations ACROSS employments with both sides named:
+ *   • HR / super_admin (`isAdmin`) → every delegation in the tenant; `history` adds past/superseded rows.
+ *     Admins already read all employment/person under RLS, so this is a plain scoped join.
+ *   • a self-service user → only rows where the CALLER is the delegator OR the delegate. reporting_line
+ *     SELECT is tenant-only, but the employment/person NAME joins are visibility-gated (a stand-in cannot
+ *     see the delegator's employment under RLS), so a plain join would silently drop the counterparty's
+ *     row. It is resolved through the SECURITY-DEFINER helper `app.self_delegations()` (migration 0195) —
+ *     the same vetted-boundary pattern as `app.can_decide_via_delegation`: the function's own WHERE clause
+ *     restricts the result to delegations the caller participates in (delegator OR delegate), so no broader
+ *     employment/person visibility is granted.
+ * `ended` = TRUE for a superseded row or one whose window has closed (validTo <= asOf) — the page derives
+ * the finer Active / Scheduled / Ended status from the dates. Read-only (no DomainEvent).
+ */
+export function delegationsScoped(
+  ctx: SessionContext,
+  opts: { isAdmin: boolean; history: boolean; asOf: string },
+): Promise<DelegationScopedRow[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!opts.isAdmin) {
+      // Self view — the definer helper self-scopes to the caller's own delegations (delegator OR delegate).
+      const res = await tx.execute(sql`SELECT * FROM app.self_delegations()`);
+      const raws = res as unknown as {
+        id: string;
+        delegator_employment_id: string;
+        delegator_name: string;
+        delegate_employment_id: string;
+        delegate_name: string;
+        valid_from: string;
+        valid_to: string | null;
+        superseded_at: Date | string | null;
+      }[];
+      const notEnded = (r: (typeof raws)[number]) =>
+        r.superseded_at == null && (r.valid_to == null || r.valid_to > opts.asOf);
+      const selfRows = raws
+        .filter((r) => opts.history || notEnded(r))
+        .map((r) =>
+          shapeDelegationRow(
+            {
+              id: r.id,
+              delegatorEmploymentId: r.delegator_employment_id,
+              delegatorName: r.delegator_name,
+              delegateEmploymentId: r.delegate_employment_id,
+              delegateName: r.delegate_name,
+              validFrom: r.valid_from,
+              validTo: r.valid_to,
+              supersededAt: r.superseded_at,
+            },
+            opts.asOf,
+          ),
+        )
+        .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
+      return attachDelegationScopeInfo(tx, selfRows);
+    }
+    const delegatorEmp = alias(employment, 'deleg_delegator_emp');
+    const delegatorPerson = alias(person, 'deleg_delegator_person');
+    const delegateEmp = alias(employment, 'deleg_delegate_emp');
+    const delegatePerson = alias(person, 'deleg_delegate_person');
+    // history=false → only rows still active-or-future (not superseded, window not yet closed).
+    const notEnded = and(
+      isNull(reportingLine.supersededAt),
+      or(isNull(reportingLine.validTo), gt(reportingLine.validTo, opts.asOf)),
+    );
+    const rows = await tx
+      .select({
+        id: reportingLine.id,
+        delegatorEmploymentId: reportingLine.subordinateEmploymentId,
+        delegatorName: delegatorPerson.fullName,
+        delegateEmploymentId: reportingLine.managerEmploymentId,
+        delegateName: delegatePerson.fullName,
+        validFrom: reportingLine.validFrom,
+        validTo: reportingLine.validTo,
+        supersededAt: reportingLine.supersededAt,
+      })
+      .from(reportingLine)
+      .innerJoin(delegatorEmp, eq(delegatorEmp.id, reportingLine.subordinateEmploymentId))
+      .innerJoin(delegatorPerson, eq(delegatorPerson.id, delegatorEmp.personId))
+      .innerJoin(delegateEmp, eq(delegateEmp.id, reportingLine.managerEmploymentId))
+      .innerJoin(delegatePerson, eq(delegatePerson.id, delegateEmp.personId))
+      .where(and(eq(reportingLine.lineType, 'delegate'), opts.history ? undefined : notEnded))
+      .orderBy(desc(reportingLine.validFrom));
+    return attachDelegationScopeInfo(tx, rows.map((r) => shapeDelegationRow(r, opts.asOf)));
+  });
+}
+
+/** Global Delegation (Phase 1) — a lightweight active-employee picker (id + name + code), for the
+ *  delegation create form's "delegate to" / (HR) "delegate from" selects. RLS-scoped; read-only. */
+export function employmentPickerList(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({ employmentId: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(person.fullName),
+  );
+}
+
+/** R51 (baf56348) — one same-level stand-in candidate for the delegation "delegate to" picker. Org ids ride
+ *  along so the coverage cascade can narrow the list CLIENT-side (no per-scope-change server round-trip). */
+export type EligibleDelegateRow = {
+  employmentId: string;
+  name: string;
+  companyId: string;
+  businessUnitId: string | null;
+  departmentId: string | null;
+  level: string;
+};
+
+/**
+ * R51 (baf56348) — same-level stand-in candidates for a delegator, via app.eligible_delegates (SECURITY
+ * DEFINER, migration 0286). The definer boundary is required: employment RLS hides sibling approvers from a
+ * self-service head, so a plain scoped query here would return a near-empty list. The function itself guards
+ * authorisation (caller owns the delegator employment or is an admin — otherwise EMPTY) and filters to
+ * active, non-self employments whose HIGHEST approver level equals the delegator's. Read-only.
+ */
+export function eligibleDelegates(ctx: SessionContext, delegatorEmploymentId: string): Promise<EligibleDelegateRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`SELECT * FROM app.eligible_delegates(${delegatorEmploymentId})`);
+    const rows = res as unknown as {
+      employment_id: string;
+      full_name: string;
+      company_id: string;
+      business_unit_id: string | null;
+      department_id: string | null;
+      approver_level: string;
+    }[];
+    return rows.map((r) => ({
+      employmentId: r.employment_id,
+      name: r.full_name,
+      companyId: r.company_id,
+      businessUnitId: r.business_unit_id,
+      departmentId: r.department_id,
+      level: r.approver_level,
+    }));
+  });
+}
+
+/** Compatibility read; the date-aware scoped Org Chart projection owns the hierarchy. */
+export async function orgChartData(ctx: SessionContext, companyIds?: string[]) {
+  const {orgChartSnapshot,orgChartCompanies}=await import('./org-chart');
+  const ids=companyIds ?? (await orgChartCompanies(ctx)).map(company=>company.id);
+  return orgChartSnapshot(ctx,{companyIds:ids});
+}
+
+/** Active employees + current administrative reporting edges, for the org chart. */
+export function orgChartWindowFullData(ctx: SessionContext, companyIds?: string[],existingTx?:Tx) {
+  return withReadTx(ctx,existingTx, async (tx) => {
+    const employees = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        employeeCode: employment.employeeCode,
+        role: position.title,
+        department: department.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(
+        and(
+          isNull(employment.terminatedOn),
+          companyIds ? inArray(employment.companyId, companyIds) : undefined,
+        ),
+      )
+      .orderBy(person.fullName);
+    // Use the same authorized, live endpoint set as the bounded chart.
+    const edges = await readOrgChartEdgesTx(tx);
+    return { employees, edges };
+  });
+}
+
+export type AuditRow = {
+  id: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventType: string;
+  actorType: string;
+  actorName: string | null;
+  payload: unknown;
+  occurredAt: Date;
+  sequence: number;
+};
+
+export type AuditFilters = {
+  /** One authorized Personnel subject, including its canonical related aggregates and tagged events. */
+  employmentId?: string;
+  aggregateType?: string;
+  // f1b994e3 — `aggregateTypes?: string[]` STOOD HERE and is deliberately gone. It existed for ONE
+  // caller, the retired Leave Audit page, which hand-listed the leave module's aggregate types — and
+  // that hand-list is precisely what drifted from AGGREGATE_MODULE and produced the bug this item fixes
+  // (404 leave rows hidden, job-grade rows shown under a chip that said Organization). `module` below
+  // asks the same question and derives its answer, so keeping a second, hand-fed way to express
+  // "restrict to a set of aggregate types" would just re-open the door. It had no other caller.
+  /** Restrict to a single aggregate INSTANCE (e.g. one payroll batch's lifecycle events for a per-run
+   *  History card). AND-ed onto the other filters; read-only, no event appended. */
+  aggregateId?: string;
+  /** f1b994e3 — the Area filter: the bounded context an event's aggregate belongs to (leave /
+   *  organization / payroll / attendance / performance / other). Resolved against AGGREGATE_MODULE, the
+   *  same map components/audit-table.tsx chips each row with. The caller passes a validated ModuleKey
+   *  (isModuleKey); an out-of-set `?module=` is dropped by the caller, never narrowed to nothing. */
+  module?: ModuleKey;
+  eventType?: string; // exact event type for server-owned lookups
+  eventQuery?: string; // matches event type / aggregate type
+  actorId?: string;
+  /** 4ec5a940 — action filter: matches the event's last dot-segment (created/updated/deleted/…). The
+   *  caller passes a validated slug from an allowlist; used as `event_type ilike '%.'||action`. */
+  action?: string;
+  /** 4ec5a940 — company filter: matches events whose payload records a `companyId` scope. Documented
+   *  limitation: group-level events that carry no company scope won't match. */
+  companyId?: string;
+  /** 4ec5a940 — leave-type filter: the leave-type aggregate itself, or any event whose payload carries
+   *  a `leaveTypeId` (e.g. a scoped approval rule). */
+  leaveTypeId?: string;
+  from?: string; // ISO date (inclusive)
+  to?: string; // ISO date (exclusive next day applied by caller)
+  limit?: number;
+  offset?: number;
+};
+
+/** The audit filter predicate, shared by the row page and its COUNT so the two can never disagree
+ *  about what "matching" means (fc776376 — the pager's "26–50 of 312" needs a real total). */
+function auditWhere(f: AuditFilters) {
+  return and(
+    f.aggregateType ? eq(domainEvent.aggregateType, f.aggregateType) : undefined,
+    f.aggregateId ? eq(domainEvent.aggregateId, f.aggregateId) : undefined,
+    f.eventType ? eq(domainEvent.eventType, f.eventType) : undefined,
+    f.employmentId ? sql`exists (
+      select 1 from employment audit_subject
+      where audit_subject.id=${f.employmentId}::uuid
+        and audit_subject.tenant_id=app.current_tenant_id()
+        and app.access_workforce_employment(audit_subject.id,'workforce.view')
+        and (
+          ${domainEvent.subjectEmploymentId}=audit_subject.id
+          or ${domainEvent.aggregateId} in (audit_subject.id,audit_subject.person_id)
+          or ${domainEvent.aggregateId} in (select id from employee_statutory_my where person_id=audit_subject.person_id and tenant_id=audit_subject.tenant_id)
+          or ${domainEvent.aggregateId} in (select id from compensation where employment_id=audit_subject.id and tenant_id=audit_subject.tenant_id)
+        )
+    )` : undefined,
+    // f1b994e3 — Area (module). Derived from AGGREGATE_MODULE, so a row this clause returns chips the
+    // area that found it. `other` is the RESIDUAL bucket — it owns no aggregate types of its own, so it
+    // is expressed as the COMPLEMENT of the mapped set rather than as an empty IN-list (which would
+    // match nothing and silently claim the Other area is empty).
+    f.module === 'other'
+      ? notInArray(domainEvent.aggregateType, [...MAPPED_AGGREGATE_TYPES])
+      : f.module
+        ? inArray(domainEvent.aggregateType, aggregateTypesForModule(f.module))
+        : undefined,
+    f.actorId ? eq(domainEvent.actorId, f.actorId) : undefined,
+    // 4ec5a940 — action = the event's last dot-segment. Parameterised (never interpolated), so the
+    // caller's allowlist + this bound param double-guard against injection.
+    f.action ? sql`${domainEvent.eventType} ilike ${'%.' + f.action}` : undefined,
+    // 4ec5a940 — company scope drawn from the payload (events that record `companyId`).
+    f.companyId ? sql`${domainEvent.payload}->>'companyId' = ${f.companyId}` : undefined,
+    // 4ec5a940 — the leave-type aggregate row itself, or any event scoped to it via payload.
+    f.leaveTypeId
+      ? sql`((${domainEvent.aggregateType} = 'leave-type' and ${domainEvent.aggregateId}::text = ${f.leaveTypeId}) or ${domainEvent.payload}->>'leaveTypeId' = ${f.leaveTypeId})`
+      : undefined,
+    f.from ? gte(domainEvent.occurredAt, new Date(`${f.from}T00:00:00Z`)) : undefined,
+    f.to ? lte(domainEvent.occurredAt, new Date(`${f.to}T23:59:59.999Z`)) : undefined,
+    f.eventQuery
+      ? sql`(${domainEvent.eventType} ilike ${'%' + f.eventQuery + '%'} or ${domainEvent.aggregateType} ilike ${'%' + f.eventQuery + '%'})`
+      : undefined,
+  );
+}
+
+/** The full append-only event ledger, filterable. RLS scopes to the tenant; the actor name is
+ *  resolved from app_user → person (null for SYSTEM/AGENT/EXTERNAL or unlinked principals). */
+export function auditEvents(ctx: SessionContext, f: AuditFilters = {}): Promise<AuditRow[]> {
+  // The upper bound is the shared "All" ceiling (fc776376): a reader who asks for everything gets
+  // everything up to the ceiling, and the pager says on screen when that truncates.
+  const limit = Math.min(f.limit ?? 100, ALL_ROW_CEILING);
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: domainEvent.id,
+        aggregateType: domainEvent.aggregateType,
+        aggregateId: domainEvent.aggregateId,
+        eventType: domainEvent.eventType,
+        actorType: domainEvent.actorType,
+        actorName: person.fullName,
+        payload: domainEvent.payload,
+        occurredAt: domainEvent.occurredAt,
+        sequence: domainEvent.sequence,
+      })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(auditWhere(f))
+      .orderBy(desc(domainEvent.occurredAt), desc(domainEvent.sequence))
+      .limit(limit)
+      .offset(f.offset ?? 0),
+  ) as Promise<AuditRow[]>;
+}
+
+/** How many ledger rows match `f`, ignoring limit/offset — the pager's total. */
+export function auditEventsCount(ctx: SessionContext, f: AuditFilters = {}): Promise<number> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(domainEvent)
+      .where(auditWhere(f));
+    return row?.n ?? 0;
+  });
+}
+
+/** The distinct aggregate types present in the tenant's log — drives the filter dropdown. */
+export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateType: string }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ aggregateType: domainEvent.aggregateType })
+      .from(domainEvent)
+      .orderBy(domainEvent.aggregateType),
+  );
+}
+
+/** 4ec5a940 — the distinct actors who appear in the log, with their resolved display name; drives the
+ *  User filter dropdown. SYSTEM/AGENT/unlinked principals surface as a null name (the UI labels them).
+ *  f1b994e3 — narrowed by AREA rather than by a caller-supplied aggregate list: the User dropdown on the
+ *  Audit Trail must offer exactly the people who appear in the area on screen, and reusing `auditWhere`
+ *  means it resolves an area the same way the rows do (including `other`, the residual bucket, which an
+ *  aggregate-type list could not express). */
+export function auditActors(
+  ctx: SessionContext,
+  f: Pick<AuditFilters, 'module'> = {},
+): Promise<{ actorId: string | null; actorName: string | null }[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .selectDistinct({ actorId: domainEvent.actorId, actorName: person.fullName })
+      .from(domainEvent)
+      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(auditWhere({ module: f.module }))
+      .orderBy(person.fullName),
+  ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
+}
+
+// ─── Approval activity history (bell History tab + /approvals/history) ───────────────────────────────
+
+export type ApprovalHistoryRow = {
+  id: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventType: string;
+  occurredAt: Date;
+  subjectEmploymentId: string | null;
+  subjectName: string | null;
+  deciderName: string | null;
+  isAuto: boolean;
+  onBehalfOfEmploymentId: string | null;
+  onBehalfOfName: string | null;
+  payload: unknown;
+};
+
+export type ApprovalHistoryFilters = {
+  /** ISO timestamptz bound, inclusive. */
+  from?: string;
+  /** ISO timestamptz bound, exclusive. */
+  to?: string;
+  /** Area filter — mapped to the aggregate-type set (lib/approval-history). */
+  module?: ApprovalHistoryModule;
+  /** Coarse action filter: approved / rejected / other. */
+  action?: ApprovalHistoryAction;
+  /** The decider's EMPLOYMENT id — mapped to the actor app_user id server-side (the viewer may not be
+   *  able to read a delegate's employment under RLS, so the mapping cannot happen app-side). */
+  deciderEmploymentId?: string;
+  limit?: number;
+  offset?: number;
+};
+
+/**
+ * The approval decision log for the viewer's team (feedback 44a89810). Thin wrapper over the
+ * SECURITY-DEFINER `app.approval_history()` (migration 0288) — the same vetted-boundary pattern as
+ * `app.self_delegations`: the function itself scopes visibility (admin = whole tenant; non-admin = the
+ * recursive administrative down-walk, mirroring the domain_event read policy) and resolves decider /
+ * subject / on-behalf NAMES under definer privileges, because person RLS would NULL a peer-manager
+ * delegate's name for a non-admin viewer (the exact gap 0196 documents). "On behalf of" is DERIVED at
+ * read time from reporting_line `delegate` edges — no write-path change, so historical rows are labelled
+ * too. The viewer's own requests never appear (team log, not a self log). Read-only (no DomainEvent).
+ *
+ * Why not extend `auditEvents` (its conventions ARE reused: action filter, from/to, type-set,
+ * limit/offset): its plain person join yields NULL names for non-admin viewers and the audit page is
+ * admin-only — this read must go through the definer boundary.
+ */
+export function listApprovalHistory(
+  ctx: SessionContext,
+  f: ApprovalHistoryFilters = {},
+): Promise<ApprovalHistoryRow[]> {
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  // The upper bound moved out of the SQL function into here (migration 0320) so the count variant can
+  // ask it for everything. This is the shared "All" ceiling — the pager says on screen when it truncates.
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), ALL_ROW_CEILING);
+  const offset = Math.max(f.offset ?? 0, 0);
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`
+      SELECT * FROM app.approval_history(
+        ${f.from ?? null}::timestamptz,
+        ${f.to ?? null}::timestamptz,
+        string_to_array(${typesCsv}::text, ','),
+        ${action}::text,
+        ${f.deciderEmploymentId ?? null}::uuid,
+        ${limit}::int,
+        ${offset}::int
+      )`);
+    const raws = res as unknown as {
+      id: string;
+      aggregate_type: string;
+      aggregate_id: string;
+      event_type: string;
+      occurred_at: Date;
+      subject_employment_id: string | null;
+      subject_name: string | null;
+      decider_name: string | null;
+      is_auto: boolean;
+      on_behalf_of_employment_id: string | null;
+      on_behalf_of_name: string | null;
+      payload: unknown;
+    }[];
+    return raws.map((r) => ({
+      id: r.id,
+      aggregateType: r.aggregate_type,
+      aggregateId: r.aggregate_id,
+      eventType: r.event_type,
+      occurredAt: r.occurred_at instanceof Date ? r.occurred_at : new Date(r.occurred_at),
+      subjectEmploymentId: r.subject_employment_id,
+      subjectName: r.subject_name,
+      deciderName: r.decider_name,
+      isAuto: r.is_auto,
+      onBehalfOfEmploymentId: r.on_behalf_of_employment_id,
+      onBehalfOfName: r.on_behalf_of_name,
+      payload: r.payload,
+    }));
+  });
+}
+
+/** How many history rows this viewer can reach under `f`, ignoring limit/offset — the pager's total.
+ *  Runs the SAME definer function as the row query (migration 0320), so the counter can never promise
+ *  rows the visibility walk would withhold. */
+export function approvalHistoryCount(ctx: SessionContext, f: ApprovalHistoryFilters = {}): Promise<number> {
+  const typesCsv = f.module ? aggregateTypesOfModule[f.module].join(',') : null;
+  const action = f.action && isApprovalHistoryAction(f.action) ? f.action : null;
+  return withTenant(ctx, async (tx) => {
+    const res = await tx.execute(sql`
+      SELECT app.approval_history_count(
+        ${f.from ?? null}::timestamptz,
+        ${f.to ?? null}::timestamptz,
+        string_to_array(${typesCsv}::text, ','),
+        ${action}::text,
+        ${f.deciderEmploymentId ?? null}::uuid
+      ) AS n`);
+    const rows = res as unknown as { n: number | string | null }[];
+    return Number(rows[0]?.n ?? 0);
+  });
+}
+
+/** Change history for one employee — every event touching their employment, person, statutory
+ *  profile, and compensation rows (the aggregates that carry their record). RLS-scoped. */
+export function employeeAudit(ctx: SessionContext, employmentId: string, limit = 50): Promise<AuditRow[]> {
+  return auditEvents(ctx, { employmentId, limit });
+}
+
+// ─────────────────────────── Self-service portal (own data) ───────────────────────────
+// Own-person proof is independent of RLS: an HR login also has wider general visibility.
+
+/** The current principal's active employment + profile (resolved from their linked person). */
+export function myEmployment(ctx: SessionContext, selected?: {employmentId:string}, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    if (!ctx.personId) return null;
+    if(selected&&(!ctx.userId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(selected.employmentId)))return null;
+    const [row] = await tx
+      .select({
+        employmentId: employment.id,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        hiredOn: employment.hiredOn,
+        companyId: employment.companyId,
+        company: company.legalName,
+        department: department.name,
+        position: position.title,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), selected?and(eq(employment.id,selected.employmentId),profileEditEmploymentPredicate(ctx)):isNull(employment.terminatedOn)))
+      .orderBy(employment.hiredOn)
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/**
+ * The principal's own display name, INDEPENDENT of any employment (fbf6abd0).
+ *
+ * `myEmployment` above is the right source for the topbar's name + Employee ID, but it answers NOTHING
+ * for a principal with no ACTIVE employment — and that is not only the abstract "platform account" case.
+ * The seeded HR administrator is exactly it: a real, named person (`app_user.person_id` set) who was
+ * never hired into a company, so every employment-shaped read returns null for them. Labelling that
+ * human "Platform account" in the corner would be worse than the blank this item is fixing.
+ *
+ * So: name first from the employment (which also carries the Employee ID), and only when there is none,
+ * from the person. RLS-scoped like every read here — `person` is readable for one's own row, which is
+ * what /me's profile tab already depends on. Returns null when the principal is linked to no person at
+ * all (a true platform login), which is the one case with genuinely nothing to show.
+ *
+ * Costs NOTHING on the no-person path, and that is why the guard is OUTSIDE `withTenant` rather than
+ * the first line inside it. `withTenant` opens a `db.transaction` and issues four `select set_config(...)`
+ * statements BEFORE the callback body runs (db/client.ts), so a guard inside the callback still bought a
+ * BEGIN + 4 statements + COMMIT for a principal there was never anything to look up for — on every
+ * authenticated page render. Returning before the call is what actually makes it free. (An employed
+ * viewer never reaches this function at all; see lib/viewer.ts.)
+ */
+export async function myPersonName(ctx: SessionContext) {
+  // Bound to a const so the narrowing survives into the callback — TS re-widens `ctx.personId` inside a
+  // closure, and the point of this guard is that the query below can only run with a real id.
+  const personId = ctx.personId;
+  if (!personId) return null;
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ name: person.fullName })
+      .from(person)
+      .where(and(ownPersonPredicate(ctx),eq(person.id, personId)))
+      .limit(1);
+    return row?.name ?? null;
+  });
+}
+
+/**
+ * Resolve a SELECTED employment to its person + header details, for the HR TP1-on-behalf screen
+ * (Standardize-TP1, item 0cde61f3). RLS-scoped: an admin sees any employment in their tenant/scope; a
+ * non-admin only their own — so this cannot be used to widen access. `personId` is the trusted key the
+ * TP1 admin service writes against (NEVER a raw form field). Read-only, no DomainEvent. Returns null when
+ * the employment id is not visible to the caller.
+ */
+export function employmentSubject(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        employmentId: employment.id,
+        personId: employment.personId,
+        name: person.fullName,
+        email: person.primaryEmail,
+        employeeCode: employment.employeeCode,
+        company: company.legalName,
+        companyId: employment.companyId,
+        department: department.name,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .where(eq(employment.id, employmentId))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/** ALL active employments for the current principal (concurrent multi-company, ADR-0009). */
+/** Existing login final-day eligibility, selected explicitly by the own Profile edit course. */
+export function profileEditEmploymentPredicate(ctx:SessionContext){
+ return sql`${employment.tenantId}=${ctx.tenantId}::uuid AND ${employment.hiredOn}<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+  AND ${employment.blacklistedAt} IS NULL AND (LEAST(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn}) IS NULL
+   OR LEAST(${employment.resignationDate},${employment.lastWorkingDate},${employment.terminatedOn})>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+  AND EXISTS(SELECT 1 FROM app_user u WHERE u.id=${ctx.userId}::uuid AND u.tenant_id=${ctx.tenantId}::uuid AND u.person_id=${ctx.personId}::uuid AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))`;
+}
+export function myEmployments(ctx:SessionContext,opts:{profileEdit?:boolean}={}, existingTx?: Tx){
+ return withReadTx(ctx, existingTx,tx=>myEmploymentsTx(tx,ctx,opts));
+}
+export async function myEmploymentsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+    if (!ctx.personId) return [];
+    return tx
+      .select({
+        employmentId: employment.id,
+        company: company.legalName,
+        department: department.name,
+        position: position.title,
+        hiredOn: employment.hiredOn,
+        basic: compensation.basicSalary,
+        allowance: compensation.monthlyAllowance,
+        costAllocation: employment.costAllocation,
+      })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .leftJoin(
+        assignment,
+        and(
+          eq(assignment.employmentId, employment.id),
+          isNull(assignment.validTo),
+          isNull(assignment.supersededAt),
+        ),
+      )
+      .leftJoin(department, eq(department.id, assignment.departmentId))
+      .leftJoin(position, eq(position.id, assignment.positionId))
+      .leftJoin(
+        compensation,
+        and(
+          eq(compensation.employmentId, employment.id),
+          isNull(compensation.validTo),
+          isNull(compensation.supersededAt),
+        ),
+      )
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId), opts.profileEdit?profileEditEmploymentPredicate(ctx):isNull(employment.terminatedOn)))
+      .orderBy(employment.hiredOn,employment.id);
+}
+
+function ownEmploymentSubjectPredicate(ctx:SessionContext,personId:string){
+ return and(ownPersonPredicate(ctx),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,personId));
+}
+
+/** Same own-subject membership as the Home inventory, with fresh principal and actual-login checks. */
+export async function isCurrentOwnHomeEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.userId||!ctx.personId||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return false;
+ const [row]=await currentOwnHomeEmploymentQuery(tx,ctx,ctx.personId,employmentId);
+ return row!==undefined;
+}
+/** The select isCurrentOwnHomeEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function currentOwnHomeEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),sql`app.principal_snapshot_current()`)).limit(1);
+}
+
+/** Selected own subject eligibility, without projecting an inventory or resolving its dated companies. */
+export async function isOwnProfileEditEmploymentTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ if(!ctx.personId)return false;
+ const [row]=await ownProfileEditEmploymentQuery(tx,ctx,ctx.personId,employmentId);
+ return row!==undefined;
+}
+/** The select isOwnProfileEditEmploymentTx sends (a request preamble answers it ahead, decision 12). */
+export function ownProfileEditEmploymentQuery(tx:Tx,ctx:SessionContext,personId:string,employmentId:string|SQL){
+ return tx.select({id:employment.id}).from(employment)
+  .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),eq(employment.id,employmentId),profileEditEmploymentPredicate(ctx))).limit(1);
+}
+
+/** The inventory select myOwnEmploymentSubjectsTx sends; `statusDay` defaults to today when the select is built, as
+ * before (a request preamble answers it ahead for its own day, decision 12). */
+export function ownEmploymentSubjectsQuery(tx:Tx,ctx:SessionContext,personId:string,opts:{profileEdit?:boolean}={},statusDay?:string){
+ return tx.select({employmentId:employment.id,personId:person.id,personName:person.fullName,employeeCode:employment.employeeCode,
+  currentCompanyId:employment.companyId,company:company.legalName,country:company.country,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,
+  resignationDate:employment.resignationDate,lastWorkingDate:employment.lastWorkingDate,blacklistedAt:employment.blacklistedAt,status:employmentStatusSql(statusDay)})
+  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .where(and(ownEmploymentSubjectPredicate(ctx,personId),opts.profileEdit?profileEditEmploymentPredicate(ctx):undefined))
+  .orderBy(employment.hiredOn,employment.id);
+}
+/** Salary-free own-subject inventory. A caller must explicitly select an ID from this set.
+ * Dated company proof is strict: a missing assignment is Unknown, never today's company fallback. */
+export async function myOwnEmploymentSubjectsTx(tx:Tx,ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+ if(!ctx.personId)return [];
+ const date=todayInKualaLumpur();
+ const rows=await ownEmploymentSubjectsQuery(tx,ctx,ctx.personId,opts);
+ const {provenCompanyDatesTx}=await import('./employment-company');
+ const proofs=await provenCompanyDatesTx(tx,rows.map(row=>({employmentId:row.employmentId,date})));
+ return rows.map(row=>({...row,companyProof:proofs.get(`${row.employmentId}|${date}`)??{companyId:null,reason:'employment_unavailable' as const}}));
+}
+export type OwnEmploymentSubject=Awaited<ReturnType<typeof myOwnEmploymentSubjectsTx>>[number];
+export function myOwnEmploymentSubjects(ctx:SessionContext,opts:{profileEdit?:boolean}={}){
+ return withTenant(ctx,tx=>myOwnEmploymentSubjectsTx(tx,ctx,opts));
+}
+
+/**
+ * The principal's full set of employment ids + company name, INCLUDING terminated ones. `myEmployments`
+ * filters out terminated employments (correct for the active-portal lists), but a leaver is the headline
+ * EA-form user: they need their prior employer's annual statement to file personal tax. RLS still scopes
+ * this to the principal's own employments, so feeding the result to `myPayslips` only surfaces payslips
+ * the principal owns. Used solely to build the /me EA document rows.
+ */
+export function myEmploymentIdsAll(ctx: SessionContext, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    if (!ctx.personId) return [];
+    return tx
+      .select({ employmentId: employment.id, company: company.legalName })
+      .from(employment)
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(and(ownPersonPredicate(ctx),eq(employment.personId, ctx.personId)))
+      .orderBy(employment.hiredOn);
+  });
+}
+
+export type ConcurrentEmploymentPerson = {
+  personId: string;
+  personName: string;
+  designatedPaymasterEmploymentId: string | null;
+  employments: { employmentId: string; companyId: string; company: string; isPaymaster: boolean }[];
+};
+
+/**
+ * ADR-0029 diagnostic (read-only) — persons holding ≥2 ACTIVE employments across the tenant's companies:
+ * the population whose monthly PCB may under-deduct unless a designated paymaster is set (scope-out) or
+ * group coordination is enabled. Surfaced on Compliance so payroll can see the cross-entity exposure
+ * (e.g. shared-services staff) and assign a paymaster. Tenant-scoped; orders by name.
+ */
+export function concurrentEmploymentPersons(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        personId: employment.personId,
+        personName: person.fullName,
+        designatedPaymasterEmploymentId: person.designatedPaymasterEmploymentId,
+        employmentId: employment.id,
+        companyId: employment.companyId,
+        company: company.legalName,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(isNull(employment.terminatedOn))
+      .orderBy(person.fullName);
+
+    const byPerson = new Map<string, ConcurrentEmploymentPerson>();
+    for (const r of rows) {
+      let p = byPerson.get(r.personId);
+      if (!p) {
+        p = {
+          personId: r.personId,
+          personName: r.personName,
+          designatedPaymasterEmploymentId: r.designatedPaymasterEmploymentId,
+          employments: [],
+        };
+        byPerson.set(r.personId, p);
+      }
+      p.employments.push({
+        employmentId: r.employmentId,
+        companyId: r.companyId,
+        company: r.company,
+        isPaymaster: r.employmentId === r.designatedPaymasterEmploymentId,
+      });
+    }
+    return [...byPerson.values()].filter((p) => p.employments.length >= 2);
+  });
+}
+
+/** The current principal's payslips (RLS already restricts to own employment). */
+export function myPayslips(ctx: SessionContext, employmentIds: string[], ownOnly = false, existingTx?: Tx) {
+  return withReadTx(ctx, existingTx, async (tx) => {
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
+    if (employmentIds.length === 0) return [];
+    const rows = await tx
+      .select({
+        id: payslip.id,
+        employmentId:payslip.employmentId,
+        company: company.legalName,
+        companyId:payrollBatch.companyId,
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        runSeq: payrollBatch.runSeq,
+        status: payrollBatch.status,
+        gross: payslip.grossPay,
+        deductions: payslip.totalDeductions,
+        net: payslip.netPay,
+        statutory: payslip.statutory,
+        // AI v2 W5 — the stored earning and deduction columns, so "why is my pay different" reads each line the
+        // payslip prints (core/pay-difference.ts) instead of re-deriving it. Every consumer maps rows explicitly.
+        basic: payslip.basicSalary,
+        allowance: payslip.allowance,
+        overtime: payslip.overtimePay,
+        bonus: payslip.bonus,
+        otherDeductions: payslip.otherDeductions,
+        daysWorked: payslip.daysWorked,
+        // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe via the batch, unlike
+        // the admin-only company_payroll_config which the employee session cannot read).
+        releasedAt: payrollBatch.releasedAt,
+        historyImportAttemptId: payrollBatch.historyImportAttemptId,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .where(and(inArray(payslip.employmentId, employmentIds),ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq, payslip.id);
+    // Step 6 — stamp a `released` flag per row: released once the batch is closed AND its release instant has
+    // passed. Non-closed batches are never released. Legacy closed batches carry a backfilled releasedAt so
+    // they stay visible. The ESS payslip section filters on `released`.
+    const now = new Date();
+    return rows.map((r) => ({
+      ...r,
+      released: r.historyImportAttemptId == null && payrollPublicationState(r,now)==='published',
+      historyImported: r.historyImportAttemptId != null,
+    }));
+  });
+}
+
+/** Explicit Mine fence for document/YTD consumers, including payroll administrators in Mine. */
+export function myOwnPayslips(ctx:SessionContext,employmentIds:string[]) {
+  assertModuleGate(ctx,'payroll');
+  return myPayslips(ctx,employmentIds,true);
+}
+
+/** Own current/historical released run index. No caller-provided employment population. */
+export function myReleasedPayslipRuns(ctx:SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  assertModuleGate(ctx,'payroll');
+  return withReadTx(ctx, existingTx,async tx=>{
+    if(existingTx)await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);else await lockPayrollHistoryReadTx(tx,ctx.tenantId);
+    if(!ctx.personId)return [];
+    // d28501b8 r2 — the employee keeps the payslip they were ISSUED, even after Import Payroll History set it
+    // aside for HR (migration 0660; own adopted originals only). Switched on for this one query and off again,
+    // because a caller-supplied transaction may go on to read year-to-date figures.
+    await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
+    try{
+    return await tx.select({payslipId:payslip.id,employmentId:employment.id,employeeCode:employment.employeeCode,
+      companyId:payrollBatch.companyId,company:company.legalName,payPeriod:payrollBatch.payPeriod,
+      cycleId:payrollBatch.payrollCycleId,cycleName:payrollCycle.name,runType:payrollBatch.runType,runSeq:payrollBatch.runSeq})
+      .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId))
+      .innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId)).innerJoin(company,eq(company.id,payrollBatch.companyId))
+      .leftJoin(payrollCycle,eq(payrollCycle.id,payrollBatch.payrollCycleId))
+      .where(and(isNull(payrollBatch.historyImportAttemptId),eq(employment.tenantId,ctx.tenantId),eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`,eq(payrollBatch.status,'closed'),or(isNull(payrollBatch.releasedAt),lte(payrollBatch.releasedAt,new Date()))))
+      .orderBy(desc(payrollBatch.payPeriod),asc(payrollBatch.companyId),asc(payrollBatch.runSeq),asc(payslip.id));
+    }finally{await tx.execute(sql`select set_config('app.payslip_self_issued','off',true)`);}
+  });
+}
+
+/**
+ * My Payroll — Self Personal Tax Relief (LHDN TP1). Read-only: no domain event (CLAUDE.md substrate
+ * rule — this slice is a pure SELECT).
+ *
+ * Sources the relief ACTUALLY APPLIED to a payslip from `payslip.statutory.lp` (core/payroll.ts:935/986),
+ * NOT the raw `payroll_input.tp1Deduction`, which is the pre-clamp input. This matches the figure the
+ * employee sees on their own payslip detail page and rides the payslip's own RLS policy — the same
+ * self-scoping `myPayslips` already relies on.
+ *
+ * Security H4 / migration 0492 RETIRED THE OLD CLAIM HERE, which read "(`app.can_see_employment`,
+ * 0010_payroll_rls.sql)". `payslip_rls` no longer resolves through `can_see_employment`: its manager
+ * down-walk and HOD branch let a line manager read a subordinate's net pay. Read is now
+ * `app.can_admin_payroll_employment(employment_id)` OR the employee themselves. The self branch this
+ * comment depends on survives; the manager branch it described does not.
+ *
+ * Because a payslip row only exists AFTER generation, draft/voided batches are excluded by construction —
+ * no batch-status predicate is needed (a reviewer should NOT "helpfully" add a status join). TP1 is a
+ * per-assessment-year LHDN concept, so results are filtered to a single tax year (default = current),
+ * derived from `payrollBatch.payPeriod`, and the YTD total is scoped to that year (not blended across years).
+ *
+ * Returns one row per applied TP1 (lp > 0), each carrying its company, so a person employed by two entities
+ * — each filing its own PCB — can be grouped per company in the UI rather than blended.
+ */
+export type TaxReliefRow = {
+  payPeriod: string;
+  company: string;
+  runType: string;
+  tp1: number;
+};
+export type TaxReliefResult = { year: number; rows: TaxReliefRow[]; ytd: number };
+
+export function myTaxRelief(
+  ctx: SessionContext,
+  employmentIds: string[],
+  year?: number,
+): Promise<TaxReliefResult> {
+  const taxYear = year ?? new Date().getFullYear();
+  return withTenant(ctx, async (tx): Promise<TaxReliefResult> => {
+    if (employmentIds.length === 0) return { year: taxYear, rows: [], ytd: 0 };
+    const raw = await tx
+      .select({
+        payPeriod: payrollBatch.payPeriod,
+        runType: payrollBatch.runType,
+        company: company.legalName,
+        statutory: payslip.statutory,
+      })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(inArray(payslip.employmentId, employmentIds))
+      .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq);
+
+    const rows: TaxReliefRow[] = [];
+    let ytd = 0;
+    for (const r of raw) {
+      // payPeriod is 'YYYY-MM'; scope to the requested assessment year.
+      if (Number(r.payPeriod.slice(0, 4)) !== taxYear) continue;
+      // numeric(12,2) inside JSONB arrives as a string — coerce or a raw += string-concatenates.
+      const tp1 = Number((r.statutory as { lp?: unknown } | null)?.lp ?? 0);
+      if (!(tp1 > 0)) continue; // exclude zero rows; based on the payslip's applied lp
+      rows.push({ payPeriod: r.payPeriod, company: r.company, runType: r.runType, tp1 });
+      ytd += tp1;
+    }
+    return { year: taxYear, rows, ytd: Math.round(ytd * 100) / 100 };
+  });
+}
+
+/**
+ * Employment ids for the current principal INCLUDING terminated employments — leaver-safe. `myEmployments`
+ * filters `isNull(terminatedOn)`, but a resigned employee is exactly who needs TP1 history to file taxes,
+ * and payslip RLS gates rows to the caller regardless of termination. Used to scope My Payroll TP1 so a
+ * leaver's relief history stays visible.
+ *
+ * Security H4 / migration 0492 RETIRED THE OLD CITATION HERE, which read "(`can_see_employment`
+ * self-branch, 0016)". The self branch is now spelled directly in `payslip_rls` as an EXISTS over
+ * `employment` + `app.is_self_person`, not inherited from `can_see_employment` — so a leaver still reads
+ * their own rows, which is the only property this function needed.
+ */
+export function myTaxReliefEmploymentIds(ctx: SessionContext): Promise<string[]> {
+  return withTenant(ctx, async (tx) => {
+    if (!ctx.personId) return [];
+    const rows = await tx
+      .select({ id: employment.id })
+      .from(employment)
+      .where(eq(employment.personId, ctx.personId));
+    return rows.map((r) => r.id);
+  });
+}
+
+// ADR-0070: two aliases of clocking_location so a single query can resolve BOTH the check-in and
+// check-out matched-site names — tenant-catalog RLS (0065 pattern) makes the name resolve even for a
+// manager viewing a subordinate, or after the employee is later un-assigned from the site.
+const checkInSite = alias(clockingLocation, 'check_in_site');
+const checkOutSite = alias(clockingLocation, 'check_out_site');
+
+/** The current principal's recent attendance, including per-punch Clocking Location & Geofencing
+ *  capture (ADR-0070): matched site name, distance, and pass/not-enforced status per punch. */
+export function myAttendance(ctx: SessionContext, employmentId: string, limit = 10, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const rows=await tx
+      .select({
+        id: attendance.id,
+        calcTrace:attendance.calcTrace,
+        date: attendance.attendanceDate,
+        checkInAt: attendance.checkInAt,
+        checkOutAt: attendance.checkOutAt,
+        status: attendance.status,
+        workedMinutes: attendance.workedMinutes,
+        otMinutes: attendance.otMinutes,
+        checkInLat: attendance.checkInLat,
+        checkInLng: attendance.checkInLng,
+        checkInLocationName: checkInSite.name,
+        checkInDistanceM: attendance.checkInDistanceM,
+        checkInGeofenceStatus: attendance.checkInGeofenceStatus,
+        checkOutLat: attendance.checkOutLat,
+        checkOutLng: attendance.checkOutLng,
+        checkOutLocationName: checkOutSite.name,
+        checkOutDistanceM: attendance.checkOutDistanceM,
+        checkOutGeofenceStatus: attendance.checkOutGeofenceStatus,
+      })
+      .from(attendance)
+      .leftJoin(checkInSite, eq(checkInSite.id, attendance.checkInClockingLocationId))
+      .leftJoin(checkOutSite, eq(checkOutSite.id, attendance.checkOutClockingLocationId))
+      .where(eq(attendance.employmentId, employmentId))
+      .orderBy(desc(attendance.attendanceDate))
+      .limit(limit);
+    const formulas=await formulaOvertimeForRowsTx(tx,ctx,rows.map(row=>({employmentId,date:row.date,calcTrace:row.calcTrace})));
+    return rows.map(({calcTrace,...row})=>({...row,formulaOvertime:formulas.get(employmentId+'|'+row.date)??null}));
+  });
+}
+
+/** Companies this principal may scope to (top-bar company context): group admin → all; otherwise
+ *  the companies they're employed at + the companies of their company-scoped grants. */
+export function allowedCompanies(ctx: SessionContext, existingTx?: Tx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+
+  return withReadTx(ctx, existingTx, async (tx) => {
+    const isGroupAdmin =
+      ctx.grants?.some((g) => (g.role === 'hr_admin' || g.role === 'super_admin') && !g.companyId) ??
+      false;
+    if (isGroupAdmin) {
+      return tx
+        .select({ id: company.id, name: company.legalName })
+        .from(company)
+        .orderBy(company.legalName);
+    }
+    const grantCompanyIds = [...new Set((ctx.grants ?? []).map(grant => grant.companyId).filter((id): id is string => !!id))];
+    if (!ctx.personId && grantCompanyIds.length === 0) return [];
+    const activeEmployments = ctx.personId
+      ? tx.select({ id: employment.companyId }).from(employment)
+        .where(and(eq(employment.personId, ctx.personId), isNull(employment.terminatedOn)))
+      : undefined;
+    return tx
+      .select({ id: company.id, name: company.legalName })
+      .from(company)
+      .where(or(
+        grantCompanyIds.length ? inArray(company.id, grantCompanyIds) : undefined,
+        activeEmployments ? inArray(company.id, activeEmployments) : undefined,
+      ))
+      .orderBy(company.legalName);
+  });
+}
+
+/**
+ * Companies the current actor can ADMINISTER — self + subtree, via app.is_admin_for (distinct from
+ * allowedCompanies, which also includes companies the user merely works at). Drives the company
+ * picker when a delegated admin assigns a scoped role. Group admins get every company.
+ */
+export function adminCompanies(ctx: SessionContext) {
+  return withTenant(ctx, tx => adminCompaniesTx(tx));
+}
+export function adminCompaniesTx(tx: Tx) {
+  return tx
+      .select({ id: company.id, name: company.legalName })
+      .from(company)
+      .where(sql`app.is_admin_for(company.id)`)
+      .orderBy(company.legalName);
+}
+
+/** Companies with their parent link — the group tree (ADR-0009). */
+export function companyTree(ctx: SessionContext) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: company.id,
+        name: company.legalName,
+        country: company.country,
+        parentId: sql<string | null>`app.company_organisation_current_parent(${company.id})`,
+      })
+      .from(company)
+      .orderBy(company.legalName),
+  );
+}
+
+// ───────────────── Attendance Allowance (ADR-0072) ─────────────────
+
+/** The attendance-allowance policies for the admin catalog table (joined to their pay component's name/code
+ *  for display). Excludes archived unless asked. RLS scopes to the tenant; company scoping is applied when
+ *  companyIds is passed (mirrors the other admin lists). */
+export function listAllowancePolicies(
+  ctx: SessionContext,
+  opts: { companyIds?: string[]; includeArchived?: boolean } = {},
+) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: attendanceAllowancePolicy.id,
+        companyId: attendanceAllowancePolicy.companyId,
+        companyName: company.legalName,
+        policyType:attendanceAllowancePolicy.policyType,version:attendanceAllowancePolicy.version,rules:attendanceAllowancePolicy.rules,currency:company.currency,
+        code: attendanceAllowancePolicy.code,
+        name: attendanceAllowancePolicy.name,
+        method: attendanceAllowancePolicy.method,
+        amount: attendanceAllowancePolicy.amount,
+        payComponentId: attendanceAllowancePolicy.payComponentId,
+        payComponentCode: payComponent.code,
+        payComponentName: payComponent.name,
+        effectiveFrom: attendanceAllowancePolicy.effectiveFrom,
+        status: attendanceAllowancePolicy.status,
+        criteria: attendanceAllowancePolicy.criteria,
+        scope: attendanceAllowancePolicy.scope,
+        archivedAt: attendanceAllowancePolicy.archivedAt,
+      })
+      .from(attendanceAllowancePolicy)
+      .innerJoin(company, eq(company.id, attendanceAllowancePolicy.companyId))
+      .leftJoin(payComponent, eq(payComponent.id, attendanceAllowancePolicy.payComponentId))
+      .where(
+        opts.companyIds && opts.companyIds.length
+          ? inArray(attendanceAllowancePolicy.companyId, opts.companyIds)
+          : undefined,
+      )
+      .orderBy(company.legalName, attendanceAllowancePolicy.code);
+    return opts.includeArchived ? rows : rows.filter((r) => r.archivedAt == null);
+  });
+}
+
+/** The dashboard rows for the Attendance page allowances panel: the live evaluation of one policy for a
+ *  month. Pure read (evaluateAllowancesForPeriod), RLS-trimmed via the shared monthly summary. */
+export function allowancePreviewForPeriod(
+  ctx: SessionContext,
+  p: { policyId: string; month: string; today?: string },
+) {
+  return evaluateAllowancesForPeriod(ctx, p);
+}
+
+/**
+ * The payslips an employee may SEE (ADR-0088): their ACTIVE employments' slips from runs that are closed
+ * AND whose release instant has passed. `myPayslips` returns unreleased rows too, flagged `released:false`
+ * (the admin publication screens and the tests need them), and until now the "released only" rule lived
+ * in app/me/page.tsx alone. A second consumer — the mobile API — must not have to re-derive it, so it is
+ * stated here once. The predicate is the web page's own, verbatim (`status === 'closed' && released`).
+ */
+export async function myReleasedPayslips(ctx: SessionContext) {
+  const employments = await myEmployments(ctx);
+  const rows = await myPayslips(ctx, employments.map((e) => e.employmentId));
+  return rows.filter((p) => p.status === 'closed' && p.released);
+}
+
+/** Same native page predicate/joins as status tabs; only local person/status membership leaves this reader. */
+export async function leaveAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]){
+ await assertAiPrincipalTx(tx,ctx);if(!companyIds.length)throw Error('Leave analysis requires a company scope.');
+ const {where,currentAssignment}=leaveRequestPageWhere({companyIds:[...companyIds],limit:0,offset:0});
+ const rows=await tx.select({id:leaveRequest.id,personId:employment.personId,status:leaveRequest.status}).from(leaveRequest)
+  .innerJoin(employment,eq(employment.id,leaveRequest.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+  .innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId)).leftJoin(assignment,currentAssignment)
+  .leftJoin(department,eq(department.id,assignment.departmentId)).where(where);
+ return {selection:'all_visible_requests',rows:rows.map(row=>({personId:row.personId,conditions:{pending_request_share:row.status==='pending'}}))};
+}

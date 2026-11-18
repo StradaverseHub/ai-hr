@@ -1,0 +1,436 @@
+import {MAX_IMPORT_CSV_BYTES} from './import-file';
+import type {PersonnelWorksheetSource,PersonnelWorkbookSource} from './personnel-import-assistance-source';
+/**
+ * Spreadsheet (.xlsx / .xls) support for the Leave Data Import & Migration Tool.
+ *
+ * BROWSER-ONLY, dynamically imported. SheetJS (`xlsx`) is heavy (~400 KB) and only ever needed when
+ * an HR admin actually picks an Excel file, so every entry point below does `await import('xlsx')`
+ * lazily — the library stays out of the initial bundle AND out of every server action. The server
+ * continues to receive plain CSV text and re-validates everything in analyze(); this module only ever
+ * converts an Excel workbook INTO that CSV text (and builds a downloadable Excel template), so no new
+ * server attack surface and no server-side workbook parsing.
+ *
+ * DEPENDENCY NOTE: `xlsx` is added to package.json but is NOT installable into the symlinked build
+ * worktree — the integration step installs it for real. Until then `tsc` reports "Cannot find module
+ * 'xlsx'", which is expected and isolated to this file's two dynamic imports.
+ */
+
+// Cells arrive as strings (raw:false) or, for date cells with cellDates, JS Dates. Anything else is
+// coerced to string. We never trust a cell to be a specific type.
+type Cell = string | number | boolean | Date | null | undefined;
+
+/** RFC-4180 serialiser used ONLY to feed text back into parseCsvRecords. Deliberately NOT lib/csv.ts's
+ *  toCsv: that runs csvSafeCell, which prefixes a leading '-' with a quote (formula-injection guard for
+ *  files opened IN Excel). A `days` value of `-2` would become `'-2` and fail Number() in analyze().
+ *  Here the text is re-parsed by our own code, never opened in a spreadsheet, so no guard is wanted —
+ *  just correct quoting (quote when the cell holds a comma, quote, CR or LF; double embedded quotes). */
+function rowsToCsvText(rows: Cell[][]): string {
+  const esc = (v: Cell): string => {
+    const s = v == null ? '' : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows.map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n';
+}
+
+/** yyyy-mm-dd from a JS Date in local time (SheetJS returns dates at local midnight with cellDates). */
+export function toIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * A number as PLAIN DIGITS — never `1.23457e+21`.
+ *
+ * d8471481: identity-shaped fields (IC, bank account, phone, EPF/SOCSO/tax numbers) are typed into
+ * Excel by HR and land here as JS numbers whenever the cell was left in General format. `String(n)`
+ * switches to exponential notation at 1e21 and for tiny magnitudes, so a 21-digit account number
+ * would reach the importer as "1.234567890123457e+21" and be stored — or rejected — as that literal
+ * text. Integers are emitted via `toFixed(0)`, which stays positional for every finite value.
+ *
+ * What this CANNOT do is bring back a LEADING ZERO: `0123456789` typed into a General cell is stored
+ * by Excel as the number 123456789 and the zero is gone from the file itself, before we ever see it.
+ * That is why the downloadable template pre-formats those columns as text (`z: '@'`).
+ */
+export function numberToPlainString(n: number): string {
+  if (!Number.isFinite(n)) return String(n);
+  if (Number.isInteger(n)) {
+    // `toFixed(0)` ALSO switches to exponential at 1e21 — the exact magnitude this helper exists for,
+    // so it cannot be the whole answer. BigInt renders an integer positionally at any size. (Verified
+    // in Node: (1e21).toFixed(0) === '1e+21'; BigInt(1e21).toString() === '1000000000000000000000'.)
+    return Math.abs(n) < 1e21 ? n.toFixed(0) : BigInt(n).toString();
+  }
+  const s = String(n);
+  if (!/e/i.test(s)) return s;
+  // Fractional AND exponential (e.g. 1e-7): expand without trailing-zero noise.
+  return n.toFixed(20).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+/**
+ * Read an .xlsx/.xls workbook (an ArrayBuffer from File.arrayBuffer()) and return CSV text of its
+ * FIRST worksheet, shaped exactly like the paste box / CSV file path so everything downstream
+ * (parseCsvRecords → analyze → commit) is byte-identical. Throws 'EMPTY_SHEET' when the first sheet
+ * has no rows so the caller can surface a clear i18n message.
+ */
+export async function workbookToCsvText(buf: ArrayBuffer | Uint8Array): Promise<string> {
+  return (await workbookToCsvTexts(buf)).first;
+}
+
+/**
+ * Item 2983802f — the same single decoder, reading the first worksheet AND any NAMED extra sheets.
+ *
+ * The employee importer grew a second sheet (Family), and a second sheet cannot be read by "the first
+ * worksheet" — so the decoder had to learn one thing: fetch a sheet by name. Everything else is
+ * unchanged, and `workbookToCsvText` above is now literally this function's `first`, so there is still
+ * exactly ONE workbook decoder and one set of cell rules in this repo.
+ *
+ * Sheet names are matched case- and whitespace-insensitively, because a workbook that has been through
+ * Excel, Numbers and Google Sheets does not reliably come back with the capitalisation it left with.
+ * A named sheet that is missing, or that holds nothing but blanks, is simply absent from `extra` — an
+ * employee file with no family members is the normal case, not an error.
+ */
+export async function workbookToCsvTexts(
+  buf: ArrayBuffer | Uint8Array,
+  extraSheetNames: readonly string[] = [],
+  includeFirstNamed=false,
+  allowedSheetNames?:readonly string[],
+  captureSource=false,
+  preparePersonnel=false,
+  bounds?:{maxRows:number;maxCells:number;literalCells?:boolean},
+): Promise<{ first: string; extra: Record<string, string>; source?:PersonnelWorksheetSource;preparation?:PersonnelWorkbookSource }> {
+  const XLSX = await import('xlsx');
+  // Normalise to a Uint8Array view: SheetJS accepts either, but being explicit keeps us robust to
+  // callers handing us File.arrayBuffer() output OR raw bytes (and to SheetJS's own type drift).
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  // cellDates → real Date objects for date-formatted cells; we ISO-format them below so a spreadsheet
+  // date lands as the engine's YYYY-MM-DD (DATE_RE) instead of an Excel serial number or locale string.
+  const wb = XLSX.read(bytes, { type: 'array', cellDates: true,...bounds?{sheetRows:bounds.maxRows+1}:{} });
+  if(bounds){
+    let cells=0;if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    for(const name of wb.SheetNames){const ws=wb.Sheets[name],ref=ws?.['!fullref']??ws?.['!ref'];if(!ref)continue;
+      const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+      if(bounds.literalCells&&Object.entries(ws).some(([key,cell])=>!key.startsWith('!')&&(cell?.f||cell?.t==='e')))throw Error('NON_LITERAL_CELL');
+      cells+=height*width;if(height>bounds.maxRows||width>256||cells>bounds.maxCells)throw Error('FILE_TOO_LARGE');
+    }
+  }
+  const firstName = wb.SheetNames[0];
+  if (!firstName) throw new Error('EMPTY_SHEET');
+  // The explicit preparation path checks every worksheet range before materializing any CSV rows.
+  // Default recognized-file decoding keeps its established behavior and output contract.
+  if(preparePersonnel){
+    if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    let ranged=0;
+    for(const name of wb.SheetNames){const ref=wb.Sheets[name]?.['!ref'];if(!ref)continue;
+      const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+      if(!Number.isSafeInteger(height)||!Number.isSafeInteger(width)||height<1||width<1||height>10000||width>256)throw Error('FILE_TOO_LARGE');
+      ranged+=height*width;if(ranged>200000)throw Error('FILE_TOO_LARGE');
+    }
+  }
+
+  const sheetCsv = (sheetName: string): string => {
+    const ws = wb.Sheets[sheetName];
+    if (!ws) return '';
+    // header:1 → array-of-arrays (no header inference); raw:true → raw cell values, so a date cell stays
+    // the Date instance cellDates produced (raw:false would substitute the FORMATTED text, e.g. "1/1/26",
+    // which fails the engine's DATE_RE). Non-date cells are strings/numbers and are String()-ed below.
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false });
+    const rows = (aoa as Cell[][]).map((row) =>
+      row.map((cell) => {
+        if (cell instanceof Date) return toIsoDate(cell);
+        // d8471481 — a General-formatted identity column arrives as a JS number; emit plain digits so
+        // nothing downstream ever sees exponential notation.
+        if (typeof cell === 'number') return numberToPlainString(cell);
+        return cell;
+      }),
+    );
+    // Drop fully-empty trailing rows so a workbook padded with blanks doesn't yield empty CSV records.
+    const nonEmpty = rows.filter((r) => r.some((c) => c != null && String(c).trim() !== ''));
+    if (nonEmpty.length === 0) return '';
+    return rowsToCsvText(nonEmpty);
+  };
+
+  const first = sheetCsv(firstName);
+  if (first === ''&&!preparePersonnel) throw new Error('EMPTY_SHEET');
+
+  const key = (s: string) => s.trim().toLowerCase();
+  const byKey = new Map(wb.SheetNames.map((n) => [key(n), n]));
+  if(allowedSheetNames||preparePersonnel) {
+    if(byKey.size!==wb.SheetNames.length || !preparePersonnel && !includeFirstNamed && extraSheetNames.some(name=>key(name)===key(firstName)))throw new Error('UNEXPECTED_SHEET');
+    const allowed=new Set((allowedSheetNames??[]).map(key));
+    for(const name of wb.SheetNames)if(!preparePersonnel && name!==firstName && !allowed.has(key(name)) && sheetCsv(name).trim())throw new Error('UNEXPECTED_SHEET');
+  }
+  const extra: Record<string, string> = {};
+  for (const wanted of extraSheetNames) {
+    // By default the first data sheet is not repeated as an extra (employee/Family import).
+    // A named-sheet architecture can explicitly include it without decoding the workbook twice.
+    const found = byKey.get(key(wanted));
+    if (!found || found === firstName && !includeFirstNamed) continue;
+    const csv = sheetCsv(found);
+    if (csv !== '') extra[wanted] = csv;
+  }
+  // Opt-in metadata comes from the SAME decoded workbook, never a second workbook parser. Bounds
+  // prevent a sparse worksheet range allocating unbounded client memory. Legacy decode still works
+  // if provenance exceeds these assistance-only bounds; no fictional physical coordinates are made.
+  const captureSheet=(sheetName:string,required=false,remaining=200000):{source:PersonnelWorksheetSource;rangeCells:number;metadataBytes:number}|undefined=>{
+    const sheet=wb.Sheets[sheetName],ref=sheet?.['!ref'];if(!ref)return{source:{sheetName,rows:[]},rangeCells:0,metadataBytes:0};
+    const range=XLSX.utils.decode_range(ref),height=range.e.r-range.s.r+1,width=range.e.c-range.s.c+1;
+    if(height>10000||width>256||height*width>remaining){if(required)throw Error('FILE_TOO_LARGE');return;}
+    const captured=[];let metadataBytes=0;
+    for(let row=range.s.r;row<=range.e.r;row++){
+      const cells=[];
+      for(let column=range.s.c;column<=range.e.c;column++){
+        const cell=sheet[XLSX.utils.encode_cell({r:row,c:column})],value=cell?.v;
+        const decoded=value instanceof Date?toIsoDate(value):typeof value==='number'?numberToPlainString(value):value==null?'':String(value);
+        cells.push({column:column+1,raw:value instanceof Date?(Number.isFinite(value.getTime())?value.toISOString():String(value)):typeof value==='number'||typeof value==='boolean'||typeof value==='string'?value:null,
+          display:cell?.w??String(value??''),decoded,kind:cell?.t??'blank',...(typeof cell?.f==='string'?{formula:cell.f}:{})});
+        if(required){for(const text of new Set([decoded,cell?.w??'',typeof cell?.f==='string'?cell.f:''])){if(text.length>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');metadataBytes+=new TextEncoder().encode(text).byteLength;}if(metadataBytes>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');}
+      }
+      if(cells.some(cell=>required?(cell.raw!==null&&String(cell.raw)!==''||cell.formula!==undefined):cell.decoded.trim()!==''))captured.push({row:row+1,cells});
+    }
+    return{source:{sheetName,rows:captured},rangeCells:height*width,metadataBytes};
+  };
+  let source:PersonnelWorksheetSource|undefined,preparation:PersonnelWorkbookSource|undefined;
+  if(captureSource)source=captureSheet(firstName)?.source;
+  if(preparePersonnel){
+    if(wb.SheetNames.length>32)throw Error('FILE_TOO_LARGE');
+    const sheets=[];let decodedBytes=0,rangeCells=0;
+    for(const sheetName of wb.SheetNames){
+      const captured=captureSheet(sheetName,true,200000-rangeCells)!;rangeCells+=captured.rangeCells;
+      const text=sheetCsv(sheetName);decodedBytes+=new TextEncoder().encode(text).byteLength+captured.metadataBytes;
+      if(decodedBytes>MAX_IMPORT_CSV_BYTES)throw Error('FILE_TOO_LARGE');
+      if(text.trim()||captured.source.rows.length)sheets.push({sheetName,text,source:captured.source});
+    }
+    if(!sheets.length)throw Error('EMPTY_SHEET');
+    preparation={sheets,decodedBytes,rangeCells};
+  }
+  return { first, extra,...source?{source}:{},...preparation?{preparation}:{} };
+}
+
+/**
+ * Board d3ba1e9f — the Excel row of every data record of the first worksheet and of named worksheets, exactly as
+ * Excel numbers them. workbookToCsvTexts drops blank rows (blankrows:false and the non-empty filter), so a data
+ * record's position in the CSV text is not its Excel row once a sheet has blank rows; this reads the same cells
+ * with the same non-empty rule and returns, per sheet, the 1-based Excel row of each record after the header (and
+ * after a Personnel frame row). Additive helper for the import Error Log; it changes no decoded text. Bounded like
+ * the importer: at most 32 sheets and 10,000 rows per sheet, otherwise the sheet is left out (callers then fall
+ * back to data row + 1).
+ */
+export async function workbookDataRowNumbers(buf:ArrayBuffer|Uint8Array,sheetNames:readonly string[]=[]):Promise<{first:number[];extra:Record<string,number[]>}>{
+  const XLSX=await import('xlsx');
+  const bytes=buf instanceof Uint8Array?buf:new Uint8Array(buf);
+  const wb=XLSX.read(bytes,{type:'array',cellDates:true,sheetRows:10001});
+  if(wb.SheetNames.length>32)return{first:[],extra:{}};
+  const rowsOf=(name:string|undefined):number[]=>{
+    const ws=name?wb.Sheets[name]:undefined,ref=ws?.['!ref'];if(!ws||!ref)return[];
+    const range=XLSX.utils.decode_range(ref);if(range.e.r-range.s.r+1>10001)return[];
+    const present:number[]=[];let frame=false;
+    for(let r=range.s.r;r<=range.e.r;r++){
+      let filled=false;
+      for(let c=range.s.c;c<=range.e.c&&!filled;c++){const v=ws[XLSX.utils.encode_cell({r,c})]?.v;if(v!=null&&String(v instanceof Date?'d':v).trim()!=='')filled=true;}
+      if(!filled)continue;
+      if(present.length===0&&String(ws[XLSX.utils.encode_cell({r,c:range.s.c})]?.v??'')==='AI-HR Personnel CSV')frame=true;
+      present.push(r+1);
+    }
+    return present.slice(frame?2:1);
+  };
+  const key=(s:string)=>s.trim().toLowerCase();
+  const byKey=new Map(wb.SheetNames.map(n=>[key(n),n]));
+  const extra:Record<string,number[]>={};
+  for(const wanted of sheetNames){const found=byKey.get(key(wanted));if(found&&found!==wb.SheetNames[0])extra[wanted]=rowsOf(found);}
+  return{first:rowsOf(wb.SheetNames[0]),extra};
+}
+
+/**
+ * Build a real .xlsx workbook (single sheet) from a header row + data rows and return it as bytes.
+ * Used for the "Download Excel template" button so HR gets a genuine Excel file (not a CSV renamed
+ * .xlsx). Headers are the reporter's human labels ("Employee ID", …) which normalise back to the
+ * snake_case contract via parseCsvRecords on re-upload.
+ */
+export async function buildXlsx(
+  header: string[],
+  rows: string[][],
+  opts?: BuildXlsxOptions,
+): Promise<Uint8Array> {
+  const XLSX = await import('xlsx');
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  applyTextLayout(ws,[header,...rows],opts);
+  if (opts?.textColumns?.length) applyTextColumns(XLSX, ws, opts.textColumns, rows.length, opts.textRowFloor ?? TEXT_ROW_FLOOR);
+  for(const [index,note] of (opts?.headerNotes??[]).entries()) {
+    const cell=ws[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
+  }
+  applyListIdentifierLayout(XLSX,ws,opts,rows.length,opts?.textRowFloor ?? TEXT_ROW_FLOOR);
+  XLSX.utils.book_append_sheet(wb, ws, opts?.sheetName ?? 'Leave Import');
+  for (const extra of opts?.extraSheets ?? []) {
+    const sheet = XLSX.utils.aoa_to_sheet(extra.rows);
+    applyTextLayout(sheet,extra.rows,extra);
+    // Item 2983802f — an extra sheet may be a FILL-IN sheet too (the employee importer's Family sheet),
+    // not just a read-only reference list, so it needs the same leading-zero protection the data sheet
+    // gets: an Employee ID typed into a General cell is mangled wherever it is typed.
+    if (extra.textColumns?.length) {
+      applyTextColumns(XLSX, sheet, extra.textColumns, Math.max(extra.rows.length - 1, 0), opts?.textRowFloor ?? TEXT_ROW_FLOOR);
+    }
+    for(const [index,note] of (extra.headerNotes??[]).entries()) {
+      const cell=sheet[XLSX.utils.encode_cell({r:0,c:index})];if(cell && note)cell.c=[{a:'Personnel field guidance',t:note}];
+    }
+    applyListIdentifierLayout(XLSX,sheet,extra,Math.max(extra.rows.length-1,0),opts?.textRowFloor ?? TEXT_ROW_FLOOR);
+    XLSX.utils.book_append_sheet(wb, sheet, extra.name);
+  }
+  const validationLists:{sheetIndex:number;column:number;name:string;lastRow:number}[]=[];
+  const sources=[opts,...(opts?.extraSheets??[])];
+  const optionColumns:string[][]=[];
+  for(const [sheetIndex,source] of sources.entries())for(const list of source?.validationLists??[]) {
+    const values=[...new Set(list.values.filter(value=>value.trim()!==''))];
+    // Larger catalogues remain complete on Reference. Personnel headers explain the manual-code fallback.
+    if(!values.length || values.length>MAX_TEMPLATE_LIST_VALUES)continue;
+    if(!Number.isSafeInteger(list.column)||list.column<0||list.column>255 || optionColumns.length>=256)throw new Error('Too many template choice columns.');
+    const column=optionColumns.length;optionColumns.push(values);
+    const name=`AIHR_Personnel_${sheetIndex}_${list.column}`;
+    wb.Workbook??={};wb.Workbook.Names??=[];
+    wb.Workbook.Names.push({Name:name,Ref:`'__PersonnelLists'!$${XLSX.utils.encode_col(column)}$1:$${XLSX.utils.encode_col(column)}$${values.length}`});
+    validationLists.push({sheetIndex,column:list.column,name,lastRow:501});
+  }
+  if(optionColumns.length) {
+    if(wb.SheetNames.includes('__PersonnelLists'))throw new Error('Reserved template sheet name.');
+    const count=Math.max(...optionColumns.map(values=>values.length));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(Array.from({length:count},(_,row)=>optionColumns.map(values=>values[row]??''))),'__PersonnelLists');
+    wb.Workbook??={};wb.Workbook.Sheets=wb.SheetNames.map(name=>({name,Hidden:name==='__PersonnelLists'?2:0}));
+  }
+  // type:'array' → SheetJS returns an ArrayBuffer (despite older typings suggesting Uint8Array);
+  // wrap it so callers always get real bytes, safe for a browser Blob or Buffer.from().
+  const bytes=new Uint8Array(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer);
+  const wrappedSheets=[opts,...(opts?.extraSheets??[])].flatMap((sheet,index)=>sheet?.wrapText?[index]:[]);
+  const wrappedBytes=await wrapGeneratedSheetText(bytes,wrappedSheets);
+  if(!validationLists.length)return wrappedBytes;
+  const {addXlsxListValidation}=await import('./xlsx-list-validation');
+  return addXlsxListValidation(wrappedBytes,validationLists);
+}
+
+export type BuildXlsxOptions = {
+  /** Name of the first (data) sheet. Defaults to the leave importer's historical name. */
+  sheetName?: string;
+  /** 0-based indexes of columns that must be TEXT so leading zeros survive HR's typing. */
+  textColumns?: number[];
+  /** Opt-in display widths in Excel character units. Other download consumers keep their layout. */
+  columnWidths?:number[];
+  /** Wrap generated cells and size supplied rows using the declared column widths. */
+  wrapText?:boolean;
+  /** Additional sheets appended after the data sheet — reference lists, instructions, and (2983802f)
+   *  the employee importer's Family sheet, which is filled in and therefore takes `textColumns` of its
+   *  own so its Employee ID and identity columns survive Excel. */
+  extraSheets?: { name: string; rows: (string | number)[][]; textColumns?: number[];columnWidths?:number[];wrapText?:boolean;headerNotes?:string[];validationListFallbackNote?:string;validationLists?:{column:number;values:readonly string[]}[] }[];
+  headerNotes?:string[];
+  /** Explain the complete Reference fallback when a bounded list is too large for a dropdown. */
+  validationListFallbackNote?:string;
+  validationLists?:{column:number;values:readonly string[]}[];
+  /** How many rows below the samples get the text format pre-applied. */
+  textRowFloor?: number;
+};
+
+/** Retain the existing bounded list behavior; never offer only a prefix of a catalogue. */
+export const MAX_TEMPLATE_LIST_VALUES=1000;
+function applyListIdentifierLayout(XLSX:typeof import('xlsx'),sheet:import('xlsx').WorkSheet,source:Pick<BuildXlsxOptions,'validationLists'|'validationListFallbackNote'>|undefined,rowCount:number,rowFloor:number){
+  if(!source?.validationLists?.length)return;
+  for(const list of source.validationLists)if(!Number.isSafeInteger(list.column)||list.column<0||list.column>255)throw new Error('Invalid template choice column.');
+  applyTextColumns(XLSX,sheet,source.validationLists.map(list=>list.column),rowCount,rowFloor);
+  for(const list of source.validationLists){
+    if(new Set(list.values.filter(value=>value.trim()!=='')).size<=MAX_TEMPLATE_LIST_VALUES || !source.validationListFallbackNote)continue;
+    const cell=sheet[XLSX.utils.encode_cell({r:0,c:list.column})];
+    if(cell)cell.c=[...(cell.c??[]),{a:'Personnel field guidance',t:source.validationListFallbackNote}];
+  }
+}
+
+/** Rows of blank, text-formatted cells written under the samples so a value typed into an EMPTY row
+ *  of an identity column is still treated as text by Excel. 500 covers a large day-one load without
+ *  bloating the file (a blank string cell is a few bytes). */
+const TEXT_ROW_FLOOR = 500;
+
+function applyTextLayout(ws:import('xlsx').WorkSheet,rows:readonly (readonly (string|number)[])[],opts?:{columnWidths?:number[];wrapText?:boolean}){
+  if(opts?.columnWidths){
+    if(opts.columnWidths.some(width=>!Number.isFinite(width)||width<1||width>255))throw new Error('Invalid spreadsheet column width.');
+    ws['!cols']=opts.columnWidths.map(wch=>({wch}));
+  }
+  if(opts?.wrapText){
+    ws['!rows']=rows.map(row=>({hpt:Math.min(409,Math.max(21,...row.map((value,column)=>{
+      const width=opts.columnWidths?.[column]??16;
+      const lines=String(value).split('\n').reduce((count,line)=>count+Math.max(1,Math.ceil(Array.from(line).reduce((size,char)=>size+(/[\u2e80-\u9fff\uac00-\ud7af]/u.test(char)?2:1),0)*1.15/Math.max(1,width-2))),0);
+      return lines*18+6;
+    })))}));
+  }
+}
+
+/** SheetJS CE omits alignment styles. Add wrapping only to our own opt-in generated sheets,
+ * cloning each existing XF so text/number formats and other styles remain intact. */
+async function wrapGeneratedSheetText(bytes:Uint8Array,sheets:readonly number[]){
+  if(!sheets.length)return bytes;
+  const {default:JSZip}=await import('jszip');const zip=await JSZip.loadAsync(bytes);
+  const entry=zip.file('xl/styles.xml');if(!entry)throw new Error('Generated spreadsheet styles are missing.');
+  const xml=await entry.async('string');const xfs=xml.match(/<cellXfs\b[^>]*count="(\d+)"[^>]*>([\s\S]*?)<\/cellXfs>/);
+  if(!xfs)throw new Error('Generated spreadsheet cell formats are missing.');
+  const formats:string[]=xfs[2].match(/<xf\b[^>]*?(?:\/>|>[\s\S]*?<\/xf>)/g)??[];
+  if(formats.length!==Number(xfs[1]))throw new Error('Generated spreadsheet cell formats are inconsistent.');
+  const wrapped=new Map<number,number>();
+  const wrap=(index:number)=>{
+    const known=wrapped.get(index);if(known!==undefined)return known;
+    const source=formats[index];if(!source)throw new Error('Generated spreadsheet references an unknown cell format.');
+    let next=source.replace(/\sapplyAlignment="[^"]*"/g,'').replace(/^<xf\b/,'<xf applyAlignment="1"');
+    const alignment='<alignment wrapText="1" vertical="top"/>';
+    if(next.endsWith('/>'))next=next.slice(0,-2)+'>'+alignment+'</xf>';
+    else if(/<alignment\b/.test(next))next=next.replace(/<alignment\b([^>]*?)(?:\/>|>[\s\S]*?<\/alignment>)/,(_all,attributes:string)=>'<alignment'+attributes.replace(/\s(?:wrapText|vertical)="[^"]*"/g,'')+' wrapText="1" vertical="top"/>');
+    else next=next.replace('</xf>',alignment+'</xf>');
+    const id=formats.length;formats.push(next);wrapped.set(index,id);return id;
+  };
+  for(const index of sheets){
+    const path=`xl/worksheets/sheet${index+1}.xml`;const sheet=zip.file(path);if(!sheet)throw new Error('Generated spreadsheet sheet is missing.');
+    const contents=(await sheet.async('string')).replace(/<c\b[^>]*>/g,tag=>{
+      const id=wrap(Number(tag.match(/\bs="(\d+)"/)?.[1]??0));
+      return /\bs="\d+"/.test(tag)?tag.replace(/\bs="\d+"/,`s="${id}"`):tag.replace(/^<c\b/,`<c s="${id}"`);
+    });zip.file(path,contents);
+  }
+  zip.file('xl/styles.xml',xml.replace(xfs[0],`<cellXfs count="${formats.length}">${formats.join('')}</cellXfs>`));
+  return zip.generateAsync({type:'uint8array',compression:'DEFLATE'});
+}
+
+/**
+ * Stamp the `@` (text) number format down whole columns.
+ *
+ * This is the half of the leading-zero fix that lives in the TEMPLATE. Excel decides a cell's type
+ * when the value is typed, from the cell's format: in a General cell `0123456789` becomes the number
+ * 123456789 and the zero is destroyed IN THE FILE, so no amount of reader cleverness can recover it.
+ * Pre-formatting the column as text means Excel keeps exactly what was typed, and SheetJS then hands
+ * it back as a string.
+ *
+ * Cell number formats (`z`) are written by the SheetJS community build; cell STYLES (fonts, fills)
+ * are not, which is why nothing here reaches for them.
+ */
+function applyTextColumns(
+  XLSX: typeof import('xlsx'),
+  ws: import('xlsx').WorkSheet,
+  textColumns: number[],
+  dataRowCount: number,
+  floor: number,
+): void {
+  const lastRow = Math.max(dataRowCount, floor); // 0-based header at row 0; data starts at row 1
+  for (const c of textColumns) {
+    for (let r = 1; r <= lastRow; r++) {
+      const addr = XLSX.utils.encode_cell({ c, r });
+      const cell = ws[addr] as { t?: string; v?: unknown; z?: string } | undefined;
+      if (cell) {
+        cell.t = 's';
+        cell.v = cell.v == null ? '' : String(cell.v);
+        cell.z = '@';
+      } else {
+        ws[addr] = { t: 's', v: '', z: '@' };
+      }
+    }
+  }
+  // Widen !ref so the pre-formatted blank rows are actually part of the sheet.
+  const ref = ws['!ref'];
+  if (ref) {
+    const range = XLSX.utils.decode_range(ref);
+    range.e.r = Math.max(range.e.r, lastRow);
+    range.e.c = Math.max(range.e.c, ...textColumns);
+    ws['!ref'] = XLSX.utils.encode_range(range);
+  }
+}

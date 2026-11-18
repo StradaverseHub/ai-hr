@@ -1,0 +1,1624 @@
+import {assertAiPrincipalTx} from './ai-principal';
+import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
+import type { EntitlementSnapshot } from './entitlement-types';
+import {payrollLoopSettingsTx} from './loops/payroll-loop-settings';
+import {DEFAULT_SWING_THRESHOLD_BP,swingThresholdOrDefault,type ComponentIds} from './loops/net-swing';
+import {swingRowsTx} from './loops/swing-rows';
+/**
+ * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
+ *
+ * WHAT THIS IS FOR. ADR-0074 targets ~3,000 headcount run by 3 payroll staff — roughly 1000:1 against an
+ * industry baseline of one payroll FTE per 250–500 people. That is only reachable if the overwhelming
+ * majority of employees are paid with ZERO human touch, which makes it an exception-rate problem rather
+ * than a headcount problem: at a 97% auto-clear rate, ~90 of 3,000 need human eyes per cycle. Nothing in
+ * this codebase measured that rate before this module; every autonomy claim downstream depends on it.
+ *
+ * THREE INVARIANTS, none of them negotiable:
+ *
+ *  1. IT NEVER TOUCHES THE MONEY PATH. `evaluateBatchAnomalies` reads payslips and writes verdicts. It
+ *     does not mutate a payslip, a batch total, or a statutory figure. The deterministic kernel keeps
+ *     computing every ringgit; this layer only classifies what the kernel produced. That is what makes
+ *     the ratio defensible to a CFO, an auditor, and PERKESO/LHDN.
+ *
+ *  2. THE CLASSIFICATION IS DETERMINISTIC. Detectors are pure functions over a plain context object
+ *     (core/payroll-anomaly-detectors.ts) and the disposition is derived from severities, not scored.
+ *     There is no LLM anywhere in this file. The optional narrative comes later and can never revise a
+ *     classification.
+ *
+ *  3. IT IS IDEMPOTENT. Re-running on an open batch supersedes the previous verdicts rather than
+ *     duplicating them, because the daily provisional dry-run will re-run this constantly. Superseded
+ *     rows are KEPT — they are the record of what the system believed at the time.
+ *
+ * ONE BATCHED READ, NOT N+1. `gatherContext` issues a fixed number of queries for the whole batch and
+ * assembles per-employee contexts in memory. This is deliberate and load-bearing: the target is a
+ * 3,000-employee run on a daily cadence, and a per-employee query would make the dry-run's cost scale
+ * with headcount in exactly the dimension the whole programme is trying to flatten.
+ */
+import { and, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { recordDecision } from './agent-proposal';
+import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import { appendEvent, actorOf } from '../db/events';
+import * as schema from '../db/schema';
+import { packFor } from '../localization/registry';
+import {
+  DETECTORS,
+  HYPOTHESIS_DETECTOR_ID,
+  resolveDisposition,
+  type Detector,
+  type DetectorContext,
+  type Disposition,
+  type Finding,
+  type PayslipFigures,
+  type Severity,
+} from './payroll-anomaly-detectors';
+
+const num = (v: unknown): number => {
+  const x = Number(v ?? 0);
+  return Number.isFinite(x) ? x : 0;
+};
+
+/**
+ * THE UNTUNED DEFAULTS, and they are labelled untuned on purpose.
+ *
+ * ADR-0076 §6 is blunt that only real client history or a shadow run produces defensible thresholds.
+ * These are conservative placeholders so the layer works on a client's first cycle; a
+ * `payroll_anomaly_config` row overrides any of them per tenant or per company, WITHOUT A DEPLOY, which
+ * is the entire reason thresholds live in the database. Nobody should mistake 30 for an empirical number.
+ */
+export const UNTUNED_DEFAULT_PARAMS: Record<string, Record<string, unknown>> = {
+  // ONE THRESHOLD (owner, 11 November 2026): `net-swing` judges by the company's Salary payroll loop threshold
+  // (core/loops/payroll-loop-settings.ts), whose default is 15%. This entry is that default as the disclosure prints it
+  // when no administrator has set one; it is NOT read by the detector, and a payroll_anomaly_config `netSwingPct` no
+  // longer changes anything (the config row can still switch the detector off).
+  'net-swing': { netSwingPct: DEFAULT_SWING_THRESHOLD_BP / 100 },
+  'batch-swing': { batchSwingPct: 15 },
+};
+
+/** The run-level circuit breaker's id. Not in DETECTORS — it is not a per-employee detector. */
+export const CIRCUIT_BREAKER_ID = 'batch-swing';
+
+// ── THRESHOLD PROVENANCE, and why the honest fix here was disclosure rather than a settings screen ───────
+//
+// r292. `payroll_anomaly_config` is empty on production and no screen writes it, so all 2,359 findings were
+// classified by the placeholders above. docs/CUSTOMER-DEPLOYMENT-READINESS.md §2.4 allows two outcomes —
+// "made editable or disclosed as arbitrary" — and this is the disclosure arm, deliberately:
+//
+//   • THE THRESHOLDS ARE ALREADY EDITABLE. The precedence below (company row → tenant row → code default)
+//     works, is tested, and takes effect without a deploy. What is missing is a form, not a mechanism.
+//   • A FORM WOULD NOT MAKE THE NUMBERS EMPIRICAL. ADR-0076 §6 is blunt that only real client history or a
+//     shadow run produces a defensible threshold. An admin typing 25 instead of 30 has exactly the evidence
+//     they had before; the screen would only add the impression that somebody had tuned it.
+//   • AND IT WOULD DESTROY A SIGNAL THE PRODUCT ALREADY RELIES ON. core/control-tower.ts computes
+//     `thresholdsTuned` as `count(payroll_anomaly_config) > 0` and REFUSES to print `impliedOperators` — a
+//     staffing headcount — while it is false. Ship a form and the first admin who saves anything at all
+//     flips that flag, and the tower starts printing a headcount projection backed by a number with no more
+//     evidence behind it than the placeholder. That is precisely the harm control-tower.ts's own header
+//     names ("a confident wrong one gets somebody's job cut").
+//
+// So: say the true thing where the findings are read. `thresholdsInForce` below is a DERIVED disclosure —
+// it resolves the same rows through the same precedence as `evaluateBatchAnomalies`, so the sentence on
+// /payroll/<batch>/anomalies can only ever describe the numbers the engine really used, and it stops
+// calling them placeholders by itself the moment somebody configures one. A hand-written banner would
+// drift, and a stale "these are placeholders" is exactly as false as a stale "these are tuned".
+
+/** One `payroll_anomaly_config` row as every reader here needs it. */
+type AnomalyConfigRow = { detectorId: string; companyId: string | null; enabled: boolean; params: unknown };
+
+/** Live (unarchived) threshold rows for a tenant. ONE query shape for the evaluator and the disclosure. */
+async function readAnomalyConfig(tx: Tx, tenantId: string): Promise<AnomalyConfigRow[]> {
+  return tx
+    .select({
+      detectorId: schema.payrollAnomalyConfig.detectorId,
+      companyId: schema.payrollAnomalyConfig.companyId,
+      enabled: schema.payrollAnomalyConfig.enabled,
+      params: schema.payrollAnomalyConfig.params,
+    })
+    .from(schema.payrollAnomalyConfig)
+    .where(and(eq(schema.payrollAnomalyConfig.tenantId, tenantId), isNull(schema.payrollAnomalyConfig.archivedAt)));
+}
+
+/** Thresholds as data: a company row beats a tenant-wide row, and both beat the untuned code default.
+ *  ONE definition of that precedence — the evaluator and the disclosure must never be able to disagree
+ *  about which number was in force, because the whole point of the disclosure is that it is true. */
+function thresholdResolver(cfgRows: AnomalyConfigRow[], companyId: string | null) {
+  const cfgFor = (detectorId: string): AnomalyConfigRow | null =>
+    cfgRows.find((r) => r.detectorId === detectorId && companyId !== null && r.companyId === companyId) ??
+    cfgRows.find((r) => r.detectorId === detectorId && r.companyId === null) ??
+    null;
+  return {
+    cfgFor,
+    isEnabled: (detectorId: string) => cfgFor(detectorId)?.enabled ?? true,
+    paramsFor: (detectorId: string): Record<string, unknown> => ({
+      ...(UNTUNED_DEFAULT_PARAMS[detectorId] ?? {}),
+      ...((cfgFor(detectorId)?.params as Record<string, unknown> | undefined) ?? {}),
+    }),
+  };
+}
+
+/** 'configured' only when a row actually SUPPLIES a number. A row that merely disables a detector has
+ *  tuned nothing, and calling that "configured" would be the same class of untruth this change removes. */
+export type ThresholdSource = 'configured' | 'untuned_default' | 'unreadable_default';
+export type ThresholdInForce = { detectorId: string; params: Record<string, unknown>; source: ThresholdSource };
+export type ThresholdProvenance = {
+  thresholds: ThresholdInForce[];
+  /** True while ANY parameterised detector is still classifying on a shipped placeholder. */
+  anyUntuned: boolean;
+};
+
+/**
+ * The company's ONE net-swing threshold (its Salary payroll loop setting) and its exclusions: one bounded read for the
+ * batch's company, plus one statement asking whether the caller may read that setting at all.
+ *
+ * ROW SECURITY. teras_payroll_loop_setting is readable only by an agent principal or a user who administers the company
+ * (migration 2005, policy teras_payroll_loop_setting_read). So `readable` is asked with the policy's OWN predicate.
+ *
+ * THE SCHEDULED SWEEP (no login, no agent; scripts/anomaly-sweep.ts) cannot see the row, so the same statement also asks
+ * app.sweep_swing_thresholds (migration 5160, a narrow reader that answers only such a system session): the company's
+ * threshold and nothing else. The sweep judges by that threshold WITHOUT the company's exclusions (the reader does not
+ * disclose them; fail safe, a stricter flag, never a looser one), and a company with no setting is the 15% default as
+ * for anyone else. (Owner, 12 November 2026: the sweep uses each company's own threshold.)
+ *
+ * A login that may not read the setting (a payroll partner) still sees no row, which is indistinguishable from "never
+ * set": the 15% default is used WITH NO EXCLUSIONS and that is said on the disclosure and on every finding — never
+ * presented as the company's choice or as the shipped default.
+ *
+ * FAIL SAFE: a setting that cannot be used (absent, malformed, out of range) is the 15% default, never "no check". A
+ * database error fails the caller's transaction like every other read of an evaluation.
+ */
+async function swingSettingTx(tx: Tx, tenantId: string, companyId: string): Promise<{ thresholdBp: number; exclusions: readonly string[]; configured: boolean; readable: boolean }> {
+  const [access] = (await tx.execute(sql`select (app.current_agent_principal() is not null
+      or (app.current_user_id() is not null and app.is_admin_for(${companyId}::uuid) is true)) as readable,
+    app.current_user_id() is null and app.current_agent_principal() is null as system,
+    (select t.threshold_bp from app.sweep_swing_thresholds(array[${companyId}::uuid]) t) as system_threshold_bp`)) as unknown as
+    { readable: boolean | null; system: boolean | null; system_threshold_bp: number | null }[];
+  if (access?.system === true) {
+    const thresholdBp = swingThresholdOrDefault(access.system_threshold_bp);
+    return { thresholdBp, exclusions: [], configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP, readable: true };
+  }
+  const readable = access?.readable === true;
+  if (!readable) return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false, readable };
+  try {
+    const setting = (await payrollLoopSettingsTx(tx, tenantId, [companyId])).get(companyId);
+    const thresholdBp = swingThresholdOrDefault(setting?.thresholdBp);
+    const exclusions = [...(setting?.exclusions ?? [])].filter((e): e is string => typeof e === 'string');
+    // "Configured" = an administrator chose a number other than the shipped 15% (a settings version that only added an
+    // exclusion, or put 15% back, has tuned nothing).
+    return { thresholdBp, exclusions, configured: thresholdBp !== DEFAULT_SWING_THRESHOLD_BP, readable };
+  } catch {
+    return { thresholdBp: DEFAULT_SWING_THRESHOLD_BP, exclusions: [], configured: false, readable };
+  }
+}
+
+/** The numbers that classified this batch, and where each came from. Read-only; touches nothing. */
+export async function thresholdsInForce(ctx: SessionContext, p: { batchId: string }): Promise<ThresholdProvenance> {
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ companyId: schema.payrollBatch.companyId })
+      .from(schema.payrollBatch)
+      .where(eq(schema.payrollBatch.id, p.batchId))
+      .limit(1);
+    const { cfgFor, paramsFor } = thresholdResolver(await readAnomalyConfig(tx, ctx.tenantId), batch?.companyId ?? null);
+    const swing = batch ? await swingSettingTx(tx, ctx.tenantId, batch.companyId) : null;
+    const thresholds: ThresholdInForce[] = Object.keys(UNTUNED_DEFAULT_PARAMS).map((detectorId) => {
+      // The one net-swing threshold is the Salary payroll loop's, exactly as the evaluator reads it.
+      if (detectorId === 'net-swing') {
+        return {
+          detectorId,
+          params: { netSwingPct: (swing?.thresholdBp ?? DEFAULT_SWING_THRESHOLD_BP) / 100 },
+          // The company's own setting could not be read here (row security): the 15% default was used, and the disclosure
+          // says so rather than calling it a shipped default or the company's choice.
+          source: swing && !swing.readable ? 'unreadable_default' : swing?.configured ? 'configured' : 'untuned_default',
+        };
+      }
+      const supplied = cfgFor(detectorId)?.params as Record<string, unknown> | undefined;
+      return {
+        detectorId,
+        params: paramsFor(detectorId),
+        source: supplied && Object.keys(supplied).length > 0 ? 'configured' : 'untuned_default',
+      };
+    });
+    return { thresholds, anyUntuned: thresholds.some((t) => t.source === 'untuned_default') };
+  });
+}
+
+export type SkippedDetector = { id: string; reason: string };
+
+export type EmployeeVerdict = {
+  employmentId: string;
+  disposition: Disposition;
+  findings: Finding[];
+  detectorsRun: string[];
+  detectorsSkipped: SkippedDetector[];
+};
+
+export type BatchEvaluation = {
+  batchId: string;
+  /** Counts by disposition — the auto-clear rate's numerator and denominator. */
+  autoClear: number;
+  review: number;
+  block: number;
+  total: number;
+  /** detectorsRun / (run + skipped), averaged over employees. Guards against a false clean (§2.4). */
+  coverage: number;
+  verdicts: EmployeeVerdict[];
+};
+
+/** Everything the whole batch needs, read once. */
+type BatchContext = {
+  batchId: string;
+  companyId: string;
+  tenantId: string;
+  period: { start: string; end: string; calendarDays: number };
+  /** Statutory ceilings derived from the ruleset IN FORCE FOR THIS BATCH, or null when unavailable. */
+  caps: Record<string, number> | null;
+  capsSkipReason: string | null;
+  contexts: DetectorContext[];
+};
+
+const daysInMonth = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+
+const figuresOf = (row: {
+  grossPay: unknown;
+  netPay: unknown;
+  basicSalary: unknown;
+  allowance: unknown;
+  overtimePay: unknown;
+  bonus: unknown;
+  totalDeductions: unknown;
+  daysWorked: unknown;
+  statutory: unknown;
+}): PayslipFigures => {
+  const st = (row.statutory ?? {}) as Record<string, unknown>;
+  const statutory: Record<string, number> = {};
+  for (const [k, v] of Object.entries(st)) {
+    // The blob also carries the absence stamp (objects), not only scalars — keep only the numbers.
+    if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))) {
+      statutory[k] = num(v);
+    }
+  }
+  return {
+    grossPay: num(row.grossPay),
+    netPay: num(row.netPay),
+    basicSalary: num(row.basicSalary),
+    allowance: num(row.allowance),
+    overtimePay: num(row.overtimePay),
+    bonus: num(row.bonus),
+    totalDeductions: num(row.totalDeductions),
+    daysWorked: row.daysWorked == null ? null : num(row.daysWorked),
+    statutory,
+  };
+};
+
+/**
+ * Statutory ceilings, DERIVED FROM THE PACK RATHER THAN HARDCODED.
+ *
+ * SOCSO and EIS are exact scheduled amounts with a top band, so the ceiling is simply the largest amount
+ * the schedule can produce. Reading it from the ruleset that this batch actually used means a rate-table
+ * change cannot silently rot the detector — which a constant in this file would.
+ *
+ * EPF IS DELIBERATELY ABSENT. It is a percentage of wages with configurable per-employee rates and no
+ * single scheduled maximum, so any "ceiling" here would be a guess, and a guessed ceiling on a BLOCK
+ * detector would refuse to close real batches. Better to check the components we can check exactly.
+ */
+function capsFromRuleset(rules: unknown): Record<string, number> | null {
+  const r = rules as
+    | { socso?: { category1?: unknown[]; category2?: unknown[] }; eis?: { bands?: unknown[] } }
+    | null
+    | undefined;
+  if (!r) return null;
+  const maxOf = (bands: unknown[] | undefined, key: string): number =>
+    (bands ?? []).reduce<number>((acc, b) => Math.max(acc, num((b as Record<string, unknown>)?.[key])), 0);
+
+  const socso1 = r.socso?.category1;
+  const socso2 = r.socso?.category2;
+  const eis = r.eis?.bands;
+  if (!socso1?.length && !eis?.length) return null;
+
+  const caps: Record<string, number> = {};
+  const socsoEmployee = Math.max(maxOf(socso1, 'employee'), maxOf(socso2, 'employee'));
+  const socsoEmployer = Math.max(maxOf(socso1, 'employer'), maxOf(socso2, 'employer'));
+  const skbbk = Math.max(maxOf(socso1, 'skbbk'), maxOf(socso2, 'skbbk'));
+  const eisEmployee = maxOf(eis, 'employee');
+  const eisEmployer = maxOf(eis, 'employer');
+  if (socsoEmployee > 0) caps.socsoEmployee = socsoEmployee;
+  if (socsoEmployer > 0) caps.socsoEmployer = socsoEmployer;
+  if (skbbk > 0) caps.skbbk = skbbk;
+  if (eisEmployee > 0) caps.eisEmployee = eisEmployee;
+  if (eisEmployer > 0) caps.eisEmployer = eisEmployer;
+  return Object.keys(caps).length ? caps : null;
+}
+
+/** `entitlements`: a snapshot the caller ALREADY resolved for this tenant in this same transaction (loadBatchContextsTx's
+ *  module gate), so the attendance-in-use fact costs no second read. Absent, it is resolved here, once for the batch. */
+async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlements?: EntitlementSnapshot): Promise<BatchContext | null> {
+  // Country comes from the COMPANY, not the batch — payroll_batch has no country column, and the
+  // statutory pack is a property of the employing entity (which is the whole point of slice 6's
+  // per-employer pack resolution).
+  const [batch] = await tx
+    .select({
+      id: schema.payrollBatch.id,
+      companyId: schema.payrollBatch.companyId,
+      payPeriod: schema.payrollBatch.payPeriod,
+      runType: schema.payrollBatch.runType,
+      country: schema.company.country,
+    })
+    .from(schema.payrollBatch)
+    .innerJoin(schema.company, eq(schema.company.id, schema.payrollBatch.companyId))
+    .where(eq(schema.payrollBatch.id, batchId))
+    .limit(1);
+  if (!batch) return null;
+
+  const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
+  const dim = daysInMonth(pYear, pMonth);
+  const periodStart = `${batch.payPeriod}-01`;
+  const periodEnd = `${batch.payPeriod}-${String(dim).padStart(2, '0')}`;
+
+  const slips = await tx
+    .select({
+      employmentId: schema.payslip.employmentId,
+      grossPay: schema.payslip.grossPay,
+      netPay: schema.payslip.netPay,
+      basicSalary: schema.payslip.basicSalary,
+      allowance: schema.payslip.allowance,
+      overtimePay: schema.payslip.overtimePay,
+      bonus: schema.payslip.bonus,
+      totalDeductions: schema.payslip.totalDeductions,
+      daysWorked: schema.payslip.daysWorked,
+      statutory: schema.payslip.statutory,
+    })
+    .from(schema.payslip)
+    .where(eq(schema.payslip.batchId, batchId));
+  if (slips.length === 0) {
+    return {
+      batchId,
+      companyId: batch.companyId,
+      tenantId,
+      period: { start: periodStart, end: periodEnd, calendarDays: dim },
+      caps: null,
+      capsSkipReason: 'no payslips in this batch',
+      contexts: [],
+    };
+  }
+  const employmentIds = slips.map((s) => s.employmentId);
+
+  // ── one read each, for the whole batch ────────────────────────────────────────────────────────────
+  const emps = await tx
+    .select({
+      id: schema.employment.id,
+      personId: schema.employment.personId,
+      hiredOn: schema.employment.hiredOn,
+      terminatedOn: schema.employment.terminatedOn,
+      paymentMethod: schema.employment.paymentMethod,
+    })
+    .from(schema.employment)
+    .where(inArray(schema.employment.id, employmentIds));
+  const empById = new Map(emps.map((e) => [e.id, e]));
+  const personIds = [...new Set(emps.map((e) => e.personId))];
+
+  const profiles = personIds.length
+    ? await tx
+        .select({
+          personId: schema.employeeStatutoryMy.personId,
+          bankName: schema.employeeStatutoryMy.bankName,
+          bankAccountNo: schema.employeeStatutoryMy.bankAccountNo,
+        })
+        .from(schema.employeeStatutoryMy)
+        .where(inArray(schema.employeeStatutoryMy.personId, personIds))
+    : [];
+  const profileByPerson = new Map(profiles.map((p) => [p.personId, p]));
+
+  // PRIOR CYCLE — the immediately preceding period for the SAME company and the SAME RUN TYPE (AI v2 Phase 2
+  // hardening: a bonus run is compared with the last bonus run, an off-cycle run with the last off-cycle run, a salary
+  // run with the last salary run, never with each other) and a CLOSED run only: a draft or processed run of an earlier
+  // month is unfinished (it can still be reprocessed or reset), so it is never "last month". Ordered by payPeriod (a
+  // 'YYYY-MM' string, so lexicographic order is chronological order), then the highest run sequence, and limited to
+  // one: the row app.payroll_close_circuit_inputs selects too (migration 2011).
+  const [priorBatch] = await tx
+    .select({ id: schema.payrollBatch.id })
+    .from(schema.payrollBatch)
+    .where(
+      and(
+        eq(schema.payrollBatch.companyId, batch.companyId),
+        eq(schema.payrollBatch.runType, batch.runType),
+        eq(schema.payrollBatch.status, 'closed'),
+        lt(schema.payrollBatch.payPeriod, batch.payPeriod),
+      ),
+    )
+    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`, sql`${schema.payrollBatch.runSeq} desc`, sql`${schema.payrollBatch.id} desc`)
+    .limit(1);
+
+  const priorSlips = priorBatch
+    ? await tx
+        .select({
+          employmentId: schema.payslip.employmentId,
+          grossPay: schema.payslip.grossPay,
+          netPay: schema.payslip.netPay,
+          basicSalary: schema.payslip.basicSalary,
+          allowance: schema.payslip.allowance,
+          overtimePay: schema.payslip.overtimePay,
+          bonus: schema.payslip.bonus,
+          totalDeductions: schema.payslip.totalDeductions,
+          daysWorked: schema.payslip.daysWorked,
+          statutory: schema.payslip.statutory,
+        })
+        .from(schema.payslip)
+        .where(eq(schema.payslip.batchId, priorBatch.id))
+    : [];
+  const priorByEmployment = new Map(priorSlips.map((s) => [s.employmentId, figuresOf(s)]));
+
+  // ATTENDANCE + APPROVED LEAVE, aggregated in the database rather than pulled row-by-row: a 3,000-person
+  // month is ~66,000 attendance rows and this only needs two counts per employee.
+  const attRows = await tx
+    .select({
+      employmentId: schema.attendance.employmentId,
+      days: sql<number>`count(distinct ${schema.attendance.attendanceDate})::int`,
+    })
+    .from(schema.attendance)
+    .where(
+      and(
+        inArray(schema.attendance.employmentId, employmentIds),
+        sql`${schema.attendance.attendanceDate} between ${periodStart} and ${periodEnd}`,
+        sql`${schema.attendance.workedMinutes} > 0`,
+      ),
+    )
+    .groupBy(schema.attendance.employmentId);
+  const attByEmployment = new Map(attRows.map((r) => [r.employmentId, num(r.days)]));
+
+  const leaveRows = await tx
+    .select({
+      employmentId: schema.leaveRequest.employmentId,
+      days: sql<number>`coalesce(sum(${schema.leaveRequest.days}), 0)::float8`,
+    })
+    .from(schema.leaveRequest)
+    .where(
+      and(
+        inArray(schema.leaveRequest.employmentId, employmentIds),
+        eq(schema.leaveRequest.status, 'approved'),
+        sql`${schema.leaveRequest.startDate} <= ${periodEnd}`,
+        sql`${schema.leaveRequest.endDate} >= ${periodStart}`,
+      ),
+    )
+    .groupBy(schema.leaveRequest.employmentId);
+  const leaveByEmployment = new Map(leaveRows.map((r) => [r.employmentId, num(r.days)]));
+
+  // CONCURRENT PAY — the same PERSON paid under another employment in the same period. Computed in
+  // memory from the slips we already hold plus any other batch for the same period.
+  const samePeriodOtherSlips = await tx
+    .select({ employmentId: schema.payslip.employmentId, batchId: schema.payslip.batchId })
+    .from(schema.payslip)
+    .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
+    .where(eq(schema.payrollBatch.payPeriod, batch.payPeriod));
+  const paidEmploymentIds = new Set(samePeriodOtherSlips.map((r) => r.employmentId));
+  // Resolve those employments to people so a second employment of the SAME person can be spotted.
+  const paidEmps = paidEmploymentIds.size
+    ? await tx
+        .select({ id: schema.employment.id, personId: schema.employment.personId })
+        .from(schema.employment)
+        .where(inArray(schema.employment.id, [...paidEmploymentIds]))
+    : [];
+  const paidByPerson = new Map<string, string[]>();
+  for (const e of paidEmps) {
+    const list = paidByPerson.get(e.personId) ?? [];
+    list.push(e.id);
+    paidByPerson.set(e.personId, list);
+  }
+
+  // Statutory ceilings from the ruleset THIS batch used.
+  let caps: Record<string, number> | null = null;
+  let capsSkipReason: string | null = null;
+  try {
+    const pack = packFor(batch.country);
+    if (!pack) {
+      capsSkipReason = `no localization pack for country ${batch.country}`;
+    } else {
+      const rules = await pack.payroll.loadRuleset(tx, { asOf: periodEnd });
+      caps = capsFromRuleset(rules);
+      if (!caps) capsSkipReason = 'ruleset exposes no scheduled ceilings';
+    }
+  } catch {
+    // A ruleset that will not load must not take the whole evaluation down; the detector is recorded as
+    // skipped and every other detector still runs.
+    capsSkipReason = 'statutory ruleset could not be loaded';
+  }
+
+  // AI v2 Phase 2 hardening — the owning facts the data-aware detectors read first: the pay mode in force at the period's
+  // end (a daily-rated person's partial month is their normal pay) and the attendance owner's own exemption (a schedule
+  // group exempt from absence judgments on every day of the period has no attendance to expect).
+  const payModes = employmentIds.length
+    ? await tx.select({ employmentId: schema.compensation.employmentId, payMode: schema.compensation.payMode }).from(schema.compensation)
+        .where(and(inArray(schema.compensation.employmentId, employmentIds), isNull(schema.compensation.supersededAt),
+          sql`${schema.compensation.validFrom} <= ${periodEnd}`, sql`(${schema.compensation.validTo} is null or ${schema.compensation.validTo} > ${periodEnd})`))
+    : [];
+  const payModeByEmployment = new Map(payModes.map((row) => [row.employmentId, row.payMode as string | null]));
+  const exemptByEmployment = new Map<string, boolean>();
+  if (employmentIds.length) {
+    try {
+      // Loaded on use (the schedule-group owner imports the payroll facade, which imports this file).
+      const { exceptionDecisionsTx } = await import('./schedule-group-controls');
+      // Read in the evaluation's own transaction, as core/attendance.ts and core/absence-days.ts read it: plain reads under
+      // the caller's row-level security, which filters rather than fails. Phase 2 integration: NOT in a savepoint. This
+      // context is replayed inside the AI admission of the payroll hypothesis pass (core/payroll-hypothesis.ts
+      // hypothesisSourceTx), and a savepoint there refused every admission (runs 41735128813 and 41738598191: one
+      // candidate, none asked; without it, 41739257551: asked and answered).
+      const exemptOn = await exceptionDecisionsTx(tx, employmentIds, periodStart, periodEnd);
+      const days: string[] = [];
+      for (let d = 1; d <= dim; d++) days.push(`${batch.payPeriod}-${String(d).padStart(2, '0')}`);
+      for (const id of employmentIds) exemptByEmployment.set(id, days.every((day) => exemptOn(id, day).enabled === true));
+    } catch {
+      // An exemption that cannot be loaded is no exemption: the detector runs as before. (A database error in these
+      // reads, like one in any other read of this evaluation, fails the evaluation's transaction.)
+    }
+  }
+
+  // Owner rule (4 November 2026) — is attendance in use for this company at all? The Attendance module's entitlement
+  // (tenant-wide or scoped to this company) is the owning fact. ONE bounded read per batch (a batch is one company), never
+  // per employee — and none at all when the caller already resolved the snapshot in this transaction. A failed read
+  // fails this evaluation's transaction like every other read here; it never switches the check off.
+  const snapshot = entitlements && entitlements.tenantId === tenantId ? entitlements : await resolveEntitlementsTx(tx, tenantId);
+  const attendanceInUse = attendanceInUseFor(snapshot, batch.companyId);
+
+  // ONE THRESHOLD and "check the payroll first" (owner, 11 November 2026). The company's Salary payroll loop setting, and
+  // every payslip these people had at this company in the months a comparison reads, exactly as the Salary loop reads
+  // them (processed or closed runs, plus this batch): ONE set-based read each for the whole batch, never per employee.
+  const swingSetting = await swingSettingTx(tx, tenantId, batch.companyId);
+  // The SAME reader, and so the same baseline (earlier months: closed runs only, like the prior-cycle gate above), as the
+  // Salary payroll loop: core/loops/swing-rows.ts. One set-based statement for the whole batch.
+  const monthsByEmployment = await swingRowsTx(tx, { companyId: batch.companyId, period: batch.payPeriod, employmentIds, includeBatchId: batchId });
+  // An approved pay-item exclusion is keyed on a pay component's id: the catalogue is read only when one is in force.
+  const componentIds: ComponentIds | undefined = swingSetting.exclusions.some((e) => e.startsWith('item:'))
+    ? new Map((await tx.select({ code: schema.payComponent.code, id: schema.payComponent.id }).from(schema.payComponent)
+        .where(eq(schema.payComponent.tenantId, tenantId))).map((c) => [c.code, c.id]))
+    : undefined;
+
+  const contexts: DetectorContext[] = slips.map((slip) => {
+    const emp = empById.get(slip.employmentId);
+    const profile = emp ? profileByPerson.get(emp.personId) : undefined;
+    const concurrent = emp ? (paidByPerson.get(emp.personId) ?? []).filter((id) => id !== slip.employmentId) : [];
+    return {
+      employmentId: slip.employmentId,
+      current: figuresOf(slip),
+      prior: priorByEmployment.get(slip.employmentId) ?? null,
+      profile: {
+        // A bank profile is a bank NAME and an ACCOUNT NUMBER — either alone cannot be paid into.
+        hasBankProfile: !!profile?.bankAccountNo?.trim() && !!profile?.bankName?.trim(),
+        // The tax profile IS the employee_statutory_my row; its absence is what the detector looks for.
+        hasTaxProfile: !!profile,
+        paymentMethod: (emp?.paymentMethod ?? null) as DetectorContext['profile']['paymentMethod'],
+        hiredOn: emp?.hiredOn ?? null,
+        terminatedOn: emp?.terminatedOn ?? null,
+        concurrentPaidEmploymentIds: concurrent,
+        payMode: payModeByEmployment.get(slip.employmentId) ?? null,
+      },
+      activity: {
+        attendanceDays: attByEmployment.get(slip.employmentId) ?? 0,
+        approvedLeaveDays: leaveByEmployment.get(slip.employmentId) ?? 0,
+        attendanceExempt: exemptByEmployment.get(slip.employmentId) === true,
+        attendanceInUse,
+      },
+      period: { start: periodStart, end: periodEnd, calendarDays: dim },
+      caps: caps ?? {},
+      swing: {
+        period: batch.payPeriod,
+        companyId: batch.companyId,
+        runType: batch.runType,
+        rows: monthsByEmployment.get(slip.employmentId) ?? [],
+        thresholdBp: swingSetting.thresholdBp,
+        thresholdReadable: swingSetting.readable,
+        exclusions: swingSetting.exclusions,
+        ...(componentIds ? { componentIds } : {}),
+      },
+      // Provenance is populated in a later slice; the column and the plumbing exist now so findings
+      // written today are shaped the same as findings written then.
+      eventIds: [],
+    };
+  });
+
+  return {
+    batchId,
+    companyId: batch.companyId,
+    tenantId,
+    period: { start: periodStart, end: periodEnd, calendarDays: dim },
+    caps,
+    capsSkipReason,
+    contexts,
+  };
+}
+
+/**
+ * Owner rule (4 November 2026) — does attendance apply to this company? FALSE only when the tenant's entitlements were
+ * READ (tenant in good standing) and the Attendance module is not enabled for the company, tenant-wide or company-scoped.
+ * Every other answer is TRUE, so `pay-without-attendance` keeps checking: an unreadable snapshot, a suspended tenant
+ * (every billable module reads off) or a resolver error must never quietly switch the ghost-employee check off.
+ * PURE over the snapshot; exported for its tests.
+ */
+export function attendanceInUseFor(snapshot: EntitlementSnapshot, companyId: string): boolean {
+  try {
+    if (!TENANT_STATUS_GOOD_STANDING.has(snapshot.tenantStatus)) return true;
+    // GRANTED in the tenant's own rows ⇒ in use, whatever else is true. Checked directly so the deployment kill lever
+    // (MODULE_KILL, an operational switch, not a fact about this company) can never be what silences the check.
+    if (snapshot.enabledModules.includes('attendance')) return true;
+    if ((snapshot.scopedModules.attendance ?? []).includes(companyId)) return true;
+    // Not granted here: the entitlement owner decides (a catalog change making attendance core answers TRUE).
+    return isModuleEnabled({ tenantId: snapshot.tenantId, entitlements: snapshot }, 'attendance', companyId);
+  } catch {
+    // A malformed snapshot (or any resolver error) is "cannot tell", and "cannot tell" keeps the check on.
+    return true;
+  }
+}
+
+/** Which detectors can run for this employee, and why the others cannot (§2.4 coverage transparency). */
+function planDetectors(
+  ctx: DetectorContext,
+  bc: BatchContext,
+  enabled: (id: string) => boolean,
+): { run: Detector[]; skipped: SkippedDetector[] } {
+  const run: Detector[] = [];
+  const skipped: SkippedDetector[] = [];
+  for (const d of DETECTORS) {
+    if (!enabled(d.id)) {
+      skipped.push({ id: d.id, reason: 'disabled by configuration' });
+      continue;
+    }
+    // net-swing on a REGULAR run compares the person's previous PAID month (closed runs, core/loops/swing-rows.ts), which
+    // can be earlier than the company's last closed run (a person not paid in it): that is a prior cycle for this check
+    // too, so the gate and the comparison use the same baseline as the Salary loop.
+    const swingHasPrior = d.id === 'net-swing' && ctx.swing?.runType === 'regular' && ctx.swing.rows.some((r) => r.payPeriod < ctx.swing!.period);
+    if (d.requires.priorCycles > 0 && !ctx.prior && !swingHasPrior) {
+      skipped.push({ id: d.id, reason: 'no prior cycle for this employee yet' });
+      continue;
+    }
+    if (d.id === 'statutory-over-cap' && !bc.caps) {
+      skipped.push({ id: d.id, reason: bc.capsSkipReason ?? 'no statutory ceilings available' });
+      continue;
+    }
+    run.push(d);
+  }
+  return { run, skipped };
+}
+
+/**
+ * Evaluate one batch. READ-ONLY with respect to payroll; writes only to the three anomaly tables.
+ *
+ * Safe to call repeatedly — a re-run supersedes the previous live verdicts for the batch and writes a
+ * fresh set. Returns the run summary, which is also what the metrics layer reads.
+ */
+export async function evaluateBatchAnomalies(
+  ctx: SessionContext,
+  p: { batchId: string },
+): Promise<BatchEvaluation> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    // Existing server-owned scripts/anomaly-sweep.ts deliberately uses a null-user SYSTEM carrier.
+    // Preserve its original RLS/actor semantics; this does NOT verify those roles as USER authority,
+    // introduce a bypass marker, or admit any AI/provider action. Reviewed close requires real USER.
+    if(ctx.userId!=null){
+      const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+        where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+         and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+         and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+         and exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=u.tenant_id
+          and app.can_admin_payroll_for(b.company_id))) as allowed`);
+      if(authority?.allowed!==true)throw new Error('Payroll anomaly unavailable.');
+    }
+    const bc = await gatherContext(tx, ctx.tenantId, p.batchId);
+    if (!bc) throw new Error('batch not found');
+
+    // Thresholds as data, through the ONE shared resolver — the same precedence `thresholdsInForce`
+    // discloses on screen, so the disclosure cannot describe numbers other than the ones used here.
+    const { isEnabled, paramsFor } = thresholdResolver(await readAnomalyConfig(tx, ctx.tenantId), bc.companyId);
+
+    // ── classify (pure) ───────────────────────────────────────────────────────────────────────────
+    const verdicts: EmployeeVerdict[] = bc.contexts.map((dctx) => {
+      const { run, skipped } = planDetectors(dctx, bc, isEnabled);
+      const findings = run.flatMap((d) => d.evaluate(dctx, paramsFor(d.id)));
+      return {
+        employmentId: dctx.employmentId,
+        disposition: resolveDisposition(findings),
+        findings,
+        detectorsRun: run.map((d) => d.id),
+        detectorsSkipped: skipped,
+      };
+    });
+
+    // ── supersede the previous live verdicts, then write the new ones ─────────────────────────────
+    // Supersede rather than delete: the daily dry-run will produce many generations of these, and the
+    // superseded rows are the record of what the system believed when a human looked at it.
+    await tx
+      .update(schema.payrollAnomalyVerdict)
+      .set({ supersededAt: sql`now()` })
+      .where(
+        and(
+          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+        ),
+      );
+
+    if (verdicts.length > 0) {
+      const inserted = await tx
+        .insert(schema.payrollAnomalyVerdict)
+        .values(
+          verdicts.map((v) => ({
+            tenantId: ctx.tenantId,
+            batchId: p.batchId,
+            employmentId: v.employmentId,
+            disposition: v.disposition,
+            detectorsRun: v.detectorsRun,
+            detectorsSkipped: v.detectorsSkipped,
+          })),
+        )
+        .returning({ id: schema.payrollAnomalyVerdict.id, employmentId: schema.payrollAnomalyVerdict.employmentId });
+      const verdictIdByEmployment = new Map(inserted.map((r) => [r.employmentId, r.id]));
+
+      const findingRows = verdicts.flatMap((v) =>
+        v.findings.map((f) => ({
+          tenantId: ctx.tenantId,
+          verdictId: verdictIdByEmployment.get(v.employmentId)!,
+          detectorId: f.detectorId,
+          severity: f.severity,
+          facts: f.facts,
+          sourceEventIds: f.sourceEventIds,
+          suggestedAction: f.suggestedAction,
+        })),
+      );
+      if (findingRows.length > 0) await tx.insert(schema.payrollAnomalyFinding).values(findingRows);
+
+      // One event per FLAGGED employee. An auto-clear emits nothing: on a 3,000-person daily dry-run
+      // that would be ~2,900 events a day saying "nothing happened", and the verdict row is already the
+      // durable record of the evaluation.
+      for (const v of verdicts) {
+        if (v.disposition === 'auto_clear') continue;
+        await appendEvent(tx, {
+          tenantId: ctx.tenantId,
+          aggregateType: 'payslip',
+          aggregateId: verdictIdByEmployment.get(v.employmentId)!,
+          eventType: 'payroll.anomaly.flagged',
+          actor: actorOf(ctx),
+          subjectEmploymentId: v.employmentId,
+          payload: {
+            batchId: p.batchId,
+            disposition: v.disposition,
+            findings: v.findings.map((f) => ({ detectorId: f.detectorId, severity: f.severity, facts: f.facts })),
+          },
+        });
+      }
+    }
+
+    const autoClear = verdicts.filter((v) => v.disposition === 'auto_clear').length;
+    const review = verdicts.filter((v) => v.disposition === 'review').length;
+    const block = verdicts.filter((v) => v.disposition === 'block').length;
+    const coverage =
+      verdicts.length === 0
+        ? 1
+        : verdicts.reduce((acc, v) => {
+            const denom = v.detectorsRun.length + v.detectorsSkipped.length;
+            return acc + (denom === 0 ? 1 : v.detectorsRun.length / denom);
+          }, 0) / verdicts.length;
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch',
+      aggregateId: p.batchId,
+      eventType: 'payroll.anomaly.evaluated',
+      actor: actorOf(ctx),
+      payload: {
+        total: verdicts.length,
+        autoClear,
+        review,
+        block,
+        coverage: Math.round(coverage * 1000) / 1000,
+      },
+    });
+
+    return { batchId: p.batchId, autoClear, review, block, total: verdicts.length, coverage, verdicts };
+  });
+}
+
+/**
+ * The per-employee contexts for one batch, WITHOUT evaluating anything.
+ *
+ * ADR-0084 §2.6's hypothesis layer needs the same slice of the run the detectors get — this cycle's
+ * figures and the prior one's — but it must run OUTSIDE a transaction, because it calls a provider and
+ * writes to the ledger (core/agent-proposal.ts property 2). So it reads through this rather than
+ * through `evaluateBatchAnomalies`, which is transactional by design and stays that way.
+ *
+ * Null when the batch does not exist, matching `gatherContext`.
+ */
+/** Provider source replay only, with the caller's ACTUAL admission transaction. This does not
+ * admit the historical null-user SYSTEM carrier or alter the ordinary detector evaluator/loader.
+ * Native Payroll batch/employment scope is required BEFORE any financial/bank-derived facts. */
+export async function loadBatchContextsTx(tx:Tx,supplied:SessionContext,input:{batchId:string}):Promise<DetectorContext[]|null>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},p={batchId:input.batchId};await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};assertModuleEnabled(fresh,'payroll');
+ const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.payroll_batch b where b.id=${p.batchId}::uuid and b.tenant_id=${ctx.tenantId}::uuid and app.can_admin_payroll_for(b.company_id)
+ and not exists(select 1 from public.payslip s where s.batch_id=b.id and s.tenant_id=b.tenant_id and app.can_admin_payroll_employment(s.employment_id) is not true)) as allowed`);if(authority?.allowed!==true)throw Error('Current payroll source unavailable.');
+ return (await gatherContext(tx,ctx.tenantId,p.batchId,fresh.entitlements))?.contexts??null;
+}
+
+export async function loadBatchContexts(
+  ctx: SessionContext,
+  p: { batchId: string },
+  existingTx?:Tx,
+): Promise<DetectorContext[] | null> {
+  if(existingTx)return(await gatherContext(existingTx,ctx.tenantId,p.batchId))?.contexts??null;
+  return withTenant(ctx, async (tx) => (await gatherContext(tx, ctx.tenantId, p.batchId))?.contexts ?? null);
+}
+
+/**
+ * The open BLOCK verdicts standing against a batch. `closeBatch` refuses while this is non-empty.
+ *
+ * "Open" means live and unresolved: a superseded verdict is history, and a resolved one is a human
+ * having said the block is understood. Exported so the guard and the queue read the same definition.
+ */
+export async function openBlockingVerdicts(
+  tx: Tx,
+  batchId: string,
+): Promise<{ employmentId: string; verdictId: string }[]> {
+  const rows = await tx
+    .select({ verdictId: schema.payrollAnomalyVerdict.id, employmentId: schema.payrollAnomalyVerdict.employmentId })
+    .from(schema.payrollAnomalyVerdict)
+    .where(
+      and(
+        eq(schema.payrollAnomalyVerdict.batchId, batchId),
+        eq(schema.payrollAnomalyVerdict.disposition, 'block'),
+        isNull(schema.payrollAnomalyVerdict.supersededAt),
+        isNull(schema.payrollAnomalyVerdict.resolvedAt),
+      ),
+    );
+  return rows;
+}
+
+/**
+ * Supersede the LIVE verdicts standing against particular employments on a batch. Returns how many moved.
+ *
+ * 9066bd6c — WHY REMOVAL NEEDS THIS AND REPROCESSING DOES NOT. `evaluateBatchAnomalies` supersedes every
+ * live verdict on the batch before writing the new generation, so any path that regenerates the run
+ * (reset → draft → process again) is already covered by that alone. Removing one employee's result
+ * deliberately leaves the run PROCESSED and regenerates nothing — so without this, an unresolved BLOCK
+ * verdict for somebody who no longer has a payslip keeps refusing `closeBatch`: `openBlockingVerdicts`
+ * above is keyed on batchId and joins no payslip, and Close is the operator's very next action. The
+ * screen would then count an employee who is not on the run as the reason the run cannot be published.
+ *
+ * SUPERSEDE, NOT DELETE — the same idiom, and the same reason, as a re-evaluation: the row is the record
+ * of what the system believed when a human looked at it, and after a removal there is nothing left to
+ * recompute it from. The `payroll_anomaly_finding` rows hang off it and are kept with it.
+ */
+export async function supersedeVerdictsForEmployments(
+  tx: Tx,
+  p: { batchId: string; employmentIds: string[] },
+): Promise<number> {
+  if (p.employmentIds.length === 0) return 0;
+  const rows = await tx
+    .update(schema.payrollAnomalyVerdict)
+    .set({ supersededAt: sql`now()` })
+    .where(
+      and(
+        eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+        inArray(schema.payrollAnomalyVerdict.employmentId, p.employmentIds),
+        isNull(schema.payrollAnomalyVerdict.supersededAt),
+      ),
+    )
+    .returning({ id: schema.payrollAnomalyVerdict.id });
+  return rows.length;
+}
+
+/**
+ * The ledger rows a resolution answers — the ONLY place `anomaly_hypothesis` gets an agreement rate.
+ *
+ * ⚠️ **IT REFUSES TO GUESS.** A resolution is recorded per VERDICT, not per finding, so it is
+ * attributable to a hypothesis only when EVERY finding on that verdict is one. A verdict carrying a rule
+ * finding as well tells us nothing about which of them the operator meant, and a misattributed agreement
+ * rate is worse than a missing one — it is the number ADR-0084 §2.8 would grant autonomy on.
+ * `proposeHypotheses` only ever asks about AUTO-CLEARED employees precisely so this holds by
+ * construction; the check is here because "by construction" has to survive the next person.
+ *
+ * Only UNDECIDED proposals are returned: the first human answer about a given shape is the one that
+ * counts, not the last operator to re-resolve a re-materialised copy of it.
+ */
+async function hypothesisProposalsToStamp(tx: Tx, verdictId: string): Promise<string[]> {
+  const findings = await tx
+    .select({
+      detectorId: schema.payrollAnomalyFinding.detectorId,
+      proposalId: schema.payrollAnomalyFinding.proposalId,
+    })
+    .from(schema.payrollAnomalyFinding)
+    .where(eq(schema.payrollAnomalyFinding.verdictId, verdictId));
+  if (findings.length === 0) return [];
+  if (!findings.every((f) => f.detectorId === HYPOTHESIS_DETECTOR_ID)) return [];
+  const ids = findings.map((f) => f.proposalId).filter((x): x is string => x !== null);
+  if (ids.length === 0) return [];
+  const open = await tx
+    .select({ id: schema.agentProposal.id })
+    .from(schema.agentProposal)
+    .where(and(inArray(schema.agentProposal.id, ids), isNull(schema.agentProposal.decision)));
+  return open.map((r) => r.id);
+}
+
+/**
+ * Record a human's disposition of a flagged verdict.
+ *
+ * `false_positive` is the numerator of the false-positive rate, and `raised` — a human finding something
+ * on a verdict the system auto-cleared — is the ONLY route to a false-NEGATIVE rate. ADR-0076 §5 insists
+ * that path exist from day one even though the queue UI comes later, because it cannot be backfilled:
+ * if nobody can record "you missed this", the metric that most governs granting autonomy is permanently
+ * unmeasurable.
+ */
+export async function resolveAnomalyVerdict(
+  ctx: SessionContext,
+  p: { verdictId: string; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
+): Promise<{ outcome: 'resolved' | 'already_resolved' }> {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const toStamp = await withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    const [authority]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+      where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+       and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+       and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+       and exists(select 1 from public.payroll_anomaly_verdict v where v.id=${p.verdictId}::uuid
+         and v.tenant_id=u.tenant_id and app.can_admin_payroll_employment(v.employment_id))) as allowed`);
+    if(authority?.allowed!==true)throw new Error('Payroll anomaly unavailable.');
+    const [row] = await tx
+      .select({
+        id: schema.payrollAnomalyVerdict.id,
+        employmentId: schema.payrollAnomalyVerdict.employmentId,
+        batchId: schema.payrollAnomalyVerdict.batchId,
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        supersededAt: schema.payrollAnomalyVerdict.supersededAt,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .where(eq(schema.payrollAnomalyVerdict.id, p.verdictId))
+      .limit(1);
+    if (!row) throw new Error('verdict not found');
+    if (row.supersededAt) throw new Error('cannot resolve a superseded verdict');
+
+    // CONCURRENCY GUARD: only an UNRESOLVED, live verdict is written. A second person deciding the same verdict gets
+    // "already resolved", never an overwrite of the first decision and never a second audit event.
+    const written = await tx
+      .update(schema.payrollAnomalyVerdict)
+      .set({
+        resolution: p.resolution,
+        resolutionNote: p.note ?? null,
+        resolvedAt: sql`now()`,
+        resolvedByUserId: ctx.userId ?? null,
+      })
+      .where(and(eq(schema.payrollAnomalyVerdict.id, p.verdictId), isNull(schema.payrollAnomalyVerdict.resolvedAt),
+        isNull(schema.payrollAnomalyVerdict.supersededAt)))
+      .returning({ id: schema.payrollAnomalyVerdict.id });
+    if (written.length === 0) return null;
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payslip',
+      aggregateId: p.verdictId,
+      eventType: 'payroll.anomaly.resolved',
+      actor: actorOf(ctx),
+      subjectEmploymentId: row.employmentId,
+      payload: { batchId: row.batchId, disposition: row.disposition, resolution: p.resolution, note: p.note ?? null },
+    });
+
+    // ADR-0084 §2.3 — which ledger rows this human just answered. Read INSIDE the transaction (it is a
+    // read of the verdict being resolved) and stamped OUTSIDE it, below.
+    return hypothesisProposalsToStamp(tx, p.verdictId);
+  });
+  if (toStamp === null) return { outcome: 'already_resolved' };
+
+  /**
+   * ⚠️ **THE ONLY REAL AGREEMENT RATE THE PAYROLL SIDE OF THIS PRODUCT HAS.** `anomaly_narration` has no
+   * human decision — nobody approves prose — and `close_fixed_upstream`'s is structurally 1.0 (r236).
+   * Here an operator looked at a hypothesis a model raised and said whether it was a real problem, which
+   * is precisely ADR-0084 §2.3's `agreement rate` and the first payroll input to §2.8's autonomy test.
+   *
+   * `false_positive` is the model being WRONG. `accepted` and `fixed_upstream` are both it being right —
+   * they differ in what the human then did about it, not in whether there was something to do.
+   *
+   * OUTSIDE the transaction above: `recordDecision` opens its own (agent-proposal property 2), and a
+   * nested `withTenant` holds a second pooled connection for the duration of the outer one.
+   */
+  const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
+  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
+  return { outcome: 'resolved' };
+}
+
+/** The most verdicts one batch resolve may carry (one lock, one transaction). */
+export const MAX_BATCH_RESOLVE = 25;
+export type BatchResolveOutcome = 'resolved' | 'not_found' | 'already_resolved' | 'not_allowed' | 'superseded';
+
+/**
+ * Resolve up to MAX_BATCH_RESOLVE verdicts with ONE decision, in ONE transaction that takes the access-configuration
+ * write lock ONCE (the Exceptions page's group action). Each item gets exactly what `resolveAnomalyVerdict` gives one:
+ * the same caller checks (an active, unblocked user whose principal snapshot is current), the same per-item
+ * `app.can_admin_payroll_employment`, the same `payroll.anomaly.resolved` event and the same ADR-0084 ledger stamp.
+ *
+ * PER-ID OUTCOMES, never a silent skip:
+ *  - `resolved`: written now, with its event;
+ *  - `already_resolved`: somebody decided it first (read or concurrent) — their decision stands and no event is added;
+ *  - `superseded`: a re-evaluation replaced it; the live verdict is the one to decide;
+ *  - `not_allowed`: the caller may not administer that person's payroll, or the caller's own principal check failed;
+ *  - `not_found`: no such verdict for this caller. A verdict of a company the caller cannot see is invisible under row
+ *    security and so reads as `not_found` — its existence is not disclosed.
+ * INFRASTRUCTURE FAILURES ARE ERRORS: a lock timeout (55P03), a connection error or any other database error rejects the
+ * whole call and nothing is written; it never turns into per-item skips.
+ */
+export async function resolveAnomalyVerdicts(
+  ctx: SessionContext,
+  p: { verdictIds: string[]; resolution: 'accepted' | 'fixed_upstream' | 'false_positive'; note?: string },
+): Promise<{ results: { verdictId: string; outcome: BatchResolveOutcome }[] }> {
+  p = structuredClone(p); ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map((g) => ({ ...g })) };
+  const ids = [...new Set(p.verdictIds)];
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (ids.length === 0 || ids.length > MAX_BATCH_RESOLVE || !ids.every((id) => UUID.test(id))) {
+    throw new Error(`Resolve between 1 and ${MAX_BATCH_RESOLVE} exceptions at a time.`);
+  }
+  if (!['accepted', 'fixed_upstream', 'false_positive'].includes(p.resolution)) throw new Error('Unknown resolution.');
+  const { results, toStamp } = await withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    const [caller] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from public.app_user u
+      where u.id=${ctx.userId ?? null}::uuid and u.tenant_id=${ctx.tenantId}::uuid
+       and u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id()
+       and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()) as ok`);
+    const callerOk = caller?.ok === true;
+    // ONE statement for every id: what exists for this caller, and whether each may be administered.
+    const rows = Array.from(await tx.execute<{ id: string; found: boolean; employment_id: string | null; batch_id: string | null; disposition: string | null;
+      superseded: boolean; resolved: boolean; allowed: boolean | null }>(sql`select ids.id::text as id, v.id is not null as found,
+        v.employment_id::text as employment_id, v.batch_id::text as batch_id, v.disposition,
+        coalesce(v.superseded_at is not null,false) as superseded, coalesce(v.resolved_at is not null,false) as resolved,
+        (v.id is not null and app.can_admin_payroll_employment(v.employment_id)) as allowed
+      from unnest(ARRAY[${sql.join(ids.map((id) => sql`${id}::uuid`), sql`,`)}]) as ids(id)
+      left join public.payroll_anomaly_verdict v on v.id=ids.id and v.tenant_id=app.current_tenant_id()`)) as unknown as {
+        id: string; found: boolean; employment_id: string | null; batch_id: string | null; disposition: string | null; superseded: boolean; resolved: boolean; allowed: boolean | null }[];
+    const byId = new Map(rows.map((r) => [r.id.toLowerCase(), r]));
+    const outcome = new Map<string, BatchResolveOutcome>();
+    const writable: string[] = [];
+    for (const id of ids) {
+      const r = byId.get(id.toLowerCase());
+      if (!r || !r.found) outcome.set(id, 'not_found');
+      else if (!callerOk || r.allowed !== true) outcome.set(id, 'not_allowed');
+      else if (r.superseded) outcome.set(id, 'superseded');
+      else if (r.resolved) outcome.set(id, 'already_resolved');
+      else writable.push(id);
+    }
+    // CONCURRENCY GUARD: only unresolved, live verdicts are written; anything decided meanwhile stays as decided.
+    const written = writable.length
+      ? await tx
+          .update(schema.payrollAnomalyVerdict)
+          .set({ resolution: p.resolution, resolutionNote: p.note ?? null, resolvedAt: sql`now()`, resolvedByUserId: ctx.userId ?? null })
+          .where(and(inArray(schema.payrollAnomalyVerdict.id, writable), isNull(schema.payrollAnomalyVerdict.resolvedAt),
+            isNull(schema.payrollAnomalyVerdict.supersededAt)))
+          .returning({ id: schema.payrollAnomalyVerdict.id })
+      : [];
+    const done = new Set(written.map((w) => w.id.toLowerCase()));
+    for (const id of writable) outcome.set(id, done.has(id.toLowerCase()) ? 'resolved' : 'already_resolved');
+    for (const id of writable) {
+      if (!done.has(id.toLowerCase())) continue;
+      const r = byId.get(id.toLowerCase())!;
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId,
+        aggregateType: 'payslip',
+        aggregateId: id,
+        eventType: 'payroll.anomaly.resolved',
+        actor: actorOf(ctx),
+        subjectEmploymentId: r.employment_id!,
+        payload: { batchId: r.batch_id, disposition: r.disposition, resolution: p.resolution, note: p.note ?? null },
+      });
+    }
+    // ADR-0084 §2.3 ledger rows, for every resolved verdict at once (the same rule as hypothesisProposalsToStamp).
+    const resolvedIds = writable.filter((id) => done.has(id.toLowerCase()));
+    let stamp: string[] = [];
+    if (resolvedIds.length) {
+      const findings = await tx
+        .select({ verdictId: schema.payrollAnomalyFinding.verdictId, detectorId: schema.payrollAnomalyFinding.detectorId, proposalId: schema.payrollAnomalyFinding.proposalId })
+        .from(schema.payrollAnomalyFinding)
+        .where(inArray(schema.payrollAnomalyFinding.verdictId, resolvedIds));
+      const byVerdict = new Map<string, typeof findings>();
+      for (const f of findings) byVerdict.set(f.verdictId, [...(byVerdict.get(f.verdictId) ?? []), f]);
+      const candidates = [...byVerdict.values()]
+        .filter((list) => list.length > 0 && list.every((f) => f.detectorId === HYPOTHESIS_DETECTOR_ID))
+        .flatMap((list) => list.map((f) => f.proposalId).filter((x): x is string => x !== null));
+      if (candidates.length) {
+        stamp = (await tx.select({ id: schema.agentProposal.id }).from(schema.agentProposal)
+          .where(and(inArray(schema.agentProposal.id, candidates), isNull(schema.agentProposal.decision)))).map((r) => r.id);
+      }
+    }
+    return { results: ids.map((verdictId) => ({ verdictId, outcome: outcome.get(verdictId)! })), toStamp: stamp };
+  });
+  // Outside the transaction, as in resolveAnomalyVerdict: recordDecision opens its own.
+  const decision = p.resolution === 'false_positive' ? 'declined' : 'approved';
+  for (const proposalId of toStamp) await recordDecision(ctx, { proposalId, decision });
+  return { results };
+}
+
+/**
+ * THE RUN-LEVEL CIRCUIT BREAKER (ADR-0076 §4). Total batch net movement against the prior cycle.
+ *
+ * WHY THIS CANNOT BE A PER-EMPLOYEE DETECTOR, which is the whole reason it exists separately: a global
+ * mis-key — the wrong pack version, the wrong period, a rate applied to everyone — moves EVERY employee
+ * together. Each individual movement can sit comfortably inside `net-swing`'s threshold while the batch
+ * total moves by a third. Per-employee detectors rate that as unremarkable precisely because it is
+ * uniform; only the aggregate sees it.
+ *
+ * IT IS RECOMPUTED, NOT STORED. The comparison is a pure function of two batches' payslip totals, so
+ * recomputing at close time is always current and cannot go stale behind a re-run — whereas a stored
+ * verdict would have to be superseded in lockstep with every payslip edit. The trade is that there is no
+ * per-batch "accepted" row to tick.
+ *
+ * SO THE ESCAPE HATCH IS THE THRESHOLD ITSELF. A genuine month-end (a bonus run, a group-wide increment)
+ * legitimately moves the total, and the operator raises `batchSwingPct` for that company in
+ * `payroll_anomaly_config` — a versioned, audited, deploy-free change, which is the entire reason
+ * thresholds live in the database. Disabling the row switches the breaker off for that company.
+ */
+export type CircuitBreakerVerdict = {
+  tripped: boolean;
+  /** Null when there is no prior cycle to compare against — the breaker self-disables on cycle one. */
+  movementPct: number | null;
+  thresholdPct: number;
+  currentNet: number;
+  priorNet: number;
+  skippedReason: string | null;
+};
+
+/** Public verdict/API and tie/order semantics remain unchanged. */
+export async function evaluateCircuitBreaker(tx:Tx,tenantId:string,batchId:string):Promise<CircuitBreakerVerdict>{return(await evaluateCircuitBreakerWithSourceTx(tx,tenantId,batchId)).verdict;}
+
+/** Internal evidence accompanies the SAME actual selection, never a second selector or money engine. */
+export async function evaluateCircuitBreakerWithSourceTx(tx:Tx,tenantId:string,batchId:string){return evaluateCircuitBreakerSourceTx(tx,tenantId,batchId,false);}
+/** INTERNAL CLOSE-only complete stored inputs. Caller owns fresh configurable close authority and
+ * canonical period/Access interval. General/public evaluation retains its native caller RLS behavior. */
+export async function evaluateCircuitBreakerForCloseTx(tx:Tx,tenantId:string,batchId:string){return evaluateCircuitBreakerSourceTx(tx,tenantId,batchId,true);}
+async function evaluateCircuitBreakerSourceTx(tx:Tx,tenantId:string,batchId:string,completeClose:boolean){
+  const [batch] = await tx
+    .select({
+      companyId: schema.payrollBatch.companyId,
+      payPeriod: schema.payrollBatch.payPeriod,
+      runType: schema.payrollBatch.runType,
+    })
+    .from(schema.payrollBatch)
+    .where(eq(schema.payrollBatch.id, batchId))
+    .limit(1);
+
+  const cfgRows = await tx
+    .select({
+      id:schema.payrollAnomalyConfig.id,
+      companyId: schema.payrollAnomalyConfig.companyId,
+      enabled: schema.payrollAnomalyConfig.enabled,
+      params: schema.payrollAnomalyConfig.params,
+    })
+    .from(schema.payrollAnomalyConfig)
+    .where(
+      and(
+        eq(schema.payrollAnomalyConfig.tenantId, tenantId),
+        eq(schema.payrollAnomalyConfig.detectorId, CIRCUIT_BREAKER_ID),
+        isNull(schema.payrollAnomalyConfig.archivedAt),
+      ),
+    );
+  const cfg =
+    cfgRows.find((r) => batch && r.companyId === batch.companyId) ?? cfgRows.find((r) => r.companyId === null) ?? null;
+  // r292 — the fallback reads UNTUNED_DEFAULT_PARAMS rather than repeating the literal 15. The screen now
+  // DISCLOSES the numbers in force beside this card's own threshold; a second copy of the figure here is a
+  // second thing that can drift out of step with what is disclosed.
+  const thresholdPct =
+    num((cfg?.params as Record<string, unknown>)?.batchSwingPct) ||
+    num(UNTUNED_DEFAULT_PARAMS[CIRCUIT_BREAKER_ID]?.batchSwingPct);
+
+  let priorBatchId:string|null=null,completeSourceVersion:string|null=null,completeInputsVisible:boolean|null=null;
+  const observed=(verdict:CircuitBreakerVerdict)=>({verdict,source:{priorBatchId,configId:cfg?.id??null,completeSourceVersion,completeInputsVisible}});
+  const blank: CircuitBreakerVerdict = {
+    tripped: false,
+    movementPct: null,
+    thresholdPct,
+    currentNet: 0,
+    priorNet: 0,
+    skippedReason: null,
+  };
+  if (!batch) return observed({ ...blank, skippedReason: 'batch not found' });
+  if (cfg && cfg.enabled === false) return observed({ ...blank, skippedReason: 'disabled by configuration' });
+
+  const netOf = async (id: string): Promise<number> => {
+    const [row] = await tx
+      .select({ total: sql<number>`coalesce(sum(${schema.payslip.netPay}), 0)::float8` })
+      .from(schema.payslip)
+      .where(eq(schema.payslip.batchId, id));
+    return num(row?.total);
+  };
+
+  let currentNet:number,priorNet:number;
+  if(completeClose){
+    const [inputs]=await tx.execute<{batch_id:string;company_id:string;prior_batch_id:string|null;current_net:number;prior_net:number;source_version:string;inputs_visible:boolean}>(sql`select * from app.payroll_close_circuit_inputs(${batchId}::uuid)`);
+    if(!inputs||inputs.batch_id!==batchId.toLowerCase()||inputs.company_id!==batch.companyId||typeof inputs.inputs_visible!=='boolean')throw new Error('Payroll circuit source unavailable.');
+    priorBatchId=inputs.prior_batch_id;completeSourceVersion=inputs.source_version;completeInputsVisible=inputs.inputs_visible;
+    if(priorBatchId===null)return observed({...blank,skippedReason:'no prior cycle to compare against'});
+    currentNet=num(inputs.current_net);priorNet=num(inputs.prior_net);
+  }else{
+  // The last closed prior cycle of the same run type, exactly as app.payroll_close_circuit_inputs selects it (migration 2011).
+  const [priorBatch] = await tx
+    .select({ id: schema.payrollBatch.id })
+    .from(schema.payrollBatch)
+    .where(
+      and(eq(schema.payrollBatch.companyId, batch.companyId), eq(schema.payrollBatch.runType, batch.runType),
+        eq(schema.payrollBatch.status, 'closed'), lt(schema.payrollBatch.payPeriod, batch.payPeriod)),
+    )
+    .orderBy(sql`${schema.payrollBatch.payPeriod} desc`, sql`${schema.payrollBatch.runSeq} desc`, sql`${schema.payrollBatch.id} desc`)
+    .limit(1);
+  if (!priorBatch) return observed({ ...blank, skippedReason: 'no prior cycle to compare against' });
+
+  priorBatchId=priorBatch.id;
+  [currentNet, priorNet] = [await netOf(batchId), await netOf(priorBatch.id)];
+  }
+  // A prior cycle that paid nothing gives no meaningful percentage; the per-employee detectors own that.
+  if (priorNet === 0) return observed({ ...blank, currentNet, skippedReason: 'prior cycle net was zero' });
+
+  const movementPct = ((currentNet - priorNet) / Math.abs(priorNet)) * 100;
+  return observed({
+    tripped: Math.abs(movementPct) > thresholdPct,
+    movementPct: Math.round(movementPct * 10) / 10,
+    thresholdPct,
+    currentNet,
+    priorNet,
+    skippedReason: null,
+  });
+}
+
+/**
+ * ADR-0076 §5 — the instrumentation. These are the numbers ADR-0074's success is defined in, and the
+ * reason Phase 1a ships them even though early figures will be small and dull: nobody currently knows
+ * the baseline, so no autonomy claim downstream can be grounded in anything.
+ *
+ * COVERAGE IS REPORTED BESIDE THE AUTO-CLEAR RATE, ALWAYS. A 100% auto-clear rate on 40% coverage is not
+ * a clean bill of health, it is a thin one, and separating the two numbers is what stops the first from
+ * being read as the second.
+ */
+export type AnomalyMetrics = {
+  batchId: string;
+  total: number;
+  autoClear: number;
+  review: number;
+  block: number;
+  /** autoClear / total. The ADR-0074 headline; target >= 0.95. */
+  autoClearRate: number;
+  /** detectorsRun / (run + skipped), averaged. Read this BEFORE trusting autoClearRate. */
+  coverage: number;
+  /** (review + block) / total * 1000. ADR-0074 target <= 50. */
+  flaggedPerThousand: number;
+  /** resolution = 'false_positive' over all flagged-and-resolved verdicts. */
+  falsePositiveRate: number | null;
+  /** Median seconds between computedAt and resolvedAt for resolved flags. ADR-0074 target < 300s. */
+  mttrSeconds: number | null;
+  /** Flagged verdicts a human has not yet dispositioned. */
+  unresolvedFlagged: number;
+};
+
+export async function anomalyMetrics(ctx: SessionContext, p: { batchId: string }): Promise<AnomalyMetrics> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .where(
+        and(
+          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+        ),
+      );
+
+    const total = rows.length;
+    const autoClear = rows.filter((r) => r.disposition === 'auto_clear').length;
+    const review = rows.filter((r) => r.disposition === 'review').length;
+    const block = rows.filter((r) => r.disposition === 'block').length;
+    const flagged = rows.filter((r) => r.disposition !== 'auto_clear');
+    const resolvedFlags = flagged.filter((r) => r.resolvedAt != null);
+
+    const coverage =
+      total === 0
+        ? 1
+        : rows.reduce((acc, r) => {
+            const ran = (r.detectorsRun as string[] | null)?.length ?? 0;
+            const skipped = (r.detectorsSkipped as unknown[] | null)?.length ?? 0;
+            return acc + (ran + skipped === 0 ? 1 : ran / (ran + skipped));
+          }, 0) / total;
+
+    const durations = resolvedFlags
+      .map((r) => (r.resolvedAt!.getTime() - r.computedAt.getTime()) / 1000)
+      .sort((x, y) => x - y);
+    const median = durations.length
+      ? durations.length % 2
+        ? durations[(durations.length - 1) / 2]
+        : (durations[durations.length / 2 - 1] + durations[durations.length / 2]) / 2
+      : null;
+
+    return {
+      batchId: p.batchId,
+      total,
+      autoClear,
+      review,
+      block,
+      autoClearRate: total === 0 ? 1 : autoClear / total,
+      coverage,
+      flaggedPerThousand: total === 0 ? 0 : ((review + block) / total) * 1000,
+      falsePositiveRate: resolvedFlags.length
+        ? resolvedFlags.filter((r) => r.resolution === 'false_positive').length / resolvedFlags.length
+        : null,
+      mttrSeconds: median,
+      unresolvedFlagged: flagged.length - resolvedFlags.length,
+    };
+  });
+}
+
+/**
+ * Has the evaluator ever written a live verdict for this batch?
+ *
+ * The circuit breaker's additivity gate. The per-employee guard is inherently additive because it reads
+ * stored verdicts and finds none on an un-evaluated batch; the breaker is recomputed from payslip totals
+ * and would happily fire on a batch this layer has never seen. This is what stops it.
+ */
+export async function anomalyEvaluated(tx: Tx, batchId: string): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: schema.payrollAnomalyVerdict.id })
+    .from(schema.payrollAnomalyVerdict)
+    .where(
+      and(eq(schema.payrollAnomalyVerdict.batchId, batchId), isNull(schema.payrollAnomalyVerdict.supersededAt)),
+    )
+    .limit(1);
+  return !!row;
+}
+
+/** One row of the exceptions queue: the verdict, its findings, and enough identity to act on it. */
+export type QueueRow = {
+  verdictId: string;
+  employmentId: string;
+  employeeName: string;
+  employeeCode: string | null;
+  disposition: Disposition;
+  computedAt: Date;
+  resolution: string | null;
+  resolvedAt: Date | null;
+  detectorsRunCount: number;
+  detectorsSkipped: SkippedDetector[];
+  /** `narrative` is ADR-0076 §2.6's optional prose: null until an operator asks for it, and null forever
+   *  for a tenant with no AI provider. The facts beside it are the evidence and never depend on it. */
+  findings: {
+    id: string;
+    detectorId: string;
+    severity: Severity;
+    facts: Record<string, string | number>;
+    suggestedAction: string;
+    narrative: string | null;
+  }[];
+};
+
+/**
+ * ADR-0074 — THE EXCEPTIONS QUEUE ACROSS EVERY RUN, which is the shape "the analyst's whole day"
+ * actually has.
+ *
+ * ⚠️ **WHY THIS EXISTS, MEASURED ON PRODUCTION RATHER THAN ASSUMED.** 81 flagged verdicts were sitting
+ * live and unresolved across **23 different batches**, and NOT ONE had ever been dispositioned. The
+ * reason is structural, not negligence: the only place to resolve one was
+ * `/payroll/<batchId>/anomalies`, so clearing that queue meant twenty-three separate visits, and the
+ * Control Tower — which is the screen an operator actually opens — listed the RUNS and linked into each.
+ *
+ * **AND THAT IS WHAT HAS BEEN BLOCKING THE TOWER'S OWN HEADLINE.** `falsePositiveRate` and `mttrSeconds`
+ * are structurally NULL until a human dispositions a flag, and `impliedOperators` refuses to print
+ * without them (ADR-0074 §5, core/control-tower.ts). The staffing answer the owner keeps asking for has
+ * been waiting on a human signal that the product made expensive to give. A per-run queue is also the
+ * payroll noun leaking through a control plane that ADR-0083 says is not about payroll.
+ *
+ * ONE READER, ONE ROW SHAPE. This returns `QueueRow` — the same shape `anomalyQueue` returns and the
+ * same shape the per-run screen renders — plus the run each row came from, because out of its own batch
+ * a row has to say which period it belongs to. A second row shape here is how the two screens would come
+ * to describe the same verdict differently.
+ *
+ * WORST FIRST, THEN OLDEST FIRST. Blocks stop a run from closing, so they outrank reviews; within a
+ * severity the longest-waiting comes first, because the metric this unblocks is time-to-resolution and a
+ * queue that buries the oldest item optimises against its own measurement.
+ */
+/** A queue row plus the run it came from — out of its own batch, a row has to say which period it is. */
+export type OpenExceptionRow = QueueRow & { payPeriod: string; batchId: string };
+
+/** AI Centre restructure (Today fix d): `blocking` counts every open blocking exception, not only those on the capped
+ * page, so Exceptions and Today print the same two numbers however long the queue is. */
+export async function openExceptionsAcrossRuns(
+  ctx: SessionContext,
+  p?: { limit?: number },
+): Promise<{ rows: OpenExceptionRow[]; total: number; blocking: number; cappedOut: boolean }> {
+  const limit = p?.limit ?? 100;
+  return withTenant(ctx, async (tx) => {
+    // BOUNDED IN SQL (AI Centre at group scale, 11 November 2026). This used to read EVERY live unresolved verdict, with
+    // the employee's name, and sort and slice them here; now the database returns only the page, in the same order
+    // (worst first, then oldest first; the verdict id settles equal times, which the in-memory sort left to the
+    // database's row order), and counts the whole queue in the same statement, so `total`, `blocking` and `cappedOut`
+    // are unchanged. Same joins, same predicate, same row-level security.
+    const where = and(
+      // LIVE only: a superseded verdict is what the system believed before the last re-evaluation,
+      // and resolving one would stamp a judgement on a reading nobody is looking at.
+      isNull(schema.payrollAnomalyVerdict.supersededAt),
+      // UNRESOLVED only. This queue is work outstanding; what has been decided belongs to its run.
+      isNull(schema.payrollAnomalyVerdict.resolvedAt),
+      // Auto-cleared rows are excluded HERE and deliberately, unlike the per-run screen which lists
+      // them so a human can raise a false negative. That affordance is per-run by nature — it needs
+      // the whole run in front of you to notice an omission — and a cross-run list of everything the
+      // system cleared would be thousands of rows nobody is being asked to act on.
+      ne(schema.payrollAnomalyVerdict.disposition, 'auto_clear'),
+    );
+    const from = () => tx
+      .select({
+        verdictId: schema.payrollAnomalyVerdict.id,
+        employmentId: schema.payrollAnomalyVerdict.employmentId,
+        batchId: schema.payrollAnomalyVerdict.batchId,
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        employeeName: schema.person.fullName,
+        employeeCode: schema.employment.employeeCode,
+        payPeriod: schema.payrollBatch.payPeriod,
+        // The whole queue's counts, before the page's LIMIT applies.
+        total: sql<number>`count(*) over ()`.mapWith(Number),
+        blocking: sql<number>`count(*) filter (where ${schema.payrollAnomalyVerdict.disposition} = 'block') over ()`.mapWith(Number),
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
+      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
+      .innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payrollAnomalyVerdict.batchId))
+      .where(where);
+    // The in-memory rank it replaces: block 0, review 1, auto_clear 2, anything else 9; then oldest first.
+    const rank = sql`case ${schema.payrollAnomalyVerdict.disposition} when 'block' then 0 when 'review' then 1 when 'auto_clear' then 2 else 9 end`;
+    const page = await from().orderBy(rank, schema.payrollAnomalyVerdict.computedAt, schema.payrollAnomalyVerdict.id).limit(Math.max(limit, 1));
+    // A page of at least one row carries the counts; an empty page means an empty queue. A caller asking for no rows
+    // (never the screens) gets the counts alone.
+    const total = page[0]?.total ?? 0, blocking = page[0]?.blocking ?? 0;
+    if (total === 0) return { rows: [], total: 0, blocking: 0, cappedOut: false };
+    if (limit < 1) return { rows: [], total, blocking, cappedOut: total > 0 };
+
+    // One read for every finding on the page, then grouped in memory — the same no-N+1 discipline
+    // `anomalyQueue` follows, for the same reason.
+    const findings = await tx
+      .select({
+        id: schema.payrollAnomalyFinding.id,
+        verdictId: schema.payrollAnomalyFinding.verdictId,
+        detectorId: schema.payrollAnomalyFinding.detectorId,
+        severity: schema.payrollAnomalyFinding.severity,
+        facts: schema.payrollAnomalyFinding.facts,
+        suggestedAction: schema.payrollAnomalyFinding.suggestedAction,
+        narrative: schema.payrollAnomalyFinding.narrative,
+      })
+      .from(schema.payrollAnomalyFinding)
+      .where(
+        inArray(
+          schema.payrollAnomalyFinding.verdictId,
+          page.map((v) => v.verdictId),
+        ),
+      );
+    const byVerdict = new Map<string, QueueRow['findings']>();
+    for (const f of findings) {
+      const list = byVerdict.get(f.verdictId) ?? [];
+      list.push({
+        id: f.id,
+        detectorId: f.detectorId,
+        severity: f.severity as Severity,
+        facts: (f.facts ?? {}) as Record<string, string | number>,
+        suggestedAction: f.suggestedAction,
+        narrative: f.narrative,
+      });
+      byVerdict.set(f.verdictId, list);
+    }
+
+    return {
+      rows: page.map((v) => ({
+        verdictId: v.verdictId,
+        employmentId: v.employmentId,
+        employeeName: v.employeeName,
+        employeeCode: v.employeeCode,
+        disposition: v.disposition as Disposition,
+        computedAt: v.computedAt,
+        resolution: v.resolution,
+        resolvedAt: v.resolvedAt,
+        detectorsRunCount: (v.detectorsRun as string[] | null)?.length ?? 0,
+        detectorsSkipped: (v.detectorsSkipped as SkippedDetector[] | null) ?? [],
+        findings: byVerdict.get(v.verdictId) ?? [],
+        payPeriod: v.payPeriod,
+        batchId: v.batchId,
+      })),
+      total,
+      blocking,
+      cappedOut: total > page.length,
+    };
+  });
+}
+
+/**
+ * The exceptions queue for one batch — the analyst's whole day, in ADR-0074's terms.
+ *
+ * ORDERED WORST-FIRST AND UNRESOLVED-FIRST, because the queue's job is to be worked top-down: blocks stop
+ * the run from closing, reviews do not, and anything already dispositioned is history. Auto-cleared
+ * verdicts are included but sort last — they are the denominator of the auto-clear rate and the only place
+ * a human can raise a FALSE NEGATIVE, which ADR-0076 §5 says must be possible from day one.
+ */
+export async function anomalyQueue(ctx: SessionContext, p: { batchId: string }): Promise<QueueRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const verdicts = await tx
+      .select({
+        verdictId: schema.payrollAnomalyVerdict.id,
+        employmentId: schema.payrollAnomalyVerdict.employmentId,
+        disposition: schema.payrollAnomalyVerdict.disposition,
+        computedAt: schema.payrollAnomalyVerdict.computedAt,
+        resolution: schema.payrollAnomalyVerdict.resolution,
+        resolvedAt: schema.payrollAnomalyVerdict.resolvedAt,
+        detectorsRun: schema.payrollAnomalyVerdict.detectorsRun,
+        detectorsSkipped: schema.payrollAnomalyVerdict.detectorsSkipped,
+        employeeName: schema.person.fullName,
+        employeeCode: schema.employment.employeeCode,
+      })
+      .from(schema.payrollAnomalyVerdict)
+      .innerJoin(schema.employment, eq(schema.employment.id, schema.payrollAnomalyVerdict.employmentId))
+      .innerJoin(schema.person, eq(schema.person.id, schema.employment.personId))
+      .where(
+        and(
+          eq(schema.payrollAnomalyVerdict.batchId, p.batchId),
+          isNull(schema.payrollAnomalyVerdict.supersededAt),
+        ),
+      );
+    if (verdicts.length === 0) return [];
+
+    // One read for every finding in the batch, then grouped in memory — the same no-N+1 discipline the
+    // evaluator follows, for the same reason: this page must open for a 3,000-person run.
+    const findings = await tx
+      .select({
+        id: schema.payrollAnomalyFinding.id,
+        verdictId: schema.payrollAnomalyFinding.verdictId,
+        detectorId: schema.payrollAnomalyFinding.detectorId,
+        severity: schema.payrollAnomalyFinding.severity,
+        facts: schema.payrollAnomalyFinding.facts,
+        suggestedAction: schema.payrollAnomalyFinding.suggestedAction,
+        narrative: schema.payrollAnomalyFinding.narrative,
+      })
+      .from(schema.payrollAnomalyFinding)
+      .where(
+        inArray(
+          schema.payrollAnomalyFinding.verdictId,
+          verdicts.map((v) => v.verdictId),
+        ),
+      );
+    const byVerdict = new Map<string, QueueRow['findings']>();
+    for (const f of findings) {
+      const list = byVerdict.get(f.verdictId) ?? [];
+      list.push({
+        id: f.id,
+        detectorId: f.detectorId,
+        severity: f.severity as Severity,
+        facts: (f.facts ?? {}) as Record<string, string | number>,
+        suggestedAction: f.suggestedAction,
+        narrative: f.narrative,
+      });
+      byVerdict.set(f.verdictId, list);
+    }
+
+    const rank: Record<string, number> = { block: 0, review: 1, auto_clear: 2 };
+    return verdicts
+      .map((v) => ({
+        verdictId: v.verdictId,
+        employmentId: v.employmentId,
+        employeeName: v.employeeName,
+        employeeCode: v.employeeCode,
+        disposition: v.disposition as Disposition,
+        computedAt: v.computedAt,
+        resolution: v.resolution,
+        resolvedAt: v.resolvedAt,
+        detectorsRunCount: (v.detectorsRun as string[] | null)?.length ?? 0,
+        detectorsSkipped: (v.detectorsSkipped as SkippedDetector[] | null) ?? [],
+        findings: byVerdict.get(v.verdictId) ?? [],
+      }))
+      .sort((x, y) => {
+        const unresolved = Number(x.resolvedAt != null) - Number(y.resolvedAt != null);
+        if (unresolved !== 0) return unresolved;
+        const d = rank[x.disposition] - rank[y.disposition];
+        if (d !== 0) return d;
+        return x.employeeName.localeCompare(y.employeeName);
+      });
+  });
+}

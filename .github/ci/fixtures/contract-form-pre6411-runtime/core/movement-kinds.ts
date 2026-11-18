@@ -1,0 +1,122 @@
+/**
+ * The BUILT-IN movement kinds. A leaf module with no imports, extracted from core/movement.ts by 476f23ed.
+ *
+ * WHY IT IS ITS OWN FILE. 476f23ed makes the movement event-type catalogue configurable per tenant
+ * (core/movement-type.ts). That module needs the built-in list to tell an override of a shipped kind from
+ * a tenant's own type, and core/movement.ts needs the catalogue to resolve a tenant's own type back to the
+ * behaviour that runs. Importing each other would be a cycle whose failure mode is the nastiest kind — a
+ * `const` array that is `undefined` at module-init time depending on which file was loaded first. A leaf
+ * both can import removes the cycle entirely.
+ *
+ * Everything here is RE-EXPORTED from core/movement.ts, so no existing importer changed.
+ *
+ * BEHAVIOUR LIVES WITH THESE NAMES, NOT WITH THE CATALOGUE. A tenant may rename Termination, switch it off,
+ * or add an event type of its own; it may never make a type of its own BE a Termination. That separation is
+ * the whole design of 476f23ed, and this list is the fixed half of it.
+ */
+
+/** The movement kinds HR can CREATE from the New Event form. A "custom
+ *  event" is no longer one — since 476f23ed a tenant adds its own through Movement Settings, mapped onto
+ *  one of the kinds below. */
+export const MOVEMENT_KINDS = [
+  'transfer',
+  // b7b22514 — ENTITY TRANSFER: the movement that moves an employee between LEGAL ENTITIES. It exists as a
+  // built-in and not as a catalogue row for the reason the module header states: a tenant's own event type
+  // maps onto a built-in behaviour, and the only behaviour it could have been mapped onto is `transfer`,
+  // which cannot change company. Changing `employment.company_id` invalidates the department, position,
+  // business unit, cost centre, location and reporting manager all at once — that re-resolution is
+  // behaviour, so it has to live here with the fixed half of the design.
+  'entityTransfer',
+  'promotion',
+  'demotion',
+  'increment',
+  'confirmation',
+  'probationExtension',
+  'secondment',
+  'actingPosition',
+  'resignation',
+  'termination',
+  'blacklist',
+  'salaryAdjustment',
+  'orgAssignmentChange',
+  'reportingLineChange',
+  'employmentTypeChange',
+  'contractRenewal',
+  // 89ea527b — the two employment-date movements. Both follow the `confirmation` precedent: the movement's
+  // EFFECTIVE DATE *is* the new value of the date it sets, so the history row's Effective Date column and the
+  // stored column can never disagree. They are the ONLY writers of employment.hired_on / employment.join_date
+  // after creation (setEmploymentInfo ignores both fields without the matching tag).
+  'joinDateChange',
+  'groupJoinDateCorrection',
+  'historicalHire',
+  // Board 511aa74a — REHIRED. A resigned employee returns: a NEW employment for the SAME person (core/rehire.ts),
+  // recorded from New Event only (not the movement import). Its own command, never the generic dispatcher; not
+  // a comparison kind and not configurable, so no tenant type can carry it.
+  'rehire',
+] as const;
+export type MovementKind = (typeof MOVEMENT_KINDS)[number];
+/** Fixed Contract posting effects cannot be manually created, reclassified or rolled back as general movements. */
+export const isContractPostingMovementKind=(kind:string):boolean=>kind==='contractRenewal';
+
+/**
+ * 08913328 — the kinds that record a CHANGE to the employee's employment/pay data, and therefore render as
+ * the side-by-side comparison screen. The rest (Probation Extension, Resignation, Termination, Blacklist,
+ * Secondment, Acting Position) are lifecycle events with their own dedicated inputs — a Current/After grid
+ * would be meaningless for them.
+ *
+ * 3ced1040 — CONFIRMATION JOINED THIS LIST. Confirming a probationer is routinely the same decision as
+ * giving them a rise and a title, and as a lifecycle kind it could record only the date: HR had to key the
+ * confirmation here and the salary somewhere else, leaving two marks on the record for one decision. It
+ * behaves exactly like Promotion now — the same grid, the same diff-driven writer, the same one history
+ * row, and the same future-dating fork. The date it sets is still its EFFECTIVE DATE, so the row's
+ * Effective Date column and employment.confirmation_date can never disagree.
+ */
+export const COMPARISON_KINDS = [
+  'transfer',
+  // b7b22514 — Entity Transfer is a comparison kind: it is a Transfer that also moves the company, so it
+  // renders the SAME side-by-side grid with the SAME fields, and its Company row is the one place in the
+  // product where that field is editable. It runs through the same diff-driven writer, so a field left at
+  // its current value still writes nothing.
+  'entityTransfer',
+  'promotion',
+  'demotion',
+  'increment',
+  'salaryAdjustment',
+  'orgAssignmentChange',
+  'employmentTypeChange',
+  'contractRenewal',
+  'reportingLineChange',
+  'confirmation',
+] as const;
+export type ComparisonKind = (typeof COMPARISON_KINDS)[number];
+export const isComparisonKind = (k: string): k is ComparisonKind =>
+  (COMPARISON_KINDS as readonly string[]).includes(k);
+
+/**
+ * 3ced1040 — the comparison kinds that are INTERCHANGEABLE with one another: the set a correction may
+ * re-classify a movement inside, and the set a tenant's own event type may be mapped onto.
+ *
+ * Confirmation is a comparison kind but deliberately NOT in here, and the two lists are separate for that
+ * one exclusion. Everything else on the comparison grid moves employment DATA; Confirmation also completes
+ * probation (deriveEmploymentStatus reads the date it writes). So correcting a Transfer into a
+ * Confirmation would move an employee off probation as a side effect of a re-label, and a custom type
+ * named after it would let a tenant invent a confirmation — which is exactly what 476f23ed keeps built-in.
+ * Membership of COMPARISON_KINDS is about the FORM AND THE WRITER; membership here is about CONSEQUENCE.
+ *
+ * b7b22514 — ENTITY TRANSFER IS THE SECOND EXCLUSION, on exactly the same rule and for a consequence that
+ * is larger, not smaller. It moves the employee's LEGAL ENTITY: statutory employer numbers (EPF/SOCSO/EIS),
+ * the payroll policy, cost allocation, leave approval routing and every company-scoped org label follow it.
+ * Both directions of the crossing are faults. A custom type mapped onto it would let a tenant invent a
+ * company move under any name they liked — the thing the module header says they may never do. And a
+ * correction that re-classified a plain Transfer INTO an Entity Transfer would have no destination company
+ * to move to, while one that re-classified an Entity Transfer OUT of it would silently drop the company
+ * move the event exists to record. Its family is itself, exactly as Confirmation's is.
+ */
+export const INTERCHANGEABLE_COMPARISON_KINDS: readonly ComparisonKind[] = COMPARISON_KINDS.filter(
+  (k) => k !== 'confirmation' && k !== 'entityTransfer' && k !== 'contractRenewal',
+);
+
+/** Same resolved-behavior trigger for manual action and atomic Movement import entitlement parity. */
+export function movementNeedsEntitlementReprojection(behaviourKind:string):boolean{
+  return isComparisonKind(behaviourKind)||behaviourKind==='probationExtension'||behaviourKind==='groupJoinDateCorrection'||behaviourKind==='termination';
+}

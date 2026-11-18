@@ -1,0 +1,928 @@
+/**
+ * e0cd4583 — CP39 PRINTED FORM (LHDN monthly PCB / MTD deduction statement): the form's own model, its
+ * dating rule, its pagination and its plain-text rendering. PURE — no DB, no pack, no pdf-lib — so every
+ * rule below is unit-testable on its own. Same three-layer split r194 shipped for Borang A: the read is
+ * `localization/my/cp39-form.ts`, the drawing is `lib/cp39-form-pdf.ts`, the routes are `app/payroll/cp39/*`.
+ *
+ * ── THIS IS NOT `localization/my/cp39-file.ts`, AND THE TWO MUST NOT MERGE ────────────────────────
+ * That module builds the **e-Data PCB text file** — a fixed-width 57/136-character machine format LHDN's
+ * portal ingests. This one builds a page a human reads and signs. They share NOTHING except the figures
+ * they are both derived from, and that is deliberate: the file has hard field widths that REFUSE rather
+ * than truncate, and the page has none. What they must agree on is arithmetic, and
+ * test/cp39-form.test.ts pins that by building both from one row set and comparing the counts and cents.
+ *
+ * ── THE DEDUCTION MONTH IS THE PAYROLL MONTH ITSELF. NO SHIFT. ────────────────────────────────────
+ * A CP39 reports the PCB actually deducted in a payroll month, so its "POTONGAN BAGI BULAN … TAHUN …"
+ * is that month, unshifted — which is what `cp39FileForBatch` already does when it splits `periodKey`
+ * into year and month (localization/my/cp39-file.ts:223).
+ *
+ * ⚠️ THE NEIGHBOURING FORM'S RULE IS THE OPPOSITE, AND COPYING IT HERE WOULD BE INVISIBLE. EPF's
+ * Borang A files the payroll month PLUS ONE (`epfContributionPeriodFor`, note 6 printed on that form).
+ * A CP39 stamped one month forward looks completely normal and is filed against the wrong period. So the
+ * identity lives in ONE named exported function, `cp39DeductionPeriodFor`, with somewhere for a reviewer
+ * to see it — and test/cp39-form.test.ts imports Borang A's rule to assert the two NEVER agree.
+ *
+ * ── WHY THIS FORM IS `agency-layout`, AND WHY IT MAY NEVER BE `official` ─────────────────────────
+ * c99e8358 (2026-08-21) MOVED THIS CLAIM, AND THE HALF THAT DID NOT MOVE IS THE IMPORTANT ONE.
+ *
+ * WHAT CHANGED: a legible filled Borang CP39 (Pin.2015) is now IN THIS REPOSITORY —
+ * `docs/forms/cp39-pin-2015-specimen.png`, with every word on it transcribed by hand into
+ * `docs/forms/cp39-pin-2015-transcription.txt` together with the measured proportions of its rules.
+ * `lib/cp39-form-pdf.ts` draws page one to that arrangement: the LHDN masthead, the centred title block
+ * and its two statutory citations, UNTUK KEGUNAAN PEJABAT, the three-panel band and the A / B / C
+ * instruction panels, all in the specimen's own positions and its own words. That is exactly what
+ * `agency-layout` means — drawn to the agency's own arrangement, on our own paper, with no agency
+ * artwork on disk — and it is the value `my.borang-8a` and `my.borang-a` already carry for the same
+ * reason. `figures` (every number the form needs, complete, in OUR layout) understates it now.
+ *
+ * ⚠️ WHAT DID NOT CHANGE: THE SPECIMEN IS NOT LHDN ARTWORK AND NOTHING HERE MAY CLAIM `official`. It is
+ * another payroll system's rendering of the agency's page — the same provenance as the earlier CP39
+ * reference "Income Tax CP39.pdf" (Producer = Developer Express Inc. DXperience v23.2.5, created
+ * 2026-08-14), and the same as the EPF and SOCSO "agency reference" attachments HANDOFF records. It is
+ * deliberately NOT in `public/forms/`, which holds only the agency artwork in `MY_OFFICIAL_ARTWORK`
+ * (CP22; CP22A since r413; CP21 since r415), and only those entries say `official`. Understating is safe; overstating is the failure the whole vocabulary exists to stop.
+ *
+ * ── AND IT IS NOT A SUBMISSION ────────────────────────────────────────────────────────────────────
+ * LHDN stopped accepting paper CP39 in September 2019; the filing goes through e-PCB / e-Data PCB /
+ * e-CP39. This page is for internal record-keeping and as a payment cover document, which is what the
+ * request asks for, and the page and the text export both say it in as many words.
+ */
+import { isUnfinishedPersonName } from './unfinished-name';
+
+/** One employee's line on the statement — the ticket's own columns, in its own order. */
+export type Cp39FormRow = {
+  /** Not printed. React keys, and matching a row to the readiness list. */
+  employmentId: string;
+  /**
+   * Not printed either — WHO the row is, as opposed to which job it is.
+   *
+   * ⚠️ THE ROW IS AN EMPLOYMENT AND THE TAX NUMBER IS A PERSON. `employee_statutory_my` is keyed on
+   * `person_id` (uniqueIndex `employee_statutory_my_person_uq`), so ONE person holding TWO concurrent
+   * employments in one company — a supported, tested configuration, and what a terminate-and-rehire
+   * inside one month also looks like — produces two rows carrying the SAME tax number by construction.
+   * Without this field `duplicateCp39TaxNumbers` cannot tell that from two different people sharing one
+   * number, and it accused one person of being two, twice by name, with nothing to correct.
+   *
+   * May be '' for a caller that predates it; see `cp39PersonKey` for what identifies a row then.
+   */
+  personId: string;
+  /** No. Cukai Pendapatan — `employee_statutory_my.tax_number` (today labelled "Tax number"). */
+  tin: string;
+  /** Nama Penuh Pekerja. */
+  name: string;
+  /**
+   * No. K/P Lama.
+   *
+   * e4b541c6 — REAL SINCE MIGRATION 0450. `employee_statutory_my.old_ic_number` now holds the pre-1990
+   * card where an employee has one, entered on the Profile tab as free text (the old format is not the
+   * 12-digit MyKad and a validator would refuse genuine cards). Blank here means the employee has none
+   * on file, which is the ordinary case — most employees never had one.
+   *
+   * (Until 0450 this was permanently empty because no column existed. 00806b4c then took the separate
+   * decision this note used to defer: the e-Data PCB file carries the same column too, so the printed
+   * page and the uploaded file now show the same identity for the same person.)
+   */
+  oldIc: string;
+  /** No. K/P Baru — `employee_statutory_my.ic_number`. */
+  newIc: string;
+  /** No. Pekerja — `employment.employee_code`. */
+  employeeNo: string;
+  /** No. Pasport — `employee_statutory_my.passport_number`. */
+  passport: string;
+  /**
+   * Kod Negara.
+   *
+   * e4b541c6 — REAL SINCE MIGRATION 0450, and stored as its OWN column rather than derived. The older
+   * `passport_issuing_country` beside it is fed from the tenant's NATIONALITY option list, so it holds a
+   * demonym ("Malaysian"); `lib/countries.ts` maps ISO codes to country NAMES ("Malaysia"). Turning one
+   * into the other by guesswork would print an invented country code on a tax document, so HR picks the
+   * code from the ISO list and nothing infers it. Blank means none on file.
+   */
+  countryCode: string;
+  /** PCB (RM) — `payslip.statutory.pcb`, summed across the month's runs. */
+  pcb: number;
+  /** CP38 (RM) — `payslip.statutory.cp38`, the LHDN/court instalment, distinct from PCB. */
+  cp38: number;
+};
+
+/**
+ * One printed sheet of the employee table.
+ *
+ * PAGE SUMS ONLY — there is no carry-forward on this form. Borang A carries cumulative totals from sheet
+ * to sheet because its own specimen has boxes for them; the CP39 the ticket describes has a JUMLAH per
+ * page and a JUMLAH BESAR on the last, which is a different structure. `pagePcb`/`pageCp38` are computed
+ * from the rows ON THIS SHEET and the form total is the sum OF THE PAGES, never apportioned the other
+ * way — that is what makes "no page double-counts" assertable at one, two and three sheets.
+ */
+export type Cp39FormPage = {
+  sheet: number;
+  of: number;
+  rows: Cp39FormRow[];
+  /** JUMLAH for this sheet. */
+  pagePcb: number;
+  pageCp38: number;
+  /** PCB + CP38 for this sheet. */
+  pageTotal: number;
+};
+
+export type Cp39FormHeader = {
+  /** No. Majikan — `company_statutory_my.lhdn_employer_no`, the employer "E" number. */
+  employerNo: string;
+  /** No. Pendaftaran Perniagaan — `company_statutory_my.ssm_registration_no`. */
+  registrationNo: string;
+  /** Nama Syarikat / Perniagaan — `company.legal_name`. */
+  employerName: string;
+  /** Alamat Syarikat / Perniagaan, one string per printed line. */
+  employerAddress: string[];
+  /** The payroll `YYYY-MM` this statement covers. UNSHIFTED — see `cp39DeductionPeriodFor`. */
+  deductionPeriodKey: string;
+  /** BULAN, in Bahasa Malaysia and upper case: `JANUARI`. */
+  deductionMonth: string;
+  /** The same month as `MM`, for a compact box. */
+  deductionMonthNo: string;
+  /** TAHUN — `2026`. */
+  deductionYear: string;
+  /** Tarikh dicetak — `DD/MM/YYYY`, the generation date in Malaysian time. */
+  printedOn: string;
+  /** PEGAWAI YANG MENYEDIAKAN MAKLUMAT. Operator-owned; see `missingCp39Preparer`. */
+  preparerName: string;
+  preparerIc: string;
+  preparerPosition: string;
+  preparerPhone: string;
+};
+
+export type Cp39Form = Cp39FormHeader & {
+  /**
+   * BUTIR-BUTIR PEMBAYARAN — the payment instrument: `No. Cek / Draf Bank / Wang Pos` and `Cawangan`.
+   *
+   * NOT PART OF `Cp39FormHeader` AND NOT ON `CP39_FORM_HEADER_KEYS`, deliberately: nothing in the
+   * database can produce either of them, so a read that "must set every header key" must not be asked to
+   * set these. They are OPERATOR-TYPED on the review screen, arrive through `withPaymentInstrument`, and
+   * default to '' — a blank prints the ruled line the request asks for, exactly as before they were
+   * typeable. Never persisted: like the preparer overrides they belong to ONE generation of ONE
+   * statement, and a cheque number kept on a company record would be wrong the following month.
+   */
+  paymentRef: string;
+  paymentBranch: string;
+  pages: Cp39FormPage[];
+  /** Jumlah Potongan PCB across the whole statement. */
+  totalPcb: number;
+  /** Jumlah Potongan CP38 across the whole statement. */
+  totalCp38: number;
+  /** Amaun — PCB + CP38, the figure the payment is made for. */
+  totalAmount: number;
+  /**
+   * Bilangan Pekerja, SEPARATELY for the two deductions, because the form asks for two numbers and they
+   * are usually different: nearly everybody has PCB and almost nobody has a CP38 instalment.
+   *
+   * COUNTED THE WAY THE e-DATA FILE COUNTS ITS RECORDS — a row counts when its own amount is greater
+   * than zero (`cp39-file.ts:105-107`). Reusing that rule rather than inventing a second one is what
+   * lets test/cp39-form.test.ts assert the printed statement and the uploaded file report the same two
+   * counts for the same month; two rules would drift the first time one of them was "tidied".
+   */
+  pcbEmployees: number;
+  cp38Employees: number;
+  /**
+   * Everybody the run paid, whether or not they were deducted anything. NOT A BOX ON THE FORM, and not
+   * the number of rows printed either — see `deductedEmployees`. Kept because the review screen has to
+   * be able to say "38 people were paid, 7 are on the statement" rather than silently losing 31 of them.
+   */
+  employees: number;
+  /**
+   * The number of rows the statement actually PRINTS — everyone with a PCB **or** a CP38 deduction,
+   * counted once each. `cp39PrintedRows` is the one rule; both this and the pages below come off it.
+   *
+   * ⚠️ IT IS THE UNION, SO IT IS NOT EQUAL TO EITHER `pcbEmployees` OR `cp38Employees`, AND NOTHING
+   * MAY SAY THAT IT IS. An earlier draft of this comment (and the sentence it put on the printed page)
+   * claimed the row count "must agree with the header's two counts"; that is false the moment one
+   * person has PCB and a different person has a CP38 instalment — one row each, both Bilangan Pekerja
+   * figures at 1, two rows printed. The only true relations are
+   *   max(pcbEmployees, cp38Employees) ≤ deductedEmployees ≤ pcbEmployees + cp38Employees,
+   * with equality on the left exactly when one deduction's people are a subset of the other's.
+   * Printing a false reconciliation on a tax document is worse than printing none: it tells the reader
+   * to stop checking the disagreement 7ee14bbc was raised about.
+   *
+   * What WAS the defect is unchanged: the header counted the deducted (7) while the table printed
+   * everyone paid (38), and the reporter read the statement as under-counting by 31 people.
+   */
+  deductedEmployees: number;
+  /**
+   * 7ee14bbc — income tax reference numbers that more than one employee is filed under. ADVISORY.
+   *
+   * NOT A BOX ON THE FORM AND NOT A GATE. On the reporter's own production data five numbers are each
+   * recorded against two or three DIFFERENT people (different `ic_number`), so this is the employee
+   * records disagreeing with themselves, not a join fault and not something the export can fix. The
+   * statement therefore keeps printing exactly what is filed under each employee — the alternative is a
+   * CP39 that quietly disagrees with the staff record it was built from — and the review screen NAMES
+   * both people so whichever one is wrong can be corrected before filing.
+   *
+   * A MISSING tax number is the OTHER thing and it is handled elsewhere: that one blocks, because the
+   * e-Data PCB file refuses without it (`readinessFor`, localization/my/reports.ts).
+   *
+   * ⚠️ TWO PEOPLE, NEVER ONE PERSON TWICE. See `duplicateCp39TaxNumbers`: a row is an EMPLOYMENT and a
+   * tax number is a PERSON'S, so the first draft of this reported a concurrent second employment as a
+   * duplicate, named the same person twice, and told the operator to correct whichever record was
+   * wrong when there was only one record and nothing to correct.
+   */
+  duplicateTaxNumbers: Cp39DuplicateTin[];
+  /**
+   * 7ee14bbc — employees whose NAME is still a placeholder (`TEST0001`) or blank. ADVISORY.
+   *
+   * THE OTHER HALF OF THE APPROVED PLAN'S "warns you about duplicated tax numbers and unfinished
+   * employee names before you file rather than after". Measured on the reporter's own records: 22 of
+   * their 40 people are named `TEST` followed by a number, so this is the warning that fires on most of
+   * their staff — and, exactly like the duplicate above, it is THEIR DATA and not an export fault. The
+   * statement goes on printing the name on file; the correction belongs on the staff record.
+   *
+   * ⚠️ SCREEN ONLY, NEVER ON THE DRAWN PAGE OR IN THE TEXT EXPORT. "This name looks unfinished" is our
+   * opinion about a staff record, and a printed statutory statement is not the place to publish it —
+   * the document must carry what is filed and nothing else.
+   */
+  unfinishedNames: Cp39UnfinishedName[];
+};
+
+/** One income tax reference number and every PERSON filed under it, in printed order. */
+export type Cp39DuplicateTin = { tin: string; names: string[] };
+
+/** One employee whose name is not yet a name, with the employee number that finds them. */
+export type Cp39UnfinishedName = { employmentId: string; name: string; employeeNo: string };
+
+/**
+ * The header fields the READ must put on `ReportResult.meta.formHeader` and this file must find there.
+ *
+ * Exported so BOTH halves can be pinned against one list: the defect this exists to stop lives in the
+ * contract BETWEEN two files, where a unit test of either half passes throughout (AGENTS rule 17).
+ */
+export const CP39_FORM_HEADER_KEYS = [
+  'employerNo',
+  'registrationNo',
+  'employerName',
+  'employerAddress',
+  'deductionPeriodKey',
+  'deductionMonth',
+  'deductionMonthNo',
+  'deductionYear',
+  'printedOn',
+  'preparerName',
+  'preparerIc',
+  'preparerPosition',
+  'preparerPhone',
+] as const;
+
+/**
+ * Rows per printed sheet of the employee table. Ours — we have no artwork to count rows off.
+ * 26 leaves room for the repeated employer/period strip, the ten column headings and the JUMLAH line.
+ */
+export const CP39_FORM_ROWS_PER_PAGE = 26;
+
+const round2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
+const str = (v: unknown): string => (v == null ? '' : String(v));
+
+const PERIOD_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Bahasa Malaysia month names, upper case, as the form's own BULAN box wants them.
+ *
+ * NOT `Intl.DateTimeFormat(locale)`. The printed form is a Malaysian statutory document and its month is
+ * always in Malay whatever language the operator is reading the screen in — running it through the
+ * viewer's locale would put `一月` on a CP39 for a Chinese-language user.
+ */
+const MS_MONTHS = [
+  'JANUARI',
+  'FEBRUARI',
+  'MAC',
+  'APRIL',
+  'MEI',
+  'JUN',
+  'JULAI',
+  'OGOS',
+  'SEPTEMBER',
+  'OKTOBER',
+  'NOVEMBER',
+  'DISEMBER',
+] as const;
+
+/**
+ * THE DATING RULE: a CP39's deduction month IS the payroll month. Identity, not arithmetic.
+ *
+ * A function rather than an inline `params.periodKey`, and exported rather than private, for one reason:
+ * it gives the rule a name, a place to be asserted, and a place for the next person to read WHY it is
+ * not the +1 that the EPF form beside it uses. Do not "simplify" it away — the day it disappears is the
+ * day somebody copies `epfContributionPeriodFor` over it and a month's PCB is reported against the wrong
+ * period, on a page that looks entirely normal.
+ *
+ * It still VALIDATES: `2026-13` would otherwise produce a plausible-looking empty statement stamped with
+ * nonsense, which is the failure mode `borangAReport` guards the same way.
+ */
+export function cp39DeductionPeriodFor(payrollPeriodKey: string): string {
+  if (!PERIOD_RE.test(payrollPeriodKey)) {
+    throw new Error(`CP39: payroll period must be YYYY-MM, got "${payrollPeriodKey}"`);
+  }
+  return payrollPeriodKey;
+}
+
+/** True when `periodKey` is a well-formed `YYYY-MM`. */
+export function isCp39PeriodKey(periodKey: string): boolean {
+  return PERIOD_RE.test(periodKey);
+}
+
+/** `2026-01` → `JANUARI`. Throws on a malformed key rather than printing `undefined` on a tax document. */
+export function deductionMonthLabel(periodKey: string): string {
+  if (!PERIOD_RE.test(periodKey)) throw new Error(`CP39: deduction period must be YYYY-MM, got "${periodKey}"`);
+  return MS_MONTHS[Number(periodKey.slice(5, 7)) - 1];
+}
+
+/** `2026-08-12` → `12/08/2026`. */
+export function formDate(iso: string | null | undefined): string {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return '';
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+}
+
+/**
+ * RM with two decimals and thousands separators.
+ *
+ * DUPLICATED FROM `lib/borang-a.ts` ON PURPOSE, exactly as that file duplicates it from `lib/borang-8a.ts`
+ * and says so. The three forms have different dating rules and different totals structures, and the
+ * failure this pattern guards against is one module quietly acquiring another's rule through a shared
+ * helper that grew a parameter. test/cp39-form.test.ts asserts this file imports none of the other two.
+ */
+export function money(amount: number): string {
+  return (Number(amount) || 0).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * 7ee14bbc — a MyKad number the way the card itself prints it: `860208105128` → `860208-10-5128`.
+ *
+ * ⚠️ r409 (item 79f3f64d) — THE REVIEW SCREEN ONLY. Until r409 the drawn CP39 printed this too; it now prints
+ * digits (`cp39IcForForm`, below), as LHDN's own CP39 instructions write the number.
+ *
+ * ⚠️ RENDER ONLY. THIS MUST NEVER BE APPLIED ON THE WAY INTO A FILE. The e-Data PCB upload
+ * (`localization/my/cp39-file.ts`) is a fixed-width 57/136-character machine format whose identity-card
+ * field is TWELVE characters; two dashes make fourteen, and `alpha()` pads or the record length check
+ * throws. It reads `employee_statutory_my.ic_number` straight from the database and runs it through its
+ * own `digits()`, so it is structurally out of reach of this function — and test/cp39-form.test.ts pins
+ * the built file BYTE FOR BYTE so that stays true. The plain-text twin
+ * (`cp39FormTextExport`) is also left alone on purpose: it is what an operator reads while keying into
+ * e-PCB, which wants the stored digits, and its own column is padded to a fixed 14 with a
+ * `slice(0, 13)` that would cut the last digit off a formatted number.
+ *
+ * CONSERVATIVE BY CONSTRUCTION: only a value that is EXACTLY twelve digits is reformatted. An
+ * already-dashed number, a passport, a foreign identifier or a blank comes back untouched, because the
+ * one thing worse than an unformatted identity card number on a tax document is a rearranged one.
+ */
+export function formatMyIc(ic: string | null | undefined): string {
+  const v = str(ic);
+  if (!/^\d{12}$/.test(v)) return v;
+  return `${v.slice(0, 6)}-${v.slice(6, 8)}-${v.slice(8)}`;
+}
+
+/**
+ * r409 (item 79f3f64d) — THE EMPLOYER NUMBER AS THE FORM PRINTS IT: without the "E".
+ *
+ * ⚠️ THE FORM ALREADY PRINTS THE "E". The specimen's No. Majikan box has a bold `E` printed BESIDE it
+ * (lib/cp39-form-pdf.ts draws it on the cover and on every sheet), and the box takes the digits. Six of
+ * nine companies on production stored `lhdn_employer_no` WITH the prefix ("E 908915-10",
+ * "E0094573909"), so their statements read "E E0094573909" — the employer number with the letter twice.
+ *
+ * Applied HERE, in `cp39FormFrom`, and NOT in the read: the stored value is the operator's and is left as
+ * typed, and the e-Data PCB upload file (`localization/my/cp39-file.ts`) has its own `digits()` that never
+ * saw the problem. One leading E or e and any whitespace around it go; everything after it is printed as
+ * stored. A value that does not begin with an E is untouched.
+ */
+export function cp39EmployerNoForForm(stored: unknown): string {
+  // One leading E with any space or hyphen after it ("E 9089151-10", "E-0094573909"): the form prints the E itself.
+  return str(stored).trim().replace(/^[Ee][\s-]*/, '').trim();
+}
+
+/**
+ * r409 (item 79f3f64d) — THE IDENTITY CARD NUMBER AS THE FORM PRINTS IT: digits only.
+ *
+ * ⚠️ THIS REVERSES 7ee14bbc's DASHES ON THE DRAWN PAGE. LHDN's own CP39 instructions write the No. K/P Baru
+ * as twelve digits with no separators, and the reporter's sample does the same. `formatMyIc` STAYS — it is
+ * how the review SCREEN shows the number to a person checking it — but it no longer reaches the PDF.
+ *
+ * CONSERVATIVE, like `formatMyIc`: a value that is a twelve-digit MyKad once its dashes and spaces are
+ * removed is printed as those twelve digits; anything else (a passport, a foreign identifier, an eleven-
+ * digit typo) is printed exactly as stored, because rearranging an identifier we cannot recognise onto a
+ * tax document is worse than leaving it alone.
+ */
+export function cp39IcForForm(stored: unknown): string {
+  const v = str(stored).trim();
+  const digits = v.replace(/[\s-]/g, '');
+  return /^\d{12}$/.test(digits) ? digits : v;
+}
+
+/**
+ * 7ee14bbc — WHICH ROWS THE STATEMENT PRINTS: the ones that were actually deducted something.
+ *
+ * ⚠️ THE DEFECT THIS FIXES IS A DISAGREEMENT INSIDE ONE DOCUMENT. `pcbEmployees` / `cp38Employees` have
+ * always counted "this deduction is greater than zero" — the same rule `cp39-file.ts` counts its records
+ * by — while the table underneath printed EVERYBODY THE RUN PAID. On the reporter's 2026-08 run that is
+ * 38 rows sitting under a Bilangan Pekerja of 7, and their own reference statement from another payroll
+ * system shows 13 rows against a count of 13. A CP39 is a statement of tax DEDUCTED; a person who had
+ * none is not a line on it.
+ *
+ * THE ROW SET IS STILL COMPLETE UPSTREAM. The read deliberately returns everyone (localization/my/
+ * cp39-form.ts, "THE ROWS ARE NOT FILTERED BY READINESS") so the review screen can NAME whoever is
+ * missing a tax reference number, and `employees` keeps counting them. Filtering here rather than in
+ * the read is what lets both facts be true at once.
+ *
+ * IT DOES NOT NARROW THE READINESS GATE, and that is deliberate: the e-Data PCB file emits a detail
+ * record for every employee paid and refuses on a missing TIN for any of them, so the printed statement
+ * keeps inheriting that same list rather than growing a second, looser one.
+ */
+export function cp39PrintedRows(rows: readonly Cp39FormRow[]): Cp39FormRow[] {
+  return rows.filter((r) => (Number(r.pcb) || 0) > 0 || (Number(r.cp38) || 0) > 0);
+}
+
+/**
+ * 7ee14bbc — income tax reference numbers shared by more than one employee, each with everybody filed
+ * under it.
+ *
+ * REPORTED, NEVER REPAIRED, AND NEVER BLOCKING. Measured on production 2026-08-19: 31 employees hold a
+ * tax number and only 24 are distinct — `SG90010101` is filed against both Aisyah Rahman and Irwin Law,
+ * who have different `ic_number`s. That is the staff records disagreeing with themselves, and no amount
+ * of work on the export can fix it: the CP39 must go on printing what is filed under each person, or the
+ * statement and the record it came from would quietly differ. So this NAMES BOTH PEOPLE for the review
+ * screen and the download stays available.
+ *
+ * A BLANK TIN IS NOT A DUPLICATE. Empty numbers are the missing-tax-number gate's business
+ * (`readinessFor`), which blocks; grouping them here would report "17 employees share a tax number"
+ * about seventeen people who have none.
+ *
+ * Compared CASE-INSENSITIVELY and trimmed, because `sg90010101` and `SG90010101 ` are the same number
+ * to LHDN and a comparison that missed that would report the one pair it was written to catch.
+ *
+ * ⚠️ IT COUNTS PEOPLE, NOT ROWS, AND THAT IS THE WHOLE CORRECTNESS OF IT. A row is an EMPLOYMENT; the
+ * tax number is stored ONCE PER PERSON (`employee_statutory_my_person_uq` on `person_id`). So one
+ * person holding two concurrent employments in one company — supported, tested (test/tp1-self-relief),
+ * and also what a terminate-and-rehire inside one month looks like — arrives as two rows carrying the
+ * same number BY CONSTRUCTION. Grouping rows reported that person as sharing a number with themselves,
+ * printed their name twice in the banner, and instructed the operator to "correct whichever record is
+ * wrong" about a single record that was entirely correct. A warning that fires on correct data is worse
+ * than no warning: it is how the real five duplicates get scrolled past.
+ */
+export function duplicateCp39TaxNumbers(rows: readonly Cp39FormRow[]): Cp39DuplicateTin[] {
+  const byTin = new Map<string, Cp39DuplicateTin & { seen: Set<string> }>();
+  for (const r of rows) {
+    const raw = str(r.tin).trim();
+    if (!raw) continue;
+    const key = raw.toUpperCase();
+    const g = byTin.get(key) ?? { tin: raw, names: [], seen: new Set<string>() };
+    // ONE ENTRY PER PERSON. A second employment of somebody already listed under this number adds
+    // nothing — it is the same record seen twice, not a second record to correct.
+    const who = cp39PersonKey(r);
+    if (!g.seen.has(who)) {
+      g.seen.add(who);
+      g.names.push(str(r.name));
+    }
+    byTin.set(key, g);
+  }
+  return [...byTin.values()]
+    .filter((g) => g.names.length > 1)
+    .map((g) => ({ tin: g.tin, names: g.names }))
+    .sort((a, b) => a.tin.localeCompare(b.tin));
+}
+
+/**
+ * WHICH PERSON A ROW BELONGS TO, for the one question above: two people, or one person twice?
+ *
+ * `personId` when the read supplied it — that is the authoritative answer and the production path
+ * (localization/my/cp39-form.ts puts it on every row). It may be absent, because `cp39FormFrom` takes
+ * plain shapes from a caller it does not control, and then the closest available identity is the PAIR
+ * the record itself carries: the identity card number AND the name, both normalised. Both, not either:
+ * the identity card alone would fuse two genuinely different people who share one wrong IC, and the
+ * name alone would fuse two employees who happen to be namesakes.
+ *
+ * When the row carries no identity at all it falls back to `employmentId`, i.e. to counting rows — the
+ * LOUDER answer. Knowing nothing about who somebody is must not silently suppress the warning.
+ */
+function cp39PersonKey(r: Cp39FormRow): string {
+  const pid = str(r.personId).trim();
+  if (pid) return `person:${pid}`;
+  const ic = str(r.newIc).replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+  const name = str(r.name).trim().replace(/\s+/g, ' ').toUpperCase();
+  if (!ic && !name) return `employment:${str(r.employmentId)}`;
+  return `identity:${ic}|${name}`;
+}
+
+/**
+ * 7ee14bbc — employees whose NAME is not yet a name: `TEST0001`, or blank. ONE ENTRY PER PERSON.
+ *
+ * THE SECOND WARNING THE APPROVED PLAN PROMISED ("warns you about duplicated tax numbers and unfinished
+ * employee names before you file rather than after"). 22 of the reporter's 40 people are named `TEST`
+ * followed by a number; those are the names stored on the staff records, so — exactly like a shared tax
+ * number — this is REPORTED, NEVER REPAIRED and NEVER BLOCKING. The statement prints the name on file.
+ *
+ * ⚠️ THE RULE ITSELF NOW LIVES IN `lib/unfinished-name.ts`, and the argument for how narrow it is lives
+ * there with it. r218 needed the same test on the PERKESO ASSIST upload file — the same fourteen people,
+ * the same placeholder names, a different form — and two copies of a rule are two rules that can come to
+ * disagree about whether a given staff record is finished.
+ */
+
+export function unfinishedCp39Names(rows: readonly Cp39FormRow[]): Cp39UnfinishedName[] {
+  const out: Cp39UnfinishedName[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const name = str(r.name).trim();
+    if (!isUnfinishedPersonName(name)) continue;
+    const who = cp39PersonKey(r);
+    if (seen.has(who)) continue;
+    seen.add(who);
+    // The employee number travels with it because a BLANK name leaves nothing else to find them by.
+    out.push({ employmentId: str(r.employmentId), name, employeeNo: str(r.employeeNo) });
+  }
+  return out;
+}
+
+/**
+ * WHY THE SCHEDULE IS SHORTER THAN THE PAYROLL, in one sentence, in ONE place.
+ *
+ * Printed on the drawn cover page AND in the plain-text twin, from here rather than typed into each of
+ * them: it is a claim about the document's own arithmetic, and two copies of a claim are two claims that
+ * can drift. Bahasa Malaysia because it sits among the form's own Malay captions.
+ *
+ * ⚠️ WHAT IT MUST NOT SAY — and said, in 7ee14bbc's first build — is that the row count "matches the
+ * Bilangan Pekerja figures above". The row count is the count of people with AT LEAST ONE deduction;
+ * each Bilangan Pekerja counts one deduction only. One employee on PCB and one on a CP38 instalment is
+ * two rows under two figures of 1 and 1, and the document would have carried a false assurance about
+ * exactly the disagreement the reporter raised. A reconciliation sentence that can be false is worse
+ * than no sentence: it tells the reader to stop checking.
+ */
+export function cp39ScheduleScopeNote(form: Pick<Cp39Form, 'deductedEmployees' | 'employees'>): string {
+  return (
+    `Senarai pekerja: ${form.deductedEmployees} daripada ${form.employees} pekerja yang dibayar mempunyai ` +
+    'potongan PCB dan/atau CP38, dan hanya mereka disenaraikan. Ini penyata POTONGAN - pekerja tanpa ' +
+    'potongan tidak dicetak. Bilangan baris ialah bilangan pekerja yang mempunyai sekurang-kurangnya satu ' +
+    'potongan; setiap Bilangan Pekerja di atas mengira potongannya sendiri sahaja, jadi ia boleh berbeza ' +
+    'daripada bilangan baris.'
+  );
+}
+
+/**
+ * Split the employee table into sheets, each with its own JUMLAH.
+ *
+ * THE NO-DOUBLE-COUNTING PROPERTY, which is what the request calls out by name: the JUMLAH BESAR is the
+ * SUM OF THE PAGE JUMLAHs (`pages.reduce((a, p) => a + p.pagePcb, 0) === form.totalPcb`), every row
+ * appears on exactly one sheet, and the sheet numbering is contiguous. All of it holds at one, two and
+ * three pages and is pinned in test/cp39-form.test.ts without a PDF in sight.
+ *
+ * An empty statement yields ONE empty sheet rather than zero: "Muka surat 1/0" is not a thing.
+ */
+export function paginateCp39(rows: readonly Cp39FormRow[], perPage = CP39_FORM_ROWS_PER_PAGE): Cp39FormPage[] {
+  if (perPage < 1) throw new Error('CP39: rows per page must be at least 1');
+  const chunks: Cp39FormRow[][] = [];
+  for (let i = 0; i < rows.length; i += perPage) chunks.push(rows.slice(i, i + perPage));
+  if (chunks.length === 0) chunks.push([]);
+  return chunks.map((chunk, i) => {
+    const pagePcb = round2(chunk.reduce((a, r) => a + (Number(r.pcb) || 0), 0));
+    const pageCp38 = round2(chunk.reduce((a, r) => a + (Number(r.cp38) || 0), 0));
+    return {
+      sheet: i + 1,
+      of: chunks.length,
+      rows: chunk,
+      pagePcb,
+      pageCp38,
+      pageTotal: round2(pagePcb + pageCp38),
+    };
+  });
+}
+
+/**
+ * Which header fields a CP39 cannot be PRODUCED without, and does not have.
+ *
+ * ⚠️ A REPORT, NOT A THROW — the same lesson Borang 8A learned the hard way in r193 and Borang A restates.
+ * This is called on a RENDER path: a company that has never filled in its LHDN employer number must get
+ * the screen that TELLS it so, not a 500.
+ *
+ * `registrationNo` and `employerAddress` are DELIBERATELY NOT REQUIRED. The business registration number
+ * is a box on the form, not a thing the statement is invalid without, and the address prints however many
+ * lines exist. The preparer block is not in here either — see `missingCp39Preparer`.
+ */
+export function missingCp39FormHeader(header: Record<string, unknown> | null | undefined): string[] {
+  const h = header ?? {};
+  const required = [
+    'employerNo',
+    'employerName',
+    'deductionPeriodKey',
+    'deductionMonth',
+    'deductionYear',
+    'printedOn',
+  ] as const;
+  // r409 — the employer number is judged AS IT WILL PRINT: a stored "E" and nothing else is a blank box.
+  return required.filter((k) => !(k === 'employerNo' ? cp39EmployerNoForForm(h[k]) : str(h[k]).trim()));
+}
+
+/**
+ * The preparer block's gaps — REPORTED, NEVER BLOCKING, and that split is the whole point.
+ *
+ * PEGAWAI YANG MENYEDIAKAN MAKLUMAT (Nama Penuh, No. Pengenalan, Jawatan, No. Telefon) is operator-owned:
+ * it defaults from `company_statutory_authority` for authority `lhdn` and is editable on the preview
+ * screen. Blocking the download on it would make the feature unusable on day one to enforce a rule
+ * nothing enforces — the page is signed by hand anyway, and the request itself says the signature is left
+ * blank. So gaps are surfaced as an advisory and the drawn form prints a rule to write on rather than
+ * inventing a name.
+ */
+export function missingCp39Preparer(header: Record<string, unknown> | null | undefined): string[] {
+  const h = header ?? {};
+  return (['preparerName', 'preparerIc', 'preparerPosition', 'preparerPhone'] as const).filter(
+    (k) => !str(h[k]).trim(),
+  );
+}
+
+/**
+ * Assemble the printable statement from what `reportPreview` returned.
+ *
+ * Takes PLAIN SHAPES rather than `ReportResult`, deliberately: importing the pack contract here would put
+ * lib → localization/country-pack → localization/my/reports → localization/my/cp39-form → lib in a cycle.
+ * The caller passes `{ header: result.meta.formHeader ?? {}, rows: result.rows }`.
+ *
+ * TOTAL — it never throws. A gap in the header comes back as an empty string and the CALLER decides what
+ * to do about it. This function is on a render path.
+ */
+export function cp39FormFrom(p: {
+  header: Record<string, unknown> | null | undefined;
+  rows: readonly Record<string, unknown>[];
+  perPage?: number;
+}): Cp39Form {
+  const h = p.header ?? {};
+  const rows: Cp39FormRow[] = p.rows.map((r) => ({
+    employmentId: str(r.employmentId),
+    // WHO, not which job. '' when the caller has no person to give — `cp39PersonKey` says what happens
+    // then. The read supplies it (localization/my/cp39-form.ts) precisely so the duplicate-tax-number
+    // warning can tell one person's two employments from two people.
+    personId: str(r.personId),
+    // r409 — PRINTED AS STORED. No prefix stripped, no spaces moved: the tax reference is the operator's
+    // and LHDN's, and this model has no business normalising it (the e-Data file does its own).
+    tin: str(r.tin ?? r.taxNo),
+    name: str(r.name),
+    // Read, not hardcoded, so the read stays the single source of the value and this file has no opinion
+    // about where it came from. Both columns are REAL since migration 0450; blank here means the staff
+    // record has none, not that the system cannot hold one. See the field docs above.
+    oldIc: str(r.oldIc),
+    // r409 — DIGITS ONLY, as LHDN writes it. See `cp39IcForForm`; the screen re-dashes with `formatMyIc`.
+    newIc: cp39IcForForm(r.newIc ?? r.ic),
+    employeeNo: str(r.employeeNo),
+    passport: str(r.passport),
+    countryCode: str(r.countryCode),
+    pcb: round2(Number(r.pcb) || 0),
+    cp38: round2(Number(r.cp38) || 0),
+  }));
+  // 7ee14bbc — THE TABLE PRINTS THE DEDUCTED, NOT EVERYONE PAID. `rows` above stays the complete set so
+  // `employees` and the duplicate-TIN scan below still see everybody; only the PAGES are narrowed. The
+  // totals are unaffected by construction — a dropped row contributed zero to both of them.
+  const printed = cp39PrintedRows(rows);
+  const pages = paginateCp39(printed, p.perPage);
+  const totalPcb = round2(pages.reduce((a, pg) => a + pg.pagePcb, 0));
+  const totalCp38 = round2(pages.reduce((a, pg) => a + pg.pageCp38, 0));
+  return {
+    // r409 — WITHOUT THE "E": the form prints that letter beside the box itself. See `cp39EmployerNoForForm`.
+    employerNo: cp39EmployerNoForForm(h.employerNo),
+    registrationNo: str(h.registrationNo),
+    employerName: str(h.employerName),
+    // One string per line. The read joins with '\n' because ReportResult.meta values are scalars.
+    employerAddress: str(h.employerAddress)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean),
+    deductionPeriodKey: str(h.deductionPeriodKey),
+    deductionMonth: str(h.deductionMonth),
+    deductionMonthNo: str(h.deductionMonthNo),
+    deductionYear: str(h.deductionYear),
+    printedOn: str(h.printedOn),
+    preparerName: str(h.preparerName),
+    preparerIc: str(h.preparerIc),
+    preparerPosition: str(h.preparerPosition),
+    preparerPhone: str(h.preparerPhone),
+    // Always blank HERE. The read cannot know a cheque number; `withPaymentInstrument` is where the
+    // operator's typed value lands, and a statement nobody typed one into keeps the ruled line.
+    paymentRef: '',
+    paymentBranch: '',
+    pages,
+    totalPcb,
+    totalCp38,
+    totalAmount: round2(totalPcb + totalCp38),
+    // The e-Data file's own rule, restated once: a row counts when its own amount is non-zero.
+    pcbEmployees: rows.filter((r) => r.pcb > 0).length,
+    cp38Employees: rows.filter((r) => r.cp38 > 0).length,
+    employees: rows.length,
+    // Counted off the SAME array the pages were built from, never re-derived: the whole point of
+    // 7ee14bbc is that the printed rows and the counts beside them cannot be allowed to drift apart.
+    deductedEmployees: printed.length,
+    // Scanned over the COMPLETE row set, not the printed one. A number shared between somebody who was
+    // deducted and somebody who was not is still one number filed against two people, and the e-Data
+    // file emits a record for both of them.
+    duplicateTaxNumbers: duplicateCp39TaxNumbers(rows),
+    // Same reasoning, same row set: the upload file carries a name for everybody the run paid, so an
+    // unfinished one is just as wrong on somebody the printed schedule leaves out.
+    unfinishedNames: unfinishedCp39Names(rows),
+  };
+}
+
+/**
+ * Re-stamp a built statement with the operator's preparer block and print date.
+ *
+ * Applied to the FORM rather than passed into the read, so `ReportParams` stays `{companyId, periodKey}`
+ * and the pack never learns about a per-generation input — the same seam `withContributionPeriod` uses on
+ * Borang A. A field the operator left alone keeps whatever the read defaulted it to; **an empty string is
+ * "leave it as it was", not "clear it"**, because these boxes are pre-filled from the company record and
+ * a blank submitted box would otherwise wipe a correct default on every page load.
+ *
+ * A malformed date is IGNORED rather than thrown: this sits on a render path and a junk query string must
+ * not 500 the review screen.
+ */
+export function withPreparer(
+  form: Cp39Form,
+  patch: {
+    preparerName?: string;
+    preparerIc?: string;
+    preparerPosition?: string;
+    preparerPhone?: string;
+    /** ISO `YYYY-MM-DD`; anything else is ignored and the default print date stands. */
+    printedOnIso?: string;
+  },
+): Cp39Form {
+  const pick = (next: string | undefined, current: string) => (next && next.trim() ? next.trim() : current);
+  const printed = formDate(patch.printedOnIso);
+  return {
+    ...form,
+    preparerName: pick(patch.preparerName, form.preparerName),
+    preparerIc: pick(patch.preparerIc, form.preparerIc),
+    preparerPosition: pick(patch.preparerPosition, form.preparerPosition),
+    preparerPhone: pick(patch.preparerPhone, form.preparerPhone),
+    printedOn: printed || form.printedOn,
+  };
+}
+
+/**
+ * Stamp a built statement with the payment instrument the operator typed on the review screen.
+ *
+ * ── WHY THIS IS A SECOND FUNCTION AND NOT TWO MORE KEYS ON `withPreparer` ─────────────────────────
+ * THE BLANK RULE IS THE OPPOSITE ONE. Every preparer box is PRE-FILLED from the company's LHDN
+ * authority record, so an empty submitted box there has to mean "keep the default" or a page load would
+ * wipe a correct name (AGENTS rule 17). These two have NO default and never can — nothing in the
+ * database knows a cheque number — so an empty box here means exactly what it says: leave the ruled
+ * line blank and write on it at the counter. Folding them into `withPreparer` would put two opposite
+ * readings of "" inside one helper, which is how the wrong one gets applied to the wrong field.
+ *
+ * TRIMMED, NEVER PERSISTED, AND NEVER DERIVED. The value belongs to one generation of one statement:
+ * the PDF, the text twin and the review screen all take it from here, so the three cannot disagree.
+ */
+export function withPaymentInstrument(
+  form: Cp39Form,
+  patch: { paymentRef?: string; paymentBranch?: string },
+): Cp39Form {
+  return {
+    ...form,
+    paymentRef: (patch.paymentRef ?? '').trim(),
+    paymentBranch: (patch.paymentBranch ?? '').trim(),
+  };
+}
+
+/** Filename for a download: employer number + deduction month, safe for a Content-Disposition. */
+export function cp39FormFilename(form: Cp39Form, ext: 'pdf' | 'txt'): string {
+  // r409 — `form.employerNo` no longer carries the "E" (`cp39EmployerNoForForm`); the filename puts it back,
+  // so a download is named the same whether or not the operator typed the prefix into Organization.
+  const ref = form.employerNo ? `E${form.employerNo.replace(/[^A-Za-z0-9]+/g, '')}` : 'EMP';
+  const period = form.deductionPeriodKey.replace('-', '');
+  return `cp39-${ref}-${period}.${ext}`;
+}
+
+const pad = (s: string, n: number) => (s.length >= n ? s : s + ' '.repeat(n - s.length));
+const padL = (s: string, n: number) => (s.length >= n ? s : ' '.repeat(n - s.length) + s);
+
+/**
+ * The same statement as plain text, in the order the boxes appear.
+ *
+ * ⚠️ THIS IS NOT THE e-DATA PCB UPLOAD FILE. That is the fixed-width 57/136-character machine format and
+ * it lives in `localization/my/cp39-file.ts` behind `/payroll/reports/cp39-file`. This is the
+ * human-readable twin of the drawn page — what an operator reads while keying into e-PCB by hand, and
+ * what they can keep, search and diff month to month. Both this and the PDF come off the SAME `Cp39Form`,
+ * so they cannot disagree.
+ */
+export function cp39FormTextExport(form: Cp39Form): string {
+  const L: string[] = [];
+  L.push('CP39 — PENYATA POTONGAN CUKAI BULANAN (PCB) OLEH MAJIKAN');
+  L.push('Seksyen 107, Akta Cukai Pendapatan 1967');
+  L.push('');
+  L.push('DRAWN TO THE AGENCY’S ARRANGEMENT, ON OUR OWN PAPER — NOT LHDN ARTWORK. The printed page follows');
+  L.push('the Borang CP39 (Pin.2015) layout, masthead and A / B / C notes included; this plain-text twin');
+  L.push('carries the same figures without the ruling. FOR INTERNAL RECORDS AND AS A PAYMENT COVER DOCUMENT');
+  L.push('ONLY — LHDN does not accept a paper CP39; file through e-PCB / e-Data PCB / e-CP39.');
+  L.push('');
+  L.push('BUTIR-BUTIR MAJIKAN');
+  L.push(`  No. Majikan (E)              : ${form.employerNo || '—'}`);
+  L.push(`  No. Pendaftaran Perniagaan   : ${form.registrationNo || '—'}`);
+  L.push(`  Nama Syarikat / Perniagaan   : ${form.employerName || '—'}`);
+  for (const [i, line] of form.employerAddress.entries()) {
+    L.push(`${i === 0 ? '  Alamat                       : ' : '                                 '}${line}`);
+  }
+  L.push('');
+  L.push(`POTONGAN BAGI BULAN ${form.deductionMonth} TAHUN ${form.deductionYear}`);
+  L.push(`  Tarikh dicetak               : ${form.printedOn}`);
+  L.push('');
+  L.push('BUTIR-BUTIR PEMBAYARAN');
+  L.push(`  Jumlah Potongan PCB          : ${padL(String(form.pcbEmployees), 4)} pekerja   RM ${money(form.totalPcb)}`);
+  L.push(`  Jumlah Potongan CP38         : ${padL(String(form.cp38Employees), 4)} pekerja   RM ${money(form.totalCp38)}`);
+  L.push(`  AMAUN                        :                  RM ${money(form.totalAmount)}`);
+  // Typed on the review screen when the operator has the instrument in front of them, a ruled blank to
+  // write on when they do not. The rule is the SAME on the drawn page — one value, two renderings.
+  const written = (v: string) => (v ? pad(v, 22) : '______________________');
+  L.push(
+    `  No. Cek / Draf Bank / Wang Pos : ${written(form.paymentRef)}  Cawangan : ${written(form.paymentBranch)}`,
+  );
+  L.push('');
+  // 7ee14bbc — SAID ON THE DOCUMENT, not only on the screen that produced it. A reader comparing the
+  // schedule against a payroll summary otherwise sees a shorter list and has nothing telling them why.
+  // The sentence itself lives in `cp39ScheduleScopeNote` so this and the drawn page cannot say two
+  // different things about the same arithmetic.
+  L.push(cp39ScheduleScopeNote(form));
+  L.push('');
+
+  for (const page of form.pages) {
+    // 0fea5cc9 — THE DOCUMENT's page number, not the schedule sheet's. The front sheet is page 1, so the
+    // first schedule sheet is 2 — which is what the official page 2 prints in its own `Muka Surat` box,
+    // and what the drawn page now prints. Counting schedule sheets only made the first one read "1/1",
+    // i.e. a one-page document that is really page 2 of two. The denominator counts the cover too.
+    L.push(`Muka surat ${page.sheet + 1}/${page.of + 1}`);
+    L.push(
+      pad('BIL', 5) +
+        pad('NO. CUKAI', 15) +
+        pad('NAMA PENUH PEKERJA', 38) +
+        pad('K/P LAMA', 14) +
+        pad('K/P BARU', 14) +
+        pad('NO. PEKERJA', 13) +
+        pad('PASPORT', 13) +
+        pad('KOD', 5) +
+        padL('PCB (RM)', 12) +
+        padL('CP38 (RM)', 12),
+    );
+    L.push('-'.repeat(141));
+    let bil = form.pages.slice(0, page.sheet - 1).reduce((a, p) => a + p.rows.length, 0);
+    for (const r of page.rows) {
+      bil += 1;
+      L.push(
+        pad(String(bil), 5) +
+          pad(r.tin.slice(0, 14), 15) +
+          pad(r.name.slice(0, 37), 38) +
+          pad(r.oldIc.slice(0, 13), 14) +
+          pad(r.newIc.slice(0, 13), 14) +
+          pad(r.employeeNo.slice(0, 12), 13) +
+          pad(r.passport.slice(0, 12), 13) +
+          pad(r.countryCode.slice(0, 4), 5) +
+          padL(money(r.pcb), 12) +
+          padL(money(r.cp38), 12),
+      );
+    }
+    if (page.rows.length === 0) L.push('(tiada pekerja / no employees)');
+    L.push('-'.repeat(141));
+    L.push(
+      pad('', 5) +
+        pad(`JUMLAH (muka surat ${page.sheet + 1})`, 112) +
+        padL(money(page.pagePcb), 12) +
+        padL(money(page.pageCp38), 12),
+    );
+    // JUMLAH BESAR ON THE LAST SHEET ONLY: repeating it is how a multi-page statement gets filed with a
+    // page total mistaken for the grand total.
+    //
+    // 0fea5cc9 — AND IT SPANS BOTH MONEY COLUMNS, because that is what it is on the official page 2: the
+    // whole statement's PCB AND CP38 together, which is the figure the payment instrument is written
+    // for. It used to print the two column totals here and then repeat their sum on a separate
+    // `AMAUN (PCB + CP38)` line below the schedule; that line is gone, because two copies of one figure
+    // are two figures that can disagree and BUTIR-BUTIR PEMBAYARAN above already carries all three —
+    // Jumlah Potongan PCB, Jumlah Potongan CP38 and AMAUN. Nothing was lost, and the drawn page and this
+    // text twin now say the same thing under the same label.
+    if (page.sheet === page.of) {
+      L.push(pad('', 5) + pad('JUMLAH BESAR', 124) + padL(money(form.totalAmount), 12));
+    }
+    L.push('');
+  }
+
+
+  L.push('PEGAWAI YANG MENYEDIAKAN MAKLUMAT:');
+  L.push(`  Nama Penuh     : ${form.preparerName || '—'}`);
+  L.push(`  No. Pengenalan : ${form.preparerIc || '—'}`);
+  L.push(`  Jawatan        : ${form.preparerPosition || '—'}`);
+  L.push(`  No. Telefon    : ${form.preparerPhone || '—'}`);
+  L.push('');
+  // NAMES WHAT IS STILL BLANK, not what is blank by category. The payment instrument moved above the
+  // line when it was made typeable, so listing it here unconditionally would tell an operator who had
+  // just typed a cheque number that it was left out.
+  const stillBlank = [
+    form.paymentRef ? null : 'No. Cek / Draf Bank / Wang Pos',
+    form.paymentBranch ? null : 'Cawangan',
+    'Tandatangan',
+  ].filter(Boolean);
+  L.push('Left blank on purpose — these are yours to complete by hand, never payroll-derived:');
+  L.push(`  ${stillBlank.join(' · ')}`);
+  L.push('');
+  // e4b541c6 / c99e8358 — THESE TWO USED TO BE LISTED AS COLUMNS NOTHING COULD EVER FILL. Migration 0450
+  // gave `employee_statutory_my` its own `old_ic_number` and `passport_issuing_country_code`, so that
+  // sentence became false on a tax document and had to go. The half that stands is why Kod Negara is a
+  // column of its own rather than something derived.
+  L.push('Columns taken from the staff record, and never guessed:');
+  L.push('  No. K/P Lama — the pre-1990 card where the employee has one. Blank means none is on file.');
+  L.push('  Kod Negara   — the passport’s issuing country as a 2-letter code, chosen by HR. NEVER derived');
+  L.push('                 from the nationality text beside it: “Malaysian” is not “MY”.');
+  return L.join('\n') + '\n';
+}

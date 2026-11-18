@@ -1,0 +1,858 @@
+/**
+ * The `CountryPack` contract (ADR-0080 D1) — the explicit interface a jurisdiction pack implements.
+ *
+ * Before this file existed the registry derived its pack type FROM `myPack` (`type CountryPack =
+ * typeof myPack`) — backwards: Malaysia defined the contract. Rung 1 of the ADR-0080 retrofit ladder
+ * inverts that: this interface owns the shape, `myPack` is annotated `: CountryPack`, and
+ * `packFor()` returns `CountryPack | undefined`.
+ *
+ * Scope honesty (rung 1 = no behaviour change): the STRUCTURE below is contract-owned, but several
+ * member signatures are still derived from the MY implementation via type-only
+ * `typeof import('./my/…')` accessors — the DB-backed CRUD surfaces whose row types are inferred
+ * from the drizzle schema, and the composite `payroll.statutory` calculator. Rung 5 (the country
+ * seam restoration, ADR-0080 §5) nominalizes those signatures as part of the D6 vocabulary work.
+ * Until a second pack stress-tests it, expect this interface to be wrong in places (ADR-0080 §7,
+ * "Interface churn" risk) — it is internal, so revisions stay cheap.
+ *
+ * Extension points that do NOT exist yet (deliberately absent, not forgotten):
+ *   - D4 route/section mounting descriptors (configuration sections, report entries) — land in
+ *     rung 5c when country UI ROUTE mounting becomes registry-driven. Kept off the interface until
+ *     then so nothing speculative accretes. Rung 5b added the first D4 slice: the CLIENT-SAFE
+ *     vocabulary (`CountryPackClient`, the `client` field below) that shared `components/` widgets
+ *     consume through `localization/registry.client.ts` instead of importing `localization/my`.
+ *
+ * Rung 5a (kernel seam restoration) added the D6 engine vocabulary as first-class fields — state
+ * labels, IC helpers, PCB exemption tables/remuneration types, TP1 relief caps, the pay-component
+ * seed catalog, and the EA field list — so no `core/` file imports `localization/my` any more (the
+ * R55 `MY_PCB_EXEMPTION_CODES` precedent, corrected). The kernel consumes whatever the active pack
+ * supplies via `packFor()` / `requirePackFor()`; a missing pack FAILS LOUDLY (ADR-0080 D3).
+ *
+ * This file is type-only at runtime: every import is `import type` or a type-position
+ * `typeof import(…)`, so importing the contract never drags in db/client or the MY tables.
+ */
+import type { SessionContext, Tx } from '../db/client';
+import type { Pcb2iiForm } from '../lib/pcb2ii-form';
+
+/**
+ * ADR-0024 §7 worksheet vocabulary, RE-EXPORTED from the contract so a generic screen can name the
+ * worksheet's shape without importing the MY pack (ADR-0080 D7 — the drift ratchet counts a type-only
+ * import as coupling, and it is right to). Type-only, so this adds nothing at runtime.
+ */
+export type {
+  Figures as WorksheetFigures,
+  MultiCycleWorksheet,
+  WorksheetItem,
+  WorksheetRow,
+  WorksheetRunView,
+  WorksheetSkip,
+  WorksheetSkipReason,
+  WorksheetVerdict,
+} from './my/multicycle-worksheet';
+export type {SavedTaxCircumstance} from './my/tax-circumstance';
+
+import type { Tp1CategoryKey } from '../db/schema';
+import type { MyLeaveTypeDef } from './my/leave';
+import type { MyHoliday } from './my/holidays';
+import type {
+  EpfElection,
+  EpfMode,
+  OtDay,
+  OvertimePayResult,
+  PcbAccumulators,
+  PcbMonthResult,
+  TaxProfile,
+} from './my/payroll';
+import type {
+  ContribBand,
+  HrdfStatus,
+  PcbExemptionTable,
+  PcbRemunerationType,
+  SocsoBand,
+  StatutoryBody,
+  StatutoryRuleset,
+  Tp1CatalogueItem,
+  Tp3MoneyLine,
+} from './my/statutory-tables';
+import type {
+  ActiveResolution,
+  StatutoryComponentRow,
+  StatutoryPackRow,
+  StatutoryRulesetRow,
+  StatutorySource,
+} from './my/statutory-config';
+import type {
+  EaField,
+  EaOverrideEntry,
+  EaStatement,
+  FormFidelity,
+  FormOutput,
+  PlannedFormDef,
+  ReportDef,
+  ReportResult,
+  StatutoryBodyKey,
+  StatutoryFormLink,
+} from './my/reports';
+import type { PayComponentSeed } from './my/pay-components';
+
+// ── Contract-fronted vocabulary types (rung 5a) ────────────────────────────────────────────────────
+// Kernel consumers import these FROM THE CONTRACT, never from localization/my (D1/D7). The shapes are
+// still MY-derived (see the scope-honesty note above); nominalization is future interface churn.
+export type {
+  ContribBand,
+  EaField,
+  EaOverrideEntry,
+  EaStatement,
+  EpfMode,
+  FormFidelity,
+  FormOutput,
+  HrdfStatus,
+  PlannedFormDef,
+  ReportDef,
+  ReportResult,
+  PcbExemptionTable,
+  PcbRemunerationType,
+  PayComponentSeed,
+  SocsoBand,
+  StatutoryBodyKey,
+  StatutoryFormLink,
+  StatutoryRuleset,
+};
+
+/**
+ * ── CHILD RELIEF: THE COUNT AND THE AMOUNT, AS ONE VALUE (item 04b88724) ────────────────────────────
+ *
+ * Malaysia's PCB specification prices a child in two currencies at once: the RINGGIT the projection of P
+ * deducts, and the QUALIFYING-CHILDREN count (QC) the same table expresses it as ("considered with 4
+ * children"). The Personnel screen must print the count; the payslip deducts the money; they are the SAME
+ * statement and a screen that works one of them out for itself will eventually contradict the other. It
+ * did: the first r340 build re-derived the count in the view and under-stated the relief on screen.
+ *
+ * So the contract carries them together. `childReliefFor` returns both plus the working, `childReliefPrices`
+ * is the only conversion between them, and `childReliefAmountFor` (unchanged in signature, because the
+ * payroll kernel calls it) is `childReliefFor(...).amountRM`. The SAME functions are exposed on
+ * `CountryPackClient.payroll` so the interactive card prices the grid the admin is typing into with the
+ * pack's own arithmetic instead of a copy of it.
+ *
+ * Contract-owned rather than MY-owned so no generic consumer has to name the MY pack to hold the shape
+ * (ADR-0080 D1/D7: a type-only import of `localization/my` counts as coupling).
+ */
+export type ChildReliefPrice = {
+  /** The jurisdiction's relief-category key (MY: the five LHDN s.48 keys). */
+  key: string;
+  /** What the resolved ruleset prices one such child at, claimed in full. */
+  amountRM: number;
+  /** Explicit qualification weight in versioned rulesets; legacy prices retain amountRM / perChild. */
+  units: number;
+};
+
+/** One line of the working behind a category-priced child-relief figure. */
+export type ChildReliefRow = {
+  /** The relief-category key this line prices. */
+  category: string;
+  /** The claim share: 100 (the whole relief) or 50 (split between parents). */
+  sharePercent: 100 | 50;
+  /** How many children this line stands for. */
+  children: number;
+  /** Qualifying units the line contributes — already halved for a 50% share. */
+  units: number;
+  /** Ringgit the line contributes — already halved for a 50% share. */
+  amountRM: number;
+};
+
+/** A child-relief figure: the count, the money, and the working, from ONE derivation. */
+export type ChildReliefFigure = {
+  /** QC — the qualifying-children count the tax projection counts in. Fractional on a shared claim. */
+  units: number;
+  /** The child deduction in ringgit — the figure the payslip deducts. */
+  amountRM: number;
+  /** One line per priced grid cell; empty for a flat head count, which has no per-category working. */
+  rows: ChildReliefRow[];
+};
+
+/**
+ * The two child legs this kernel has, and no third: a keyed category GRID, or a flat HEAD COUNT.
+ * `prices` comes from `childReliefPrices` so the caller never names a relief figure — including a client
+ * island, which receives the prices as plain data and hands them straight back.
+ */
+export type ChildReliefInput = {
+  /** When supplied, apply the jurisdiction's tax-category eligibility before pricing. */
+  taxCategory?: number;
+} & (
+  | { from: 'table'; table: unknown; prices: readonly ChildReliefPrice[] }
+  | { from: 'headCount'; children: number; perChild: number });
+
+/**
+ * Rung 5c (ADR-0080 D4) — a country-admin configuration section the pack contributes. FLAT data only
+ * (anti-framework, ADR-0080 §7 "descriptor-driven UI"): a stable key, an i18n `labelKey`, and the
+ * route `href`. `overview` marks the sections that also appear in the Statutory Configuration
+ * landing-page per-body version grid (the independently-versioned bodies; SKBBK is a routed section
+ * but rides the SOCSO bands, so it is NOT in the overview grid).
+ *
+ * The descriptor carries no component ref: these routes are the pack's own UI files (kept physically
+ * in `app/payroll/configuration/*` pending migration under `localization/my/ui/` — open decision 2).
+ * The `key` is the ROUTE-OWNERSHIP marker: generic config routes resolve the acting company's pack
+ * and 404 unless it declares a section with their key (the gate moves from "route exists" to "pack
+ * declares the section", ADR-0080 D4). For MY — which declares every section — this never 404s.
+ */
+export type ConfigSectionDescriptor = {
+  /** Stable section key: the URL segment, the guard key, and the `components[]` version-grid key. */
+  key: string;
+  /** i18n key resolved under the `payroll.config` namespace (e.g. 'body_epf'). */
+  labelKey: string;
+  /** The section's route (kept at its current URL for MY — no user-visible churn, ADR-0080 D4). */
+  href: string;
+  /** Shown in the landing-page per-body version grid (epf/socso/eis/pcb/hrdf; SKBBK excluded). */
+  overview?: boolean;
+};
+
+/**
+ * 0d02d4a1 (ADR-0080 D6) — WHAT A JURISDICTION'S MONTHLY STATUTORY UPLOAD FILE COMES BACK AS.
+ *
+ * A RESULT, NEVER A THROW, and that is the whole reason this type exists. `ok: false` is an
+ * OPERATOR-FIXABLE refusal already phrased in words they can act on ("Company LHDN E-number is not set",
+ * "TIN is mandatory for the CP39 file - missing for: ..."). The pack side owns whatever error class it
+ * raises internally; generic code cannot name that class without importing the pack, so the pack
+ * TRANSLATES at the seam and a caller outside it never has to catch a jurisdiction-specific exception to
+ * tell "this employer has not filled in their E-number" apart from "this code has a bug". A genuine bug
+ * still propagates as a thrown error and must keep doing so.
+ *
+ * `content` is the file's exact characters and nothing re-encodes them afterwards; `filename` is the
+ * agency's own naming convention, produced by the pack's one definition of it, so two surfaces offering
+ * one month's file cannot name it differently.
+ */
+export class BankPaymentFileError extends Error { constructor(message:string,public readonly status:404|409|422=422){super(message);this.name='BankPaymentFileError';} }
+export type BankPaymentRequest = {companyId:string;bankProfileId:string;formatId:string;periodKey:string;paymentDate:string;runSeq?:number;testFile:boolean;reference:string;closedPayrollOnly?:true};
+export type BankPaymentPreview = {digest:string;recordCount:number;totalCents:number;companyName:string;paymentDate:string;periodKey:string};
+export const BANK_PAYMENT_CATEGORIES = ['salary', 'kwsp', 'socso', 'lhdn', 'zakat'] as const;
+export type BankPaymentCategory = (typeof BANK_PAYMENT_CATEGORIES)[number];
+export type BankPaymentOptions = {
+  accounts: { id: string; bankName: string; label: string; accountNumber: string; formatId: string }[];
+  configuredAccountId: string | null;
+  usesStatutoryAccount: boolean;
+  accountIssue: 'missing' | 'incompatible' | 'multiple-primary' | 'statutory-account' | null;
+  periods: { periodKey: string; runs: { runSeq: number; cycleName: string | null; runType: string }[] }[];
+};
+export type BankPaymentFiles = {
+ /** Operator-only selection data. Account numbers stay inside the authorised download dialog. */
+ submissionOptions:(ctx:SessionContext,p:{companyId:string;category:BankPaymentCategory})=>Promise<BankPaymentOptions>;
+ preview:(ctx:SessionContext,p:BankPaymentRequest)=>Promise<BankPaymentPreview>;
+ download:(ctx:SessionContext,p:BankPaymentRequest & {expectedDigest:string;requestKey:string})=>Promise<{content:string;filename:string}>;
+ /** AI v2 P2-2a — one payroll run's salary bank file as the Salary payroll loop checks it: the pack picks the company's
+  *  bank account and salary format it supports and previews that file (no Tape ID, nothing written). Null when the
+  *  company has no account this pack can produce a salary file for. Which bank, currency and format is the pack's to
+  *  know, never the kernel's. Throws BankPaymentFileError when the file cannot be produced from the run as it stands. */
+ salaryRunPreview?:(ctx:SessionContext,p:{companyId:string;periodKey:string;runSeq:number;paymentDate:string})=>Promise<BankPaymentPreview|null>;
+};
+
+export type StatutoryPaymentFile =
+  | { ok: true; filename: string; content: string; contentType: string }
+  | { ok: false; reason: string };
+
+/** One month's statutory upload file for ONE employer. Takes a `SessionContext`: producing it is a read
+ *  of that month's payslips, and RLS is what fences it - see `paymentFiles` on the contract. */
+export type StatutoryPaymentFileBuilder = (
+  ctx: SessionContext,
+  p: {
+    companyId: string;
+    periodKey: string;
+    /**
+     * r372 (item f022dd70) — WHICH PAYROLL RUNS OF THAT MONTH, when the operator picked some of them.
+     *
+     * OPTIONAL, AND ABSENT MEANS EVERY RUN. A pack that does not read it produces the whole month exactly
+     * as it always has, so this widened the contract without obliging any jurisdiction to implement a
+     * cycle selection it has no screen for. `run_seq` and not a cycle id: see lib/payroll-run-selection.ts
+     * for why the id cannot separate a month's runs and the sequence number can.
+     */
+    runSeqs?: number[];
+  },
+) => Promise<StatutoryPaymentFile>;
+
+/**
+ * The CLIENT-SAFE slice of a country pack's vocabulary (rung 5b, D4): pure data + pure functions
+ * ONLY — zero db / server-only / 'use client' deps — so `'use client'` components can consume
+ * jurisdiction vocabulary without dragging the full pack (whose statutory-config surface imports
+ * db/client) into the client bundle. Each pack implements it in a LEAF entry file (MY:
+ * `localization/my/client.ts`) that `localization/registry.client.ts` imports directly; the server
+ * pack object references the same implementation via `CountryPack.client` so the declaration is
+ * part of the contract. Flat data/refs only (D4 anti-framework): no components, no render hooks.
+ */
+export interface CountryPackClient {
+  /** ISO alpha-2 country code (uppercase) — same registry key as the server pack. */
+  country: string;
+
+  /** National-identity vocabulary the personnel Profile widgets consume. */
+  identity: {
+    /**
+     * Is this nationality catalog value the jurisdiction's OWN nationality (MY: Malaysian /
+     * Malaysia / MY / MYS, loose case-insensitive match)? Drives the NRIC-vs-passport identity
+     * fork on the personnel profile.
+     */
+    isLocalNationality: (nationality?: string | null) => boolean;
+    /** Date of birth derivable from the national ID (MY: MyKad YYMMDD prefix), or null. */
+    dobFromIC: (ic: string, now?: Date) => string | null;
+  };
+
+  /**
+   * Client-safe STATUTORY vocabulary — pure functions only, no db surface.
+   *
+   * 35b7af0a group 7 added this slice so a shared field component can apply the SAME default on the
+   * wizard as the Personnel screen applies server-side. Before it, the wizard had no way to reach
+   * `defaultSocsoEisNumber` without importing the server pack, so it simply left the number blank and
+   * hires created there arrived with an empty SOCSO/EIS number.
+   */
+  statutory: {
+    validatePassport?: (value: {passportNumber?:string|null;passportIssueDate?:string|null;passportExpiryDate?:string|null;passportRemark?:string|null;passportIssuingCountry?:string|null;passportIssuingCountryCode?:string|null},nationality?:string|null)=>boolean;
+    creationDefaults?: {subjectToSkbbk?:boolean};
+    /**
+     * The SOCSO & EIS number to show/persist: for a local employee with a blank number, their
+     * (normalised) national ID — the scheme registers locals under it. Returns undefined when the
+     * jurisdiction has no opinion, so the caller keeps whatever is stored.
+     */
+    defaultSocsoEisNumber: (args: {
+      socsoNumber?: string | null;
+      icNumber?: string | null;
+      nationality?: string | null;
+    }) => string | undefined;
+    /**
+     * r393 (685d2380 step 3b) — would the statutory writer REFUSE this EPF election? Takes the raw screen
+     * values exactly as the record's statutory form posts them (UI category; rates in percent; amounts in
+     * the currency; blank = that side keeps the rule) and returns the draft field to name, or null. The
+     * pack's OWN rule (MY: `resolveEpfElection`, reached through `mapEpfUiMode`), never a copy of it.
+     * Optional: a jurisdiction with no elective contribution has nothing to refuse.
+     */
+    epfRateInputBounds?: (uiMode: string, side: 'employee' | 'employer', legacyTotal?: boolean) => { min: number; max: number };
+    epfElectionGap?: (
+      uiMode: string | null | undefined,
+      employeeRate: string | null | undefined,
+      employerRate: string | null | undefined,
+      employeeAmount: string | null | undefined,
+      employerAmount: string | null | undefined,
+      manualReason: string | null | undefined,
+    ) => string | null;
+    /**
+     * r393 (685d2380 step 3b) — would the employer-scoped tax selection REFUSE this income tax residency
+     * for an employee whose statutory citizenship is `epfCitizenship`? Returns the draft field to name
+     * ('taxResidency'), or null. Blank residency is never a gap.
+     */
+    draftTaxResidencyGap?: (residency: string | null | undefined, epfCitizenship: string | null | undefined) => string | null;
+  };
+
+  /** Client-safe statutory-leave vocabulary. */
+  leave: {
+    /** Statutory floor: entitlement in days for a leave-type code at completed years of service. */
+    entitlement: (code: string, serviceYears: number) => number;
+  };
+
+  /**
+   * Client-safe PAYROLL vocabulary — pure functions only (item 04b88724).
+   *
+   * The Identification & Tax card is an interactive island: it prices the child-relief grid WHILE the admin
+   * types into it, so it cannot wait for a server round trip. Before this slice existed it multiplied the
+   * pack's prices by the keyed counts itself, which is a SECOND derivation of the qualifying-children
+   * count — and the screen ended up printing a relief figure the payroll kernel contradicted. The card now
+   * calls the pack's own function with the counts on screen; the statutory rule never leaves the pack and
+   * there is one arithmetic, not two.
+   */
+  payroll: {
+    /** The SAME function the server pack exposes (and `childReliefAmountFor` is built on). */
+    childReliefFor: (p: ChildReliefInput) => ChildReliefFigure;
+    epfRateToPercent?:typeof import('../lib/epf-mode-map').epfRateToPercent;
+    epfUiModeFrom?:typeof import('../lib/epf-mode-map')['epfUiModeFrom'];
+    taxCircumstanceOptions?: typeof import('./my/tax-circumstance')['TAX_CIRCUMSTANCE_OPTIONS'];
+    taxCircumstanceOf?: typeof import('./my/tax-circumstance')['taxCircumstanceOf'];
+    readSavedTaxCircumstance?: typeof import('./my/tax-circumstance')['readSavedTaxCircumstance'];
+    taxSelectionSchemes?: readonly string[];
+  };
+
+  /**
+   * Canonical salary-bank names for the employee bank picker, in catalog order (MY: the BNM/IBG
+   * receiving-bank directory — every name resolves to a routing code, so a picked value can never
+   * produce an unpayable salary file).
+   */
+  bankNames: readonly string[];
+}
+
+// ── MY-derived signature accessors (type-only; nominalized in rung 5, see header) ──────────────────
+type MyStatutoryModule = typeof import('./my/statutory');
+type MyEpfElectionModule = typeof import('./my/epf-election');
+type MyCompanyStatutoryModule = typeof import('./my/company-statutory');
+type MyStatutoryConfigModule = typeof import('./my/statutory-config');
+type MyPayrollModule = typeof import('./my/payroll');
+type MyTaxSchemeModule = typeof import('./my/tax-scheme-declarations');
+type MyTaxSelectionModule = typeof import('./my/tax-selection');
+
+/**
+ * A jurisdiction's compliance surface. One implementation per country, registered under the
+ * company's ISO alpha-2 `company.country` code; the kernel resolves it via `packFor()` and never
+ * names a jurisdiction directly (enforced by the drift-guard ratchet, ADR-0080 D7).
+ */
+export interface CountryPack {
+  /** Presentation of audit instants; the stored timestamp remains UTC. */
+  displayClock?: {timeZone:string;label:string};
+  eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean; aliases?: readonly string[]}[];
+  /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
+  country: string;
+  /** Finite native document merge read port; private SQL dispatch follows this same country registry. */
+  documentMerge?: {keys:readonly string[]};
+
+
+  /**
+   * Rung 5b (D4) — the pack's client-safe vocabulary slice (see `CountryPackClient`). The SAME
+   * object `localization/registry.client.ts` serves to `'use client'` components; declared here so
+   * providing a client entry is part of the contract, not an MY convention.
+   */
+  client: CountryPackClient;
+
+  /**
+   * The jurisdiction's state/territory labels (MY: the 16 gazette states + federal territories) —
+   * D6 vocabulary consumed by holiday-group validation, location state overrides, and the
+   * profile-option `state` catalog seed. Order is significant (it drives seed sortOrder).
+   */
+  states: readonly string[];
+
+  /**
+   * Per-employee statutory profile handlers: the full-row overwrite (`set`/`get`) plus the partial
+   * card saves the profile UI grew over time (TP3 opening balances, bank, IC/passport identity,
+   * tax, "others statutory"). Row shapes are drizzle-inferred → MY-derived signatures for now.
+   */
+  statutory: {
+    set: MyStatutoryModule['setStatutoryProfileMY'];
+    initializeForHire?:MyStatutoryModule['initializeHiredStatutoryMY'];
+    /** Actual country-owned one-Tx read/modify/write interval for split-card pass-through. */
+    withWrite?:MyStatutoryModule['withStatutoryProfileWriteMY'];
+    /** Optional trusted human full-row reviewed source; never a generic model executor. */
+    reviewed?:{readEditable:MyStatutoryModule['readReviewedStatutoryEditableMYTx'];choices:MyStatutoryModule['reviewedStatutoryChoiceMetadataMYTx'];labels:MyStatutoryModule['readReviewedStatutoryLabelsMYTx'];lockSubject:MyStatutoryModule['lockReviewedStatutoryProfileMYTx'];prepare:MyStatutoryModule['prepareReviewedStatutoryProfileMYTx'];confirm:MyStatutoryModule['confirmReviewedStatutoryProfileMYTx'];readReference:MyStatutoryModule['readReviewedStatutoryProfileReferenceMYTx']};
+    get: MyStatutoryModule['getStatutoryProfileMY'];
+    /** Set-wise `get` for a caller-held scoped snapshot (the Personnel export): one read for many people. */
+    getManyTx?: MyStatutoryModule['getStatutoryProfilesMYTx'];
+    /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
+    getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
+    setTp3: MyStatutoryModule['setTp3ProfileMY'];
+    /** Four-field existing hand balances; unchanged nonnull year and no matching person/year form. */
+    reviewedTp3Opening?:{read:MyStatutoryModule['readReviewedTp3OpeningMYTx'];prepare:MyStatutoryModule['prepareReviewedTp3OpeningMYTx']};
+    setBank: MyStatutoryModule['setBankProfileMY'];
+    bankEditAccess?: MyStatutoryModule['canMaintainBankProfileMY'];
+    /** Local human Bank Information review; exact native partial-set normalization and source locks. */
+    reviewedBank?:MyStatutoryModule['prepareReviewedBankMYTx'];
+    setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
+    setIc: MyStatutoryModule['setIcProfileMY'];
+    canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
+    setPassport: MyStatutoryModule['setPassportProfileMY'];
+    passportEditAccess?:MyStatutoryModule['canMaintainPassportProfileMY'];
+    /** Minimal six-field, existing-profile local human review. */
+    reviewedPassport?:{read:MyStatutoryModule['readReviewedPassportMYTx'];prepare:MyStatutoryModule['prepareReviewedPassportMYTx']};
+    validatePassport:MyStatutoryModule['validatePassportProfileMY'];
+    setTax: MyStatutoryModule['setTaxProfileMY'];
+    getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];
+    /** Set-wise borrowed read-only `getTaxSelection` for a caller-held scoped snapshot (the Personnel export). */
+    getTaxSelections?: MyTaxSelectionModule['getTaxSelectionsMY'];
+    saveTaxSelection?: MyTaxSelectionModule['saveTaxSelectionMY'];
+    initializeHiredTaxSelectionTx?: MyTaxSelectionModule['initializeHiredTaxSelectionMYTx'];
+    initializeTransferredTaxSelectionTx?: MyTaxSelectionModule['initializeTransferredTaxSelectionMYTx'];
+    listTaxSchemeDeclarations?: MyTaxSchemeModule['listTaxSchemeDeclarationsMY'];
+    saveTaxSchemeDeclaration?: MyTaxSchemeModule['saveTaxSchemeDeclarationMY'];
+    revokeTaxSchemeDeclaration?: MyTaxSchemeModule['revokeTaxSchemeDeclarationMY'];
+    /**
+     * 7ee14bbc — every OTHER person in a company already filed under one income tax reference number.
+     * ADVISORY: the personnel screen shows it beside the field as it is typed, so a duplicate is caught
+     * there rather than on the CP39 at filing time. Never gates the save.
+     */
+    taxNumberSharedWith: MyStatutoryModule['taxNumberSharedWithMY'];
+    setOthersStatutory: MyStatutoryModule['setOthersStatutoryMY'];
+    /**
+     * Feedback 57840a6e — one-shot, audit-gated repair of the employees an earlier UI pinned to an
+     * explicit statutory opt-out by accident (MY: "Subject to HRDF = No" captured from the company
+     * default by the old checkbox). Read-only unless `apply`. Exposed on the pack so the maintenance
+     * CLI resolves jurisdiction through the registry instead of importing the MY module directly.
+     */
+    correctAccidentalHrdfOptOuts: MyStatutoryModule['correctAccidentalHrdfOptOutsMY'];
+    /** b6dbadc5 — one-off conversion of pre-additive Top-up elections to the additive mode (MY only).
+     *  Read-only unless `apply`; consumed by scripts/convert-epf-topup-percentage.ts. */
+    convertLegacyEpfTopups?: typeof import('./my/epf-topup-conversion-db')['convertLegacyEpfTopupsMY'];
+    /** b6dbadc5 — the old/new review file for HR from the conversion's rows. */
+    legacyEpfTopupCsv?: typeof import('./my/epf-topup-conversion')['legacyTopupConversionCsv'];
+    /** National-ID validity check (MY: MyKad 12-digit IC). */
+    validateIC: (ic: string) => boolean;
+    /** Canonical storage form of a national ID (MY: digits only). */
+    normalizeIC: (ic: string) => string;
+    /** Date of birth derivable from the national ID (MY: MyKad YYMMDD prefix), or null. */
+    dobFromIC: (ic: string, now?: Date) => string | null;
+    /**
+     * The statutory number to persist when a form leaves it blank (MY: a local's SOCSO/EIS number
+     * defaults to their MyKad IC; a non-local or an explicit value is returned untouched). Rung 5c —
+     * consumed by the generic personnel/zakat screens through the pack instead of a direct import.
+     */
+    defaultSocsoEisNumber: MyStatutoryModule['defaultSocsoEisNumber'];
+    /**
+     * r393 (685d2380 step 3b) — the EPF election PRE-FLIGHT: returns what `set` would persist for these
+     * (already mapped) election fields, or throws the SAME refusal `set` would throw (MY:
+     * `InvalidEpfElectionError` from `resolveEpfElection`). `completeEmployeeDraft` calls it BEFORE
+     * `hireEmployee`, so an election the writer refuses is refused while nothing has been created.
+     */
+    validateEpfElection: MyEpfElectionModule['validateEpfElection'];
+  };
+
+  /** Company-level statutory registration (employer numbers, HRDF band, …). */
+  companyStatutory: {
+    /** Creation-only defaults, written atomically with the new company. Never a lazy backfill. */
+    initialize?: (ctx: SessionContext, tx: Tx, companyId: string) => Promise<void>;
+    set: MyCompanyStatutoryModule['setCompanyStatutoryMY'];
+    get: MyCompanyStatutoryModule['getCompanyStatutoryMY'];
+    /** Every company's statutory registration row (the group Organization admin panel). */
+    list: MyCompanyStatutoryModule['listCompanyStatutoryMY'];
+    /** Country-owned completeness and actual zero-levy registration predicate. */
+    readiness?: (row: Awaited<ReturnType<MyCompanyStatutoryModule['getCompanyStatutoryMY']>> | null | undefined) => { missing: readonly string[]; levyUnavailable: boolean };
+  };
+
+  /** Statutory leave vocabulary + entitlement hooks the leave engine dispatches through. */
+  leave: {
+    types: MyLeaveTypeDef[];
+    /** Entitlement in days for a leave-type code at a given completed years of service. */
+    entitlement: (code: string, serviceYears: number) => number;
+    /** Annual-leave entitlement in days (the EA s.60E ladder for MY). */
+    annualEntitlement: (serviceYears: number) => number;
+  };
+
+  /** Seed holiday calendar (pack-provided defaults; tenants own their calendars after provisioning). */
+  holidays: MyHoliday[];
+
+  /** Payroll calculators + the ruleset loaders the kernel threads through a run. */
+  payroll: {
+    /**
+     * All statutory contributions for one employee-month (EPF/SOCSO/EIS/PCB composite). The widest
+     * signature on the pack — MY-derived until rung 5 splits its options into contract vocabulary.
+     */
+    statutory: MyPayrollModule['statutory'];
+    resolveTaxScheme?: MyTaxSelectionModule['resolveTaxSelectionMY'];
+    /**
+     * r356 — fold ONE prior payslip into the year's PCB accumulators (Y, Sigma(Y-K), K, X, Z, sum-LP).
+     * On the seam because the kernel's replay and the MY worksheet's replay must be the SAME arithmetic:
+     * they were two copies and the copy drifted twice. See the function's header in my/payroll.ts.
+     */
+    foldPriorSlipIntoAccumulators: MyPayrollModule['foldPriorSlipIntoAccumulators'];
+    replayTaxBasis: typeof import('./my/tax-basis-replay').replayMyTaxBasis;
+    /** r356 — its twin: the year's opening balances from a previous employer's TP3, on the seam for the
+     *  same reason. */
+    openingAccumulatorsFromTp3: MyPayrollModule['openingAccumulatorsFromTp3'];
+    epf: (
+      wage: number,
+      additional?: number,
+      cfg?: StatutoryRuleset['epf'],
+      election?: EpfElection,
+    ) => { employee: number; employer: number };
+    socso: (
+      wage: number,
+      category?: 1 | 2,
+      cfg?: StatutoryRuleset['socso'],
+    ) => { employer: number; employee: number; skbbk: number };
+    eis: (wage: number, cfg?: StatutoryRuleset['eis']) => { employer: number; employee: number };
+    pcbMonth: (p: {
+      monthlyWage: number;
+      epfMonthly: number;
+      month: number;
+      profile?: TaxProfile;
+      acc?: PcbAccumulators;
+      additional?: number;
+      epfOnAdditional?: number;
+      lpCurrent?: number;
+      zakatCurrent?: number;
+      pcb?: StatutoryRuleset['pcb'];
+    }) => PcbMonthResult;
+    overtimePay: (p: {
+      monthlyWages: number;
+      days: OtDay[];
+      normalDailyHours?: number;
+      wageCeiling?: number;
+      restDayExcessMultiplier?: number;
+      holidayExcessMultiplier?: number;
+    }) => OvertimePayResult;
+    hrdfLevy: (
+      base: number,
+      status: HrdfStatus,
+      cfg?: { mandatoryRate: number; optionalRate: number },
+    ) => number;
+    /** Feedback c2ea9567 — the rate `hrdfLevy` applies for this band (0 when not registered), stamped on
+     *  the payslip beside the HRDF wages so the explanation never derives it as levy ÷ base. */
+    hrdfRate: (status: HrdfStatus, cfg?: { mandatoryRate: number; optionalRate: number }) => number;
+    /** Effective per-employee HRDF subjectivity (tri-state flag resolved against the employer band). */
+    hrdfSubject: (subjectToHrdf: boolean | null | undefined, status: HrdfStatus) => boolean;
+    /**
+     * Item d64d0df4 (D6) — an employee's keyed child-relief GRID → the total child deduction in RM.
+     *
+     * The kernel holds the stored grid (employee_statutory_my.child_relief_table) and the resolved
+     * ruleset's relief slice; it hands BOTH back to the pack rather than knowing what a category is
+     * worth, so no jurisdiction's relief figure can leak into core/payroll.ts. The result feeds
+     * `TaxProfile.childReliefAmount`, which REPLACES `children × perChild` in the projection — and is
+     * supplied only for an employee whose child-relief mode is 'auto_table'.
+     *
+     * OPTIONAL on the pack: a jurisdiction with no per-category child relief simply omits it, and the
+     * kernel then never supplies an amount, leaving that pack's own arithmetic untouched.
+     */
+    childReliefAmountFor?: (table: unknown, reliefs?: StatutoryRuleset['pcb']['reliefs']) => number;
+    /**
+     * Item 04b88724 — THE child-relief derivation: the qualifying-children COUNT, the ringgit, and the
+     * working, as one value. `childReliefAmountFor` above is this function's `.amountRM` and stays on the
+     * surface because the payroll kernel calls it by that name; anything that needs the COUNT (the
+     * Personnel screen, via core/dependents.ts) calls this instead of dividing the amount by a rate it
+     * would have to know. Optional for the same reason `childReliefAmountFor` is: a jurisdiction with no
+     * per-category child relief omits all three and nothing in the kernel asks for them.
+     */
+    childReliefFor?: (p: ChildReliefInput) => ChildReliefFigure;
+    /** Canonical head count of the recorded grid, separate from weighted qualifying units. */
+    childReliefTableHeadCount?: (table: unknown) => number;
+    /**
+     * Item 04b88724 — what the resolved ruleset prices each relief category at, in ringgit AND in
+     * qualifying children. The ONE place `units = amountRM / perChild` is written; a screen that has to
+     * price a grid the admin is still typing into receives this as plain data.
+     */
+    childReliefPrices?: (reliefs?: StatutoryRuleset['pcb']['reliefs']) => ChildReliefPrice[];
+    /** EPF relief cap (RM) used by the PCB accumulator maths. */
+    epfReliefCap: number;
+    /**
+     * The built-in HRDF levy rates (MY: HRD Corp mandatory 1% / optional 0.5%) — the FALLBACK the OT/
+     * HRDF configuration screens apply when a resolved ruleset predates the `hrdf` slice. D6 vocabulary
+     * so the generic Attendance-policy / config screens never name the MY table.
+     */
+    hrdfDefault: { mandatoryRate: number; optionalRate: number };
+    /**
+     * Rung 5b (D6) — the built-in verified EPF Third Schedule band tables (MY: Part A citizen/PR
+     * <60, Part E citizen 60–<75). The statutory band-table editor uses these as the FALLBACK when
+     * a stored ruleset override predates the partA/partE fields — the same fallback the calculator
+     * itself applies — threaded down as props by the configuration pages (the component never
+     * names the MY tables).
+     */
+    epfThirdSchedule: { partA: ContribBand[]; partE: ContribBand[] };
+    /**
+     * D6 (the corrected R55 shape): the built-in PCB exemption / optional-deduction (LP) code→cap
+     * tables. The kernel uses these as the FALLBACK when a resolved ruleset predates them
+     * (`rules.pcbExemptions` absent) — it never names the MY tables directly.
+     */
+    pcbExemptionTables: { pcb: PcbExemptionTable; lp: PcbExemptionTable };
+    /** The remuneration-type vocabulary for pay-code PCB classification (D6). */
+    pcbRemunerationTypes: readonly PcbRemunerationType[];
+    /** Exemption-code list valid for a remuneration type (defaults to the built-in tables). */
+    pcbExemptionCodesFor: (
+      type: PcbRemunerationType,
+      tables?: { pcb: PcbExemptionTable; lp: PcbExemptionTable },
+    ) => PcbExemptionTable;
+    /**
+     * Sourced per-category caps for the TP1 optional-relief declaration (MY: LHDN 2026 MTD reliefs —
+     * only the categories with a VERIFIED statutory number carry a cap; the rest are uncapped by
+     * design, ADR-0008 "no unsourced statutory number").
+     */
+    taxReliefCategoryCaps: Readonly<Partial<Record<Tp1CategoryKey, number>>>;
+    /**
+     * The FULL TP1 deduction/rebate catalogue the declaration form is built from (item 7ad37961,
+     * ADR-0081): the agency's own numbered items, their lettered sub-lines, and the annual limit the
+     * agency's form prints against each. MY supplies LHDN TP1 (1/2026).
+     *
+     * THIS IS THE GENERALISATION OF `taxReliefCategoryCaps` ABOVE, NOT ITS REPLACEMENT. The old slot
+     * still exists and still carries the two legacy eight-key caps, because rows written before this
+     * catalogue existed are still read through the legacy key list (db/schema TP1_CATEGORY_KEYS) and
+     * must keep validating exactly as they did. New declarations validate against `taxReliefCatalogue`.
+     * ADR-0008 holds on both: an item whose `limit` is null is captured and printed, never blocked.
+     */
+    taxReliefCatalogue: {
+      readonly formCode: string;
+      readonly items: readonly Tp1CatalogueItem[];
+      readonly rebates: readonly Tp1CatalogueItem[];
+    };
+    /**
+     * item df35d60d — the PREVIOUS-EMPLOYMENT form (MY: LHDN TP3 (1/2026)): the accumulated money
+     * lines the agency's own Section C asks for, and the relief schedule its Section D asks for.
+     *
+     * ⚠️ `sectionD` IS THE SAME ARRAY AS `taxReliefCatalogue.items` ABOVE, BY REFERENCE, and the
+     * contract is written as two slots onto one object rather than as two lists precisely so a pack
+     * CAN satisfy it that way. The two forms ask for one taxonomy from two employers; a jurisdiction
+     * whose previous-employment form carries a different schedule may supply a different array, but it
+     * may never supply a COPY of this one — a second transcription of a statutory limit table is the
+     * competing source of truth CLAUDE.md §1 forbids, and a cap that moves in one and not the other is
+     * a wrong tax figure with nothing to report it.
+     *
+     * OPTIONAL ON THE CONTRACT: a jurisdiction with no previous-employment form declares nothing and
+     * the screen, the catalog entry and the renderer are simply absent for it.
+     */
+    tp3Catalogue?: {
+      readonly formCode: string;
+      readonly sectionC: readonly Tp3MoneyLine[];
+      readonly sectionD: readonly Tp1CatalogueItem[];
+      /** How many previous employers the printed form is RULED FOR. MY: two (A1/A2, A3/A4). */
+      readonly maxEmployers: number;
+    };
+    /** Active-ruleset loader (ADR-0019): DB override or the verified default, as of a date. */
+    loadRuleset: (tx: Tx, p: { asOf: string }) => Promise<StatutoryRuleset>;
+    /** Same resolution + pack provenance (ADR-0020 §7) for payslip snapshotting. */
+    loadRulesetResolved: (tx: Tx, p: { asOf: string }) => Promise<ActiveResolution>;
+    /**
+     * ADR-0024 §7 — the READ-ONLY multi-cycle statutory worksheet an accountant signs off before the
+     * month-as-one aggregation may be enabled. A replay over the jurisdiction's own payroll history:
+     * for every employee-month that had more than one run it compares what was PAID against both
+     * readings of the statute, and reports the ringgit movement, the months it refuses to guess at,
+     * and a worked example.
+     *
+     * OPTIONAL on the contract. A jurisdiction whose statute has no monthly-unit rule (no SOCSO
+     * s.6(7) equivalent, no banded monthly EPF) has nothing to reconcile, and must not be forced to
+     * implement a Malaysian question. Callers check for the member and render "not applicable" when
+     * the acting company's pack omits it.
+     */
+    multiCycleWorksheet?: (
+      ctx: SessionContext,
+      p: { companyIds: string[]; year?: string },
+    ) => Promise<import('./my/multicycle-worksheet').MultiCycleWorksheet>;
+  };
+
+  /**
+   * Editable statutory configuration (ADR-0019): the admin view/edit/audit surface, vendor pack
+   * distribution (ADR-0020), and per-body component overrides (ADR-0037).
+   */
+  statutoryConfig: {
+    readActive: MyStatutoryConfigModule['readActiveStatutoryMY'];
+    list: (ctx: SessionContext) => Promise<StatutoryRulesetRow[]>;
+    save: (
+      ctx: SessionContext,
+      input: { effectiveFrom: string; version: string; data: StatutoryRuleset; notes?: string | null },
+    ) => Promise<{ id: string }>;
+    archive: (ctx: SessionContext, id: string) => Promise<void>;
+    validate: (data: StatutoryRuleset) => string[];
+    /** The verified built-in ruleset (transparency cards + fallback resolution). */
+    default: StatutoryRuleset;
+    /** Per-section source metadata driving the transparency cards. */
+    sources: StatutorySource[];
+    listPacks: (ctx: SessionContext) => Promise<StatutoryPackRow[]>;
+    syncStatus: (ctx: SessionContext) => Promise<{
+      latestIngested: string | null;
+      lastSync: { ranAt: string; ingested: number; failed: number; error: string | null } | null;
+    }>;
+    listComponents: (ctx: SessionContext) => Promise<StatutoryComponentRow[]>;
+    setComponent: (
+      ctx: SessionContext,
+      input: { body: StatutoryBody; effectiveFrom: string; version: string; data: unknown; notes?: string | null },
+    ) => Promise<{ id: string }>;
+    archiveComponent: (ctx: SessionContext, id: string) => Promise<void>;
+    validateComponent: (body: StatutoryBody, data: unknown) => string[];
+  };
+
+  /**
+   * Pay-component vocabulary (D6): the default catalog the tenant seed installs and the
+   * backfill-critical code roles the legacy→typed bridge looks up. Flags are jurisdiction facts
+   * (EPF/SOCSO/PCB/HRDF treatment), so the seed belongs to the pack, not the kernel.
+   */
+  payComponents: {
+    defaults: PayComponentSeed[];
+    backfillCodes: { basic: string; allowance: string; overtime: string; bonus: string; claim: string };
+  };
+
+  /** The EA-statement field vocabulary the EA-only amendment layer (core/ea-override.ts) validates against. */
+  eaFields: readonly EaField[];
+
+  /**
+   * Rung 5c (D4) — the country-admin configuration sections this pack contributes. The generic
+   * Statutory Configuration landing page renders the `overview` sections' links from HERE (not a
+   * hardcoded MY body list), and each config route resolves the acting company's pack and 404s
+   * unless it declares a section with the route's key. A company in another country gets that
+   * country's sections; an unknown country gets none (the routes 404).
+   */
+  configSections: ConfigSectionDescriptor[];
+
+  /**
+   * Rung 5c (D5 / ADR-0079) — seed this pack's tenant-wide reference data into a NEW tenant: the
+   * statutory leave-type catalog and the national + state public-holiday calendar (the
+   * jurisdiction-shaped rows). Returns the created leave-type ids keyed by code (callers wire standing
+   * grants / demo opt-ins off the codes). Generic seeding (profile-option catalogs) stays in
+   * db/provision.ts; only the country-shaped rows move behind the pack, so db/seed.ts and
+   * db/provision.ts route through the registry instead of importing `localization/my`. The
+   * implementation may physically stay under `localization/my/` — the pack references it.
+   */
+  seedReferenceData: (tx: Tx, tenantId: string) => Promise<Record<string, string>>;
+
+  /** Statutory report catalog (CP39, SOCSO/EIS files, …) the reporting engine enumerates. */
+  reports: ReportDef[];
+
+  /**
+   * 6babf4f6 (D4) — statutory forms that belong on the Statutory Forms shelves but are NOT generatable
+   * `ReportDef`s: the per-employee annual statement and the event-driven joiner/leaver worklist. Flat
+   * descriptors, so the screen renders its shelves entirely from the catalog and a newly built form
+   * appears in its authority's section without the page being edited.
+   */
+  statutoryLinks: StatutoryFormLink[];
+
+  /**
+   * 0d02d4a1 (ADR-0080 D6) — THE MONTHLY STATUTORY UPLOAD FILES THIS JURISDICTION PRODUCES, by the id the
+   * generic Payment Submission registry asks for. OPTIONAL: a jurisdiction with no such filing declares
+   * nothing rather than an empty file under a foreign agency's name (`pcb2iiStatement`'s reasoning, D-14).
+   *
+   * ⚠️ THIS IS THE MEMBER THAT LETS A GENERIC SCREEN HAND OVER A COUNTRY-SPECIFIC FILE WITHOUT NAMING THE
+   * PACK. `app/payroll/payment-submission` is shared by every country this product will ever support, and
+   * the drift ratchet (test/country-pack-drift.test.ts, D1/D7) refuses it any direct reach into a pack -
+   * correctly, and the allowlist only ever shrinks. Before this member existed the LHDN e-Data row on that
+   * screen had to be listed as UNAVAILABLE while `/payroll/reports/*` served the very same file, because
+   * the file's writer had no generic door. This is the door.
+   *
+   * ⚠️ IT TAKES A `SessionContext`, AND THAT IS THE ESTABLISHED SHAPE HERE, NOT A NEW DEVIATION.
+   * `eaStatement`, `pcb2iiStatement`, `eaCompaniesInYear`, `seedReferenceData` and the whole
+   * `statutoryConfig` surface are all ctx/tx-taking members already: this contract has never been "pure
+   * calculators and tables". A monthly return IS a read of that month's payslips, the read is
+   * jurisdiction-shaped (which columns carry the tax number, the old identity card, the instalment), and
+   * RLS is what fences it. Splitting the read out to sit generically above a pure builder would put a
+   * SECOND set of the same figures next to the one the shipped route already files - which is the exact
+   * class of defect (two writers, one file, different bytes) that r296 spent a round removing.
+   *
+   * The KEY is the generic registry's format id. It is a string crossing a seam, exactly as the report
+   * catalog's `ReportDef.id` already is, and both sides of it are pinned by a test.
+   */
+  paymentFiles?: Record<string, StatutoryPaymentFileBuilder>;
+  bankPaymentFiles?: BankPaymentFiles;
+
+  /**
+   * 587ee719 (D4) — statutory forms this jurisdiction has that we have NOT built. Descriptor-only: the
+   * type carries no href and no action key, so the screen can name them without any risk of one growing
+   * a button that produces a different form's figures. A pack with nothing outstanding declares `[]`.
+   */
+  plannedForms: PlannedFormDef[];
+
+  /** EA-statement generator (annual employee statement; MY: Borang EA), for ONE employer.
+   *  `companyId` defaults to the employment's current company; b7b22514 (Entity Transfer) means a year
+   *  can span more than one employer, and an EA form belongs to exactly one of them. */
+  eaStatement: (
+    ctx: SessionContext,
+    p: {
+      employmentId: string;
+      year: string;
+      companyId?: string;
+      /** r413 — CP22A only: payslips with pay_period ≤ this `yyyy-mm`. Absent for every EA surface. */
+      throughPeriod?: string;
+      /** r413 — CP22A only: processed/closed batches only. Absent for every EA surface. */
+      processedOnly?: boolean;
+      /** r413 — CP22A only: false skips the whole-year ea_override layer. Absent ⇒ applied, as always. */
+      applyOverrides?: boolean;
+    },
+  ) => Promise<EaStatement | null>;
+
+  /** Optional strict personal document path. Implementations must gate all contributing sources
+   * inside the same read snapshot; absence means personal EA is unsupported, never admin fallback. */
+  selfServiceEaStatement?: (
+    ctx:SessionContext,p:{employmentId:string;year:string;companyId:string},
+  )=>Promise<EaStatement|null>;
+
+  /** Every employer that owes this employee a statement for the year, oldest first. One entry for anyone
+   *  who has never transferred — which is what keeps single-company output unchanged. */
+  eaCompaniesInYear: (
+    ctx: SessionContext,
+    p: { employmentId: string; year: string },
+  ) => Promise<{ companyId: string; name: string; isCurrent: boolean }[]>;
+
+  /**
+   * 72b100cd — the employer's per-employee statement of TAX PAID for a year (MY: PCB 2(II)).
+   *
+   * OPTIONAL, and that is the modelling rather than laziness. An annual employee statement (`eaStatement`)
+   * is a concept every payroll jurisdiction has in some form, so the contract requires it. "The statement
+   * an employer files with the revenue board declaring the monthly tax it deducted and the receipt it was
+   * given" is LHDN's form, and a pack for a country with no such filing should say so by NOT implementing
+   * this — not by returning a plausible empty document under a Malaysian form's name (D-14: a
+   * non-statutory jurisdiction owes no statutory form, which is the correct empty and not a degraded one).
+   */
+  pcb2iiStatement?: (
+    ctx: SessionContext,
+    p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
+  ) => Promise<Pcb2iiForm | null>;
+}

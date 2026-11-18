@@ -1,0 +1,513 @@
+/**
+ * THE ONE DECLARATION OF WHAT REFERENCES A COMPANY, and what deleting the company does about each (f00bd1eb).
+ *
+ * ## Why this file exists
+ *
+ * `deleteCompany` counted THREE tables (department, employment, child company) and the panel's `inUse` asked
+ * the same three. The database carries a foreign key to `company.id` from FORTY-FIVE columns (forty-eight
+ * key columns on production: three of the keys are composite with `tenant_id`). Every company created on the
+ * Organization screen is born with six payroll cycles, and with a TOIL policy when that module is active, so
+ * a company nobody ever used — ABC Comapny on production — was offered Delete, refused by Postgres on a
+ * payroll_cycle row, and the raw driver message was put in front of the administrator.
+ *
+ * This is core/leave-type-refs.ts's pattern, for the reason recorded there: two hand-written lists drift, so
+ * there is ONE list and both the panel's answer (`companyDeleteStatus` in core/read.ts) and the delete guard
+ * (`deleteCompany` in core/admin.ts) are generated from it, through the same SQL text. And the list is the
+ * DATABASE's: test/company-referrers.test.ts reads the live foreign keys out of the test database and fails
+ * when a new table references `company` (or one of the tables deleted with it) until somebody comes here and
+ * decides what deleting a company should do about it. **Adding the row here IS the fix; do not widen the
+ * test.**
+ *
+ * ## The dispositions
+ *
+ * - `employees` — REFUSES. Any employee record, former employees and unfinished drafts included. An
+ *   employment that ended is still a person's employment history.
+ * - `payroll`   — REFUSES. A payroll run, payslip, tax payment or statutory report, even when the employees
+ *   behind it are gone: it is evidence of money paid and of filings made.
+ * - `other`     — REFUSES until the link is removed: a sub-company, a user given access to the company, an
+ *   invitation, a reporting-line scope, a review cycle, a module grant scoped to it.
+ * - `config`    — DELETED WITH THE COMPANY, in declaration order, in the same transaction. The automatic
+ *   setup (payroll cycles, TOIL policy, payslip display settings) and any other per-company setting that
+ *   means nothing once the company is gone.
+ * - `config-if-unreferenced` — the company's own org structure (department, position, location, cost
+ *   centre, business unit). Deleted with it ONLY if nothing outside the company points at the row; a
+ *   department another company's employee is assigned to refuses as `other`.
+ *
+ * ## The second level — what points INTO the tables deleted with the company
+ *
+ * The plan named the rule only for the org structure; it holds for every table deleted here, so it is
+ * applied to all of them (`COMPANY_CONFIG_DEPENDENTS`). If a row OUTSIDE the company references a row the
+ * company delete would remove — another company's leave approval rule naming our department, an employee of
+ * another company whose default shift is ours, a holiday group holding our holiday — the delete REFUSES as
+ * `other` rather than either failing on a nested foreign key or, where the key is ON DELETE SET NULL, quietly
+ * changing another company's records. The only rows let go with their parent are its own parts (ON DELETE
+ * CASCADE children such as a shift's OT windows).
+ *
+ * ## Order
+ *
+ * Cascaded rows are deleted in declaration order, so a table must precede any cascaded table it references
+ * (company_statutory_authority before company_bank_profile, company_payroll_config before payroll_policy,
+ * leave_approval_policy before department/position/business_unit, shift before attendance_rule, department
+ * before business_unit). The drift test asserts this against the live keys.
+ */
+import type { CompanyDeleteBlock } from '../lib/company-delete';
+
+export type CompanyRefDisposition = 'employees' | 'payroll' | 'other' | 'config' | 'config-if-unreferenced';
+
+export type CompanyRef = {
+  /** Physical table name — matched against the live schema by the drift test. */
+  table: string;
+  /** The column that references `company.id`. */
+  column: string;
+  disposition: CompanyRefDisposition;
+  /** A retained UUID array has an owning trigger and bounded predicate rather than a physical FK. */
+  referenceKind?: 'uuid-array';
+  /**
+   * `config` only: rows matching one of these conditions REFUSE with `reason` instead of being deleted.
+   * `{r}` is replaced by the table's alias. Used for `usage_snapshot`, whose zero rows are setup noise and
+   * whose non-zero rows are evidence.
+   */
+  refuseWhere?: readonly { reason: CompanyDeleteBlock; where: string }[];
+  /**
+   * `config` only: the app role has no DELETE on this table, so its company rows are removed by calling this
+   * function (one argument, the company id; returns the row count) instead of a plain DELETE.
+   */
+  deleteFunction?: string;
+  /** Private tables expose only a tenant-scoped boolean through this fixed helper. */
+  existsFunction?: string;
+  /** Why it carries the disposition it does — read by whoever adds the forty-sixth. */
+  note: string;
+};
+
+export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_shared_settings',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract configuration and its audit references.'},
+  {table:'contract_access_member',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract role assignment history.'},
+  {table:'contract_access_member',column:'business_group_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract business-group assignment history.'},
+  {table:'probation_activation_request',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'reward_company_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'reward_company_classification',column:'canonical_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'parent_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_mapping',column:'business_group_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'company_organisation_run_row',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'employment_organisation_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'resignation_journey',column:'company_id',disposition:'other',existsFunction:'app.resignation_company_in_use',note:'Retain resignation history without exposing custody-protected case data.'},
+  {table:'contract_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_retirement_custody',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_role_assignment',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_template',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_term',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'contract_workflow',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'document_signing_document',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'payroll_tax_basis_replacement',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_access',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_activation',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_builder_definition',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_cutover',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_intake_entry',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_intake_evidence',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'probation_offline_final_proposal',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
+  {table:'letter_asset',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_automation_rule_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_capability_grant',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_generation_batch',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_job',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_merge_field_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_policy_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_record',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'letter_template_version',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  {table:'notification',column:'company_id',disposition:'other',existsFunction:'app.letter_company_in_use',note:'Retained Letters configuration, workflow and notification history preserves its company without exposing private records.'},
+  // AI review custody and import-assistance attempts: owner-only rows the administrator's own RLS view
+  // cannot count, so one fixed SECURITY DEFINER boolean answers for all four (repair fragment
+  // guards-fixtures). They refuse rather than cascade: they are audit of what a person reviewed or what a
+  // model was asked, and they leave only through their own expiry/retention owners.
+  {table:'pay_component',column:'applied_company_ids',referenceKind:'uuid-array',disposition:'other',existsFunction:'app.pay_component_company_in_use',note:'Selected-company Pay Items retain their configured company identities.'},
+  {table:'ai_agent_promotion',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'Company-scoped promotion history retains its company without exposing private candidate or promotion rows.'},
+  {table:'assistant_own_leave_review',column:'allocation_effective_company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A retained cost-allocation review preserves its effective-dated company as well as its original company; expose only a scoped retention boolean.'},
+  {table:'assistant_own_leave_review',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'A reviewed Assistant action custody record scoped to this company is retained audit; expose only a scoped retention boolean.'},
+  {table:'teras_outcome_record',column:'company_id',disposition:'other',note:'The Noveri outcome record (migration 0924) is append-only audit of one AI run: no DELETE privilege and a trigger refuses UPDATE and DELETE, so it is never cascaded. Turns private to their asker (0928) are invisible to other callers; a row the caller cannot see makes the step-4 foreign key fire, which is reported as this same refusal.'},
+  // AI v2 Phase 1 (migrations 0959, 0960, 0961; P2-2b run 41623360049 found them undeclared). Each is FORCE row-level
+  // security and the application role holds no DELETE on any of them, so none can be cascaded: each refuses. Where a
+  // deleting administrator may not see every row, the step-4 foreign key fires on the hidden row and the delete refuses
+  // as `other` (as for teras_outcome_record above); none adds a definer lookup.
+  {table:'letter_request',column:'company_id',disposition:'other',note:'An employee\'s letter request (0961) for one of the company\'s templates: its lifecycle is database-owned, issued and declined are final, and the application has no DELETE, so it is retained letters workflow history. Read only by the employee and by HR holding letters generate for the company; its template (letter_template, through app.letter_company_in_use) and the employee\'s employment refuse the delete as well.'},
+  {table:'letter_request_option',column:'company_id',disposition:'other',note:'Whether employees may request one of the company\'s letter templates (0961). Only the flag changes and the application has no DELETE, so it is never cascaded; it names a template of the company, which refuses through app.letter_company_in_use.'},
+  {table:'private_case_handler',column:'company_id',disposition:'other',note:'A private case handler designation for the company (0959). Grants are revoked, never deleted (no DELETE privilege), and stay as the audit of who could read the company\'s cases; an administrator of the company reads every grant, revoked or not.'},
+  {table:'private_case',column:'company_id',disposition:'employees',note:'A person\'s own private case to the company\'s handlers (0959), encrypted, kept under the retention exception and removed only by person erasure or on closing after it; never by company setup. Only the author and the eligible handlers read it, so the deleting administrator usually cannot: the author held an employment in the company when they opened it (app.private_case_author_company), which normally refuses as employees first; otherwise the foreign key fires on the hidden row and the delete refuses as other (core/admin.ts). No lookup names a case or reveals that one exists.'},
+  {table:'teras_loop_pause',column:'company_id',disposition:'other',note:'An administrator\'s pause of one loop for the company (0960), versioned with who changed it; the application has no DELETE, so it is never cascaded. Every login of the tenant reads it.'},
+  {table:'teras_loop_case',column:'company_id',disposition:'other',note:'A loop\'s case for the company or one of its employments (0960): references, dates and counts only, written by the agent principal, never deleted (no DELETE privilege); an employment case also goes if its employment is deleted (ON DELETE CASCADE). Administrators of the company read its cases.'},
+  {table:'teras_loop_run',column:'company_id',disposition:'other',note:'A loop run\'s outcome record for the company (0960): append-only, no DELETE privilege and a trigger refuses UPDATE and DELETE, so it is never cascaded. Administrators of the company read its runs; a run that reached no company has no company_id.'},
+  // AI v2 P2-2b (migration 0965): the payroll Audit loop's evidence is append-only audit of a company's payroll, never cascaded.
+  {table:'attendance_formula_ot_binding',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_result',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_ot_binding_day',column:'company_id',disposition:'other',note:'Immutable Attendance formula overtime evidence below the existing settlement owner.'},
+  {table:'attendance_formula_result',column:'company_id',disposition:'other',note:'Immutable Attendance calculation evidence retained with Payroll traceability.'},
+  {table:'attendance_formula_result_event',column:'company_id',disposition:'other',note:'Append-only Attendance calculation review and transfer history.'},
+  {table:'attendance_formula',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_revision',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_test',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'attendance_formula_event',column:'company_id',disposition:'other',note:'Retained Attendance formula configuration, immutable versions and private testing/audit evidence; never erased through company setup.'},
+  {table:'payroll_audit_capture',column:'company_id',disposition:'other',note:'Append-only, hash-chained payroll audit evidence (migration 0965): no DELETE privilege and a trigger refuses UPDATE and DELETE, so a company with captured payroll evidence is never deleted.'},
+  {table:'payroll_audit_finding',column:'company_id',disposition:'other',note:'Append-only control findings of the payroll Audit loop (migration 0965), retained as audit evidence.'},
+  {table:'payroll_audit_disposition',column:'company_id',disposition:'other',note:'Append-only dispositions of payroll Audit loop findings (migration 0965), retained as audit evidence.'},
+  {table:'payroll_audit_correction_cause',column:'company_id',disposition:'other',note:'Append-only root causes of post-run payroll corrections (migration 0965), retained as audit evidence.'},
+  {table:'payroll_audit_reader',column:'company_id',disposition:'other',note:'An auditor grant (migration 0965) is only ever revoked, never deleted, so it is retained with its company.'},
+  {table:'payroll_audit_control_setting',column:'company_id',disposition:'other',note:'The Audit loop control settings of the company (migration 0965); no DELETE privilege, retained with the audit evidence they governed.'},
+  // AI v2 Phase 2 wave 1 (migrations 0963, 0964, 0966; undeclared on their branches). Each is FORCE row-level security and the
+  // application role holds no DELETE on any of them, so none is cascaded and each refuses, as `other`, like the Phase 1 loop
+  // tables above; none adds a definer lookup.
+  {table:'teras_loop_level',column:'company_id',disposition:'other',note:'A loop\'s autonomy level for the company (0963), versioned with who set it; the application has no DELETE, so it is never cascaded.'},
+  {table:'teras_loop_level_change',column:'company_id',disposition:'other',note:'Append-only history of a loop\'s level changes for the company (0963), with the certificate and limits; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_loop_action',column:'company_id',disposition:'other',note:'The ledger of a loop\'s automatic actions in the company (0963), kept for undo, demotion and audit; no DELETE privilege. An action also goes with its employment or case (ON DELETE CASCADE).'},
+  {table:'teras_loop_sample_review',column:'company_id',disposition:'other',note:'Append-only weekly sample reviews of a Level 3 loop for the company (0963); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_payroll_loop_setting',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s payroll loop settings (0964: interval, net-swing threshold, exclusions), attributed to the administrator; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_payroll_threshold_decision',column:'company_id',disposition:'other',note:'Append-only administrator decisions on the company\'s threshold proposals (0964); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_payroll_swing_disposition',column:'company_id',disposition:'other',note:'Payroll HR\'s disposition of a net-swing flag in the company (0964); no DELETE privilege and a trigger refuses UPDATE. It also goes with its case or employment (ON DELETE CASCADE).'},
+  {table:'teras_capacity_baseline',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s HR capacity baseline (0966), attributed to the administrator; a trigger refuses UPDATE and DELETE.'},
+  // AI v2 Phase 2 P2-5 (0971): the Living Handbook. A version's companies and the drift findings an administrator acted on;
+  // both are history of an approved or draft policy (no DELETE once a version leaves draft; findings are append-only).
+  {table:'teras_policy_scope',column:'company_id',disposition:'other',note:'The companies a Living Handbook policy version applies to (0971); a draft\'s companies can be changed, a sent or approved version\'s never, so it is never cascaded.'},
+  {table:'teras_policy_drift_finding',column:'company_id',disposition:'other',note:'Append-only record of a handbook-versus-system disagreement an administrator acted on (0971); a trigger refuses UPDATE and DELETE.'},
+  // AI v2 Phase 2 P2-6 (migration 0972): the learning loops. Each is FORCE row-level security; the application role holds no
+  // DELETE on any of them except an expired gap example (an administrator's purge), so none is cascaded and each refuses,
+  // as `other`, like the wave 1 tables above; none adds a definer lookup.
+  {table:'teras_learning_signal',column:'company_id',disposition:'other',note:'Append-only learning signals of the company\'s AI Centre turns (0972): what a person did with a prepared card, a recommendation or an answer. No DELETE privilege; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_learning_signal_review',column:'company_id',disposition:'other',note:'Append-only administrator reviews of the company\'s learning signals (0972); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_occurrence',column:'company_id',disposition:'other',note:'Append-only gap occurrences of the company (2010, first numbered 0972): intent, role band, locale and day only, no words and no link to the asker; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_turn',column:'company_id',disposition:'other',note:'Append-only private notes that a turn was counted as a gap (2010), readable only by the login that wrote them; a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_gap_status',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s gap statuses (0972); a trigger refuses UPDATE and DELETE.'},
+  {table:'teras_eval_candidate',column:'company_id',disposition:'other',note:'Eval candidates of the company (0972): versioned in place, never deleted (a trigger refuses DELETE and no DELETE privilege).'},
+  // AI v2 Phase 2 hardening (migration 2011): standing acknowledgements, standing-rule decisions and the cut-off reminders
+  // the payroll inputs loop sent. Each is FORCE row-level security and the application role holds no DELETE on any of them
+  // (an acknowledgement is only ever revoked; the other two refuse UPDATE by trigger), so none is cascaded and each refuses,
+  // as `other`, like the wave 1 tables above; none adds a definer lookup.
+  {table:'payroll_check_acknowledgement',column:'company_id',disposition:'other',note:'A standing acknowledgement that a payroll check is expected for a person, group or the whole company (2011); only ever revoked, never deleted, so it is retained with its company.'},
+  {table:'payroll_check_rule_decision',column:'company_id',disposition:'other',note:'Append-only group administrator decisions on the company\'s proposed standing rules (2011); retained as the evidence an acknowledgement rests on.'},
+  {table:'teras_cut_off_reminder',column:'company_id',disposition:'other',note:'Append-only record of each automatic cut-off reminder the payroll inputs loop sent in the company (2011): counts only, no pay figure; a trigger refuses UPDATE.'},
+  // Payroll history learning (migration 2012): the learning mode, the learned baselines and the learning runs. Each is FORCE
+  // row-level security and the application role holds no DELETE on any of them (a baseline goes only with its employment,
+  // person erasure or the leaver retention purge), so none is cascaded and each refuses, as `other`; none adds a definer lookup.
+  {table:'payroll_learning_mode',column:'company_id',disposition:'other',note:'Append-only versions of the company\'s payroll learning mode (2012), attributed to the payroll administrator; a trigger refuses UPDATE and DELETE.'},
+  {table:'payroll_learned_baseline',column:'company_id',disposition:'other',note:'Append-only learned pay baselines of the company\'s people (2012), payroll administrators only; deleted only with the employment, by person erasure or by the leaver retention purge.'},
+  {table:'payroll_learning_run',column:'company_id',disposition:'other',note:'Append-only record of each payroll learning run for the company (2012): counts only; a trigger refuses UPDATE and DELETE.'},
+  {table:'personnel_import_assistance_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An AI-assisted personnel import attempt for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_attempt',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'An employee import AI evaluation for this company is retained until its own expiry owner removes it.'},
+  {table:'employee_import_evaluation_run_membership',column:'company_id',disposition:'other',existsFunction:'app.ai_assistance_company_in_use',note:'The model-run membership of an employee import AI evaluation retains its company with the evaluation.'},
+  {table:'import_attempt_item',column:'company_id',disposition:'other',existsFunction:'app.import_history_company_in_use',note:'Personnel import history (ADR-0155) is append-only audit of what each file changed for this company; it is retained, never cascaded.'},
+  {table:'bank_import_row',column:'company_id',disposition:'other',note:'Bank and Statutory import source rows, validation and application outcomes retain their company; deleting a company must not cascade this import history.'},
+  {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
+  // 929ea296 (PR126) — tax-basis corrections are audited payroll tax evidence: previews, batches, events and revisions refuse the delete.
+  {table:'payroll_reconciliation_generation',column:'company_id',disposition:'payroll',existsFunction:'app.payroll_reconciliation_company_in_use',note:'Automated reconciliation retains its source company and processing receipt.'},
+  {table:'payroll_reconciliation_remark',column:'company_id',disposition:'payroll',existsFunction:'app.payroll_reconciliation_company_in_use',note:'HR remarks retain their paying company with the reconciliation record.'},
+  {table:'payroll_tax_basis_preview',column:'company_id',disposition:'payroll',note:'A tax-basis recalculation preview over the company\'s closed payroll.'},
+  {table:'payroll_tax_basis_batch',column:'company_id',disposition:'payroll',note:'A confirmed tax-basis correction batch.'},
+  {table:'payroll_tax_basis_event',column:'company_id',disposition:'payroll',note:'The append-only audit trail of a tax-basis correction batch.'},
+  {table:'payroll_tax_basis_revision',column:'company_id',disposition:'payroll',note:'A corrected tax basis for one issued payslip; the payslip itself is unchanged.'},
+  { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
+  { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
+  { table: 'job_document_form', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Versioned authored form definitions retain their company and must not be erased by company setup deletion.' },
+  {table:'attendance_clock_policy_revision',column:'company_id',disposition:'other',note:'Retain the company named by its dated Attendance clock policy.'},
+  {table:'attendance_group_policy_revision',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'attendance_overtime_policy_part',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'attendance_policy_attested_effect',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'attendance_policy_company_epoch',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'attendance_policy_final_receipt',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'attendance_policy_request_contract',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'employee_home_configuration_revision',column:'company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'notice',column:'owner_company_id',disposition:'other',existsFunction:'app.retained_company_history_in_use',note:'Immutable policy, approval, Home or notice history retains its original company; expose only a scoped retention boolean.'},
+  {table:'reward_policy_group_target',column:'company_id',disposition:'other',existsFunction:'app.reward_policy_group_company_in_use',note:'Immutable shared reward configuration versions retain each explicit company/unit pair; expose only the authorised company retention boolean.'},
+  { table: 'lc_v9_case', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Retained offboarding facts and employee lifecycle history keep their original company.' },
+  { table: 'lc_v9_case_revision', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable V9 case revisions retain their original company after employee transfers.' },
+  { table: 'lc_v9_file', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Employee document files retain their company even when the case is not visible to an organisation administrator.' },
+  { table: 'lc_v9_email_delivery', column: 'company_id', disposition: 'employees', existsFunction: 'app.lc_v9_company_employee_history_in_use', note: 'Immutable employee communication intents and delivery receipts retain their company without exposing message content.' },
+  { table: 'lc_v9_email_hold', column: 'company_id', disposition: 'employees', note: 'Held workflow email steps of an On/Off Boarding case (5460) keep the case company; released holds stay as history and are never deleted.' },
+  { table: 'personnel_posting', column: 'company_id', disposition: 'employees', note: 'Personnel postings (5741) are proposed employment changes for the company\'s employees; approved postings stay as the record of who approved which movement.' },
+  { table: 'probation_access_member', column: 'company_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'A person given Probation access scoped to the company (5763); revoke or retire it first, its history stays.' },
+  { table: 'probation_access_member', column: 'business_group_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'A Probation access scope naming the company as business group (5763); revoke or retire it first.' },
+  { table: 'probation_form_import', column: 'company_id', disposition: 'employees', existsFunction: 'app.probation_reshape_company_in_use', note: 'Imported saved evaluation forms (5762) are retained employee records with their original bytes.' },
+  { table: 'probation_settings_scope_member', column: 'company_id', disposition: 'other', existsFunction: 'app.probation_reshape_company_in_use', note: 'The company belongs to a Probation company setting (5742); move it out of the setting first.' },
+  { table: 'lc_v9_payroll_handover', column: 'company_id', disposition: 'payroll', note: 'Frozen final-pay handovers and their review history retain the company as payroll evidence.' },
+  { table: 'lc_onboarding_case', column: 'company_id', disposition: 'employees', note: 'Onboarding source identity, tasks, approvals and handover history must survive company changes.' },
+  { table: 'lc_onboarding_case_revision', column:'company_id', disposition:'employees', note:'Immutable onboarding case history survives company changes.' },
+  { table: 'lc_onboarding_private_revision', column:'company_id', disposition:'employees', note:'Sensitive onboarding history retains HR-only access.' },
+  { table: 'lc_onboarding_private', column: 'company_id', disposition: 'employees', note: 'HR-only onboarding facts retain company-scoped access.' },
+  { table: 'attendance_workflow_template', column: 'company_id', disposition: 'other', note: 'Immutable approval template versions are retained configuration history.' },
+  { table: 'attendance_workflow_company', column: 'company_id', disposition: 'other', note: 'Immutable shared workflow assignments are retained configuration history.' },
+  { table: 'attendance_workflow_setting', column: 'company_id', disposition: 'config', note: 'Attendance workflow enablement has no meaning after its company is deleted.' },
+  { table: 'attendance_workflow_request', column: 'company_id', disposition: 'employees', note: 'Submitted routing is employee decision history and must be retained.' },
+  { table: 'mobile_offline_context', column: 'company_id', disposition: 'employees', note: 'Offline clocking evidence (0647): an issued context and its claims are an employee\'s attendance record. Each is bound to an employment of this company, so the employment row already refuses the delete; no visibility function is needed.' },
+  { table: 'replacement_holiday_policy', column: 'company_id', disposition: 'other', note: 'Published replacement-holiday policy versions are retained configuration history, not disposable setup.' },
+  { table: 'replacement_holiday', column: 'company_id', disposition: 'employees', existsFunction: 'app.replacement_holiday_company_in_use', note: 'An employee-specific replacement holiday retains its original company after an entity transfer; expose only a scoped retention boolean.' },
+  { table: 'replacement_holiday_revision', column: 'company_id', disposition: 'employees', existsFunction: 'app.replacement_holiday_company_in_use', note: 'Immutable replacement-holiday revisions retain their company independently of current employment visibility.' },
+  // ── employees: any row refuses ───────────────────────────────────────────────────────────────────────
+  { table: 'employment', column: 'company_id', disposition: 'employees', note: 'The employment itself, terminated ones included: a former employee is still employment history.' },
+  { table: 'assignment', column: 'company_id', disposition: 'employees', note: 'An employee\'s placement (department, position) over time. Exists only alongside an employment.' },
+  { table: 'employee_draft', column: 'company_id', disposition: 'employees', note: 'An unfinished Create New Employee record, which may hold a reserved Employee ID. The plan counts drafts as employee records.' },
+  { table: 'employee_import_run', column: 'company_id', disposition: 'employees', note: 'A bulk employee import into this company: the record of who was created and from which file.' },
+  { table: 'employment_tax_scheme_my', column: 'company_id', disposition: 'employees', note: 'An employee\'s declared Malaysian tax scheme. Per employment, so it is an employee record.' },
+  { table: 'employment_tax_selection_my', column: 'company_id', disposition: 'employees', note: 'An employee\'s tax-scheme selection and its provenance. Per employment.' },
+  { table: 'lc_case', column: 'company_id', disposition: 'employees', note: 'An onboarding or offboarding case (ADR-0095): the checklist that follows a person into or out of the company, with their staff-only intake details. An employee-lifecycle record, so it refuses like one.' },
+  { table: 'it_requisition', column: 'company_id', disposition: 'employees', note: 'An IT requisition or return raised for a person (ADR-0095), with its approval trail and the checklist of what was provisioned or revoked. Evidence of who had access.' },
+  { table: 'it_asset_request', column: 'company_id', disposition: 'employees', note: 'An employee\'s equipment request (ADR-0095) with its approval trail.' },
+
+  // ── payroll: any row refuses ─────────────────────────────────────────────────────────────────────────
+  { table: 'information_payslip_snapshot', column: 'company_id', disposition: 'payroll', note: 'Immutable historical payslip display evidence remains with its paying company, including after a legitimate payroll reset.' },
+  { table: 'pay_formula_test', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable saved formula tests retain their selected paying company and private calculation evidence.' },
+  { table: 'pay_formula_evaluation', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable payroll formula evaluations retain the original paying company, including after a payroll reset or draft deletion.' },
+  { table: 'payroll_batch', column: 'company_id', disposition: 'payroll', note: 'A payroll run. Its payslips hang off it, so this is where every payslip is counted.' },
+  { table: 'pay_period', column: 'company_id', disposition: 'payroll', note: 'A payroll period opened or closed for the company.' },
+  { table: 'pcb_payment', column: 'company_id', disposition: 'payroll', note: 'A recorded PCB tax payment to LHDN. Money that has left the company.' },
+  { table: 'payroll_individual_txn', column: 'company_id', disposition: 'payroll', note: 'A one-off payroll transaction keyed for an employee.' },
+  { table: 'statutory_report', column: 'company_id', disposition: 'payroll', note: 'A generated or filed statutory report (EPF, SOCSO, EIS, PCB, EA). A filing is evidence.' },
+  { table: 'back_pay_run', column: 'company_id', disposition: 'payroll', note: 'A back-pay run against a past period.' },
+
+  // ADR-0106: definition and calculation history survives retries and draft payroll teardown.
+  { table: 'attendance_allowance_version', column: 'company_id', disposition: 'payroll', note: 'An immutable allowance definition version. Preserve the basis of a payroll calculation even before the first transfer.' },
+  { table: 'attendance_allowance_result', column: 'company_id', disposition: 'payroll', note: 'An allowance period calculation with employee and source evidence. Financial history is never company setup.' },
+  { table: 'attendance_allowance_result_revision', column: 'company_id', disposition: 'payroll', note: 'An immutable prior allowance calculation, retained after corrections and payroll source replacement.' },
+  { table: 'payroll_attendance_allowance_source', column: 'company_id', disposition: 'payroll', note: 'An allowance contribution currently owned by a payroll run. Deleting company setup must never remove money inputs.' },
+  { table: 'attendance_allowance_transfer', column: 'company_id', disposition: 'payroll', note: 'A successful or failed allowance transfer receipt, including the original run reference after draft teardown.' },
+
+  { table: 'overtime_pattern', column: 'creation_company_id', disposition: 'payroll', note: 'An overtime pattern retains its creation-company provenance; archive it without erasing the calculation basis.' },
+  { table: 'overtime_pattern_version', column: 'creation_company_id', disposition: 'payroll', note: 'An overtime definition version retains its creation company, including historical and unactivated versions.' },
+  { table: 'overtime_pattern_version_company', column: 'company_id', disposition: 'payroll', note: 'The exact company scope of an overtime version is retained financial configuration.' },
+  { table: 'attendance_overtime_source', column: 'company_id', disposition: 'payroll', note: 'A recorded overtime attendance source retains its dated financial company.' },
+  { table: 'attendance_overtime_personnel_context', column: 'company_id', disposition: 'payroll', note: 'Frozen Personnel facts supporting overtime remain attached to their recorded company.' },
+  { table: 'attendance_overtime_calculation', column: 'company_id', disposition: 'payroll', note: 'An immutable overtime calculation retains its financial company even after correction.' },
+  { table: 'attendance_overtime_calculation_evidence', column: 'company_id', disposition: 'payroll', note: 'Private calculation evidence must never be removed with company setup.' },
+  { table: 'attendance_overtime_line', column: 'company_id', disposition: 'payroll', note: 'An exact overtime earning line is retained money evidence.' },
+  { table: 'overtime_source_settlement', column: 'company_id', disposition: 'payroll', note: 'A cash or TOIL settlement receipt retains its company, including released claims.' },
+
+  { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
+  { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
+  { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },
+
+  { table: 'reward_company_year_review', column: 'company_id', disposition: 'payroll', existsFunction: 'app.expansion_reward_company_in_use', note: 'Company-year admission retains every planned or uploaded annual review.' },
+
+  // Approval, access and preview history can be hidden from the deleting administrator. Expose only a scoped boolean.
+  { table: 'company_registration_classification', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Explicit statutory-readiness classification and its recorded actor retain the employer identity.' },
+  { table: 'job_architecture_import_preview', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'A private preview retains its company and file/source fingerprints, including after consumption.' },
+  { table: 'job_architecture_jd_publication', column: 'variant_company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'A current company-specific publication retains its company.' },
+  { table: 'job_architecture_jd_publication_history', column: 'variant_company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Historical company-specific publications retain their company.' },
+  { table: 'job_architecture_position_revision', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'An approved position mapping retains its company and source position.' },
+  { table: 'job_architecture_proposal', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Pending and decided proposals retain the company and all affected scopes.' },
+  { table: 'job_architecture_seat', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated access seat history is never removed with company setup.' },
+  { table: 'job_architecture_suggestion', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Advisory source and reviewer provenance retain the original company.' },
+  { table: 'reward_page_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated Rewards page access is deliberately ended and retained.' },
+  { table: 'reward_pat_version', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Company PAT versions retain setup, maker and checker provenance.' },
+  { table: 'reward_plan_company', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Plan participation and historical versions retain their company.' },
+  { table: 'reward_setup_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.expansion_other_company_in_use', note: 'Dated Rewards setup authority retains its company scope.' },
+
+  // ── other links: any row refuses until the link is removed ───────────────────────────────────────────
+  { table: 'company', column: 'parent_company_id', disposition: 'other', note: 'A sub-company. Re-parent or delete it first; deleting a parent must never orphan a subtree.' },
+  { table: 'role_assignment', column: 'company_id', disposition: 'other', note: 'A user given a role scoped to this company. Access is removed deliberately, never as a side effect.' },
+  { table: 'access_group_grant', column: 'company_id', disposition: 'other', existsFunction: 'app.access_group_grant_company_in_use', note: 'Current and retired group grants retain the company scope of access history.' },
+  { table: 'access_membership', column: 'company_id', disposition: 'other', existsFunction: 'app.access_membership_company_in_use', note: 'Current and retired custom memberships retain the company scope of access history.' },
+  { table: 'access_user_override', column: 'company_id', disposition: 'other', existsFunction: 'app.access_user_override_company_in_use', note: 'Current and retired individual allow/deny decisions retain their original company scope.' },
+  { table: 'app_invitation', column: 'company_id', disposition: 'other', note: 'An invitation to join with a role at this company — an access grant waiting to happen.' },
+  { table: 'app_manual_identity_enrollment', column: 'company_id', disposition: 'other', existsFunction: 'app.manual_identity_company_in_use', note: 'Manual account enrollment is retained access history, including cancelled attempts. Never delete its company scope implicitly.' },
+  { table: 'reporting_line', column: 'scope_company_id', disposition: 'other', note: 'A reporting line scoped to this company. It belongs to employments, possibly of another company.' },
+  { table: 'review_cycle', column: 'company_id', disposition: 'other', note: 'A performance review cycle run for this company.' },
+  { table: 'performance_assessment_catalogue', column: 'company_id', disposition: 'other', existsFunction: 'app.assessment_catalogue_company_in_use', note: 'Saved future-cycle catalogue definitions retain their company scope until deliberately removed.' },
+  { table: 'performance_assessment_profit_achievement', column: 'company_id', disposition: 'other', existsFunction: 'app.assessment_profit_company_in_use', note: 'A recorded company achievement supports calibration decisions and retains its original company even in a group cycle.' },
+  { table: 'performance_kpi_library', column: 'group_company_id', disposition: 'other', existsFunction: 'app.performance_kpi_library_group_in_use', note: 'Retain the native group scope of assessment catalogue entries.' },
+  { table: 'performance_kpi_library', column: 'company_id', disposition: 'other', existsFunction: 'app.performance_kpi_library_company_in_use', note: 'Retain the company scope of assessment catalogue entries.' },
+  { table: 'performance_onehr_review', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_review_company_in_use', note: 'The opening-company snapshot of an assessment remains retained history after an employee transfers company, including in group-wide cycles.' },
+  { table: 'performance_onehr_calibration', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_calibration_company_in_use', note: 'A company-scoped calibration retains its original cohort scope and approval history even when its members transfer away.' },
+  { table: 'performance_leader_seat', column: 'company_id', disposition: 'other', existsFunction: 'app.onehr_leader_seat_company_in_use', note: 'A business unit or business group CEO seat anchored on this company is dated history of who calibrated it; seats are ended, never deleted.' },
+  { table: 'performance_assessment_unit_exclusion', column: 'company_id', disposition: 'other', existsFunction: 'app.assessment_unit_exclusion_company_in_use', note: 'A cycle exclusion rule naming this company (D-P1-22) is the record of who took no part in that review; rules are ended, never deleted.' },
+  { table: 'tenant_module', column: 'company_id', disposition: 'other', note: 'A module grant scoped to this company. Composite key with tenant_id. Entitlement is the platform\'s to remove.' },
+  { table: 'module_change_request', column: 'company_id', disposition: 'other', note: 'A module activation request for this company. Composite key with tenant_id.' },
+  { table: 'lc_staff', column: 'company_id', disposition: 'other', note: 'A user named as Onboarding & IT module staff for this company (ADR-0095). Access is removed deliberately, never as a side effect.' },
+  { table: 'it_asset', column: 'company_id', disposition: 'other', note: 'An IT asset registered to this company (ADR-0095), with its holder history. The register is a record of who held what.' },
+
+  // ── config: deleted with the company, in this order ──────────────────────────────────────────────────
+  { table: 'company_logo', column: 'company_id', disposition: 'config', note: 'The company\'s logo image, held in its own side table.' },
+  { table: 'company_statutory_my', column: 'company_id', disposition: 'config', note: 'The company\'s own EPF / SOCSO / LHDN registration numbers.' },
+  { table: 'company_statutory_authority', column: 'company_id', disposition: 'config', note: 'Per-authority payment setup. Before company_bank_profile, which it references.' },
+  { table: 'bank_payment_export', column: 'company_id', disposition: 'payroll', note: 'An immutable generated bank-file artifact and its payroll snapshot evidence are retained financial history.' },
+  { table: 'company_bank_profile', column: 'company_id', disposition: 'config', note: 'The company\'s disbursement bank accounts.' },
+  { table: 'company_payroll_config', column: 'company_id', disposition: 'config', note: 'Cut-off and pay days. Before payroll_policy, which it references.' },
+  { table: 'payroll_policy', column: 'company_id', disposition: 'config', note: 'The company\'s payroll policies.' },
+  { table: 'payslip_information_setting', column: 'company_id', disposition: 'config', note: 'Payslip display settings. One row on ABC Comapny on production.' },
+  { table: 'lc_company_config', column: 'company_id', disposition: 'config', note: 'The company\'s IT approval levels and access systems (ADR-0095). Setup only.' },
+  { table: 'lc_step_def', column: 'company_id', disposition: 'config', note: 'Company-specific onboarding / offboarding step definitions (ADR-0095). Setup only; steps already ticked on cases live on the cases.' },
+  { table: 'it_provision_def', column: 'company_id', disposition: 'config', note: 'The company\'s extra IT requisition / return checklist items (ADR-0095). Setup only; the items on a requisition live on the requisition.' },
+  { table: 'payroll_cycle', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP: createCompany seeds six. Six rows on ABC Comapny — the rows that made Delete fail.' },
+  { table: 'payroll_anomaly_config', column: 'company_id', disposition: 'config', note: 'Per-company payroll anomaly detector settings.' },
+  { table: 'payroll_permission_grant', column: 'company_id', disposition: 'config', note: 'Per-company payroll permission overrides. ON DELETE CASCADE already; deleted explicitly for one rule.' },
+  { table: 'employee_id_config', column: 'company_id', disposition: 'config', note: 'The Employee ID running-number setup. A draft holding one of its numbers is an employee record and refuses first.' },
+  { table: 'leave_approval_policy', column: 'company_id', disposition: 'config', note: 'Leave approval routing. Before department, position and business_unit, which it may name.' },
+  { table: 'leave_encashment_policy', column: 'company_id', disposition: 'config', note: 'Leave encashment rules for this company. Setup only; encashment paid is payroll.' },
+  { table: 'attendance_allowance_policy', column: 'company_id', disposition: 'config', note: 'Attendance allowance rules for this company. Setup only; paid allowances live in payroll.' },
+  { table: 'attendance_policy', column: 'company_id', disposition: 'config', note: 'The company\'s attendance policy (grace periods, clocking rules). Setup only.' },
+  { table: 'shift', column: 'company_id', disposition: 'config', note: 'Shift definitions. Before attendance_rule, which a shift references.' },
+  { table: 'attendance_rule', column: 'company_id', disposition: 'config', note: 'Attendance schedule rules.' },
+  { table: 'toil_policy', column: 'company_id', disposition: 'config', note: 'THE AUTOMATIC SETUP for the TOIL module (the leave credit policy). One row on ABC Comapny.' },
+  { table: 'holiday', column: 'company_id', disposition: 'config', note: 'Company-specific holidays. One in a holiday group refuses (see the dependents).' },
+  { table: 'label_company_assignment', column: 'company_id', disposition: 'config', note: 'Which shared system labels this company uses. Removes the link, never the label.' },
+  { table: 'clocking_location_company', column: 'company_id', disposition: 'config', note: 'r423 (0517) — which shared clocking locations this company may use. Removes the link, never the location. A company with employees refuses first, so no assigned employee loses a usable site this way.' },
+  {
+    table: 'usage_snapshot',
+    column: 'company_id',
+    disposition: 'config',
+    refuseWhere: [
+      // active_users counts users through an employment at the company (core/usage-metering.ts), so both
+      // figures are evidence of employees.
+      { reason: 'employees', where: '{r}.active_employments > 0 or {r}.active_users > 0' },
+      { reason: 'payroll', where: '{r}.payslips_generated > 0' },
+    ],
+    // The metering record stays SELECT-only for the app role (0313, pinned by test/module-entitlement-rls);
+    // 0511's SECURITY DEFINER function removes the all-zero rows and nothing else.
+    deleteFunction: 'app.delete_unused_usage_snapshots',
+    note: 'Nightly platform usage. All-zero rows (five on ABC Comapny) are deleted and counted on company.deleted — the plan\'s decision; migration 0511\'s function removes exactly those. A non-zero row is evidence and refuses. Composite key with tenant_id.',
+  },
+
+  // ── config-if-unreferenced: the company's own org structure, deleted unless something outside uses it ──
+  { table: 'department', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Before business_unit, which a department references.' },
+  { table: 'position', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Positions of this company. An assignment or approval rule elsewhere naming one refuses.' },
+  { table: 'location', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Work locations; a clocking location may point at one.' },
+  { table: 'cost_center', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Cost centres of this company.' },
+  { table: 'business_unit', column: 'company_id', disposition: 'config-if-unreferenced', note: 'Last: departments, assignments and approval rules reference it.' },
+];
+
+/** A foreign key or retained UUID array INTO a table deleted with the company. */
+export type CompanyConfigDependent = {
+  table: string;
+  column: string;
+  /** The cascaded table it references (by `id`). */
+  references: string;
+  /** Absent = real foreign key. A retained UUID array is guarded by its owning table's trigger. */
+  referenceKind?: 'uuid-array';
+  /** Fixed tenant/target-admin-scoped boolean for retained rows hidden by current employee visibility. */
+  existsFunction?: string;
+  /**
+   * `part`   — an ON DELETE CASCADE child that is part of the parent row (a shift's OT windows). Goes with it.
+   * `blocks` — a row here pointing at one of the company's rows refuses the delete as `other`, unless the row
+   *            is itself one of the company's own rows being deleted.
+   */
+  effect: 'part' | 'blocks';
+  note: string;
+};
+
+export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'company_organisation_mapping',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.approved_feedback_company_in_use',note:'Reviewed dated company mappings retain the actual Business Unit identity, including shared units created by another company.'},
+  {table:'contract_role_assignment',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
+  {table:'probation_access',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
+  {table:'probation_access',column:'department_id',references:'department',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
+  {table:'payroll_history_import_record',column:'cycle_id',references:'payroll_cycle',effect:'blocks',note:'Imported payroll identities retain the exact configured cycle even after every effective value is retired.'},
+  { table: 'employment_cost_allocation_row', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_architecture_outlier', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.expansion_other_company_in_use', note: 'An outlier retains the Business Unit referenced by its investigation.' },
+  { table: 'job_architecture_position_revision', column: 'position_id', references: 'position', effect: 'blocks', existsFunction: 'app.expansion_other_company_in_use', note: 'An approved mapping retains the exact source position.' },
+  { table: 'job_document_revision', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_document_revision', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_document_revision', column: 'location_id', references: 'location', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_document_revision', column: 'position_id', references: 'position', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  { table: 'job_document_revision', column: 'reports_to_position_id', references: 'position', effect: 'blocks', existsFunction: 'app.board3_source_company_in_use', note: 'Retained Board 3 history keeps this organisation reference even outside current record visibility; expose only a scoped source-company retention boolean.' },
+  {table:'reward_policy_group_target',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.reward_policy_group_source_company_in_use',note:'Historic shared configuration versions retain their source business unit even when a global unit is used in another company.'},
+  { table: 'replacement_holiday', column: 'source_holiday_id', references: 'holiday', effect: 'blocks', existsFunction: 'app.replacement_holiday_source_company_in_use', note: 'A retained employee allocation may reference another company’s original holiday. Preserve that source without exposing the employee allocation outside current visibility.' },
+  { table: 'attendance_rule_shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Explicit Schedule Group membership may serve shared shifts; remove it through its owner before deleting company setup.' },
+  { table: 'attendance_rule_shift', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A Schedule Group explicitly retains this shift; company deletion must not silently change its allowed pool.' },
+  {table:'attendance_clock_policy_revision',column:'rule_id',references:'attendance_rule',effect:'blocks',existsFunction:'app.attendance_clock_rule_company_in_use',note:'A dated clock policy retains the exact Schedule Group, including legacy company-owned groups.'},
+  {table:'attendance_group_policy_revision',column:'rule_id',references:'attendance_rule',effect:'blocks',existsFunction:'app.attendance_policy_rule_company_in_use',note:'Immutable policy revisions retain their Schedule Group independently of current employment visibility.'},
+  { table: 'attendance_exception_revision', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable exception-policy revisions retain their Schedule Group.' },
+  { table: 'overtime_pattern', column: 'legacy_rule_id', references: 'attendance_rule', effect: 'blocks', note: 'The live bridge into retained legacy overtime history must be removed through the unused Schedule Group owner, not company cascade.' },
+  { table: 'overtime_pattern_legacy_binding', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'A retained overtime compatibility binding must not be silently detached by cascading company setup.' },
+  { table: 'attendance_day_adjustment', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'An audited date correction retains its selected shift. Company setup deletion must not erase another employment’s dated attendance basis.' },
+  { table: 'attendance_rotation', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Immutable rotation versions retain their Schedule Group. Deleting company-owned legacy setup must not erase saved calendar history.' },
+  { table: 'attendance_rotation', column: 'allowed_shift_ids', references: 'shift', referenceKind: 'uuid-array', effect: 'blocks', note: 'Saved allowed pools retain every source shift, including company-owned legacy templates. The shift retention trigger forbids deletion; refuse it before cascading company setup.' },
+  { table: 'attendance_allowance_version', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'Immutable definition history retains its policy, even when a company has never transferred an allowance.' },
+  { table: 'attendance_allowance_result', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A period calculation retains the policy that explains its financial outcome.' },
+  { table: 'payroll_attendance_allowance_source', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A payroll contribution retains the policy that owns it; company deletion cannot detach it.' },
+  { table: 'attendance_allowance_transfer', column: 'policy_id', references: 'attendance_allowance_policy', effect: 'blocks', note: 'A transfer attempt retains the policy identity for later audit and operator resolution.' },
+  { table: 'reward_unit', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reward review retains its business unit and financial approval history; it must never disappear with company setup.' },
+  { table: 'shift_ot_window', column: 'shift_id', references: 'shift', effect: 'part', note: 'A shift\'s clock-time OT windows. ON DELETE CASCADE.' },
+  { table: 'attendance_rule_ot_row', column: 'rule_id', references: 'attendance_rule', effect: 'part', note: 'A rule\'s OT rows. ON DELETE CASCADE.' },
+  { table: 'holiday_group_holiday', column: 'holiday_id', references: 'holiday', effect: 'blocks', note: 'ON DELETE CASCADE, but a holiday group may serve another company: removing our holiday from it would change their calendar. Refuses.' },
+  { table: 'company_statutory_authority', column: 'bank_profile_id', references: 'company_bank_profile', effect: 'blocks', note: 'ON DELETE SET NULL. Another company paying from our account would silently lose it.' },
+  { table: 'company_payroll_config', column: 'default_payroll_policy_id', references: 'payroll_policy', effect: 'blocks', note: 'Another company defaulting to our payroll policy.' },
+  { table: 'employment', column: 'payroll_policy_id', references: 'payroll_policy', effect: 'blocks', note: 'ON DELETE SET NULL. Another company\'s employee on our payroll policy.' },
+  { table: 'employment', column: 'attendance_rule_id', references: 'attendance_rule', effect: 'blocks', note: 'ON DELETE SET NULL. Another company\'s employee on our attendance rule.' },
+  { table: 'employment', column: 'default_shift_id', references: 'shift', effect: 'blocks', note: 'ON DELETE SET NULL. Another company\'s employee on our shift.' },
+  { table: 'shift', column: 'rule_id', references: 'attendance_rule', effect: 'blocks', note: 'Another company\'s shift built on our attendance rule.' },
+  { table: 'employment_shift_arrangement', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'Someone\'s dated shift arrangement on our shift.' },
+  { table: 'roster_assignment', column: 'shift_id', references: 'shift', effect: 'blocks', note: 'A rostered day on our shift.' },
+  { table: 'toil_accrual', column: 'policy_id', references: 'toil_policy', effect: 'blocks', note: 'TOIL accrued under our policy: leave somebody earned.' },
+  { table: 'payroll_batch', column: 'payroll_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'A payroll run on our cycle. Our own runs refuse as payroll first.' },
+  { table: 'payroll_individual_txn', column: 'intended_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'A transaction aimed at our cycle.' },
+  { table: 'employment_pay_component', column: 'payroll_cycle_id', references: 'payroll_cycle', effect: 'blocks', note: 'r392 (4fffe638, 0514): a fixed transaction linked to our cycle. Refuses, like an individual transaction aimed at it.' },
+  { table: 'employee_draft', column: 'reserved_config_id', references: 'employee_id_config', effect: 'blocks', note: 'ON DELETE SET NULL. A draft holding a number from our running-number setup.' },
+  { table: 'leave_approval_policy', column: 'department_id', references: 'department', effect: 'blocks', note: 'Another company\'s (or a tenant-wide) approval rule naming our department.' },
+  { table: 'performance_assessment_unit_exclusion', column: 'department_id', references: 'department', effect: 'blocks', existsFunction: 'app.assessment_unit_exclusion_company_in_use', note: 'A cycle exclusion rule naming our department (D-P1-22) is retained review history; rules are ended, never deleted.' },
+  { table: 'leave_approval_policy', column: 'position_id', references: 'position', effect: 'blocks', note: 'An approval rule outside the company naming our position.' },
+  { table: 'leave_approval_policy', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'An approval rule outside the company naming our business unit.' },
+  { table: 'department', column: 'parent_department_id', references: 'department', effect: 'blocks', note: 'Another company\'s department nested under ours.' },
+  { table: 'department', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'Another company\'s department in our business unit.' },
+  { table: 'assignment', column: 'department_id', references: 'department', effect: 'blocks', note: 'Somebody assigned to our department. Our own employees refuse as employees first.' },
+  { table: 'assignment', column: 'position_id', references: 'position', effect: 'blocks', note: 'Somebody in our position.' },
+  { table: 'assignment', column: 'location_id', references: 'location', effect: 'blocks', note: 'Somebody working at our location.' },
+  { table: 'assignment', column: 'cost_center_id', references: 'cost_center', effect: 'blocks', note: 'Somebody charged to our cost centre.' },
+  { table: 'assignment', column: 'business_unit_id', references: 'business_unit', effect: 'blocks', note: 'Somebody in our business unit.' },
+  { table: 'clocking_location', column: 'location_id', references: 'location', effect: 'blocks', note: 'A clocking geofence on our location.' },
+  { table: 'reporting_line', column: 'scope_department_id', references: 'department', effect: 'blocks', note: 'A reporting line scoped to our department.' },
+  { table: 'reporting_line', column: 'scope_business_unit_id', references: 'business_unit', effect: 'blocks', note: 'A reporting line scoped to our business unit.' },
+  // AI v2 Phase 2 hardening (2011): a group-scoped standing acknowledgement names a department (ON DELETE CASCADE).
+  { table: 'payroll_check_acknowledgement', column: 'department_id', references: 'department', effect: 'blocks', note: 'A standing acknowledgement scoped to our department is retained payroll evidence; it is revoked, never silently removed with company setup.' },
+];
+
+/** The tables whose company rows are deleted with the company, in deletion order. */
+export const cascadedReferrers = (): CompanyRef[] =>
+  COMPANY_REFERRERS.filter((r) => r.disposition === 'config' || r.disposition === 'config-if-unreferenced');
+
+const isCascadedTable = (table: string) => cascadedReferrers().some((r) => r.table === table);
+const cascadedColumn = (table: string) => cascadedReferrers().find((r) => r.table === table)!.column;
+
+/**
+ * The refusal reason for the company identified by `idExpr`, as one SQL `case` expression: `'employees'`,
+ * `'payroll'`, `'other'`, or NULL when the delete will succeed.
+ *
+ * THE ONLY PLACE THE ANSWER IS COMPUTED. `companyDeleteStatus` (what the panel shows) and `deleteCompany`
+ * (what the server does) both run this text, so the panel cannot offer a confirmation the delete then
+ * refuses, which is the reported fault. `idExpr` is a raw column reference (`company.id`), never input; the
+ * tables and columns come from the declarations above. Callers bind the id itself as a parameter.
+ */
+export function companyDeleteBlockSqlText(idExpr: string): string {
+  // Every identifier double-quoted: `position` is an SQL keyword, and quoting all of them is cheaper than
+  // remembering which.
+  const q = (name: string) => `"${name}"`;
+  const groups: Record<CompanyDeleteBlock, string[]> = { employees: [], payroll: [], other: [] };
+  COMPANY_REFERRERS.forEach((r, i) => {
+    const a = `cr${i}`;
+    const from = `from ${q(r.table)} ${a} where ${a}.${q(r.column)} = ${idExpr}`;
+    if (r.disposition === 'employees' || r.disposition === 'payroll' || r.disposition === 'other') {
+      groups[r.disposition].push(r.existsFunction ? `${r.existsFunction}(${idExpr})` : `exists (select 1 ${from})`);
+    }
+    for (const w of r.refuseWhere ?? []) {
+      groups[w.reason].push(`exists (select 1 ${from} and (${w.where.split('{r}').join(a)}))`);
+    }
+  });
+  COMPANY_CONFIG_DEPENDENTS.forEach((d, i) => {
+    if (d.effect !== 'blocks') return;
+    if (d.existsFunction) {
+      groups.other.push(`${d.existsFunction}(${idExpr})`);
+      return;
+    }
+    const dep = `cd${i}`;
+    const own = `co${i}`;
+    // Our row being referenced, by a row that is not itself one of ours being deleted with us.
+    const outside = isCascadedTable(d.table)
+      ? ` and ${dep}.${q(cascadedColumn(d.table))} is distinct from ${idExpr}`
+      : '';
+    const link=d.referenceKind==='uuid-array' ? `${own}.id = ANY(${dep}.${q(d.column)})` : `${own}.id = ${dep}.${q(d.column)}`;
+    groups.other.push(
+      `exists (select 1 from ${q(d.table)} ${dep} join ${q(d.references)} ${own} on ${link} ` +
+        `where ${own}.${q(cascadedColumn(d.references))} = ${idExpr}${outside})`,
+    );
+  });
+  const when = (reason: CompanyDeleteBlock) => `when ${[...new Set(groups[reason])].join(' or ')} then '${reason}'`;
+  return `case ${when('employees')} ${when('payroll')} ${when('other')} else null end`;
+}

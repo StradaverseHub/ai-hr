@@ -1,0 +1,92 @@
+[
+  {
+    "slug": "performance-faq-kpi-justification",
+    "tags": "kpi,result,justification,check-in,evidence",
+    "order": 0
+  },
+  {
+    "slug": "performance-faq-good-360-comment",
+    "tags": "360,feedback,comment,principle,behaviour",
+    "order": 1
+  },
+  {
+    "slug": "performance-faq-star-justification",
+    "tags": "kpi,result,justification,competency,star,evidence,case",
+    "order": 1
+  },
+  {
+    "slug": "performance-faq-smart-development-goal",
+    "tags": "idp,development,plan,goal,smart,70-20-10",
+    "order": 2
+  },
+  {
+    "slug": "performance-faq-mobility-preference",
+    "tags": "career,mobility,profile,aspiration",
+    "order": 3
+  },
+  {
+    "slug": "performance-faq-review-overview",
+    "tags": "review,overview,journey,stages,order,pm,tm,idp,how it works",
+    "order": 10
+  },
+  {
+    "slug": "performance-faq-kpi-check-in",
+    "tags": "kpi,check-in,performance,results,pm,score,justification,confirm",
+    "order": 11
+  },
+  {
+    "slug": "performance-faq-performance-band",
+    "tags": "performance,band,rating,kpi,unacceptable,below,meets,above,outstanding,pm",
+    "order": 12
+  },
+  {
+    "slug": "performance-faq-360-feedback-about",
+    "tags": "360,feedback,leadership,principle,demonstrate,developing,anonymous,tm,peer",
+    "order": 13
+  },
+  {
+    "slug": "performance-faq-competency-assessment-about",
+    "tags": "competency,technical,self-assessment,demonstrate,developing,tm,skills",
+    "order": 14
+  },
+  {
+    "slug": "performance-faq-potential-band",
+    "tags": "potential,band,low,mid,high,360,talent",
+    "order": 15
+  },
+  {
+    "slug": "performance-faq-calibration-about",
+    "tags": "calibration,band,fairness,leaders,adjust,moderation,why did my band change",
+    "order": 16
+  },
+  {
+    "slug": "performance-faq-development-plan-about",
+    "tags": "idp,development,plan,goal,70-20-10,career,growth",
+    "order": 17
+  },
+  {
+    "slug": "performance-faq-career-profile-about",
+    "tags": "career,profile,aspiration,mobility,strengths,idp",
+    "order": 18
+  },
+  {
+    "slug": "performance-faq-after-submit",
+    "tags": "submit,approver,calibration,release,results,what happens next",
+    "order": 19
+  },
+  {
+    "slug": "performance-faq-confidentiality",
+    "tags": "confidential,anonymous,360,privacy,who can see,visibility",
+    "order": 20
+  },
+  {
+    "slug": "performance-faq-rating-scale",
+    "tags": "rating,scale,score,weight,kpi,five point,how is my score",
+    "order": 21
+  },
+  {
+    "slug": "performance-faq-rating-distribution",
+    "tags": "rating,distribution,outstanding,rare,meets expectation,target,why,curve,5,3",
+    "order": 22
+  }
+]

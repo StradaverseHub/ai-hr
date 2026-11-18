@@ -1,0 +1,729 @@
+/**
+ * 18504ca6 — EFFECTIVE DATE ON THE SHIFT ARRANGEMENT CARD: the dated writer and the card's history read.
+ *
+ * THE GAP. The Location card on the personnel Attendance tab is effective-dated; the Shift arrangement card
+ * directly below it was not. Saving there ran core/roster.ts assignEmployeeShift, which UPDATEs
+ * employment.shift_type + employment.default_shift_id IN PLACE — so the previous shift was gone, with no date
+ * and no history, and the system could not say which shift someone was on last month.
+ *
+ * WHAT THIS MODULE OWNS. `assignEmployeeShiftDated` is the CARD's write path: it appends a dated period to
+ * employment_shift_arrangement (migration 0421), closes the previous period the day before, and keeps
+ * employment.default_shift_id / shift_type up to date as a CACHE of the period in force today so every
+ * existing reader keeps working unchanged.
+ *
+ * WHY NOT JUST EXTEND core/roster.ts assignEmployeeShift. This round, three workstreams share these files and
+ * core/roster.ts belongs to another one; the ladder was therefore built as its own module (the same shape the
+ * plan's DESIGN CHOICE section describes — mirror the compensation ladder, not the Movement module). The two
+ * writers coexist safely because the resolvers fall back to employment.default_shift_id for any employment
+ * with NO ladder row, and the legacy writer's only production caller (backfillBackupShift) touches exactly
+ * those employments — the ones with no shift and therefore no ladder row. FOLLOW-UP for whoever owns
+ * core/roster.ts: assignEmployeeShift should delegate here, so a legacy write can never leave a ladder that
+ * already exists stale.
+ *
+ * THE DATE RULES (all four are the reporter's, from the approved plan):
+ *   · required, a real ISO date, and never earlier than the employee's own start date;
+ *   · a change may be dated in the past OR the future, but only AFTER the last change already recorded —
+ *     slotting one in BEFORE an existing entry is refused with a message that names the blocking date;
+ *   · saving twice for the SAME date REPLACES that entry (supersede + insert) instead of creating a second;
+ *   · periods can never overlap, because each simply runs until the next begins.
+ */
+import { and, asc, desc, eq, ilike, isNull, or } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { lockLeaveDependenciesWaitTx } from '../packs/leave/service';
+import { lockAccessConfigurationTx } from './access-configuration-lock';
+// 8cd601d0 — `attendanceRule` is the SCHEDULE GROUP table (870b79e2 named it; there is no second table
+// behind the name). The table is imported from db/schema, never core/attendance-rule: this file is not on
+// the attendance pack's import allowlist and a schema import is not a pack import (ADR-0080 D9).
+import { attendanceRule, appUser, company, employment, employmentShiftArrangement, person, shift } from '../db/schema';
+// 07ebd04d — the shared "does this pattern declare a working day?" count, through the PACK FACADE and not
+// `core/attendance` directly: this file is not on the attendance pack's import allowlist
+// (test/pack-drift-allowlist.json, which only ever shrinks), and ADR-0080 D9 says a core file that needs a
+// pack service takes packs/<pack>/service. Same route core/absence-days.ts takes for shiftDayKindFor.
+import { weekLookupTx, weekPatternWorkingDayCount } from '../packs/attendance/service';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import {
+  arrangementsForEmploymentTx,
+  liveArrangementsTx,
+  pickArrangementOn,
+  type ArrangementPeriod,
+} from './shift-arrangement-resolve';
+import {
+  ArchivedShiftError,
+  BackupShiftRequiredError,
+  ShiftHasNoWorkingPatternError,
+  assertShiftsAllowedForEmploymentsTx,
+  groupRuleIdTx,
+} from './roster';
+
+export {
+  arrangementsForEmploymentTx,
+  liveArrangementsTx,
+  pickArrangementOn,
+  type ArrangementPeriod,
+} from './shift-arrangement-resolve';
+
+/** The effective date was missing or not a real calendar date. */
+export class InvalidEffectiveDateError extends Error {
+  constructor() {
+    super('Enter a valid effective date (YYYY-MM-DD).');
+    this.name = 'InvalidEffectiveDateError';
+  }
+}
+
+/** The effective date is earlier than the employee's own start date. `startDate` is for the localized copy. */
+export class ShiftEffectiveBeforeStartError extends Error {
+  constructor(readonly startDate: string) {
+    super(`The effective date cannot be earlier than the employee's start date (${startDate}).`);
+    this.name = 'ShiftEffectiveBeforeStartError';
+  }
+}
+
+/**
+ * A change dated BEFORE one already recorded. Out of scope for v1 and disclosed to the reporter as such:
+ * inserting a period between two existing ones has to re-close both neighbours and re-answer every date in
+ * between, which is a bigger change than this item bought. `lastEffectiveFrom` names the blocking entry so
+ * the message on screen can too.
+ */
+export class ShiftBackInsertError extends Error {
+  constructor(readonly lastEffectiveFrom: string) {
+    super(
+      `This employee already has a shift change dated ${lastEffectiveFrom}. A change dated before that one cannot be added yet.`,
+    );
+    this.name = 'ShiftBackInsertError';
+  }
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** True only for a real calendar date in ISO form — "2026-02-30" and "2026-13-01" are refused. */
+function isRealIsoDate(v: string): boolean {
+  if (!ISO_DATE.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
+
+/** ISO date shifted by whole days, in UTC so no host timezone can move the calendar day. */
+function addDaysIso(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The employee's own start date — the floor for any effective date, and the valid_from migration 0421
+ * backfills. The SAME coalesce as the migration on purpose: hired_on is NOT NULL today, but if the two
+ * expressions ever disagreed an employment would get a backfilled period the writer then refused to extend.
+ */
+function startDateOf(emp: { hiredOn: string | null; joinDate: string | null; createdAt: Date }): string {
+  return emp.hiredOn ?? emp.joinDate ?? emp.createdAt.toISOString().slice(0, 10);
+}
+
+export type AssignEmployeeShiftDatedInput = {
+  employmentId: string;
+  shiftType: 'fixed' | 'roster';
+  shiftId: string | null;
+  /**
+   * The reporter's Effective date. The card always sends one. OMITTED means "replace the entry currently at
+   * the top of the ladder" (or start one at the employee's start date when there is none) — the legacy,
+   * undated semantics, kept so a non-UI caller cannot accidentally open a second period it never asked for.
+   */
+  effectiveFrom?: string | null;
+};
+
+/**
+ * Set the employee's shift arrangement FROM A DATE. One transaction: validate, close the open period, insert
+ * the new one, refresh the employment cache, append the audit event.
+ */
+export async function assignEmployeeShiftDated(
+  ctx: SessionContext,
+  p: AssignEmployeeShiftDatedInput,
+): Promise<{ id: string; effectiveFrom: string }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  const shiftId = p.shiftId || null;
+  // b8aa3466 — the backup shift is mandatory on BOTH arrangements; the same refusal the legacy writer gives.
+  if (!shiftId) throw new BackupShiftRequiredError();
+  return withTenant(ctx, async (tx) => {
+    // One employment's arrangement ladder. Its employment lock serialises the ladder read-then-write with
+    // every other writer of this person's schedule; shift and group definitions stay fixed under shared Access.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
+    const [emp] = await tx
+      .select({
+        id: employment.id,
+        hiredOn: employment.hiredOn,
+        joinDate: employment.joinDate,
+        createdAt: employment.createdAt,
+        beforeShift: employment.defaultShiftId,
+        beforeType: employment.shiftType,
+      })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp) throw new Error('Employment not found');
+
+    const [sh] = await tx
+      .select({
+        id: shift.id,
+        archivedAt: shift.archivedAt,
+        pattern: shift.weeklyPattern,
+        halfPattern: shift.halfPattern,
+        offPattern: shift.offPattern,
+        // 07ebd04d — the shift's Schedule Group, so this guard asks about the week the engine will use.
+        ruleId: shift.ruleId,
+      })
+      .from(shift)
+      .where(eq(shift.id, shiftId))
+      .limit(1);
+    if (!sh) throw new Error('Shift not found');
+    // The same two invariants the legacy writer enforces, and for the same reasons: an archived shift is not
+    // assignable (R33 f21d6eee — no company check, the library is shared), and a shift with no weekly working
+    // pattern would make EVERY unrostered day a rest day for this person (b8aa3466).
+    if (sh.archivedAt) throw new ArchivedShiftError();
+    // b8aa3466 — "has a working pattern" is Full ∪ HALF now: an all-half-days shift is walkable, and the
+    // guard exists to stop an UNWALKABLE backup shift making every day a rest day, not to stop half days.
+    // 07ebd04d — through the SHARED count (core/week-pattern.ts), not a second hand-written set union:
+    // this guard and core/roster.ts assignEmployeeShift enforce one invariant and had one copy of it each.
+    // And the week it counts is the RESOLVED one — since migration 0483 the Schedule Group can carry the
+    // working week and scheduleFor resolves the group's ahead of the shift's, so a guard reading only
+    // `shift.weekly_pattern` would refuse a shift that is walkable under its group. Same refusal, same
+    // reason, asked of the week that actually decides the days. The two guards stay byte-identical to
+    // each other, which is the point of them being written the same way.
+    const effectiveWeek = (await weekLookupTx(tx, await groupRuleIdTx(tx, p.employmentId), [sh.ruleId]))(sh.ruleId, sh);
+    if (weekPatternWorkingDayCount(effectiveWeek) === 0) throw new ShiftHasNoWorkingPatternError();
+    // 870b79e2 (r277) — THE THIRD INVARIANT, and the reason it is here and not on the card that posts to
+    // this writer. The ladder is one of four writers of "which shift is this person on"; a check on the
+    // Shift arrangement form would leave roster generation, the roster brush and the profile backup shift
+    // able to put the same employee on a shift their Schedule Group forbids. One definition, four callers
+    // — see core/roster.ts assertShiftsAllowedForEmploymentsTx. No group ⇒ no-op.
+
+    const rows = await arrangementsForEmploymentTx(tx, p.employmentId);
+    const last: ArrangementPeriod | undefined = rows[rows.length - 1];
+    const startDate = startDateOf(emp);
+
+    let effectiveFrom: string;
+    if (p.effectiveFrom == null || p.effectiveFrom === '') {
+      // Undated legacy semantics — replace the newest entry in place (or open the first one at the start date).
+      effectiveFrom = last?.validFrom ?? startDate;
+    } else {
+      effectiveFrom = p.effectiveFrom.trim();
+      if (!isRealIsoDate(effectiveFrom)) throw new InvalidEffectiveDateError();
+      if (effectiveFrom < startDate) throw new ShiftEffectiveBeforeStartError(startDate);
+      if (last && effectiveFrom < last.validFrom) throw new ShiftBackInsertError(last.validFrom);
+    }
+
+    await assertShiftsAllowedForEmploymentsTx(tx, [{ employmentId: p.employmentId, shiftId, shiftDate:effectiveFrom }]);
+
+    if (last && effectiveFrom === last.validFrom) {
+      // SAME DATE ⇒ REPLACE. Supersede FIRST so the row leaves the partial unique index
+      // (tenant, employment, valid_from) WHERE superseded_at IS NULL before its replacement enters it — the
+      // same ordering core/comp.ts supersedeCompensation uses against its EXCLUDE constraint.
+      await tx
+        .update(employmentShiftArrangement)
+        .set({ supersededAt: new Date() })
+        .where(
+          and(
+            eq(employmentShiftArrangement.employmentId, p.employmentId),
+            eq(employmentShiftArrangement.validFrom, last.validFrom),
+            isNull(employmentShiftArrangement.supersededAt),
+          ),
+        );
+    } else if (last) {
+      // A LATER date ⇒ the previous period is closed the day before, so the two can never overlap.
+      await tx
+        .update(employmentShiftArrangement)
+        .set({ validTo: addDaysIso(effectiveFrom, -1) })
+        .where(
+          and(
+            eq(employmentShiftArrangement.employmentId, p.employmentId),
+            eq(employmentShiftArrangement.validFrom, last.validFrom),
+            isNull(employmentShiftArrangement.supersededAt),
+          ),
+        );
+    }
+
+    await tx.insert(employmentShiftArrangement).values({
+      tenantId: ctx.tenantId,
+      employmentId: p.employmentId,
+      shiftType: p.shiftType,
+      shiftId,
+      validFrom: effectiveFrom,
+      validTo: null,
+      createdBy: ctx.userId ?? null,
+    });
+
+    // employment.default_shift_id / shift_type stay a CACHE of the period in force TODAY. A future-dated
+    // change therefore leaves them alone (the employee is still on their current shift), and every reader
+    // that has not been moved onto the ladder keeps answering exactly what it answers now. pickArrangementOn
+    // falls back to the earliest period, so the cache is never left null while a ladder exists.
+    const after = await arrangementsForEmploymentTx(tx, p.employmentId);
+    const inForce = pickArrangementOn(after, todayInKualaLumpur());
+    if (inForce) {
+      await tx
+        .update(employment)
+        .set({ shiftType: inForce.shiftType, defaultShiftId: inForce.shiftId })
+        .where(eq(employment.id, p.employmentId));
+    }
+
+    // SUBSTRATE: same aggregate and event type as the legacy writer (so the Others-tab Change History keeps
+    // listing shift changes in one series), with `effectiveFrom` added — additive, so lib/audit-format.ts
+    // renders it as one more flat line and needs no change.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.shift-arrangement.assigned',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        before: last
+          ? { shiftType: last.shiftType, defaultShiftId: last.shiftId }
+          : { shiftType: emp.beforeType, defaultShiftId: emp.beforeShift },
+        after: { shiftType: p.shiftType, defaultShiftId: shiftId },
+        effectiveFrom,
+      },
+    });
+
+    return { id: p.employmentId, effectiveFrom };
+  });
+}
+
+/**
+ * a485afa1 — the entry named for removal is not on this employee's LIVE ladder (already removed, replaced
+ * by a same-date save, or never theirs). A refusal rather than a silent no-op: two administrators on the
+ * same list must not both be told "removed" when only one removal happened.
+ */
+export class ShiftArrangementNotFoundError extends Error {
+  constructor() {
+    super('That shift arrangement is no longer on file.');
+    this.name = 'ShiftArrangementNotFoundError';
+  }
+}
+
+/**
+ * a485afa1 — the LAST remaining arrangement cannot be removed. Removing it would leave the employee with
+ * no dated period at all, and every resolver would silently fall back to employment.default_shift_id — the
+ * cache this ladder exists to replace. "Not recorded" is a state a NEW employee is in, not one an
+ * administrator can put an existing one back into by deleting their history. Change it instead.
+ */
+export class ShiftArrangementOnlyPeriodError extends Error {
+  constructor() {
+    super('The only shift arrangement on file cannot be removed. Change it instead.');
+    this.name = 'ShiftArrangementOnlyPeriodError';
+  }
+}
+
+/**
+ * a485afa1 (verify-fix) — ONLY THE NEWEST PERIOD MAY BE REMOVED, and this refusal is the whole reason the
+ * screen's Remove is safe to offer at all.
+ *
+ * Removal is UNDONE by saving the same arrangement back at the same date — and `assignEmployeeShiftDated`
+ * refuses any date earlier than the last one already on the ladder (ShiftBackInsertError; back-insert is
+ * out of scope for v1). So a MIDDLE period, once removed, cannot be put back at EITHER door: the entry
+ * below it is still there and blocks the re-save. Nothing is destroyed at row level — the row is
+ * superseded and a DomainEvent records it — but the stretch of time it governed permanently reverts to the
+ * earlier shift, and attendance and overtime for those days derive against that. A one-click, irreversible
+ * change to somebody's paid hours is not something a mis-click on a history row should be able to make.
+ *
+ * The NEWEST period has no such trap: with it gone the ladder's last date is the one before it, so saving
+ * it again is a forward-dated change and is accepted. Removal therefore means exactly "take back the most
+ * recent change", which is what an administrator who mis-typed one actually wants.
+ *
+ * `newestEffectiveFrom` names the entry that may be removed, so the sentence on screen can too.
+ */
+export class ShiftArrangementNotNewestError extends Error {
+  constructor(readonly newestEffectiveFrom: string) {
+    super(
+      `Only the most recent shift arrangement (${newestEffectiveFrom}) can be removed. An earlier one cannot be put back once taken away.`,
+    );
+    this.name = 'ShiftArrangementNotNewestError';
+  }
+}
+
+/**
+ * a485afa1 — REMOVE one dated period from an employee's shift-arrangement ladder.
+ *
+ * WHY THIS IS A NEW FUNCTION AND NOT A SECOND WRITER. `assignEmployeeShiftDated` is the one way a period is
+ * created or replaced, and it stays the one way; nothing here inserts a period. Removal simply did not
+ * exist — the Schedule Assignment screen (a485afa1) is the first surface to offer it — so this is the
+ * ladder's missing operation, added ONCE in core where both doors onto the record can call it.
+ *
+ * IT SUPERSEDES, IT DOES NOT DELETE, for the same reason the writer does (ADR-0001/0003): the row leaves
+ * the live partial unique index and every resolver stops seeing it, while the audit trail keeps the fact
+ * that it was ever there. `shiftArrangementHistory` reads live periods only, so the entry disappears from
+ * the screen exactly as a replaced one does.
+ *
+ * THE PREDECESSOR IS RE-OPENED. Each period runs until the next begins, so the period before the removed
+ * one inherits the removed one's `valid_to` — null (open) when the removed period was the current one,
+ * otherwise the day before whatever follows. Without this the ladder would carry a gap, and a date inside
+ * it would resolve to the wrong side of the missing period.
+ *
+ * ⚠️ ONLY THE NEWEST PERIOD, AND ONLY IF IT IS NOT THE LAST ONE — three refusals, in this order: not on
+ * this ladder, the only one on file, not the newest. The third is the one to read before relaxing any of
+ * this: removal is undone by re-saving the same date, and the writer refuses a date earlier than the
+ * ladder's last, so removing a MIDDLE period is irreversible at every door. See
+ * ShiftArrangementNotNewestError. The screen renders Remove on the newest row only; this is the check that
+ * makes that true of a forged POST as well.
+ */
+export async function removeShiftArrangement(
+  ctx: SessionContext,
+  p: { employmentId: string; arrangementId: string },
+): Promise<{ removedEffectiveFrom: string }> {
+  p={...p};
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  return withTenant(ctx, async (tx) => {
+    // Same shared course and employment lock as assignEmployeeShiftDated.
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[p.employmentId]);
+    const rows = await tx
+      .select({
+        id: employmentShiftArrangement.id,
+        shiftType: employmentShiftArrangement.shiftType,
+        shiftId: employmentShiftArrangement.shiftId,
+        validFrom: employmentShiftArrangement.validFrom,
+        validTo: employmentShiftArrangement.validTo,
+      })
+      .from(employmentShiftArrangement)
+      .where(
+        and(
+          eq(employmentShiftArrangement.employmentId, p.employmentId),
+          isNull(employmentShiftArrangement.supersededAt),
+        ),
+      )
+      .orderBy(asc(employmentShiftArrangement.validFrom));
+
+    const i = rows.findIndex((r) => r.id === p.arrangementId);
+    if (i < 0) throw new ShiftArrangementNotFoundError();
+    if (rows.length === 1) throw new ShiftArrangementOnlyPeriodError();
+    // `rows` is ascending by valid_from, so the newest live period is the last of them.
+    if (i !== rows.length - 1) throw new ShiftArrangementNotNewestError(rows[rows.length - 1].validFrom);
+    const target = rows[i];
+    const prev = i > 0 ? rows[i - 1] : undefined;
+
+    await tx
+      .update(employmentShiftArrangement)
+      .set({ supersededAt: new Date() })
+      .where(eq(employmentShiftArrangement.id, target.id));
+    if (prev) {
+      await tx
+        .update(employmentShiftArrangement)
+        .set({ validTo: target.validTo })
+        .where(eq(employmentShiftArrangement.id, prev.id));
+    }
+
+    // The SAME cache refresh the writer performs, and it matters more here: removing the period in force
+    // today changes which shift the employee is on, and every reader still on employment.default_shift_id
+    // would otherwise keep answering with the period that was just taken away.
+    const after = await arrangementsForEmploymentTx(tx, p.employmentId);
+    const inForce = pickArrangementOn(after, todayInKualaLumpur());
+    if (inForce) {
+      await tx
+        .update(employment)
+        .set({ shiftType: inForce.shiftType, defaultShiftId: inForce.shiftId })
+        .where(eq(employment.id, p.employmentId));
+    }
+
+    // Same aggregate and the same before/after shape as the assign event, so the Others-tab Change History
+    // lists a removal in the one shift series. `.removed` classifies as a deletion in lib/audit-format.ts
+    // actionOf, which is what puts the high-impact accent on it.
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment',
+      aggregateId: p.employmentId,
+      eventType: 'employment.shift-arrangement.removed',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: {
+        before: { shiftType: target.shiftType, defaultShiftId: target.shiftId },
+        after: inForce ? { shiftType: inForce.shiftType, defaultShiftId: inForce.shiftId } : null,
+        effectiveFrom: target.validFrom,
+      },
+    });
+
+    return { removedEffectiveFrom: target.validFrom };
+  });
+}
+
+/** One line of the Shift history list under the card. */
+export type ShiftArrangementHistoryRow = {
+  id: string;
+  /** The date this period starts — the reporter's Effective date. */
+  effectiveFrom: string;
+  /** Closed to the day before the next period starts; null on the current, open period. */
+  effectiveTo: string | null;
+  shiftType: 'fixed' | 'roster';
+  shiftId: string;
+  /** Resolved here, NOT left to the audit card: lib/audit-format.ts prints a raw uuid → uuid pair. */
+  shiftCode: string | null;
+  shiftName: string;
+  previousShiftCode: string | null;
+  previousShiftName: string | null;
+  /** Who changed it. Null on the period migration 0421 recorded from the employee's existing shift. */
+  changedByName: string | null;
+  changedAt: string;
+  /** True for that same backfilled first period — the screen labels its "changed on" as the release. */
+  recordedOnRelease: boolean;
+};
+
+/**
+ * The Shift history list for one employee, newest first: effective date, previous shift, new shift, who
+ * changed it and when. LIVE periods only — a period replaced by a second save for the same date is gone from
+ * the list, which is exactly what "saving twice for one date replaces that entry" promises the reporter.
+ * Read-only, RLS-scoped (see_employment), no DomainEvent.
+ */
+export function shiftArrangementHistory(
+  ctx: SessionContext,
+  employmentId: string,
+): Promise<ShiftArrangementHistoryRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx
+      .select({
+        id: employmentShiftArrangement.id,
+        effectiveFrom: employmentShiftArrangement.validFrom,
+        effectiveTo: employmentShiftArrangement.validTo,
+        shiftType: employmentShiftArrangement.shiftType,
+        shiftId: employmentShiftArrangement.shiftId,
+        shiftCode: shift.code,
+        shiftName: shift.name,
+        createdAt: employmentShiftArrangement.createdAt,
+        createdBy: employmentShiftArrangement.createdBy,
+        changedByName: person.fullName,
+      })
+      .from(employmentShiftArrangement)
+      .innerJoin(shift, eq(shift.id, employmentShiftArrangement.shiftId))
+      .leftJoin(appUser, eq(appUser.id, employmentShiftArrangement.createdBy))
+      .leftJoin(person, eq(person.id, appUser.personId))
+      .where(
+        and(
+          eq(employmentShiftArrangement.employmentId, employmentId),
+          isNull(employmentShiftArrangement.supersededAt),
+        ),
+      )
+      .orderBy(asc(employmentShiftArrangement.validFrom), desc(employmentShiftArrangement.createdAt));
+    return rows.map((r, i) => {
+      const prev = i > 0 ? rows[i - 1] : undefined;
+      return {
+        id: r.id,
+        effectiveFrom: r.effectiveFrom,
+        effectiveTo: r.effectiveTo,
+        shiftType: r.shiftType,
+        shiftId: r.shiftId,
+        shiftCode: r.shiftCode,
+        shiftName: r.shiftName,
+        previousShiftCode: prev?.shiftCode ?? null,
+        previousShiftName: prev?.shiftName ?? null,
+        changedByName: r.changedByName ?? null,
+        changedAt: r.createdAt.toISOString(),
+        // The backfilled period: nobody made that change — it is the shift the employee already had,
+        // recorded as applying since their start date. Only the FIRST period can be it.
+        recordedOnRelease: i === 0 && r.createdBy == null,
+      };
+    }).reverse(); // ascending while previous-shift is resolved, newest-first for the screen
+  });
+}
+
+// ── 0bade264 (r209) · SCHEDULE ASSIGNMENT — every employee's current arrangement, in one read ────────
+
+/** One row of the Schedule Assignment list: who, on what, from when, and whether that is in force yet. */
+export type ShiftArrangementListRow = {
+  employmentId: string;
+  /** The reporter's "Employee ID" (employment.employee_code). Nullable — legacy rows may have none. */
+  employeeCode: string | null;
+  name: string;
+  company: string;
+  shiftType: 'fixed' | 'roster';
+  /** Null only alongside status 'notRecorded' AND an employment whose cache is empty too. */
+  shiftId: string | null;
+  shiftCode: string | null;
+  shiftName: string | null;
+  /**
+   * 8cd601d0 — THE EMPLOYEE'S SCHEDULE GROUP (`employment.attendance_rule_id`), null when they are in none.
+   *
+   * ⚠️ IT IS NOT READ OFF THE ARRANGEMENT, AND IT MUST NOT BE. The group is a property of the EMPLOYMENT;
+   * the shift belongs to a group of its own (`shift.rule_id`). Storing the group on the arrangement row
+   * would be a second copy of a fact two other columns already carry, which is how the two come to
+   * disagree — the approved plan says so in as many words ("do NOT add a group column to
+   * employment_shift_arrangement"). Null here is a real answer: "in no group, and therefore constrained by
+   * nothing" (core/roster.ts assertShiftsAllowedForEmploymentsTx).
+   */
+  scheduleGroupId: string | null;
+  scheduleGroupName: string | null;
+  /** valid_from of the period shown. Null for 'notRecorded' — there is no dated period to name. */
+  effectiveFrom: string | null;
+  /**
+   * `current`      — a live period is in force today (the greatest valid_from <= today).
+   * `scheduled`    — the employee HAS live periods but the earliest starts after today.
+   * `notRecorded`  — no live period at all; the shift shown is employment.default_shift_id, the cache
+   *                  every resolver falls back to (core/shift-arrangement-resolve.ts).
+   */
+  status: 'current' | 'scheduled' | 'notRecorded';
+};
+
+/** Filters the Schedule Assignment screen posts as plain GET params. All optional; all narrowing. */
+export type ShiftArrangementListFilters = {
+  /**
+   * a485afa1 — ONE employment. The screen's edit panel needs the same resolved row the list shows (name,
+   * company, the arrangement in force and its status) for an employee who may not be among the filtered
+   * rows: change somebody's backup shift while the list is filtered by backup shift and they leave it,
+   * yet the panel they are editing in must not blank out. A narrowing filter on the shared read, so the
+   * panel and the row can never describe the same person differently.
+   */
+  employmentId?: string;
+  /** Free text over employee ID and name. */
+  q?: string;
+  shiftType?: 'fixed' | 'roster';
+  /** Backup shift of the arrangement SHOWN (the resolved one), not of every period the employee has. */
+  shiftId?: string;
+  status?: ShiftArrangementListRow['status'];
+  /**
+   * 8cd601d0 — narrow to one Schedule Group, or to the employees in NONE.
+   *
+   * `UNGROUPED` is a SENTINEL, not a rule id: "no Schedule Group" is the state 74 of 75 production
+   * employments are in and the one an administrator opening this screen is looking for, so it has to be
+   * selectable. A rule id is a uuid, so the sentinel can never collide with one.
+   */
+  scheduleGroupId?: string;
+  /** Today in the tenant's calendar. Defaults to todayInKualaLumpur(); injectable so a test can pin it. */
+  today?: string;
+};
+
+/** LIKE metacharacters escaped so a code containing '%' or '_' searches for itself. */
+function likeLiteral(v: string): string {
+  return v.replace(/([\\%_])/g, '\\$1');
+}
+
+/**
+ * 8cd601d0 — the `scheduleGroupId` filter value that means "employees in NO Schedule Group".
+ *
+ * Exported so the screen, the bulk screen and the test all name the same constant rather than three copies
+ * of the same string literal. Not a uuid, so it can never be mistaken for a rule id.
+ */
+export const UNGROUPED = 'none';
+
+/**
+ * Every ACTIVE employee's shift arrangement as it stands, for the Schedule Assignment screen.
+ *
+ * WHAT "CURRENT" MEANS HERE, AND WHY THIS FUNCTION DOES NOT DECIDE IT. The arrangement ladder has a
+ * partial unique index — employment_shift_arrangement_live_uq on (tenant, employment, valid_from) WHERE
+ * superseded_at IS NULL — and that predicate IS the definition of a live period: a save for a date that
+ * already has one supersedes its predecessor rather than adding a second. `liveArrangementsTx` reads
+ * exactly that predicate, and `pickArrangementOn` applies the one house rule for choosing among the
+ * survivors (greatest valid_from <= the date; else the earliest). Both live in
+ * core/shift-arrangement-resolve.ts and are shared with the attendance/OT derivation, the personnel card
+ * and the roster resolver — so this screen answers "which shift is this person on" with the same
+ * sentence the engine uses. DO NOT sort the periods here and take the last: a second rule is how a list
+ * starts disagreeing with the payslip it is meant to explain.
+ *
+ * TERMINATED EMPLOYMENTS ARE OUT. They have no current arrangement to assign; their history stays on
+ * their own profile, where shiftArrangementHistory already renders it.
+ *
+ * Unpaginated by design, like the shift library it sits beside: the filters narrow, and the screen is a
+ * working list an administrator scans rather than a report they page through.
+ */
+export function listShiftArrangements(
+  ctx: SessionContext,
+  filters: ShiftArrangementListFilters = {},
+): Promise<ShiftArrangementListRow[]> {
+  return withTenant(ctx, async (tx) => {
+    const today = filters.today ?? todayInKualaLumpur();
+    const q = filters.q?.trim();
+    const conds = [isNull(employment.terminatedOn)];
+    if (filters.employmentId) conds.push(eq(employment.id, filters.employmentId));
+    if (q) {
+      const pattern = `%${likeLiteral(q)}%`;
+      // Non-null assertion: `or` is only undefined when given no arguments.
+      conds.push(or(ilike(person.fullName, pattern), ilike(employment.employeeCode, pattern))!);
+    }
+
+    const emps = await tx
+      .select({
+        employmentId: employment.id,
+        employeeCode: employment.employeeCode,
+        name: person.fullName,
+        company: company.legalName,
+        // The CACHE (employment.default_shift_id / shift_type) — read only for an employment with no
+        // ladder row at all, which is the exact fallback every other resolver makes. Reading it for
+        // everyone else would put a stale answer on screen the moment a future-dated change is saved.
+        cachedShiftType: employment.shiftType,
+        cachedShiftId: employment.defaultShiftId,
+        // 8cd601d0 — the employee's Schedule Group, straight off the employment. Not joined to
+        // attendance_rule here: the NAMES are read once for the whole page below, the same batched shape
+        // the shift library already uses, rather than a join that repeats every name per row.
+        scheduleGroupId: employment.attendanceRuleId,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .innerJoin(company, eq(company.id, employment.companyId))
+      .where(and(...conds))
+      // ORDER BY on the only list this screen asserts. Name alone is not a total order — two employees may
+      // share one — so employment.id breaks the tie and the list cannot re-order itself between two reads.
+      .orderBy(asc(person.fullName), asc(employment.id));
+
+    // ONE batched read of the ladder for the whole page, and one of the shift library, rather than a
+    // query per row.
+    const periodsByEmployment = await liveArrangementsTx(
+      tx,
+      emps.map((e) => e.employmentId),
+    );
+    const shifts = await tx
+      .select({ id: shift.id, code: shift.code, name: shift.name })
+      .from(shift)
+      .orderBy(asc(shift.name), asc(shift.id));
+    const shiftById = new Map(shifts.map((s) => [s.id, s]));
+    // 8cd601d0 — the Schedule Group NAMES, read once for the page. The tenant's rule library is a handful
+    // of rows; reading it whole is cheaper than a join that repeats a name per employee, and it keeps the
+    // group's name resolved HERE rather than in the screen (a uuid on a list is not an answer).
+    const groups = await tx
+      .select({ id: attendanceRule.id, name: attendanceRule.name })
+      .from(attendanceRule)
+      .orderBy(asc(attendanceRule.name), asc(attendanceRule.id));
+    const groupById = new Map(groups.map((g) => [g.id, g.name]));
+
+    const rows: ShiftArrangementListRow[] = emps.map((e) => {
+      const periods = periodsByEmployment.get(e.employmentId);
+      const inForce = pickArrangementOn(periods, today);
+      // pickArrangementOn resolves a date BEFORE the earliest period to that earliest period (the
+      // release promise — see its header). For a LIST that means "their first arrangement has not
+      // started yet", which is a different thing from "this is what they are on today" and is said so.
+      const status: ShiftArrangementListRow['status'] = !inForce
+        ? 'notRecorded'
+        : inForce.validFrom <= today
+          ? 'current'
+          : 'scheduled';
+      const shiftId = inForce ? inForce.shiftId : e.cachedShiftId;
+      const sh = shiftId ? shiftById.get(shiftId) : undefined;
+      return {
+        employmentId: e.employmentId,
+        employeeCode: e.employeeCode,
+        name: e.name,
+        company: e.company,
+        shiftType: inForce ? inForce.shiftType : e.cachedShiftType,
+        shiftId: shiftId ?? null,
+        shiftCode: sh?.code ?? null,
+        shiftName: sh?.name ?? null,
+        scheduleGroupId: e.scheduleGroupId ?? null,
+        scheduleGroupName: e.scheduleGroupId ? (groupById.get(e.scheduleGroupId) ?? null) : null,
+        effectiveFrom: inForce ? inForce.validFrom : null,
+        status,
+      };
+    });
+
+    // The three narrowing filters are applied to the RESOLVED row, not to the ladder: filtering the
+    // periods in SQL would match an employee on a shift they used to be on (or will be on) and then
+    // display the one they are actually on — a list whose rows contradict their own filter.
+    return rows.filter(
+      (r) =>
+        (!filters.shiftType || r.shiftType === filters.shiftType) &&
+        (!filters.shiftId || r.shiftId === filters.shiftId) &&
+        (!filters.status || r.status === filters.status) &&
+        // 8cd601d0. UNGROUPED is checked against null, never against the string: an employment whose group
+        // is literally the word 'none' is not representable (the column is a uuid FK), so the sentinel and
+        // a real id can never both match.
+        (!filters.scheduleGroupId ||
+          (filters.scheduleGroupId === UNGROUPED
+            ? r.scheduleGroupId === null
+            : r.scheduleGroupId === filters.scheduleGroupId)),
+    );
+  });
+}

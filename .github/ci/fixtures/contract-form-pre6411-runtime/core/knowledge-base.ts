@@ -1,0 +1,467 @@
+import type { Tx as AiReadTx } from '../db/client';
+import { withCanonicalAiReadTx } from './ai-read-transaction';
+/**
+ * Knowledge Base (ADR-0017). A tenant-shared document repository: Markdown articles authored in-app
+ * and uploaded binary files, in one `kb_document` table. RLS makes reads tenant-wide and writes
+ * author-or-admin scoped; this service adds the domain events and the shape/size guards.
+ *
+ * `content` (the file bytes) is selected ONLY by `getDownload` — never in list/detail reads, so the
+ * library and viewer stay light.
+ */
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import { kbDocument } from '../db/schema';
+import { isAdmin } from '../lib/authz-model';
+import { rankKnowledgeArticles,rankPerformanceArticles,rankPerformanceDashboardArticles } from '../lib/knowledge-search';
+import {homeSearchWords,homeKnowledgeHref,homeKnowledgeExcerpt,HOME_SEARCH_RESULT_LIMIT} from '../lib/employee-home-search';
+import {isLocale} from '../i18n/config';
+import { pageState, parsePageQuery, type PageQuery } from '../lib/pagination';
+
+export const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB (ADR-0017 — Postgres bytea storage)
+
+export type KbAudience = 'all' | 'employee' | 'manager' | 'hr_admin';
+const AUDIENCES: KbAudience[] = ['all', 'employee', 'manager', 'hr_admin'];
+const cleanAudience = (v: unknown): KbAudience =>
+  AUDIENCES.includes(v as KbAudience) ? (v as KbAudience) : 'all';
+
+// Audience is a clearance ladder, not a tag: a document is visible to a viewer whose role rank is at
+// least the document's. RLS is tenant-wide for reads (guides are shared), so this audience gate is what
+// stops an employee seeing — or deep-linking — a manager/HR-only guide (consultant feedback R34).
+const AUDIENCE_RANK: Record<KbAudience, number> = { all: 0, employee: 1, manager: 2, hr_admin: 3 };
+function viewerRank(ctx: SessionContext): number {
+  const roles = ctx.roles ?? [];
+  if (roles.some((r) => r === 'hr_admin' || r === 'super_admin')) return 3;
+  if (roles.includes('manager')) return 2;
+  return 1; // any authenticated employee sees 'all' + 'employee'
+}
+/** The audiences a viewer is cleared to see (their rank and below). */
+export function visibleAudiencesFor(ctx: SessionContext): KbAudience[] {
+  const rank = viewerRank(ctx);
+  return AUDIENCES.filter((a) => AUDIENCE_RANK[a] <= rank);
+}
+const canSeeAudience = (ctx: SessionContext, a: KbAudience): boolean => AUDIENCE_RANK[a] <= viewerRank(ctx);
+const cleanCategory = (v: unknown): string => {
+  const s = String(v ?? '').trim().toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'general';
+};
+const cleanTitle = (v: unknown): string => {
+  const s = String(v ?? '').trim();
+  if (!s) throw new Error('A title is required.');
+  return s.slice(0, 200);
+};
+
+type I18nMap = Record<string, { title: string; body: string }> | null;
+
+/** Resolve a document's title/body for the active locale, falling back to the base (English) columns. */
+function localize(
+  row: { title: string; body?: string | null; i18n?: I18nMap },
+  locale?: string,
+): { title: string; body: string | null } {
+  const tr = locale && locale !== 'en' ? row.i18n?.[locale] : undefined;
+  return { title: tr?.title ?? row.title, body: tr?.body ?? row.body ?? null };
+}
+
+// ─────────────────────────────── Reads ───────────────────────────────
+
+type DocumentListOptions = {
+  category?: string;
+  audience?: KbAudience;
+  includeArchived?: boolean;
+  search?: string;
+  locale?: string;
+};
+
+/** The same audience/status/search owner applies before both counting and reading a page. */
+function documentListWhere(ctx: SessionContext, opts: DocumentListOptions) {
+  return and(
+    inArray(kbDocument.audience, visibleAudiencesFor(ctx)),
+    opts.includeArchived ? undefined : isNull(kbDocument.archivedAt),
+    opts.category ? eq(kbDocument.category, opts.category) : undefined,
+    opts.audience && opts.audience !== 'all' ? eq(kbDocument.audience, opts.audience) : undefined,
+    opts.search ? sql`${kbDocument.title} ilike ${'%' + opts.search + '%'}` : undefined,
+  );
+}
+
+async function documentListTx(tx: Tx, ctx: SessionContext, opts: DocumentListOptions, page?: PageQuery) {
+  const localizedTitle = opts.locale && opts.locale !== 'en'
+    ? sql<string | null>`${kbDocument.i18n} -> ${opts.locale} ->> 'title'`
+    : sql<string | null>`null`;
+  const query = tx.select({
+    id: kbDocument.id,
+    kind: kbDocument.kind,
+    title: kbDocument.title,
+    localizedTitle,
+    slug: kbDocument.slug,
+    category: kbDocument.category,
+    audience: kbDocument.audience,
+    isSystem: kbDocument.isSystem,
+    fileName: kbDocument.fileName,
+    mimeType: kbDocument.mimeType,
+    sizeBytes: kbDocument.sizeBytes,
+    createdByUserId: kbDocument.createdByUserId,
+    archivedAt: kbDocument.archivedAt,
+    updatedAt: kbDocument.updatedAt,
+  }).from(kbDocument).where(documentListWhere(ctx, opts))
+    // Preserve full/AI list ordering; paged reads additionally stabilize equal titles by ID.
+    .orderBy(asc(kbDocument.category), asc(kbDocument.title), ...(page ? [asc(kbDocument.id)] : []));
+  const rows = page ? await query.limit(page.limit).offset(page.offset) : await query;
+  return rows.map(({ localizedTitle: lt, ...d }) => ({ ...d, title: lt ?? d.title }));
+}
+
+/** Library listing — metadata only (no body, bytes or full translation blob). Full/AI callers retain
+ * their existing API and complete result set, with the same native tenant and audience filters. */
+export function listDocuments(ctx: SessionContext, opts: DocumentListOptions = {}, existingTx?: AiReadTx) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+  return withCanonicalAiReadTx(ctx, existingTx, 'knowledge_base', withTenant, tx => documentListTx(tx, ctx, opts));
+}
+
+/** UI list with an exact authorized total. No body/bytes are fetched and no inaccessible rows count. */
+export function listDocumentsPage(ctx: SessionContext, opts: DocumentListOptions = {}, query: { page?: string; size?: string } = {}) {
+  ctx = { ...ctx, roles: ctx.roles?.slice(), grants: ctx.grants?.map(grant => ({ ...grant })) };
+  opts = { ...opts };
+  const page = parsePageQuery(query);
+  return withCanonicalAiReadTx(ctx, undefined, 'knowledge_base', withTenant, async tx => {
+    const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(kbDocument).where(documentListWhere(ctx, opts));
+    const rows = await documentListTx(tx, ctx, opts, page);
+    return { rows, state: pageState(page, count.total, rows.length) };
+  });
+}
+
+/** One document for viewing — title + article body resolved to `locale` (English fallback). No bytes. */
+export function getDocument(ctx: SessionContext, id: string, locale?: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: kbDocument.id,
+        kind: kbDocument.kind,
+        title: kbDocument.title,
+        slug: kbDocument.slug,
+        category: kbDocument.category,
+        audience: kbDocument.audience,
+        isSystem: kbDocument.isSystem,
+        body: kbDocument.body,
+        i18n: kbDocument.i18n,
+        fileName: kbDocument.fileName,
+        mimeType: kbDocument.mimeType,
+        sizeBytes: kbDocument.sizeBytes,
+        createdByUserId: kbDocument.createdByUserId,
+        archivedAt: kbDocument.archivedAt,
+        createdAt: kbDocument.createdAt,
+        updatedAt: kbDocument.updatedAt,
+      })
+      .from(kbDocument)
+      .where(eq(kbDocument.id, id))
+      .limit(1);
+    if (!row) return null;
+    if (!canSeeAudience(ctx, row.audience as KbAudience)) return null; // deep-link guard (R34)
+    const { i18n, ...rest } = row;
+    const { title, body } = localize(row, locale);
+    // title/body are localized for DISPLAY; sourceTitle/sourceBody are the English source the inline
+    // editor writes (so editing a guide while viewing a translation never clobbers the source).
+    return {
+      ...rest,
+      title,
+      body,
+      sourceTitle: row.title,
+      sourceBody: row.body ?? '',
+      hasTranslations: !!i18n && Object.keys(i18n).length > 0,
+    };
+  });
+}
+
+/** The download payload — the ONLY read that selects the file bytes. Article title/body resolve to
+ *  `locale` (English fallback). RLS still applies (tenant member). */
+export function getDownload(ctx: SessionContext, id: string, locale?: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        kind: kbDocument.kind,
+        title: kbDocument.title,
+        body: kbDocument.body,
+        i18n: kbDocument.i18n,
+        audience: kbDocument.audience,
+        fileName: kbDocument.fileName,
+        mimeType: kbDocument.mimeType,
+        content: kbDocument.content,
+      })
+      .from(kbDocument)
+      .where(eq(kbDocument.id, id))
+      .limit(1);
+    if (!row) return null;
+    if (!canSeeAudience(ctx, row.audience as KbAudience)) return null; // deep-link guard (R34)
+    const { title, body } = localize(row, locale);
+    return { kind: row.kind, title, body, fileName: row.fileName, mimeType: row.mimeType, content: row.content };
+  });
+}
+
+/** Whether the caller may edit/delete a given document (mirrors the RLS write policy, for the UI). */
+export function canManage(
+  ctx: SessionContext,
+  doc: { isSystem: boolean; createdByUserId: string | null },
+): boolean {
+  const admin = (ctx.roles ?? []).some((r) => r === 'hr_admin' || r === 'super_admin');
+  if (admin) return true;
+  return !doc.isSystem && !!ctx.userId && doc.createdByUserId === ctx.userId;
+}
+
+// ─────────────────────────────── Writes ───────────────────────────────
+
+/**
+ * WHO MAY PUT SOMETHING INTO THE COMPANY LIBRARY — answered in the SERVER, before any SQL runs.
+ *
+ * THE DATABASE DOES NOT ANSWER IT. Every other write on this table is fenced by RLS
+ * (`db/migrations/0039_kb_rls.sql`: UPDATE and DELETE require `app.is_admin()` or own-and-not-system),
+ * but the INSERT policy is `WITH CHECK (tenant_id = app.current_tenant_id())` and nothing more — ADR-0017
+ * §3 chose open contribution. So a create had no second line of defence, and
+ * `app/knowledge-base/actions.ts` handed it a bare `getSession()`. Any employee could publish to the whole
+ * company, and could aim the article at the `hr_admin` shelf, where HR reads what it takes to be official
+ * guidance. That is the Part 4 "Knowledge base authoring" row of `docs/CUSTOMER-DEPLOYMENT-READINESS.md`,
+ * and the customer decision reverses ADR-0017 §3 for AUTHORSHIP (see that ADR's 2026-09-16 update): the
+ * library is a published channel, gated like the Notice Board's writes and the roster's, not a wiki.
+ *
+ * READING IS UNTOUCHED, deliberately. Every tenant member still reads everything their audience clearance
+ * allows, and an existing member-authored document is still theirs to edit — RLS says so and no migration
+ * changes that here. Only the act of ADDING to the library narrows.
+ *
+ * HIDING THE COMPOSER IS NOT A GUARD, and could never be. `createArticleAction` / `uploadFileAction` are
+ * Server Actions: their ids ship inside every authenticated user's bundle and they are POST endpoints
+ * whether or not a button points at them. So the refusal lives HERE, at the boundary every caller crosses,
+ * and `app/knowledge-base/page.tsx` merely declines to offer what it knows will be refused.
+ */
+export class KbAuthorAdminRequiredError extends Error {
+  constructor() {
+    super('Only an HR administrator can add to the knowledge base. Ask an administrator to publish this.');
+    this.name = 'KbAuthorAdminRequiredError';
+  }
+}
+
+/** Whether this session may add a document to the library. The UI gate for the composer, and the
+ *  predicate `assertKbAuthor` refuses on — one answer, so the screen and the server cannot disagree. */
+export const canAuthor = (ctx: SessionContext): boolean => isAdmin(ctx);
+
+/** Throws unless this session may add to the library. Called FIRST in every create/upload path. */
+export function assertKbAuthor(ctx: SessionContext): void {
+  if (!canAuthor(ctx)) throw new KbAuthorAdminRequiredError();
+}
+
+export class KbAudienceAboveClearanceError extends Error {
+  constructor(audience: KbAudience) {
+    super(`You cannot file a document under an audience you are not cleared to read (${audience}).`);
+    this.name = 'KbAudienceAboveClearanceError';
+  }
+}
+
+/**
+ * NOBODY FILES A DOCUMENT ON A SHELF THEY CANNOT SEE. `audience` is a clearance ladder for READS (R34,
+ * above), and it would be an odd hole if the write side let a rank-1 employee post onto the rank-3 HR
+ * shelf — content planted where the people who read it cannot see who is writing at their level, and
+ * invisible to its own author afterwards.
+ *
+ * With `assertKbAuthor` in place the create/upload paths satisfy this by construction (an administrator
+ * is cleared for every audience, so this can never fire there). It is applied anyway, on all three write
+ * paths, because the property should hold for whoever may write — including the member-authored documents
+ * that predate the author gate, whose owners RLS still lets edit, and including any later widening of
+ * `canAuthor`. An invariant that depends on today's role set is not an invariant.
+ */
+function assertAudienceWithinClearance(ctx: SessionContext, audience: KbAudience): void {
+  if (!canSeeAudience(ctx, audience)) throw new KbAudienceAboveClearanceError(audience);
+}
+
+async function logEvent(
+  tx: Parameters<Parameters<typeof withTenant>[1]>[0],
+  ctx: SessionContext,
+  id: string,
+  eventType: string,
+  payload: unknown,
+  returnId = false,
+) {
+  return appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'kb-document',
+    aggregateId: id,
+    eventType,
+    actor: actorOf(ctx),
+    // KB documents are org-level content, not employee-scoped PII → no subject (admin-only in audit).
+    subjectEmploymentId: null,
+    payload,
+  }, {returnId});
+}
+
+export type ArticleHumanInput={title:string;body:string;category?:string;audience?:KbAudience};
+/** Shared native normalization/author-clearance owner. A review displays these exact values. */
+export function prepareArticleContent(ctx:SessionContext,p:ArticleHumanInput){
+  assertKbAuthor(ctx);
+  const title=cleanTitle(p.title),body=String(p.body??'');
+  if(!body.trim())throw new Error('The article body is empty.');
+  const category=cleanCategory(p.category),audience=cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx,audience);return {title,body,category,audience};
+}
+async function createArticleOwnerTx(tx:Tx,ctx:SessionContext,content:ReturnType<typeof prepareArticleContent>,returnId=false){
+  const {title,body,category,audience}=content;
+  const [row]=await tx.insert(kbDocument).values({tenantId:ctx.tenantId,kind:'article',title,body,category,audience,
+    createdByUserId:ctx.userId??null,updatedByUserId:ctx.userId??null}).returning({id:kbDocument.id});
+  const eventId=await logEvent(tx,ctx,row.id,'kb.document.created',{kind:'article',title,category,audience},returnId);
+  return {id:row.id,eventId};
+}
+/** Supplied-transaction native article creation. The Assistant caller still owns fresh identity,
+ * human confirmation, shared custody and completion; this function is not a model tool. */
+export async function createArticleTx(tx:Tx,ctx:SessionContext,p:ArticleHumanInput){
+  const current={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  const content=prepareArticleContent(current,{...p}),effect=await createArticleOwnerTx(tx,current,content,true);
+  if(!effect.eventId)throw Error('Article event unavailable.');return {id:effect.id,eventId:effect.eventId};
+}
+
+/** Author a new Markdown article. */
+export async function createArticle(ctx:SessionContext,p:ArticleHumanInput){
+  const content=prepareArticleContent(ctx,p);
+  return withTenant(ctx,async tx=>{const {id}=await createArticleOwnerTx(tx,ctx,content);return {id};});
+}
+
+/** Edit an article (and/or its metadata). RLS confines it to admins + the author of a non-system doc. */
+export async function updateDocument(
+  ctx: SessionContext,
+  p: { id: string; title?: string; body?: string; category?: string; audience?: KbAudience },
+) {
+  return withTenant(ctx, async (tx) => {
+    const set: Record<string, unknown> = { updatedAt: sql`now()`, updatedByUserId: ctx.userId ?? null };
+    if (p.title !== undefined) set.title = cleanTitle(p.title);
+    if (p.category !== undefined) set.category = cleanCategory(p.category);
+    if (p.audience !== undefined) {
+      const audience = cleanAudience(p.audience);
+      assertAudienceWithinClearance(ctx, audience);
+      set.audience = audience;
+    }
+    if (p.body !== undefined) {
+      if (!String(p.body).trim()) throw new Error('The article body is empty.');
+      set.body = String(p.body);
+    }
+    const updated = await tx
+      .update(kbDocument)
+      .set(set)
+      .where(eq(kbDocument.id, p.id))
+      .returning({ id: kbDocument.id, kind: kbDocument.kind });
+    if (updated.length === 0) throw new Error('Document not found, or you cannot edit it.');
+    await logEvent(tx, ctx, p.id, 'kb.document.updated', { fields: Object.keys(set).filter((k) => k !== 'updatedAt' && k !== 'updatedByUserId') });
+    return { id: p.id };
+  });
+}
+
+/** Store an uploaded file (bytes in Postgres). Size + shape are guarded here and by the table CHECK. */
+export async function uploadDocument(
+  ctx: SessionContext,
+  p: {
+    title?: string;
+    fileName: string;
+    mimeType: string;
+    content: Buffer;
+    category?: string;
+    audience?: KbAudience;
+  },
+) {
+  assertKbAuthor(ctx);
+  const fileName = String(p.fileName ?? '').trim();
+  if (!fileName) throw new Error('A file is required.');
+  if (!p.content || p.content.length === 0) throw new Error('The uploaded file is empty.');
+  if (p.content.length > MAX_FILE_BYTES) {
+    throw new Error(`File is too large (max ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB).`);
+  }
+  const title = cleanTitle(p.title || fileName);
+  const category = cleanCategory(p.category);
+  const audience = cleanAudience(p.audience);
+  assertAudienceWithinClearance(ctx, audience);
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .insert(kbDocument)
+      .values({
+        tenantId: ctx.tenantId,
+        kind: 'file',
+        title,
+        category,
+        audience,
+        fileName,
+        mimeType: p.mimeType || 'application/octet-stream',
+        sizeBytes: p.content.length,
+        content: p.content,
+        createdByUserId: ctx.userId ?? null,
+        updatedByUserId: ctx.userId ?? null,
+      })
+      .returning({ id: kbDocument.id });
+    await logEvent(tx, ctx, row.id, 'kb.document.uploaded', {
+      fileName,
+      mimeType: p.mimeType,
+      sizeBytes: p.content.length,
+      category,
+      audience,
+    });
+    return { id: row.id };
+  });
+}
+
+/** Soft-archive (hide) a document. */
+export async function archiveDocument(ctx: SessionContext, id: string) {
+  return withTenant(ctx, async (tx) => {
+    const updated = await tx
+      .update(kbDocument)
+      .set({ archivedAt: sql`now()`, updatedAt: sql`now()`, updatedByUserId: ctx.userId ?? null })
+      .where(and(eq(kbDocument.id, id), isNull(kbDocument.archivedAt)))
+      .returning({ id: kbDocument.id });
+    if (updated.length === 0) throw new Error('Document not found, or you cannot archive it.');
+    await logEvent(tx, ctx, id, 'kb.document.archived', {});
+    return { id };
+  });
+}
+
+/** Restore an archived document. */
+export async function restoreDocument(ctx: SessionContext, id: string) {
+  return withTenant(ctx, async (tx) => {
+    const updated = await tx
+      .update(kbDocument)
+      .set({ archivedAt: null, updatedAt: sql`now()`, updatedByUserId: ctx.userId ?? null })
+      .where(eq(kbDocument.id, id))
+      .returning({ id: kbDocument.id });
+    if (updated.length === 0) throw new Error('Document not found, or you cannot restore it.');
+    await logEvent(tx, ctx, id, 'kb.document.restored', {});
+    return { id };
+  });
+}
+
+/** Bounded article guidance. Tenant RLS and the ordinary audience ladder apply before ranking. */
+export async function searchKnowledgeArticles(ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
+ if(!ctx.userId||!query.trim()||query.length>2500)return [];
+ return withTenant(ctx,tx=>searchKnowledgeArticlesTx(tx,ctx,query,category,mode));
+}
+/** Same bounded, RLS/audience-filtered owner projection inside an admitted caller transaction. */
+export async function searchKnowledgeArticlesTx(tx:Tx,ctx:SessionContext,query:string,category:string,mode:'journey'|'dashboard'='journey'){
+ if(!ctx.userId||!query.trim()||query.length>2500)return [];
+  const rows=await tx.select({id:kbDocument.id,title:kbDocument.title,body:sql<string>`left(${kbDocument.body},5000)`,slug:kbDocument.slug}).from(kbDocument)
+   .where(and(eq(kbDocument.kind,'article'),eq(kbDocument.category,category),isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx))))
+   .orderBy(asc(kbDocument.createdAt),asc(kbDocument.id)).limit(100);
+  return (category==='performance-faq'?(mode==='dashboard'?rankPerformanceDashboardArticles:rankPerformanceArticles)(query,rows.filter(r=>r.body)):rankKnowledgeArticles(query,rows.filter(r=>r.body))).map(r=>({id:r.id,title:r.title,body:r.body.slice(0,1400)}));
+}
+
+/** Home searches this existing library, not a second content index. Tenant RLS and the ordinary
+ * audience clearance fence matching/ranking; only minimal metadata and a bounded literal excerpt leave this owner.
+ * Unlike contextual help, a genuine no-match returns no rows, never unrelated fallback articles.
+ */
+export async function searchHomeKnowledgeDocuments(ctx:SessionContext,query:string,locale='en'){
+ if(!ctx.userId)return [];
+ const words=homeSearchWords(query);
+ if(!words.length)return [];
+ const language=isLocale(locale)?locale:'en';
+ const title=language==='en'?kbDocument.title:
+  sql<string>`coalesce(${kbDocument.i18n} -> ${language} ->> 'title',${kbDocument.title})`;
+ const body=language==='en'?sql<string>`coalesce(${kbDocument.body},'')`:
+  sql<string>`coalesce(${kbDocument.i18n} -> ${language} ->> 'body',${kbDocument.body},'')`;
+ const matches=words.map(word=>or(sql`${title} ilike ${'%'+word+'%'}`,sql`${body} ilike ${'%'+word+'%'}`));
+ const score=sql.join(words.map(word=>sql`case when ${title} ilike ${'%'+word+'%'} then 3 else 0 end`),sql` + `);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.select({id:kbDocument.id,kind:kbDocument.kind,title,category:kbDocument.category,
+   descriptionSource:sql<string>`left(${body},1000)`}).from(kbDocument)
+   .where(and(isNull(kbDocument.archivedAt),inArray(kbDocument.audience,visibleAudiencesFor(ctx)),...matches))
+   .orderBy(desc(score),asc(title),asc(kbDocument.id)).limit(HOME_SEARCH_RESULT_LIMIT);
+  return rows.map(row=>({id:row.id,kind:row.kind,title:row.title,category:row.category,
+   descriptionMarkdown:homeKnowledgeExcerpt(row.descriptionSource),href:homeKnowledgeHref(row.id)}));
+ });
+}

@@ -1,0 +1,136 @@
+/** UNRELEASED. Canonical writers and the human-confirmation owner join these advisory locks. They
+ * protect participating transactions; they are NOT a universal database constraint or authority.
+ * Caller owns fresh access checks, complete dependency coverage and whole-transaction rollback on
+ * refusal. Acquire before protected reads; do not catch a busy refusal and continue to write. */
+import { sql, type SQL } from 'drizzle-orm';
+import { z } from 'zod';
+import type { Tx } from '../db/client';
+import { acquireBoundedAdvisoryLockTx } from './access-configuration-lock';
+import { pgSqlState } from '../lib/db-error';
+
+/** `busy`: another writer holds a dependency lock right now, so retrying shortly can succeed.
+ * `changed` (default): the nominated source changed between reads or is malformed, so the same request
+ * will be refused again; the person must review their choice. Either way nothing was written. */
+export class LeaveDependencyUnavailable extends Error {
+  constructor(readonly reason: 'busy' | 'changed' = 'changed') { super('Leave source is unavailable; review it again.'); this.name = 'LeaveDependencyUnavailable'; }
+}
+const uuid = z.guid();
+
+function tryDependencyLock(key: string, shared: boolean): SQL {
+  return shared ? sql`pg_try_advisory_xact_lock_shared(hashtextextended(${key},0))`
+    : sql`pg_try_advisory_xact_lock(hashtextextended(${key},0))`;
+}
+
+async function acquire(tx: Tx, tenantId: string, lock: SQL): Promise<void> {
+  // CASE prevents a mismatched carrier from acquiring a foreign tenant's advisory lock. No waiting:
+  // a busy source requires a fresh review rather than an unbounded response or an automatic retry.
+  const [row] = await tx.execute<{ acquired: boolean }>(sql`select case
+    when app.current_tenant_id()=${tenantId}::uuid
+      and current_setting('transaction_isolation')='read committed'
+      and current_setting('transaction_read_only')='off'
+    then ${lock}
+    else false end as acquired`);
+  if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
+}
+
+/** Shared configuration phase for a bounded server-owned target discovery, followed by subject locks
+ * and a fresh source read before any write. This phase alone never protects employment balances. */
+export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
+  if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
+  tenantId=tenantId.toLowerCase();
+  await acquire(tx, tenantId, tryDependencyLock(`leave-dependency-configuration:${tenantId}`, true));
+}
+
+/** Configuration writers must join exclusively before changing any participating dependency.
+ * Existing Access/annual-role/payroll/credit/row lock order still needs complete owner integration.
+ * This helper intentionally supplies no claim that a caller already owns those prerequisites. */
+export async function lockLeaveDependencyConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
+  if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
+  tenantId=tenantId.toLowerCase();
+  await acquire(tx, tenantId, tryDependencyLock(`leave-dependency-configuration:${tenantId}`, false));
+}
+
+/** Ordinary commands share stable configuration, then serialize each affected employment, covering
+ * all its borrower types rather than only the selected leave type. IDs are server-owned, deduplicated
+ * and sorted before the first await. Partial acquisition is released by the required outer rollback. */
+export async function lockLeaveDependenciesTx(tx: Tx, tenantId: string, employmentIds: readonly string[]): Promise<void> {
+  if (!uuid.safeParse(tenantId).success || employmentIds.length === 0
+    || employmentIds.some(id => !uuid.safeParse(id).success)) throw new LeaveDependencyUnavailable();
+  // UUID equality in PostgreSQL ignores letter case. Capture canonical keys BEFORE dedupe/order
+  // so an accepted uppercase UUID cannot own a different key for the same physical subject.
+  tenantId=tenantId.toLowerCase();
+  const subjects = [...new Set(employmentIds.map(id=>id.toLowerCase()))].sort();
+  const configuration = tryDependencyLock(`leave-dependency-configuration:${tenantId}`, true);
+  const subjectLock = (id: string) => tryDependencyLock(`leave-dependency-employment:${tenantId}:${id}`, false);
+  if (subjects.length === 1) {
+    // CASE keeps configuration first and never touches the subject when it fails.
+    await acquire(tx, tenantId, sql`case when ${configuration} then ${subjectLock(subjects[0])} else false end`);
+    return;
+  }
+  // The configuration and every subject in ONE statement, in the same order and with the same keys (a cohort batch
+  // used to pay one round trip per employee while it held the tenant's Access lock). CASE keeps configuration first
+  // and touches no subject when it fails; any refused subject refuses the whole set, and whatever was acquired is
+  // released by the required outer rollback, exactly as before.
+  const keys = subjects.map(id => `leave-dependency-employment:${tenantId}:${id}`);
+  await acquire(tx, tenantId, sql`case when ${configuration} then (select coalesce(bool_and(pg_try_advisory_xact_lock(hashtextextended(k.key,0))),false)
+    from unnest(${`{${keys.join(',')}}`}::text[]) as k(key)) else false end`);
+}
+
+/** For ordinary writers admitted under the shared Access lock: shared configuration, then each affected
+ * employment, WAITING with the bounded Access-lock wait instead of refusing. Writers no longer serialize on the
+ * exclusive Access lock, so two requests for one employment (a double tap) can meet here, and a no-wait
+ * refusal would surface as a false "busy" on the hottest path. IDs are deduplicated and sorted; configuration
+ * is taken first, matching the no-wait owner above. */
+export async function lockLeaveDependenciesWaitTx(tx: Tx, tenantId: string, employmentIds: readonly string[]): Promise<void> {
+  if (!uuid.safeParse(tenantId).success || employmentIds.some(id => !uuid.safeParse(id).success)) throw new LeaveDependencyUnavailable();
+  tenantId = tenantId.toLowerCase();
+  const subjects = [...new Set(employmentIds.map(id => id.toLowerCase()))].sort();
+  const [row] = await tx.execute<{ acquired: boolean }>(sql`select app.current_tenant_id()=${tenantId}::uuid
+    and current_setting('transaction_isolation')='read committed'
+    and current_setting('transaction_read_only')='off' as acquired`);
+  if (row?.acquired !== true) throw new LeaveDependencyUnavailable('busy');
+  try {
+    await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-configuration:${tenantId}`, true);
+    for (const id of subjects) await acquireBoundedAdvisoryLockTx(tx, `leave-dependency-employment:${tenantId}:${id}`, false);
+  } catch (error) {
+    // A bound reached is the same outcome callers already handle: nothing written, retry shortly.
+    if (pgSqlState(error) === '55P03') throw new LeaveDependencyUnavailable('busy');
+    throw error;
+  }
+}
+
+/** A person attribute can feed leave cohorts, so writers of those attributes serialise with leave commands on
+ * every employment of that person. The RLS-visible employments are nominated first, then locked in key order. */
+export async function lockPersonLeaveDependenciesWaitTx(tx: Tx, tenantId: string, employmentId: string): Promise<void> {
+  const rows = await tx.execute<{ id: string }>(sql`select peer.id from public.employment subject
+    join public.employment peer on peer.person_id=subject.person_id and peer.tenant_id=subject.tenant_id
+    where subject.id=${employmentId}::uuid`);
+  await lockLeaveDependenciesWaitTx(tx, tenantId, rows.length ? Array.from(rows, row => row.id) : [employmentId]);
+}
+
+/** Explicit SOURCE-READ interval for an actual READ COMMITTED READ ONLY transaction. Same physical
+ * keys as ordinary writers; shared subject mode coexists with other source readers but conflicts
+ * with every participating employment-exclusive writer. This grants no effect authority, never
+ * changes transaction mode, and must follow the caller's current Access/own-subject authorization.
+ * PostgreSQL's advisory-lock/SET TRANSACTION docs describe these distinct mechanisms; actual
+ * app-role/read-only/lock-mode interleavings remain required verification, not a source guarantee.
+ */
+async function acquireReadOnlySource(tx:Tx,tenantId:string,key:string):Promise<void>{
+ const [row]=await tx.execute<{acquired:boolean}>(sql`select case
+  when app.current_tenant_id()=${tenantId}::uuid and current_setting('transaction_isolation')='read committed'
+   and current_setting('transaction_read_only')='on'
+  then pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) else false end as acquired`);
+ if(row?.acquired!==true)throw new LeaveDependencyUnavailable('busy');
+}
+export async function lockLeaveReadOnlySourceConfigurationTx(tx:Tx,tenantId:string):Promise<void>{
+ if(!uuid.safeParse(tenantId).success)throw new LeaveDependencyUnavailable();tenantId=tenantId.toLowerCase();
+ await acquireReadOnlySource(tx,tenantId,`leave-dependency-configuration:${tenantId}`);
+}
+/** Complete nominated subject set is captured/deduped/ordered before first await. Any busy/partial
+ * refusal requires the WHOLE caller transaction to roll back, exactly as for ordinary commands. */
+export async function lockLeaveReadOnlySourceDependenciesTx(tx:Tx,tenantId:string,employmentIds:readonly string[]):Promise<void>{
+ if(!uuid.safeParse(tenantId).success||employmentIds.length===0||employmentIds.some(id=>!uuid.safeParse(id).success))throw new LeaveDependencyUnavailable();
+ tenantId=tenantId.toLowerCase();const subjects=[...new Set(employmentIds.map(id=>id.toLowerCase()))].sort();
+ await acquireReadOnlySource(tx,tenantId,`leave-dependency-configuration:${tenantId}`);
+ for(const id of subjects)await acquireReadOnlySource(tx,tenantId,`leave-dependency-employment:${tenantId}:${id}`);
+}

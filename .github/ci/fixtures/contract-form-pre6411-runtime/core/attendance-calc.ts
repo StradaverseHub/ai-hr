@@ -1,0 +1,261 @@
+/**
+ * 7c834696 stage 1 — "Attendance Calculation Engine Enhancement": the PURE arithmetic that turns a rule's
+ * stored-but-previously-inert settings into per-day figures.
+ *
+ * Everything here is a total function of its arguments: no DB, no clock, no tenant. That is deliberate —
+ * the release gate for this item is "a rule with no bands and deductions off leaves every derived figure
+ * byte-identical to today", and a gate like that is only worth anything if you can assert it directly on
+ * the function rather than through a fixture. core/attendance.ts calls these once per derived day;
+ * test/attendance-stage1-calc.test.ts exercises them with zero fixtures.
+ *
+ * THE ONE INVARIANT THAT OUTRANKS EVERYTHING ELSE HERE
+ * ----------------------------------------------------
+ * `attendance.ot_minutes` is the canonical overtime total. core/payroll.ts (the OT prefill and the weekly
+ * cross-cycle read), core/reporting.ts and the TOIL register all read it, and none of them reads a single
+ * figure produced by this file. `splitOtMinutes` therefore ALWAYS returns buckets summing to exactly the
+ * minutes it was given. Categorising MOVES minutes between rate columns; it can never create or destroy
+ * one. If you change anything in this file, that sum is the assertion to keep green.
+ */
+import type { DayType } from './attendance';
+import type { ResolvedAttendanceRule, ResolvedOtRow } from './attendance-rule';
+import {ATTENDANCE_POLICY_ROUNDING_STEPS,type AttendanceGroupPolicy,type AttendancePolicyDayClass} from '../lib/attendance-group-policy';
+
+export type PolicyOvertimeDurationStep={kind:'disabled'|'belowMinimum'|'maximum'|'rounding'|'preApprovedLimit'|'periodLimit';before:number;after:number};
+/** The canonical day owner calls this ONCE per business-day classification after evidenced breaks,
+ * late offset and approval-method selection. This is duration arithmetic, never an approval or cash
+ * proof. New policies bypass legacy band rounding; central patterns retain separate money rounding. */
+export function finalizePolicyOvertimeDuration(input:{policy:AttendanceGroupPolicy['overtime'];dayClass:AttendancePolicyDayClass;
+ approvedEligibleMinutes:number|null;preApprovedLimitMinutes:number|null;periodMinutes:number}):
+ {status:'known';minutes:number;steps:PolicyOvertimeDurationStep[]}|{status:'unavailable';reason:'durationUnknown'}{
+ const {policy,dayClass,approvedEligibleMinutes:raw,preApprovedLimitMinutes:bound,periodMinutes}=input;
+ if(!Number.isSafeInteger(periodMinutes)||periodMinutes<1||periodMinutes>4320)throw Error('Invalid canonical attendance period.');
+ const valid=(value:number)=>Number.isSafeInteger(value)&&value>=0&&value<=periodMinutes;
+ if(raw!==null&&!valid(raw)||bound!==null&&!valid(bound))throw Error('Invalid evidenced overtime duration.');
+ const day=policy.days[dayClass];
+ if(!day||!valid(day.minimumMinutes)||day.maximumMinutes!==null&&(!valid(day.maximumMinutes)||day.maximumMinutes<day.minimumMinutes))throw Error('Invalid day-specific overtime thresholds.');
+ const {mode,step}=policy.rounding;
+ if(!['none','down','up','nearest'].includes(mode)||(mode==='none'?step!==null:!(ATTENDANCE_POLICY_ROUNDING_STEPS as readonly unknown[]).includes(step)))throw Error('Invalid overtime rounding policy.');
+ if(raw===null)return {status:'unavailable',reason:'durationUnknown'};
+ const steps:PolicyOvertimeDurationStep[]=[];
+ let minutes=raw;
+ const apply=(kind:PolicyOvertimeDurationStep['kind'],after:number)=>{steps.push({kind,before:minutes,after});minutes=after;};
+ if(!policy.enabled){apply('disabled',0);return {status:'known',minutes,steps};}
+ // Threshold follows approval selection. A pre-approved ceiling cannot manufacture evidence.
+ if(bound!==null&&minutes>bound)apply('preApprovedLimit',bound);
+ if(minutes<day.minimumMinutes){apply('belowMinimum',0);return {status:'known',minutes,steps};}
+ if(day.maximumMinutes!==null&&minutes>day.maximumMinutes)apply('maximum',day.maximumMinutes);
+ if(mode!=='none'){
+  const whole=Math.floor(minutes/step!),remainder=minutes%step!;
+  const roundUp=mode==='up'&&remainder>0||mode==='nearest'&&2*remainder>=step!;
+  const rounded=(whole+(roundUp?1:0))*step!;
+  apply('rounding',rounded);
+ }
+ if(day.maximumMinutes!==null&&minutes>day.maximumMinutes)apply('maximum',day.maximumMinutes);
+ if(bound!==null&&minutes>bound)apply('preApprovedLimit',bound);
+ if(minutes>periodMinutes)apply('periodLimit',periodMinutes);
+ return {status:'known',minutes,steps};
+}
+
+/** The per-rate overtime buckets stored on the attendance row. OVERTIME ONLY — the "OT 1.0" COLUMN on the
+ *  Records screens is normal-within-schedule hours, which stays derived (worked − ot), never stored. */
+export type OtSplit = {
+  /** A band whose rate pattern is FLAT: attendance records the hours, payroll decides what they are worth. */
+  flat: number;
+  /** A configured rate of 0 — "record the hours but do not pay them". Exists so the buckets still sum. */
+  ot00: number;
+  ot10: number;
+  ot15: number;
+  ot20: number;
+  ot30: number;
+  /** c03670cc — a VARIABLE band whose typed rate is none of 0 / 1.0 / 1.5 / 2.0 / 3.0 (for example 1.75).
+   *  Present only when such minutes exist, so every existing split keeps its exact six-key shape. Stored
+   *  in attendance.ot_other_minutes; the band's rate itself is on the calculation rows and the trace. */
+  other?: number;
+};
+export type OtSplitBucket = keyof OtSplit;
+
+export const emptyOtSplit = (): OtSplit => ({ flat: 0, ot00: 0, ot10: 0, ot15: 0, ot20: 0, ot30: 0 });
+export const otSplitTotal = (s: OtSplit): number => s.flat + s.ot00 + s.ot10 + s.ot15 + s.ot20 + s.ot30 + (s.other ?? 0);
+/** Add minutes to one bucket; the optional `other` bucket is created on first use. */
+export function addToOtSplit(split: OtSplit, bucket: OtSplitBucket, minutes: number): void {
+  if (bucket === 'other' && split.other === undefined && minutes === 0) return;
+  split[bucket] = (split[bucket] ?? 0) + minutes;
+}
+
+/** The five standardized variable multipliers the rule editor offers, mapped to their bucket. */
+const VARIABLE_BUCKETS: [number, OtSplitBucket][] = [
+  [0, 'ot00'],
+  [1.0, 'ot10'],
+  [1.5, 'ot15'],
+  [2.0, 'ot20'],
+  [3.0, 'ot30'],
+];
+
+/**
+ * Which bucket a band's minutes land in.
+ *
+ *  • FLAT pattern → the `flat` bucket, whatever the numeric rate says. The request is explicit: choosing
+ *    Flat disables the rate selector and attendance reports only "Flat OT hours".
+ *  • VARIABLE pattern → the bucket for its multiplier (0 / 1.0 / 1.5 / 2.0 / 3.0).
+ *  • c03670cc — a VARIABLE multiplier that is none of those (the editor now takes a typed rate such as
+ *    1.75) lands in `other`, reported with its rate, instead of being misreported as Flat. Never dropped:
+ *    the sum invariant holds. Rates are stored with two decimals, so the comparison tolerance is exact.
+ */
+export function bucketForRate(ratePattern: 'flat' | 'variable', rate: number): OtSplitBucket {
+  if (ratePattern !== 'variable') return 'flat';
+  const hit = VARIABLE_BUCKETS.find(([r]) => Math.abs(r - rate) < 0.005);
+  return hit ? hit[1] : 'other';
+}
+
+/**
+ * The multiplier a band uses on a given day.
+ *
+ * 7c834696 rev 3 FIXED A REPORTING REGRESSION HERE. A band carries an ordinary rate and (optionally) a
+ * public-holiday rate; there is no rest-day column on a band at all. The original reading — "PH rate when
+ * set, else the ordinary rate" — therefore categorised a rest day and an unconfigured public holiday at
+ * the band's WORKDAY multiplier, so under production rule A02 (both bands 1.50, ph_rate NULL) a rest day
+ * would have been reported in the OT 1.5 column and a public holiday likewise, where the same day on a
+ * rule with NO bands lands in OT 2.0 and OT 3.0 respectively (see splitOtMinutes' no-bands leg). Adding an
+ * OT table silently changed which column a rest day was reported in.
+ *
+ * The rule now: a non-workday falls back to the STATUTORY multiplier the no-bands leg already uses — 2×
+ * for a rest day, 3× for a public holiday — and an explicitly configured `phRate` still wins on a public
+ * holiday, because that is the owner's own number (Standard sets 2.00 and 3.00 on its two bands). A rest
+ * day has nothing to override it with, so it always takes 2×.
+ *
+ * REPORTING ONLY. Pay reads `ot_minutes` plus the statutory multipliers (core/payroll.ts prefill reads
+ * ot_minutes and day_type; band multipliers never reach the payroll kernel), so this moves a COLUMN on the
+ * attendance report, not a ringgit. Production has 8 rest-day rows, all 2026-06-28, all predating any
+ * banded rule, and no public-holiday rows — nothing on production is re-categorised unless it is recomputed.
+ */
+export function rateForDay(row: ResolvedOtRow, dayType: DayType): number {
+  if (dayType === 'holiday') return row.phRate ?? 3.0;
+  if (dayType === 'rest_day') return 2.0;
+  return row.rate;
+}
+
+/**
+ * Split a day's overtime minutes across the rate buckets.
+ *
+ * NO BANDS (the overwhelming majority of rules, and every rule that predates this release) reproduces the
+ * routing core/attendance-derive.ts `otByRate` has always done at READ time — workday to 1.5, rest day to
+ * 2.0, holiday to 3.0 — so storing the split changes nothing anybody sees. That equivalence is the release
+ * gate, and it is asserted directly, not assumed.
+ *
+ * WITH BANDS the walk is PROGRESSIVE, as the request specifies: under "first 2 hours at 1.5, next hour at
+ * 2.0" a three-hour day is 2 hours at 1.5 plus 1 hour at 2.0, not three hours dumped into one column.
+ *
+ * Band geometry. Validation (core/attendance-rule.ts normalizeInput) now enforces the request's rule that
+ * every next `from` equals the previous `to` + 1 minute, so the band boundaries ARE the `to` values and a
+ * band's capacity is `to − previous to`. That is the only reading of the reporter's own worked example
+ * that reproduces it (0–120 then 121–180 must cover 120 then 60 minutes, not 121 then 60). `from` is used
+ * for ordering and validation; `to ≤ from` still means an open-ended final band, as it always has.
+ *
+ * TWO DELIBERATE NON-BEHAVIOURS, both because they would MOVE MONEY and both flagged for the owner:
+ *  1. Minutes beyond the final band keep the FINAL band's rate. The request says they "shall not be
+ *     counted as OT" — but that would cut `ot_minutes`, which is the figure payroll pays from, downward
+ *     and retroactively for anyone with a bounded table. Truncation is its own opt-in decision.
+ *  2. Rounding is NOT touched here. It stays in applyOtRuleRows and still decides `ot_minutes`; this
+ *     function splits whatever total came out of it. (7c834696 rev 3 settled that rounding is DOWNWARD —
+ *     see applyOtRuleRows. The total this function is handed changed; the split arithmetic did not.)
+ */
+export type OvertimeCalculationRow = {
+  key:string;fromMinutes:number;toMinutes:number|null;ratePattern:'flat'|'variable';rate:number;
+  bucket:OtSplitBucket;calculatedMinutes:number;
+};
+
+/** One row for every configured band, including zero results. This also owns the bucket distribution. */
+export function overtimeCalculationRows(otMinutes:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null):OvertimeCalculationRow[] {
+  const total=Math.max(0,Math.trunc(otMinutes??0)),bands=[...(rule?.otRows??[])].sort((a,b)=>a.fromMinutes-b.fromMinutes);
+  if(!bands.length){const rate=dayType==='holiday'?3:dayType==='rest_day'?2:1.5;
+    return [{key:'default',fromMinutes:0,toMinutes:null,ratePattern:'variable',rate,bucket:bucketForRate('variable',rate),calculatedMinutes:total}];}
+  const rows=bands.map(row=>({key:row.id??`${rule!.id}:${row.fromMinutes}`,fromMinutes:row.fromMinutes,
+    toMinutes:row.toMinutes<=row.fromMinutes?null:row.toMinutes,ratePattern:row.ratePattern,
+    rate:rateForDay(row,dayType),bucket:bucketForRate(row.ratePattern,rateForDay(row,dayType)),calculatedMinutes:0}));
+  let remaining=total,cursor=Math.max(0,bands[0].fromMinutes);
+  if(cursor>0){const head=Math.min(remaining,cursor);rows[0].calculatedMinutes+=head;remaining-=head;}
+  for(let i=0;i<bands.length&&remaining>0;i++){
+    const row=bands[i],open=row.toMinutes<=row.fromMinutes,capacity=open?remaining:Math.max(0,row.toMinutes-cursor);
+    const take=Math.min(remaining,capacity);rows[i].calculatedMinutes+=take;remaining-=take;
+    cursor=open?cursor+take:Math.max(cursor,row.toMinutes);
+  }
+  if(remaining>0)rows[rows.length-1].calculatedMinutes+=remaining;
+  return rows;
+}
+export function splitOtMinutes(otMinutes:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null):OtSplit {
+  const out=emptyOtSplit();for(const row of overtimeCalculationRows(otMinutes,dayType,rule))addToOtSplit(out,row.bucket,row.calculatedMinutes);return out;
+}
+
+export class ManualOtConfigurationChangedError extends Error {
+  constructor(){super('The overtime configuration no longer contains a manually corrected row. Return that row to Auto before recalculating or changing this schedule.');}
+}
+export function effectiveOvertimeRows(total:number|null,dayType:DayType,rule:ResolvedAttendanceRule|null,manual:import('../lib/attendance-day-adjustment').ManualOtRows={}) {
+  const calculated=overtimeCalculationRows(total,dayType,rule);
+  if(Object.keys(manual).some(key=>!calculated.some(r=>r.key===key)))throw new ManualOtConfigurationChangedError();
+  const rows=calculated.map(row=>({...row,effectiveMinutes:manual[row.key]?.minutes??row.calculatedMinutes,manual:manual[row.key]!=null}));
+  const split=emptyOtSplit();for(const row of rows)addToOtSplit(split,row.bucket,row.effectiveMinutes);
+  return {rows,split,total:otSplitTotal(split),calculatedSplit:splitOtMinutes(total,dayType,rule)};
+}
+
+/**
+ * Minutes late, measured on the shift's own timeline (all three arguments are "minutes from midnight of
+ * the attendance date", so a cross-midnight shift is handled by the caller's anchoring, not by a special
+ * case here).
+ *
+ * Grace first: an arrival inside the grace window is not late at all. Once it IS late, "include grace in
+ * lateness" decides where the count starts — from the scheduled start (include) or from the end of the
+ * grace window (exclude). That is the request's rule verbatim.
+ */
+export function latenessMinutes(p: {
+  checkInAbs: number;
+  startAbs: number;
+  graceMinutes: number;
+  includeGrace: boolean;
+}): number {
+  const grace = Math.max(0, p.graceMinutes);
+  const threshold = p.startAbs + grace;
+  if (p.checkInAbs <= threshold) return 0;
+  return Math.max(0, p.includeGrace ? p.checkInAbs - p.startAbs : p.checkInAbs - threshold);
+}
+
+/** Minutes left early. Mirror image of latenessMinutes, against the shift's end. */
+export function earlyOutMinutes(p: {
+  checkOutAbs: number;
+  endAbs: number;
+  graceMinutes: number;
+  includeGrace: boolean;
+}): number {
+  const grace = Math.max(0, p.graceMinutes);
+  const threshold = p.endAbs - grace;
+  if (p.checkOutAbs >= threshold) return 0;
+  return Math.max(0, p.includeGrace ? p.endAbs - p.checkOutAbs : threshold - p.checkOutAbs);
+}
+
+/**
+ * The wage-deduction minutes a measured lateness / early-out earns: "every X minutes late, deduct Y
+ * minutes", floored — 25 minutes late under "every 15 → deduct 30" is one whole block, i.e. 30, not 50.
+ * The request states there is NO maximum, so none is imposed.
+ *
+ * Returns 0 whenever either side of the pair is unset, which is what every rule in the product looks like
+ * today. This function cannot produce a deduction the caller did not already gate — see deductionsApplyOn.
+ */
+export function deductionMinutes(measured: number, everyMinutes: number, deductPerBlock: number): number {
+  if (measured <= 0 || everyMinutes <= 0 || deductPerBlock <= 0) return 0;
+  return Math.floor(measured / everyMinutes) * deductPerBlock;
+}
+
+/**
+ * THE SAFETY GATE ON THE ONLY DOWNWARD-CAPABLE FIGURE IN STAGE 1.
+ *
+ * A deduction may be computed for a day only when the day's paired rule has the per-rule switch ON and the
+ * attendance date is on or after that rule's `deductionsEffectiveFrom` — which the service stamps to
+ * today-in-Kuala-Lumpur at the instant the switch flips on and never earlier. Both halves are required, and
+ * a DB CHECK (migration 0394) makes "switched on with no start date" unrepresentable, so there is no path
+ * — through the engine, a re-derivation, or a correction re-approved months later — by which a closed
+ * period acquires a deduction it did not have.
+ */
+export function deductionsApplyOn(rule: ResolvedAttendanceRule | null, attendanceDate: string): boolean {
+  if (!rule?.applyDeductions) return false;
+  if (!rule.deductionsEffectiveFrom) return false;
+  return attendanceDate >= rule.deductionsEffectiveFrom; // ISO dates compare lexicographically
+}

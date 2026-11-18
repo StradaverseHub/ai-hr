@@ -1,0 +1,2882 @@
+import { preparePayComponentCompaniesTx, assertPayComponentCompaniesTx } from './pay-component-company';
+import { payComponentAppliesToCompany } from '../lib/pay-component-company';
+import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
+import {createHash} from 'node:crypto';
+import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
+import {lockAccessConfigurationTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
+import {tryLockPayrollHistoryReadTx} from './payroll-history-lock';
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
+import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
+import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
+/**
+ * Typed pay-component services (Wave 3 #9, ADR-0025). Catalog management (admin), per-employment
+ * recurring values (effective-dated like compensation), per-batch one-off values, plus backfill
+ * helpers that seed components from the legacy compensation + payroll_input so the gated kernel path
+ * is byte-identical. Every state-changing method appends a DomainEvent (substrate discipline).
+ */
+import { and, eq, gte, ilike, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
+import { actorOf, appendEvent } from '../db/events';
+import {
+  attendance,
+  compensation,
+  employment,
+  employmentPayComponent,
+  payComponent,
+  payrollBatch,
+  payrollBatchComponent,
+  payrollCycle,
+  payrollInput,
+  payrollIndividualTxn,
+  payslip,
+  person,
+} from '../db/schema';
+// 2aed39d4 — the closed-pay-run test reuses the SAME period helpers the Basic Salary card and the
+// Movement correction already refuse on, rather than a fourth definition of "payroll evidence".
+// core/comp.ts does not import this module, so this is not a cycle.
+import { closedPeriodsTx, compensationEffectiveOn, overlapsClosedPeriod } from './comp';
+import { countryPacks } from '../localization/registry';
+import type { PayComponentSeed, PcbExemptionTable, PcbRemunerationType } from '../localization/country-pack';
+import { parseCsvRecords } from '../lib/csv';
+// 2f889bae — date-only arithmetic, UTC by design (the repo rule: only "what date is this INSTANT" goes
+// through the tenant timezone). core/roster.ts already imports from this module, so no new pack edge.
+// a3d485f6 adds monthOf/monthRange/addMonths from the same pure module, for the mid-month refusal's
+// "which calendar month does this date land in, and what does that month span" arithmetic.
+import { addDaysIso, addMonths, monthOf, monthRange } from '../lib/roster-month';
+// a3d485f6 — "today" for the refusal's suggested date is a CALENDAR DAY, so it goes through the tenant
+// timezone (the repo rule this file's addDaysIso comment states from the other side).
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { isTransactionEffectiveDate } from '../lib/transaction-effective-date';
+import { assertPayComponentReady, payComponentIdentityIssues, PENDING_PAY_INPUT_KINDS, type PendingPayInputKind } from '../lib/pay-component-contract';
+import { payItemImportFileName } from '../lib/pay-component-import';
+import {
+  isFixedAllowanceComponent,
+  isStatutoryComponent,
+  payRuleDependencies as payRuleDependenciesOf,
+  payRuleDerivesAmount,
+  payRuleInputUnit,
+  planResolutionOrder,
+  resolvePayComponentSet,
+  validatePayRule,
+  validatePayRuleAgainstCatalog,
+  type PayRule,
+  type PayRuleCatalogNode,
+  type PayRuleComponentNotice,
+  type PayRuleErrorCode,
+  type PayRuleTraceStep,
+} from './pay-rule';
+
+// ── Pack-supplied vocabulary (ADR-0080 D6, rung 5a) ──────────────────────────────────────────────
+// The default catalog, the backfill-critical code roles, and the LHDN PCB classification vocabulary
+// all come from the registered country packs — no direct localization/my import. The catalog and its
+// classification validation are TENANT-level (there is no acting company on a catalog save), so the
+// vocabulary is the union across registered packs, in registration order — byte-identical with MY as
+// the only pack; per-company narrowing is a later slice (ADR-0080 §6).
+const DEFAULT_PAY_COMPONENTS: PayComponentSeed[] = countryPacks().flatMap((p) => p.payComponents.defaults);
+const BACKFILL_COMPONENT_CODES: { basic: string; allowance: string; overtime: string; bonus: string; claim: string } =
+  Object.assign({}, ...countryPacks().map((p) => p.payComponents.backfillCodes));
+
+/** The remuneration-type vocabulary for pay-code PCB classification (feedback 09b554e9), pack-supplied.
+ *  Re-exported so service-side callers keep a single import point; the client form island imports the
+ *  pack's pure statutory-tables module directly (db-free — a 5b-slice cutover). */
+export const PCB_REMUNERATION_TYPES: readonly PcbRemunerationType[] = countryPacks().flatMap(
+  (p) => p.payroll.pcbRemunerationTypes,
+);
+/** Exemption-code list valid for a remuneration type — merged across the registered packs' built-ins. */
+export function pcbExemptionCodesFor(type: PcbRemunerationType): PcbExemptionTable {
+  return Object.assign({}, ...countryPacks().map((p) => p.payroll.pcbExemptionCodesFor(type)));
+}
+export type { PcbRemunerationType } from '../localization/country-pack';
+
+const money = (v: number) => Number(v).toFixed(2);
+
+// Feedback 3c473773 — re-exported so callers (the maintenance form, its action, the tests) have one import
+// point for the payroll-category vocabulary, mirroring PCB_REMUNERATION_TYPES above.
+import { cleanDisplayCategory } from './pay-display-category';
+export { PAY_DISPLAY_CATEGORIES, cleanDisplayCategory, type PayDisplayCategory } from './pay-display-category';
+
+// ADR-0035 1A — constrained config vocabularies (stored as text, validated app-side).
+// EA-form lines map a component to a Borang EA / C.P.8A Part B line so EA totals reconcile (#14).
+// ea54fe6e — WIDENED FROM NINE TO FIFTEEN, and `gratuity_compensation` SPLIT IN TWO.
+//
+// The reporter listed the fourteen boxes they actually map pay items to; this is that list, plus the
+// gratuity/compensation split their "Gratuity / Compensation" row collapses. Every value here routes to
+// exactly one `EaField` — the table is `EA_LINE_TO_FIELD` in localization/my/reports.ts, and
+// test/ea-line-routing.test.ts pins that this vocabulary and that table stay in step, in BOTH directions.
+//
+// SPLITTING `gratuity_compensation` WAS SAFE ONLY BECAUSE NOTHING CARRIED IT. Measured on production
+// 2026-08-29: all 25 pay_component rows have ea_form_line = NULL, so there is no stored value to migrate
+// and no backfill. Re-check that before changing or removing a value here again — `cleanEaLine` silently
+// nulls anything it does not recognise, so a retired value would erase an operator's mapping with no error.
+//
+// WHY `commission` AND `director_fee` SHARE ONE BOX. They are not a duplicate: the form's own caption for
+// that box is "1(b) Fees (including directors' fees), commission or bonus" (messages `ea.directorFee` /
+// `ea.feesCommissionBonus`). Two vocabulary words, one printed line, because the FORM groups them.
+export const EA_FORM_LINES = [
+  'EA_B1A','EA_B1B','EA_B1C','EA_B1D','EA_B1E','EA_B1F','EA_B3','EA_B4','EA_B5','EA_B6','EA_C1','EA_C2',
+  'gross_salary',           // B.1(a) salary, wages, leave pay
+  'bonus',                  // B.1(b) bonus / incentive (cash)
+  'commission',             // B.1(b) fees, commission — same printed box as director_fee
+  'director_fee',           // B.1(b) directors' fees
+  'allowance_taxable',      // B.1(c) taxable allowances
+  'allowance_exempt',       // tax-exempt allowance (reported inside allowances, printed "included above")
+  'tips_perquisites',       // B.1(c) gross tips, perquisites, awards or other allowances
+  'tax_borne_by_employer',  // B.1(d) income tax paid by the employer on the employee's behalf
+  'esos',                   // B.1(e) ESOS / share scheme benefit
+  'gratuity',               // B.1(f) gratuity for the period
+  'arrears',                // B.2 arrears and other payments for previous years paid in the current year
+  'bik',                    // B.3 benefit-in-kind / perquisite
+  'vola',                   // B.4 value of living accommodation
+  'unapproved_fund_refund', // B.5 refund from an unapproved provident / pension fund
+  'compensation',           // B.6 compensation for loss of employment
+] as const;
+export type EaFormLine = (typeof EA_FORM_LINES)[number];
+
+// Per-component rounding of the payable amount (#15). 'none' = exact 2dp (legacy ⇒ byte-identical).
+export const ROUNDING_METHODS = ['none', 'up', 'down', 'nearest'] as const;
+export type RoundingMethod = (typeof ROUNDING_METHODS)[number];
+
+const cleanEaLine = (v: unknown): string | null => {
+  if (v == null || v === '') return null;
+  if (!EA_FORM_LINES.includes(v as EaFormLine)) throw new Error('Unknown EA reporting classification');
+  return v as string;
+};
+const cleanRounding = (v: unknown): RoundingMethod =>
+  ROUNDING_METHODS.includes(v as RoundingMethod) ? (v as RoundingMethod) : 'none';
+
+// Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle taxonomy. REUSES the existing
+// payroll_run_type enum values (the product's real cycle master keyed by the multi-cycle engine); no new
+// vocabulary. Stored constrained on employment_pay_component.run_type; null = unspecified.
+export const FIXED_TRANSACTION_CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
+export type FixedTransactionCycle = (typeof FIXED_TRANSACTION_CYCLES)[number];
+// Coerce any input to a valid cycle or null — an unknown value (URL tamper, stale form) becomes null
+// (unspecified) rather than being persisted or leaking into the event payload.
+const cleanCycle = (v: unknown): FixedTransactionCycle | null =>
+  FIXED_TRANSACTION_CYCLES.includes(v as FixedTransactionCycle) ? (v as FixedTransactionCycle) : null;
+
+async function componentIdByCode(tx: Tx, tenantId: string, code: string): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: payComponent.id })
+    .from(payComponent)
+    .where(and(eq(payComponent.tenantId, tenantId), eq(payComponent.code, code)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+// ───────────────────────── Catalog ─────────────────────────
+
+const capturePayCatalogContext=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+/** Idempotently upsert the Malaysia default catalog (by code). Admin-only via RLS. */
+export function seedPayComponentCatalog(ctx: SessionContext) {
+  ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
+    let created = 0;
+    for (const c of DEFAULT_PAY_COMPONENTS) {
+      const existing = await componentIdByCode(tx, ctx.tenantId, c.code);
+      if (existing) {
+        await tx.update(payComponent).set(flagsOf(c)).where(eq(payComponent.id, existing));
+      } else {
+        // 711adcd2 — a FRESHLY PROVISIONED tenant must get the same aggregate membership an established
+        // one gets from migration 0456's backfill, or the same seeded MEAL allowance would feed a tenant's
+        // overtime formula on one tenant and not on another. Derived from the SAME pre-0456 predicate the
+        // backfill encodes (a seed row carries no rule, so `null` is its rule), never hand-listed.
+        // INSERT ONLY: the update branch above deliberately does not touch the flags, because re-running
+        // the seed must never silently un-tick a box an operator set.
+        await tx.insert(payComponent).values({
+          tenantId: ctx.tenantId,
+          code: c.code,
+          name: c.name,
+          kind: c.kind,
+          ...flagsOf(c),
+          // 2026-11-14 — on INSERT only, like the ORP flags: a re-seed never re-ticks an existing row.
+          ...(c.epfBonus2012 ? { epfBonus2012: true } : {}),
+          orpOvertime: isFixedAllowanceComponent(c.code, c.kind, null),
+          orpUnpaidLeave: false,
+        });
+        created += 1;
+      }
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: ctx.tenantId, // catalog-level op keyed to the tenant
+      eventType: 'pay-component.catalog.seeded',
+      actor: actorOf(ctx),
+      payload: { total: DEFAULT_PAY_COMPONENTS.length, created },
+    });
+    return { total: DEFAULT_PAY_COMPONENTS.length, created };
+  });
+}
+
+const flagsOf = (c: Pick<PayComponentSeed, 'includedInEpf' | 'includedInSocsoEis' | 'includedInPcb' | 'includedInHrdfBase' | 'isNonPayable' | 'prorates'>) => ({
+  includedInEpf: c.includedInEpf,
+  includedInSocsoEis: c.includedInSocsoEis,
+  includedInPcb: c.includedInPcb,
+  includedInHrdfBase: c.includedInHrdfBase,
+  isNonPayable: c.isNonPayable,
+  prorates: c.prorates,
+});
+
+/**
+ * Recurring components for an employee, joined with the catalog (for the people page).
+ *
+ * 1.2.1 Fixed Transaction made this period-aware: it no longer hard-filters `isNull(validTo)`. Superseded
+ * rows are still excluded (`isNull(supersededAt)` — they were replaced by a newer value), but END-DATED rows
+ * (validTo set, supersededAt null) ARE returned so the UI can show them with an "ended" badge. The two
+ * inactive states are now distinguished: superseded ⇒ hidden, ended ⇒ shown as ended. The UI derives
+ * `active` vs `ended` from validTo against today. `prorates` (catalog) is selected so the UI can render the
+ * resolved prorate (override ?? catalog).
+ */
+export function listEmploymentPayComponents(ctx: SessionContext, employmentId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        id: employmentPayComponent.id,
+        componentId: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        currency: employmentPayComponent.currency,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        prorates: payComponent.prorates,
+        remarks: employmentPayComponent.remarks,
+        // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag (null = unspecified).
+        runType: employmentPayComponent.runType,
+        // 4fffe638 — the CONFIGURED cycle the row is linked to, with its name and whether it has since
+        // been made inactive. All three null on an unlinked row (LEFT JOIN, single FK: cannot multiply).
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+        payrollCycleName: payrollCycle.name,
+        payrollCycleArchivedAt: payrollCycle.archivedAt,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .orderBy(payComponent.code, employmentPayComponent.validFrom),
+  );
+}
+
+/** One row of `listEmploymentPayComponents`, which `getEmploymentPayComponent` returns exactly one of. */
+export type EmploymentPayComponentRow = Awaited<ReturnType<typeof listEmploymentPayComponents>>[number];
+
+/**
+ * f3ae3245 — ONE recurring fixed item by id, for the dedicated View/Edit page.
+ *
+ * Same projection as `listEmploymentPayComponents` so the page and the list can never describe the same
+ * row differently — one shape, narrowed to one id, rather than a second query with its own columns.
+ *
+ * Matched on `employmentId` as well as `id` for the same reason every write path in this file does: RLS
+ * fences the TENANT, company scope is an application concern, and the caller fences that. A row that is
+ * superseded (removed) reads as absent, exactly as it does in the list — a URL to a removed item must not
+ * resurrect it on screen.
+ *
+ * Read-only: no write, no DomainEvent. Returns null rather than throwing so the page can `notFound()`.
+ */
+export function getEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string },
+): Promise<EmploymentPayComponentRow | null> {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: employmentPayComponent.id,
+        componentId: payComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        currency: employmentPayComponent.currency,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        prorates: payComponent.prorates,
+        remarks: employmentPayComponent.remarks,
+        runType: employmentPayComponent.runType,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+        payrollCycleName: payrollCycle.name,
+        payrollCycleArchivedAt: payrollCycle.archivedAt,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .leftJoin(payrollCycle, eq(payrollCycle.id, employmentPayComponent.payrollCycleId))
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+export function listPayComponents(ctx: SessionContext, opts: { includeArchived?: boolean; readyOnly?: boolean; companyId?: string } = {}) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
+    return rows.filter(r => (opts.includeArchived || r.archivedAt == null) && (!opts.readyOnly || r.pendingInputKind == null) && (!opts.companyId || payComponentAppliesToCompany(r, opts.companyId)));
+  });
+}
+
+/**
+ * Feature 1.2 (Transaction sub-module) — the catalog components an admin may put on a draft batch via the
+ * guided single-row Individual Transaction form. Excludes archived AND the kernel's unsupported-taxable
+ * class (a PCB-taxable BIK / PCB-only earning) so the picker never offers a component that
+ * setPayrollBatchComponent would reject at write time (UnsupportedBatchComponentError). Same predicate the
+ * CSV importer enforces — the picker is the front-line filter, the service throw is the backstop.
+ */
+export function listSupportedBatchComponents(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const rows = await tx.select().from(payComponent).where(eq(payComponent.tenantId, ctx.tenantId)).orderBy(payComponent.code);
+    return rows
+      .filter((r) => r.archivedAt == null && r.pendingInputKind == null && !isUnsupportedTaxableComponent(r))
+      .map((r) => ({ id: r.id, code: r.code, name: r.name, kind: r.kind }));
+  });
+}
+
+export type PayComponentInput = {
+  appliedCompanyIds?: string[] | null;
+  code: string;
+  name: string;
+  // New rows require a short display label. On existing rows, omission preserves the stored label;
+  // an unchanged legacy NULL is retained, while a changed label must satisfy today's required limit.
+  // Labels are not unique (the same display wording may describe different pay codes).
+  label?: string | null;
+  description?: string | null;
+  /** Only import creates incomplete calculations. Completion requires a real, validated rule. */
+  pendingInputKind?: PendingPayInputKind | null;
+  kind: 'allowance' | 'deduction' | 'contribution' | 'non_payable';
+  includedInEpf: boolean;
+  includedInSocsoEis: boolean;
+  includedInPcb: boolean;
+  includedInHrdfBase: boolean;
+  isNonPayable: boolean;
+  prorates: boolean;
+  eaFormLine?: string | null;
+  roundingMethod?: string;
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
+  // Configurable pay-rule (Payroll Setup). null / undefined / { kind: 'fixed' } ⇒ legacy fixed-amount behaviour.
+  rule?: PayRule | null;
+  // LHDN PCB 2026 classification (feedback 09b554e9). ALL THREE undefined ⇒ "not supplied" — legacy callers
+  // (seed, backfills, pre-existing tests) leave the stored classification untouched and skip the mandatory
+  // validation below. The maintenance form ALWAYS supplies them, so the guard is server-authoritative for
+  // every UI save. epfBonus2012 requires includedInEpf; with includedInPcb, both PCB fields are mandatory
+  // and the code must belong to the selected remuneration type's list.
+  epfBonus2012?: boolean;
+  pcbRemunerationType?: PcbRemunerationType | null;
+  pcbExemptionCode?: string | null;
+  // Feedback 3c473773 — the PAYROLL CATEGORY (which box on the payslip this item prints in). undefined ⇒
+  // "not supplied" ⇒ leave the stored value untouched, so the seed, the backfills and every pre-existing
+  // caller keep the classification migration 0393 wrote. '' / null ⇒ stored NULL ⇒ the box is inferred, as
+  // it was before 0393. An unrecognised value never persists (cleanDisplayCategory).
+  displayCategory?: string | null;
+  // ── 711adcd2 (migration 0456) — THE TWO ORP TICK BOXES ────────────────────────────────────────────
+  // undefined ⇒ "not supplied" ⇒ the stored value survives, exactly as `displayCategory` above: the seed,
+  // every backfill and every pre-existing caller must not wipe what 0456 backfilled. The maintenance form
+  // ALWAYS supplies both, so a UI save is authoritative.
+  //   orpOvertime      — count this item towards the `fixed_allowances` operand a tenant's own overtime
+  //                      formula reads (core/pay-rule.ts payItemFeedsOvertimeOrp).
+  //   orpUnpaidLeave   — add this item's amount to the base the unpaid-leave / absence daily rate is
+  //                      struck from (core/payroll.ts). Backfilled false everywhere: today that base is
+  //                      basic salary alone.
+  orpOvertime?: boolean;
+  orpUnpaidLeave?: boolean;
+};
+
+// ── LHDN PCB 2026 classification validation (feedback 09b554e9) ──
+
+export type PayComponentStatutoryErrorCode =
+  | 'pcbRemunerationTypeRequired'
+  | 'pcbExemptionTypeRequired'
+  | 'pcbExemptionTypeInvalid'
+  | 'epfBonusRequiresEpf';
+
+/** Thrown when a save carries an incomplete/inconsistent statutory classification. Carries the stable error
+ *  CODE so the UI maps it to a localised payComponents.errorStatutory_* message (mirrors PayRuleInvalidError). */
+export class PayComponentStatutoryConfigError extends Error {
+  constructor(public readonly code: PayComponentStatutoryErrorCode) {
+    super(`pay-component-statutory-config:${code}`);
+    this.name = 'PayComponentStatutoryConfigError';
+  }
+}
+
+/** Coerce any input to a valid remuneration type or null (URL/form tamper never persists). */
+const cleanRemunerationType = (v: unknown): PcbRemunerationType | null =>
+  PCB_REMUNERATION_TYPES.includes(v as PcbRemunerationType) ? (v as PcbRemunerationType) : null;
+
+/**
+ * Feedback 017d9c25 (r187) — PURE predicate: does this set of changed field NAMES move money on an
+ * already-processed payroll run?
+ *
+ * The fields that decide which statutory base a pay item's amount lands in, plus the ones that decide
+ * how much the amount IS. `name` / `label` / `eaFormLine` / `displayCategory` are presentation and are
+ * deliberately absent: renaming a Pay Item must not make every open run in the tenant look stale.
+ *
+ * `kind` is in the list because flipping earning↔deduction moves the money from inside the statutory
+ * bases to after them (that is exactly the Monthly Parking distinction the reporter ran into).
+ * `prorates` and `roundingMethod` change the applied amount; `rule` changes it outright.
+ *
+ * Fed the `changed` list `upsertPayComponent` already computes from DIFF_FIELDS — no second diff.
+ */
+export const STATUTORY_RELEVANT_FIELDS = [
+  'kind',
+  'includedInEpf',
+  'includedInSocsoEis',
+  'includedInPcb',
+  'includedInHrdfBase',
+  'isNonPayable',
+  'prorates',
+  'roundingMethod',
+  'rule',
+  'formulaContext',
+  'pendingInputKind',
+  'epfBonus2012',
+  'pcbRemunerationType',
+  'pcbExemptionCode',
+  // 711adcd2 — BOTH ORP tick boxes are statutory-relevant, and this is not a judgement call. Un-ticking
+  // an item for overtime changes the `fixed_allowances` operand a tenant's overtime formula reads, so the
+  // overtime figure on an already-processed run is no longer what today's setup would produce. Ticking one
+  // for unpaid leave is stronger still: that deduction is PRE-statutory, so it moves EPF, SOCSO, EIS, PCB
+  // and HRDF with it. A run that is stale must SAY it is stale rather than sit there looking agreed.
+  'orpOvertime',
+  'orpUnpaidLeave',
+  // Computed only when a PCB-bearing non-payable category/fallback changes.
+  'nonCashClassification',
+] as const;
+
+export function isStatutoryRelevantChange(changed: readonly string[]): boolean {
+  return changed.some((f) => (STATUTORY_RELEVANT_FIELDS as readonly string[]).includes(f));
+}
+
+/**
+ * PURE classification validator (server-authoritative; the form island mirrors it client-side by
+ * construction). Only enforced when the input SUPPLIES the classification fields — legacy callers that
+ * predate them (seed/backfill/tests) pass undefined and keep their stored values untouched.
+ */
+export function validateStatutoryClassification(p: {
+  includedInEpf: boolean;
+  includedInPcb: boolean;
+  epfBonus2012?: boolean;
+  pcbRemunerationType?: PcbRemunerationType | null;
+  pcbExemptionCode?: string | null;
+}): { ok: true } | { ok: false; code: PayComponentStatutoryErrorCode } {
+  const errors = statutoryClassificationErrors(p);
+  return errors.length ? { ok: false, code: errors[0] } : { ok: true };
+}
+
+/** One policy, both legacy first-refusal callers and workbook all-cell diagnostics. */
+function statutoryClassificationErrors(p: Parameters<typeof validateStatutoryClassification>[0]): PayComponentStatutoryErrorCode[] {
+  const errors: PayComponentStatutoryErrorCode[] = [];
+  if (p.epfBonus2012 && !p.includedInEpf) errors.push('epfBonusRequiresEpf');
+  const supplied = p.pcbRemunerationType !== undefined || p.pcbExemptionCode !== undefined;
+  if (!supplied || !p.includedInPcb) return errors;
+  const remType = cleanRemunerationType(p.pcbRemunerationType);
+  if (!remType) errors.push('pcbRemunerationTypeRequired');
+  const code = p.pcbExemptionCode ?? null;
+  if (!code) errors.push('pcbExemptionTypeRequired');
+  else if (remType && !(code in pcbExemptionCodesFor(remType))) errors.push('pcbExemptionTypeInvalid');
+  return errors;
+}
+
+/**
+ * Thrown when an upserted component carries a structurally-invalid rule (out-of-enum kind, out-of-bounds
+ * number, or a per_day/per_hour rule on a prorating component — the double-proration conflict). Carries the
+ * stable error CODE so the UI maps it to a localised payRule.errors.* message (no raw English to the screen).
+ * Mirrors PayComponentInUseError.
+ */
+export class PayRuleInvalidError extends Error {
+  constructor(public readonly code: PayRuleErrorCode) {
+    super(`pay-rule-invalid:${code}`);
+    this.name = 'PayRuleInvalidError';
+  }
+}
+
+function cleanFormulaContext(value:PayComponentInput['formulaContext']){
+ if(value==null)return null;if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['ordinaryRate','hoursPerDay','rate'].includes(k)))throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
+ const result:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}={};for(const key of ['ordinaryRate','hoursPerDay','rate'] as const){if(value[key]===undefined||value[key]==='')continue;try{const v=normalizeFormulaDecimal(value[key]!),n=Number(v);if(n<(key==='rate'?0:0.000000000001)||n>({ordinaryRate:366,hoursPerDay:24,rate:100}[key]))throw new Error();result[key]=v;}catch{throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);}}return result;
+}
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod),...(p.rule?.kind==='fixed'?{formulaContext:null}:p.formulaContext===undefined?{}:{formulaContext:cleanFormulaContext(p.formulaContext)}) });
+// Feedback 3c473773 — payroll category storage. undefined ⇒ the field was not supplied ⇒ {} ⇒ the stored
+// value survives (this is what keeps the seed and the backfills from wiping migration 0393's work). A
+// supplied value is coerced to the closed vocabulary or NULL, so a tampered form never persists a box the
+// kernel would not recognise.
+const displayCategoryOf = (p: PayComponentInput) =>
+  p.displayCategory === undefined ? {} : { displayCategory: cleanDisplayCategory(p.displayCategory) };
+// 711adcd2 — the two ORP tick boxes, stored on exactly the displayCategoryOf discipline above: BOTH
+// undefined ⇒ not supplied ⇒ {} ⇒ migration 0456's backfilled values survive untouched. This is the whole
+// reason a legacy caller (the seed, a backfill, a test fixture, the CSV importer) cannot silently re-price
+// somebody's overtime by saving a pay item for an unrelated reason.
+const orpOf = (p: PayComponentInput) =>
+  p.orpOvertime === undefined && p.orpUnpaidLeave === undefined
+    ? {}
+    : { orpOvertime: p.orpOvertime ?? false, orpUnpaidLeave: p.orpUnpaidLeave ?? false };
+/**
+ * 711adcd2 — the same, for an INSERT, where "leave the stored value alone" has no meaning because there is
+ * no stored value. Falling through to the column default (false) would be a real behaviour change and it is
+ * how a regression got here: before the switch existed, creating a fixed Earning made it feed a tenant's
+ * overtime formula IMMEDIATELY, by its kind. A caller that expresses no opinion — the seed, the CSV
+ * importer, a fixture, a future service — must therefore get the PRE-0456 answer for the row it is writing,
+ * not "excluded". Exactly the same predicate migration 0456's backfill encodes, applied to one new row.
+ *
+ * The maintenance form always supplies both, so an operator's explicit untick still wins here.
+ */
+const orpOfInsert = (p: PayComponentInput, rule: PayRule | null) =>
+  p.orpOvertime === undefined && p.orpUnpaidLeave === undefined
+    ? { orpOvertime: isFixedAllowanceComponent(p.code, p.kind, rule), orpUnpaidLeave: false }
+    : { orpOvertime: p.orpOvertime ?? false, orpUnpaidLeave: p.orpUnpaidLeave ?? false };
+// LHDN PCB 2026 classification storage (feedback 09b554e9): all three undefined ⇒ "not supplied" ⇒ leave the
+// stored values untouched (legacy caller). Supplied: EPF Bonus 2012 only sticks with EPF ticked, and the two
+// PCB fields are cleared to null when PCB itself is unticked (an untaxed code carries no PCB classification).
+const classificationOf = (p: PayComponentInput) =>
+  p.epfBonus2012 === undefined && p.pcbRemunerationType === undefined && p.pcbExemptionCode === undefined
+    ? {}
+    : {
+        epfBonus2012: (p.epfBonus2012 ?? false) && p.includedInEpf,
+        pcbRemunerationType: p.includedInPcb ? cleanRemunerationType(p.pcbRemunerationType) : null,
+        pcbExemptionCode: p.includedInPcb ? (p.pcbExemptionCode ?? null) : null,
+      };
+/** Only the pre-classification NULL pair may survive an unrelated maintenance edit.
+ * Kind and contribution flags are statutory inputs. EA/display feed the classifier only for non-cash items.
+ * Description, label, calculation and ORP metadata do not manufacture a new statutory classification.
+ * The update owner checks its own stored row under the catalogue lock; no posted preservation flag exists.
+ */
+export function isUnchangedLegacyPcbClassification(p: PayComponentInput, existing: typeof payComponent.$inferSelect | undefined): boolean {
+  if (!existing?.includedInPcb || existing.pcbRemunerationType !== null || existing.pcbExemptionCode !== null || (existing.epfBonus2012 && !existing.includedInEpf)) return false;
+  const fields = ['kind', 'isNonPayable', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase',
+    'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode'] as const;
+  return fields.every(field => p[field] === undefined || p[field] === existing[field])
+    && (!existing.isNonPayable || (['displayCategory', 'eaFormLine'] as const).every(field => p[field] === undefined || p[field] === existing[field]));
+}
+// Label normalisation: undefined ⇒ "not supplied" (leave as-is on update / null on insert); trimmed-blank ⇒ null.
+const cleanLabel = (v: string | null | undefined): string | null | undefined =>
+  v === undefined ? undefined : (v?.trim() || null);
+// Normalise the rule for storage: a null / fixed rule is stored as null so an unconfigured component stays
+// byte-identical to the legacy fixed-amount path (and the compat golden never sees a non-null rule column).
+const ruleOf = (p: PayComponentInput): PayRule | null => (p.rule == null || p.rule.kind === 'fixed' ? null : p.rule);
+
+/**
+ * Pay Items redesign (feedback 4994a48f) — code lookup across ALL rows INCLUDING archived, for the
+ * create-mode duplicate guard at the action boundary. upsertPayComponent stays upsert-by-code (the seed
+ * depends on that idempotency); the CREATE form path must instead refuse a collision — one message for an
+ * active hit, another for "deactivated — reactivate it instead" — because componentIdByCode has no
+ * archivedAt filter and a silent upsert would overwrite a live code's entire statutory configuration.
+ */
+export function lookupPayComponentByCode(ctx: SessionContext, code: string) {
+  return withTenant(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ id: payComponent.id, code: payComponent.code, archivedAt: payComponent.archivedAt })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
+      .limit(1);
+    return row ?? null;
+  });
+}
+
+/**
+ * Pay Code maintenance split-screen (feedback 911b2886) — thrown when a CREATE collides with an existing
+ * code. Carries the code plus whether the colliding row is archived, so the UI can distinguish "already
+ * exists" from "exists but deactivated — reactivate it instead" (the silent black-hole case: upsert-by-code
+ * would update the invisible archived row without ever clearing archivedAt). Mirrors PayComponentInUseError.
+ */
+export class PayComponentCodeExistsError extends Error {
+  constructor(public readonly code: string, public readonly archived: boolean) {
+    super(`pay-component-code-exists:${code}`);
+    this.name = 'PayComponentCodeExistsError';
+  }
+}
+
+/**
+ * Create a NEW catalog component (feedback 911b2886). upsertPayComponent is deliberately upsert-by-code
+ * (the seed depends on that idempotency) with NO uniqueness rejection — so the dedicated create screen,
+ * where the catalog list is no longer visible beside the form, must refuse a collision instead of silently
+ * overwriting the existing row's statutory configuration. Looks the code up across ALL rows INCLUDING
+ * archived, throws PayComponentCodeExistsError on a hit, else delegates to upsertPayComponent unchanged
+ * (single validation/event path — the insert branch emits pay-component.created).
+ */
+export async function createPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, tx => createPayComponentTx(tx, ctx, p));
+}
+
+export class PayComponentInputError extends Error {
+  constructor(public readonly issues: { field: string; code: string }[]) {
+    super('Invalid pay component settings.');
+    this.name = 'PayComponentInputError';
+  }
+}
+
+/** The form and workbook share the same server-side create contract, including hard financial refusals. */
+export function validatePayComponentCreateSettings(p: PayComponentInput): { field: string; code: string }[] {
+  const issues: { field: string; code: string }[] = payComponentIdentityIssues(p);
+  const rule = ruleOf(p);
+  const validation = validatePayRule(rule, p.prorates);
+  if (!validation.ok) issues.push({ field: 'inputKind', code: validation.code });
+  if (p.pendingInputKind != null) {
+    if (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null)
+      issues.push({ field: 'inputKind', code: 'invalidPendingCalculation' });
+    if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
+      issues.push({ field: 'prorates', code: 'PRORATION_CONFLICT' });
+    if (isStatutoryComponent(p.code, p.kind)) issues.push({ field: 'inputKind', code: 'STATUTORY_FORBIDDEN' });
+  }
+  for (const code of statutoryClassificationErrors(p)) issues.push({ field: code === 'epfBonusRequiresEpf' ? 'epfBonus2012' : code === 'pcbRemunerationTypeRequired' ? 'pcbRemunerationType' : 'pcbExemptionCode', code });
+  if (!p.includedInPcb && (p.pcbRemunerationType || p.pcbExemptionCode))
+    issues.push({ field: 'pcbRemunerationType', code: 'pcbFieldsRequirePcb' });
+  const benefit = unsupportedTaxableReason(p);
+  if (benefit) issues.push({ field: 'displayCategory', code: benefit });
+  return issues;
+}
+
+async function preparePayComponentCreateInputTx(tx:Tx,ctx:SessionContext,input:PayComponentInput){
+  input=structuredClone(input);
+  const p = { ...input, code: input.code.trim().toUpperCase(), label: input.label?.trim() ?? '', name: input.name.trim() || input.label?.trim() || '' };
+  const issues = validatePayComponentCreateSettings(p);
+  if (issues.length) throw new PayComponentInputError(issues);
+  await lockPayComponentCatalogTx(tx,ctx);
+  const [hit] = await tx.select({ archivedAt: payComponent.archivedAt }).from(payComponent)
+    .where(and(eq(payComponent.tenantId, ctx.tenantId), sql`upper(trim(${payComponent.code})) = ${p.code}`)).limit(1);
+  if (hit) throw new PayComponentCodeExistsError(p.code, hit.archivedAt != null);
+  return p;
+}
+
+/** Shared create-only owner; transaction caller owns atomicity, without nested transactions. */
+export async function createPayComponentTx(tx: Tx, ctx: SessionContext, input: PayComponentInput,
+  options: { archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
+  input=structuredClone(input);ctx=capturePayCatalogContext(ctx);
+  options={...options};
+  const p=await preparePayComponentCreateInputTx(tx,ctx,input);
+  return upsertPayComponentTx(tx, ctx, p, { ...options, createOnly: true });
+}
+
+/** Reviewed tenant catalogue scope is the ACTUAL native RLS admin-anywhere predicate, not a
+ * manufactured group-admin restriction or caller role string. Source wrappers additionally require
+ * fresh Assistant/Payroll/typed entitlements and pause before reaching private catalogue facts. */
+async function assertReviewedPayCatalogPrincipalTx(tx:Tx,ctx:SessionContext){
+ const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+ const roles=ctx.roles??Array.from(new Set(grants.map(g=>g.role)));
+ const [proof]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.app_user u
+  where u.id=${ctx.userId??null}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.id=app.current_user_id()
+   and u.tenant_id=app.current_tenant_id() and u.person_id is not distinct from ${ctx.personId??null}::uuid
+   and u.archived_at is null and not app.login_blocked(u.id) and app.principal_snapshot_current()
+   and current_setting('app.roles',true)=${roles.join(',')} and current_setting('app.grants',true)::jsonb=${JSON.stringify(grants)}::jsonb
+   and current_setting('transaction_isolation')='read committed' and app.is_admin()) as allowed`);
+ if(!proof?.allowed)throw new Error('Pay catalogue authority unavailable');
+}
+async function reviewedPayComponentPreflightTx(tx:Tx,supplied:SessionContext,input:PayComponentInput){
+ const ctx=capturePayCatalogContext(supplied),captured=structuredClone(input);
+ await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ if(captured.pendingInputKind!==undefined&&captured.pendingInputKind!==null)throw new PayComponentInputError([{field:'inputKind',code:'invalidPendingCalculation'}]);
+ const p=await preparePayComponentCreateInputTx(tx,ctx,captured),prepared=await preparePayComponentWriteTx(tx,ctx,p,{createOnly:true});
+ const storage=payComponentCreateValues(ctx,p,prepared,{});
+ // The finite reviewed CREATE vocabulary does not include formula-builder context.
+ // Fixed native normalization clears that internal storage attribute to null; it
+ // must neither widen human input nor make a valid fixed rule fail strict review.
+ const {tenantId:_tenant,pendingInputKind:_readyPending,formulaContext:_formulaContext,...review}=storage;
+ if(_formulaContext!=null)throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
+ const catalog=await tx.execute(sql`select c.id,c.xmin::text as version,to_jsonb(c) as record from public.pay_component c where c.tenant_id=${ctx.tenantId}::uuid order by c.id`);
+ const reviewedDigest=createHash('sha256').update(JSON.stringify(['reviewed-pay-component-create:v1',
+  {tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null},captured,storage,review,catalog])).digest('hex');
+ return {ctx,p,review,reviewedDigest};
+}
+/** Same-Tx reviewed catalogue vocabulary, never employee data. A large catalogue refuses honestly
+ * rather than presenting a silently incomplete reference picker. Native save still owns graph checks. */
+export async function reviewedPayComponentReferenceChoicesTx(tx:Tx,supplied:SessionContext){
+ const ctx=capturePayCatalogContext(supplied);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const rows=await tx.select({code:payComponent.code,name:payComponent.name,label:payComponent.label,kind:payComponent.kind}).from(payComponent)
+  .where(and(eq(payComponent.tenantId,ctx.tenantId),isNull(payComponent.archivedAt),isNull(payComponent.pendingInputKind))).orderBy(payComponent.code).limit(257);
+ if(rows.length>256)throw new Error('Pay catalogue choices unavailable');
+ const result=rows.filter(row=>!isStatutoryComponent(row.code,row.kind)).map(row=>({code:row.code,name:row.label||row.name}));
+ if(Buffer.byteLength(JSON.stringify(result))>32768)throw new Error('Pay catalogue choices unavailable');return result;
+}
+export async function prepareReviewedPayComponentCreateTx(tx:Tx,ctx:SessionContext,input:PayComponentInput){
+ const prepared=await reviewedPayComponentPreflightTx(tx,ctx,input);return {review:prepared.review,reviewedDigest:prepared.reviewedDigest};
+}
+export async function createReviewedPayComponentTx(tx:Tx,ctx:SessionContext,input:PayComponentInput,reviewedDigest:string){
+ const prepared=await reviewedPayComponentPreflightTx(tx,ctx,input);
+ if(prepared.reviewedDigest!==reviewedDigest)throw new Error('Pay catalogue review changed');
+ const created=await createPayComponentTx(tx,prepared.ctx,prepared.p,{returnCreatedEventId:true});
+ if(!created.createdEventId)throw new Error('Pay catalogue event unavailable');
+ const reference=await readReviewedPayComponentReferenceTx(tx,prepared.ctx,{componentId:created.id,createdEventId:created.createdEventId});
+ if(!reference)throw new Error('Pay catalogue canonical reference unavailable');return reference;
+}
+/** Historical exact original-actor native creation, plus explicitly CURRENT catalogue metadata.
+ * No old description/rule/rate is retained or claimed to remain current after a native update. */
+export async function readReviewedPayComponentReferenceTx(tx:Tx,supplied:SessionContext,reference:{componentId:string;createdEventId:string}){
+ const ctx=capturePayCatalogContext(supplied),p={...reference};await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await assertReviewedPayCatalogPrincipalTx(tx,ctx);await lockPayComponentCatalogTx(tx,ctx,true);
+ const [row]=await tx.execute<{componentId:string;createdEventId:string;code:string;name:string;label:string|null;kind:PayComponentInput['kind'];archived:boolean}>(sql`select c.id as "componentId",d.id as "createdEventId",c.code,c.name,c.label,c.kind,(c.archived_at is not null) as archived
+  from public.pay_component c join public.domain_event d on d.aggregate_id=c.id and d.tenant_id=c.tenant_id
+  where c.id=${p.componentId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and d.id=${p.createdEventId}::uuid
+   and d.aggregate_type='pay-component' and d.event_type='pay-component.created'
+   and d.actor_type='user' and d.actor_id=${ctx.userId}::uuid and d.payload->>'code'=c.code`);
+ return row??null;
+}
+
+/** Whole-file transaction; errors, concurrent duplicates and audit faults roll every row back. */
+export function createPayComponentsFromImport(ctx: SessionContext, rows: { input: PayComponentInput; archived: boolean }[], fileName: string) {
+  rows=structuredClone(rows);ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, async tx => {
+    await lockPayComponentCatalogTx(tx,ctx);
+    if (!ctx.roles?.some(role => role === 'hr_admin' || role === 'super_admin')) throw new Error('Pay component administration required.');
+    if (!rows.length || rows.length > 1000) throw new Error('Invalid pay component import size.');
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const issues = validatePayComponentCreateSettings(row.input);
+      if (issues.length) throw new PayComponentInputError(issues);
+      const code = row.input.code.trim().toUpperCase();
+      if (seen.has(code)) throw new PayComponentCodeExistsError(code, false);
+      seen.add(code);
+    }
+    const ids: string[] = [];
+    for (const row of rows) {
+      const result = await createPayComponentTx(tx, ctx, row.input, { archived: row.archived,
+        importFileName: payItemImportFileName(fileName), deferResolutionOrder: true });
+      ids.push(result.id);
+    }
+    await recordResolutionOrderTx(tx, ctx.tenantId);
+    return { created: ids.length, ids };
+  });
+}
+
+// The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
+// app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
+// stream would violate the payload discipline the comment below enforces).
+const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave', 'appliedCompanyIds'] as const;
+
+// ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
+// A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
+// dependency graph. These two helpers are the only place that graph is loaded and its order written.
+
+/** The tenant's catalog as the graph planner sees it (archived rows INCLUDED so a reference to a retired
+ *  code is rejected as such rather than silently reading 0). */
+async function catalogNodesTx(tx: Tx, tenantId: string): Promise<PayRuleCatalogNode[]> {
+  const rows = await tx
+    .select({ code: payComponent.code, rule: payComponent.rule, kind: payComponent.kind, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind, orpOvertime: payComponent.orpOvertime })
+    .from(payComponent)
+    .where(eq(payComponent.tenantId, tenantId));
+  return rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null || r.pendingInputKind != null, orpOvertime: r.orpOvertime }));
+}
+
+/**
+ * Recompute the whole catalog's topological rank and persist it on pay_component.resolution_order. Called
+ * inside the save transaction, AFTER the row is written, so it plans the graph that will actually run.
+ *
+ * planResolutionOrder cannot fail here — validatePayRuleAgainstCatalog already refused every cycle on the
+ * way in — but the result is checked rather than asserted: if it ever did, leaving the previous ranks in
+ * place is the fail-safe outcome (the run keeps using the last order that was proven acyclic).
+ */
+async function recordResolutionOrderTx(tx: Tx, tenantId: string): Promise<void> {
+  const rows = await tx
+    .select({
+      id: payComponent.id,
+      code: payComponent.code,
+      rule: payComponent.rule,
+      resolutionOrder: payComponent.resolutionOrder,
+      // 2da9937a — planResolutionOrder needs the kind to know which rows are fixed allowances, so that an
+      // item reading the `fixed_allowances` aggregate is RECORDED above them. resolvePayComponentSet
+      // re-derives that ordering anyway (a stored rank can be stale, and a one-off batch row has none), so
+      // omitting this would not pay a wrong figure — it would only persist a rank that misdescribes the
+      // graph, which is exactly the kind of quietly-wrong number this column exists to prevent.
+      kind: payComponent.kind,
+      archivedAt: payComponent.archivedAt,
+      // 711adcd2 — and the TICK BOX, for the identical reason `kind` is here: it is now the aggregate's
+      // membership test, so a rank planned without it would describe the pre-0456 graph. Omitting it would
+      // not pay a wrong figure (resolvePayComponentSet re-derives the ordering from the same predicate),
+      // but it would persist a resolution_order that misdescribes the graph the moment an operator
+      // un-ticks an item an overtime formula ranks against.
+      orpOvertime: payComponent.orpOvertime,
+    })
+    .from(payComponent)
+    .where(eq(payComponent.tenantId, tenantId));
+  const plan = planResolutionOrder(rows.map((r) => ({ code: r.code, rule: r.rule, kind: r.kind, archived: r.archivedAt != null, orpOvertime: r.orpOvertime })));
+  if (!plan.ok) return;
+  for (const r of rows) {
+    const next = plan.order.get(r.code.trim().toUpperCase()) ?? 0;
+    if (next !== r.resolutionOrder) {
+      await tx.update(payComponent).set({ resolutionOrder: next }).where(eq(payComponent.id, r.id));
+    }
+  }
+}
+
+/** Admin upsert of a single catalog component (by code). Validates the rule against the component's
+ *  proration flag before any write (throws PayRuleInvalidError on failure — same proration/sign/bounds
+ *  contract the kernel and the AI validator enforce, from the one pure validatePayRule). */
+export function upsertPayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p));
+}
+
+export class PayComponentNotFoundError extends Error {
+  constructor() { super('This pay component is no longer available. Reopen the catalog.'); this.name = 'PayComponentNotFoundError'; }
+}
+/** Maintenance edits never create a row if the submitted code is absent or was removed concurrently. */
+export function updatePayComponent(ctx: SessionContext, p: PayComponentInput) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p, { updateOnly: true }));
+}
+
+/** Process/reprocess backstop, independent of typed-pay feature flags. A stored legacy assignment
+ * cannot activate an incomplete calculation by bypassing today's assignment picker/writer. */
+export async function assertNoPendingPayComponentsTx(tx: Tx, p: { batchId: string; employmentIds: string[]; periodStart: string; periodEnd: string }) {
+  if (!p.employmentIds.length) return;
+  const columns = { code: payComponent.code, pendingInputKind: payComponent.pendingInputKind };
+  const recurring = await tx.select(columns).from(employmentPayComponent)
+    .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), inArray(employmentPayComponent.employmentId, p.employmentIds), isNull(employmentPayComponent.supersededAt),
+      lte(employmentPayComponent.validFrom, p.periodEnd), or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, p.periodStart))));
+  const batch = await tx.select(columns).from(payrollBatchComponent)
+    .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), eq(payrollBatchComponent.batchId, p.batchId), inArray(payrollBatchComponent.employmentId, p.employmentIds)));
+  const individual = await tx.select(columns).from(payrollIndividualTxn)
+    .innerJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
+    .where(and(isNotNull(payComponent.pendingInputKind), eq(payrollIndividualTxn.batchId, p.batchId), inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+      or(isNull(payrollIndividualTxn.consumedBatchId), eq(payrollIndividualTxn.consumedBatchId, p.batchId))));
+  for (const component of [...recurring, ...batch, ...individual]) assertPayComponentReady(component);
+}
+
+function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepared:{rule:PayRule|null;label:string|null|undefined;storedCode:string;description:{description?:string|null};pending:{pendingInputKind?:PendingPayInputKind|null};companies:{appliedCompanyIds?:string[]|null}},options:{archived?:boolean}){
+ const {rule,label,storedCode,description,pending,companies}=prepared;
+ return { tenantId: ctx.tenantId, code: storedCode, name: p.name, label: label ?? null, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOfInsert(p, rule), rule, ...description, ...pending, ...companies, ...(options.archived ? { archivedAt: sql`now()` } : {}) };
+}
+
+async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
+    await lockPayComponentCatalogTx(tx,ctx);
+    const candidate = ruleOf(p);const candidateValidation=validatePayRule(candidate,p.prorates);if(!candidateValidation.ok)throw new PayRuleInvalidError(candidateValidation.code);
+    if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
+    // Retain a byte-identical saved link for ordinary metadata/settings maintenance. New or changed
+    // links bind the latest saved revision; payroll independently rechecks its current dependency plan.
+    const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code))).limit(1):[];
+    const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
+    const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
+    if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null || p.rule?.kind === 'fixed'))
+      throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
+    if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
+      throw new PayRuleInvalidError('PRORATION_CONFLICT');
+    const v = validatePayRule(rule, p.prorates);
+    if (!v.ok) throw new PayRuleInvalidError(v.code);
+    // ── 61bf109d — the CATALOG-AWARE half of the guard, refused at SAVE time ────────────────────────
+    // A rule may now name another pay item, so structural validity is no longer enough: the referenced
+    // code must exist and be active, must not be a legislated statutory line, and the resulting graph must
+    // be acyclic. Discovering a cycle mid-run would mean a half-computed payroll, so it is refused here.
+    const catalog = await catalogNodesTx(tx, ctx.tenantId);
+    const g = validatePayRuleAgainstCatalog({ code: p.code, rule, kind: p.kind }, catalog);
+    if (!g.ok) throw new PayRuleInvalidError(g.code);
+    const label = cleanLabel(p.label);
+    // Full row (not just the id) so the event can carry the changed-field-name list + archived state
+    // without a second SELECT.
+    const [existing] = await tx
+      .select()
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, p.code)))
+      .limit(1);
+    if (existing && options.createOnly) throw new PayComponentCodeExistsError(p.code, existing.archivedAt != null);
+    if (!existing && options.updateOnly) throw new PayComponentNotFoundError();
+    // Existing NULL/NULL legacy settings are retained only on an unchanged maintenance update.
+    // Create/import and every actual classification change still require the complete valid pair.
+    if (!(options.updateOnly && isUnchangedLegacyPcbClassification(p, existing))) {
+      const cls = validateStatutoryClassification(p);
+      if (!cls.ok) throw new PayComponentStatutoryConfigError(cls.code);
+    }
+    // Both insert paths obey today's identity contract. Only an unchanged EXISTING legacy identity
+    // gets preservation semantics; a public upsert cannot create a label-less or invalid new code.
+    const issues = payComponentIdentityIssues(p, existing);
+    if (issues.length) throw new PayComponentInputError(issues);
+    const storedCode = existing?.code ?? p.code.trim().toUpperCase();
+    const description = p.description === undefined ? {} : { description: p.description?.trim() || null };
+    // Omitted pending kind preserves existing state unless a complete calculation was explicitly saved.
+    // A stale caller sending rule:null cannot turn an imported calculation into an accidental fixed code.
+    const pending = p.pendingInputKind !== undefined
+      ? { pendingInputKind: p.pendingInputKind }
+      : rule != null || p.rule?.kind === 'fixed' ? { pendingInputKind: null } : {};
+    if (existing?.pendingInputKind && p.pendingInputKind === null && rule == null && p.rule?.kind !== 'fixed')
+      throw new PayComponentInputError([{ field: 'inputKind', code: 'calculationRequired' }]);
+    const companies = await preparePayComponentCompaniesTx(tx, ctx, p.appliedCompanyIds, existing);
+    return {rule,label,existing,storedCode,description,pending,companies};
+}
+
+async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponentInput,
+  options: { createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean } = {}) {
+    p=structuredClone(p);ctx=capturePayCatalogContext(ctx);options={...options};
+    const {rule,label,existing,storedCode,description,pending,companies}=await preparePayComponentWriteTx(tx,ctx,p,options);
+    let id: string;
+    let changed: string[] = [];
+    if (existing) {
+      const next = { name: p.name, kind: p.kind, ...flagsOf(p), ...attrsOf(p), ...classificationOf(p), ...displayCategoryOf(p), ...orpOf(p), rule, ...description, ...pending, ...companies, ...(label !== undefined ? { label } : {}) };
+      changed = DIFF_FIELDS.filter((f) => {
+        if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
+        const a = (next as Record<string, unknown>)[f];
+        const b = (existing as unknown as Record<string, unknown>)[f];
+        return (f === 'rule'||f==='formulaContext'||f==='appliedCompanyIds') ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
+      });
+      const nonCashKey = (r: typeof existing) => {
+        if (!r.isNonPayable || !r.includedInPcb) return null;
+        try { return classifyNonCashBenefit({code:r.code,kind:r.kind,nonPayable:r.isNonPayable,pcb:r.includedInPcb,displayCategory:r.displayCategory,eaFormLine:r.eaFormLine,pcbRemunerationType:r.pcbRemunerationType,epfBonus2012:r.epfBonus2012}); }
+        catch { return 'invalid'; }
+      };
+      if (changed.some(f=>f==='displayCategory'||f==='eaFormLine') && nonCashKey(existing)!==nonCashKey({...existing,...next})) changed.push('nonCashClassification');
+      await tx.update(payComponent).set(next).where(eq(payComponent.id, existing.id));
+      id = existing.id;
+    } else {
+      const [row] = await tx
+        .insert(payComponent)
+        .values(payComponentCreateValues(ctx,p,{rule,label,storedCode,description,pending,companies},options))
+        .returning({ id: payComponent.id });
+      id = row.id;
+    }
+    if(rule?.kind==='formula_builder'&&!(existing?.rule?.kind==='formula_builder'&&existing.rule.formulaId===rule.formulaId))await recordPayFormulaLinkTx(tx,ctx,{formulaId:rule.formulaId,componentId:id});
+    // 61bf109d — RECORD the resolution order for the whole catalog now that the graph has changed. It is
+    // recomputed rather than patched because one edited rule can re-rank items that were not touched, and
+    // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
+    // can never disagree. Only rows whose rank actually moved are written (a catalog of fixed amounts
+    // issues no UPDATE at all, so the byte-identical legacy path stays write-free).
+    if (!options.deferResolutionOrder) await recordResolutionOrderTx(tx, ctx.tenantId);
+    const createdEventId = await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: id,
+      eventType: existing ? 'pay-component.updated' : 'pay-component.created',
+      actor: actorOf(ctx),
+      // No PII, no amounts, no field VALUES — the code, which rule kind (null when fixed/unconfigured),
+      // which fields changed (names only) and whether the row is archived (actor/time live on the event).
+      payload: { code: storedCode, ruleKind: rule?.kind ?? null, changed, archived: existing ? existing.archivedAt != null : options.archived ?? false,
+        ...(options.importFileName ? { source: 'Excel import', fileName: payItemImportFileName(options.importFileName) } : {}) },
+    }, {returnId:options.returnCreatedEventId===true});
+    // 017d9c25 — `changed` is returned so the master-save action can mark the processed runs this edit
+    // makes stale (markRunsAffectedByPayComponent), WITHOUT recomputing the diff or importing the payroll
+    // kernel here. Additive: every existing caller destructures `{ id }` and is unaffected. Empty on an
+    // insert — a brand-new code cannot be on a run that has already been processed.
+    return { id, changed, ...(options.returnCreatedEventId ? {createdEventId} : {}) };
+}
+
+/**
+ * Soft-retire OR reinstate a component (house toggle shape — mirrors archiveDepartment / archivePosition /
+ * archiveCostCenter / archiveBusinessUnit / archiveJobGrade / archiveLeaveType in core/admin.ts).
+ * Archiving stops new use and preserves every historical reference; unarchiving reactivates the code.
+ * Unlike leave_type, pay_component_code_uq (db/schema.ts) is NOT partial on archived_at — the code stays
+ * reserved while archived — so unarchiving cannot trip a unique violation and the DuplicateError catch
+ * those core/admin.ts call sites carry is unnecessary here.
+ */
+export function archivePayComponent(ctx: SessionContext, p: { id: string; archived: boolean }) {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
+    await tx.update(payComponent).set({ archivedAt: p.archived ? sql`now()` : null }).where(eq(payComponent.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: p.id,
+      eventType: p.archived ? 'pay-component.archived' : 'pay-component.unarchived',
+      actor: actorOf(ctx),
+    });
+    return { id: p.id };
+  });
+}
+
+/** Thrown when a hard-delete is refused because the component is referenced (#21). */
+export class PayComponentInUseError extends Error {
+  constructor(public readonly refs: number) {
+    super('pay-component-in-use');
+    this.name = 'PayComponentInUseError';
+  }
+}
+
+// ── 61bf109d — "show me what this produces for a real employee, before I save" ───────────────────────
+// The preview is a DRY RUN: it opens the tenant transaction read-only, writes nothing, appends no event,
+// and returns a figure plus the exact inputs that figure came from. Critically it calls
+// resolvePayComponentSet — the SAME function core/payroll.ts's kernel calls — rather than a parallel
+// implementation, so a preview that disagrees with the run is not merely unlikely, it is unrepresentable.
+
+/** A pickable employee for the preview selector. e318eaec — `employeeCode` joins the shape because the
+ *  option has to read "Irwin Law (X000001)": a tenant with two people of the same name needs the ID to
+ *  tell them apart, and the ID is what the operator searches by. */
+export type PayRulePreviewCandidate = { employmentId: string; name: string; employeeCode: string | null; basic: number };
+
+export type PayRulePreviewResult =
+  | {
+      ok: true;
+      /** What this pay item would resolve to for this employee, in ringgit (unrounded — the kernel applies
+       *  the component's own rounding and the tenure factor afterwards). */
+      amount: number;
+      /** The real figures the formula read, so the admin can check the arithmetic rather than trust it. */
+      scope: { basic: number; days: number; hours: number };
+      /** Every OTHER pay item the rule referenced, with the amount it resolved to for this employee. */
+      inputs: { code: string; amount: number }[];
+      /** 2da9937a — set when the figure above is 0 because a LIVE divisor resolved to zero for this
+       *  employee (a zero-hours month, no fixed allowances). `ok` is still true and the amount is still a
+       *  real figure: this is the explanation, not a failure. Null when nothing divided by zero. */
+      zeroDivisor?: { divisor: string; step: number } | null;
+      /** e318eaec — "show the working": the running figure after each step of the fold, straight out of the
+       *  evaluator (see PayRuleTraceStep). Empty for a non-formula rule. */
+      steps: PayRuleTraceStep[];
+    }
+  | { ok: false; code: PayRuleErrorCode };
+
+/**
+ * Employees who can be previewed against: active employments, searchable by name or employee ID.
+ *
+ * ── e318eaec — WHY THE OLD LABEL SAID "null null", AND WHY IT SAID IT FOR EVERY SINGLE PERSON ──────
+ * This query used to select `person.firstName` / `person.lastName` and build the label as
+ * `` `${r.firstName} ${r.lastName}`.trim() ``. On the reporter's tenant — measured read-only on production
+ * 2026-08-12 — `first_name` and `last_name` are NULL on 40 of 40 people and `full_name` is populated on 40
+ * of 40, because every screen in this product captures ONE name field. Template-interpolating null yields
+ * the literal string "null null", which `.trim()` cannot remove, so the dropdown was not degraded for some
+ * employees: it was that string for all of them, and had been since the panel shipped.
+ *
+ * The fix is to read what the rest of this codebase reads. `person.fullName` is the display name in
+ * core/analytics.ts, core/attendance.ts, core/claims.ts, core/back-pay.ts and every other list; the pairing
+ * with `employment.employeeCode` is the house `EmployeeName` shape (components/ui.tsx). No new fallback was
+ * invented, because inventing one is how the second version of this bug gets written.
+ *
+ * SEARCH replaces the old bare `limit 50` newest-first window. That window was itself a defect the ticket
+ * names: on a catalog of any size the person you want is simply not in the list and there is no way to
+ * reach them. `query` matches the full name OR the employee code, case-insensitively; `limit` still caps
+ * the rows so this stays a picker rather than a report.
+ */
+export function listPayRulePreviewCandidates(ctx: SessionContext, p: { query?: string; limit?: number } = {}) {
+  const limit = p.limit ?? 50;
+  const q = (p.query ?? '').trim();
+  return withTenant(ctx, async (tx): Promise<PayRulePreviewCandidate[]> => {
+    const rows = await tx
+      .select({
+        employmentId: employment.id,
+        fullName: person.fullName,
+        employeeCode: employment.employeeCode,
+        basic: compensation.basicSalary,
+      })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .leftJoin(
+        compensation,
+        and(eq(compensation.employmentId, employment.id), isNull(compensation.validTo), isNull(compensation.supersededAt)),
+      )
+      .where(
+        and(
+          eq(employment.tenantId, ctx.tenantId),
+          isNull(employment.terminatedOn),
+          q === '' ? undefined : or(ilike(person.fullName, `%${q}%`), ilike(employment.employeeCode, `%${q}%`)),
+        ),
+      )
+      // By NAME, not by hire date: a picker you search is read alphabetically, and "newest first" is only
+      // useful for the list this one stopped being when it grew a search box.
+      .orderBy(person.fullName)
+      .limit(limit);
+    return rows.map((r) => ({
+      employmentId: r.employmentId,
+      name: (r.fullName ?? '').trim(),
+      employeeCode: r.employeeCode,
+      basic: Number(r.basic ?? 0),
+    }));
+  });
+}
+
+/**
+ * Evaluate a CANDIDATE rule (not yet saved) for one real employee over one period.
+ *
+ * It runs the SAME two guards the save path runs — structural validatePayRule, then the catalog-aware
+ * validatePayRuleAgainstCatalog — so the preview cannot show a figure for a rule that Save would reject;
+ * the admin sees the rejection at the same moment either way.
+ *
+ * `days` is the period's calendar day count and `hours` the employee's actual attendance total for the
+ * period (the same aggregate over attendance.worked_minutes the kernel takes).
+ *
+ * KNOWN, DELIBERATE DIVERGENCE — read before trusting this for a mid-period joiner. The kernel's scope uses
+ * `daysWorked = prorationFactor × daysInMonth`, i.e. the EA-1955 tenure factor is baked into the day count;
+ * this preview uses the FULL period (factor 1), and it does not apply the component's rounding either. For a
+ * full-tenure employee — the ordinary case — preview and run therefore agree exactly. For a joiner/leaver
+ * whose rule reads `days`, the preview is the full-period figure and the run will be the prorated one.
+ * That is why the returned `scope` reports the day count it used and the panel is labelled "for a FULL
+ * period, before proration and rounding": the difference is stated on screen rather than hidden. Replicating
+ * prorationFactor here would mean re-resolving the employee's payroll policy, which is the parallel
+ * implementation this design is trying to avoid — the ARITHMETIC is shared, and the period scaling is
+ * declared. The returned `scope` makes every input visible so the number is checkable rather than magic.
+ */
+export function previewPayRule(
+  ctx: SessionContext,
+  p: {
+    code: string;
+    rule: PayRule | null;
+    kind: PayComponentInput['kind'];
+    prorates: boolean;
+    employmentId: string;
+    /** Defaults to the current calendar month. */
+    periodStart?: string;
+    periodEnd?: string;
+  },
+) {
+  return withTenant(ctx, async (tx): Promise<PayRulePreviewResult> => {
+    if(p.rule?.kind==='formula_builder')throw new Error('Use Formula Builder Test Formula with the employee, payroll period and cycle.');
+    const code = p.code.trim().toUpperCase();
+    const structural = validatePayRule(p.rule, p.prorates);
+    if (!structural.ok) return { ok: false, code: structural.code };
+    const catalog = await catalogNodesTx(tx, ctx.tenantId);
+    const graph = validatePayRuleAgainstCatalog({ code, rule: p.rule, kind: p.kind }, catalog);
+    if (!graph.ok) return { ok: false, code: graph.code };
+
+    const now = new Date();
+    const periodStart = p.periodStart ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
+    const periodEnd = p.periodEnd ?? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+
+    let r: EmploymentRuleResolution;
+    try {
+      r = await resolveRuleForEmploymentTx(tx, ctx.tenantId, {
+        code,
+        rule: p.rule,
+        // The item under edit takes the kind from the FORM, not from disk — the admin may be changing it in
+        // the same edit, and the preview must answer for the rule as it is about to be saved.
+        kind: p.kind,
+        employmentId: p.employmentId,
+        periodStart,
+        periodEnd,
+        catalog,
+      });
+    } catch {
+      // PayRuleEvalError — a non-finite result from a corrupted value. Fail closed with the structural code
+      // rather than showing a number that the run would refuse to write.
+      return { ok: false, code: 'OUT_OF_RANGE' };
+    }
+
+    // Report only the items the rule actually READ, so the panel explains the figure instead of listing the
+    // employee's whole pay structure.
+    const referenced = new Set(payRuleDependenciesOf(p.rule));
+    const inputs = r.resolved.filter((s) => referenced.has(s.code));
+
+    return {
+      ok: true,
+      amount: r.amount,
+      scope: { basic: r.basic, days: r.days, hours: r.hours },
+      inputs,
+      zeroDivisor: r.zeroDivisor,
+      steps: r.steps,
+    };
+  });
+}
+
+/** What resolveRuleForEmploymentTx answers: the target item's figure, the scope inputs it was computed
+ *  from (so a caller can SHOW the arithmetic rather than assert it), and every item in the resolved set
+ *  with the value it took. */
+type EmploymentRuleResolution = {
+  amount: number;
+  basic: number;
+  /** The day and hour figures ACTUALLY used — an override, when one was supplied, rather than the period's. */
+  days: number;
+  hours: number;
+  resolved: { code: string; amount: number }[];
+  zeroDivisor: { divisor: string; step: number } | null;
+  /** e318eaec — the fold, step by step, for the TARGET item. Empty for every non-formula rule (there are no
+   *  steps to show) and for a rule the zero-divisor guard stopped at its first step. */
+  steps: PayRuleTraceStep[];
+};
+
+/**
+ * 2da9937a — THE ONE PLACE a pay rule becomes a figure for ONE REAL EMPLOYEE outside a payroll run.
+ *
+ * It was previewPayRule's body. It is a named function now because the Individual Transaction screen has to
+ * ask the same question — "what does this item pay this employee for these inputs?" — and the ONLY honest
+ * way to answer it is with the code that already answers it for the admin preview. Two copies of this
+ * assembly (whose basic, whose hours, which recurring items, in what rank) would agree on the day they were
+ * written and drift silently afterwards, and the drift would be money.
+ *
+ * `override` is the one thing the transaction screen needs that the preview does not: a keyed quantity
+ * REPLACES the period aggregate for that input. Ten hours of overtime is a statement about ten hours, not
+ * about the employee's whole month of attendance. Absent ⇒ the period's own figures, which is exactly what
+ * the preview passes, so the preview's numbers are unchanged by this extraction.
+ *
+ * Reads only; writes nothing and appends no event.
+ */
+async function resolveRuleForEmploymentTx(
+  tx: Tx,
+  tenantId: string,
+  p: {
+    /** The target pay code, ALREADY upper-cased. */
+    code: string;
+    rule: PayRule | null;
+    kind: string | null | undefined;
+    employmentId: string;
+    periodStart: string;
+    periodEnd: string;
+    /** The catalog nodes, when the caller has already loaded them (previewPayRule validates against them). */
+    catalog?: PayRuleCatalogNode[];
+    override?: { hours?: number | null; days?: number | null };
+    /**
+     * 34062f81 — a dated one-off transaction's Effective Date ('YYYY-MM-DD', already validated by the
+     * caller). It moves ONE input and nothing else: `calendar_days` becomes the length of THIS DATE'S month
+     * (30 for 28-Sep-2026, 29 for 15-Feb-2024). Basic, attendance, recurring items and resolution order
+     * keep reading the period window above — their owners did not change. Absent ⇒ the period's month,
+     * which is what the admin preview and every pre-34062f81 caller get.
+     */
+    calendarDate?: string;
+  },
+): Promise<EmploymentRuleResolution> {
+  const { code, periodStart, periodEnd } = p;
+  const catalog = p.catalog ?? (await catalogNodesTx(tx, tenantId));
+  const periodDays = Math.round((Date.parse(periodEnd) - Date.parse(periodStart)) / 86_400_000) + 1;
+
+  // The employee's authoritative basic — the Personnel compensation record, exactly what the kernel's
+  // `rscope.basic` reads (feedback 64fb5e48: Personnel is the ONLY basic source).
+  const [comp] = await tx
+    .select({ basic: compensation.basicSalary })
+    .from(compensation)
+    .where(
+      and(
+        eq(compensation.employmentId, p.employmentId),
+        compensationEffectiveOn(periodEnd),
+      ),
+    )
+    .limit(1);
+  const basic = Number(comp?.basic ?? 0);
+
+  // The employee's actual worked hours for the period — same aggregate the kernel takes.
+  const [att] = await tx
+    .select({ minutes: sql<string>`coalesce(sum(${attendance.workedMinutes}), 0)` })
+    .from(attendance)
+    .where(
+      and(
+        eq(attendance.employmentId, p.employmentId),
+        gte(attendance.attendanceDate, periodStart),
+        lte(attendance.attendanceDate, periodEnd),
+      ),
+    );
+  const periodHours = Number(att?.minutes ?? 0) / 60;
+
+  const days = p.override?.days ?? periodDays;
+  const hours = p.override?.hours ?? periodHours;
+
+  // e318eaec — the two operands this path must also supply, or a formula reading them would silently read
+  // 0 here while the kernel read a real figure, and the preview would lie about the run.
+  //   • calendarDays: the length of the period's OWN month, derived from periodStart rather than from
+  //     `periodDays`, so a keyed `days` override (the one-off transaction path) cannot move it — the month
+  //     is 31 days long whatever quantity the operator typed. 34062f81 — or, for a DATED transaction, the
+  //     length of the month its Effective Date falls in (`calendarDate`), so a line dated in February is
+  //     divided by February's 28 (29 in a leap year) even when it is paid in an October run.
+  //   • proratedBasic: this path deliberately answers for a FULL period (factor 1) — the divergence
+  //     documented at length on previewPayRule and stated on screen by payRule.previewNote. At factor 1
+  //     the EA-1955 prorated basic IS the basic, so that is what it reports, consistently with `days`
+  //     already being the full period here.
+  // monthRange is the repository's pure month module (Date.UTC day-0, so leap years are the calendar's,
+  // not ours); `.to` is the month's last ISO date, whose day IS the month's length.
+  const calendarDays = Number(monthRange(monthOf(p.calendarDate ?? periodStart)).to.slice(8, 10));
+  const proratedBasic = basic;
+
+  // This employee's recurring pay items in the period window (the same period-aware predicate the kernel
+  // uses), so a rule that reads another pay item reads that employee's REAL value for it.
+  const recurring = await tx
+    .select({
+      code: payComponent.code,
+      amount: employmentPayComponent.amount,
+      rule: payComponent.rule,
+      resolutionOrder: payComponent.resolutionOrder,
+      // 2da9937a — the catalog kind decides whether an item counts towards the `fixed_allowances`
+      // aggregate. The KERNEL's CompRow already carries it, so without it here the preview would compute
+      // the aggregate as 0 while the run computed the real sum: the preview would lie, quietly, and only
+      // about formulas using the new operand. Selecting it is what keeps "same evaluator" true in fact
+      // and not just in the call graph.
+      kind: payComponent.kind,
+      // 711adcd2 — and the TICK BOX, for exactly the same reason and with a sharper edge. `kind` and the
+      // flag agreed on the day 0456 ran, so a preview that read only the kind would have looked correct
+      // right up until the first operator un-ticked an item — and would then have quoted the OLD overtime
+      // figure on the very screen they were using to change it.
+      orpOvertime: payComponent.orpOvertime,
+      // 711adcd2 fix — AND `nonPayable`, for the third time and the sharpest edge of the three. The
+      // kernel's own guard is `!c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(…)`, so leaving this
+      // out did not merely omit a field: it made that guard INERT here while it stayed live in the run.
+      // Measured on this branch before the fix — a non-payable BIKCAR of 300, ticked, made previewPayRule
+      // answer 300 where generatePayslips paid 0.00. That is the preview lying about the run on the very
+      // screen an operator uses to set an overtime rate, which is the one thing this projection exists to
+      // prevent. `one_off` is not a catalog column (it is a per-transaction property), so recurring rows
+      // are never one-offs and the kernel's `!c.oneOff` half is satisfied structurally here.
+      nonPayable: payComponent.isNonPayable,
+    })
+    .from(employmentPayComponent)
+    .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+    .where(
+      and(
+        eq(employmentPayComponent.employmentId, p.employmentId),
+        lte(employmentPayComponent.validFrom, periodEnd),
+        or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, periodStart)),
+        isNull(employmentPayComponent.supersededAt),
+      ),
+    );
+
+  // Rank the graph WITH the target rule substituted — an unsaved rule can re-rank the catalog, and the
+  // answer must resolve in the order the save would have recorded, not the order on disk.
+  const pending: PayRuleCatalogNode[] = catalog.map((n) =>
+    n.code.trim().toUpperCase() === code ? { ...n, rule: p.rule } : n,
+  );
+  // 711adcd2 — no `orpOvertime` on this synthetic node: a code that is not in the catalog yet has no
+  // stored flag, and `undefined` is exactly "no flag ⇒ the kind test", which is what it had before.
+  if (!pending.some((n) => n.code.trim().toUpperCase() === code)) pending.push({ code, rule: p.rule, kind: p.kind });
+  const plan = planResolutionOrder(pending);
+  const rankOf = (c: string) => (plan.ok ? (plan.order.get(c.trim().toUpperCase()) ?? 0) : 0);
+
+  // The set to resolve: the employee's real items, with the target substituted (or added at 0 if the
+  // employee does not have it yet — a brand-new pay code still resolves).
+  const set = recurring
+    .filter((r) => r.code.trim().toUpperCase() !== code)
+    .map((r) => ({ code: r.code, rule: r.rule, amount: Number(r.amount), resolutionOrder: rankOf(r.code), kind: r.kind as string | null, orpOvertime: r.orpOvertime as boolean | null, nonPayable: r.nonPayable === true }));
+  const targetAmount = Number(recurring.find((r) => r.code.trim().toUpperCase() === code)?.amount ?? 0);
+  // The item UNDER EDIT takes its flag from the row on disk (the form does not send it to the preview),
+  // and `undefined` there falls back to the kind test — the same answer the pre-0456 preview gave. Its own
+  // membership never changes its own figure anyway: the aggregate is the sum of items ranked strictly
+  // BELOW the one reading it, which is what makes it acyclic.
+  const targetOrp = recurring.find((r) => r.code.trim().toUpperCase() === code)?.orpOvertime ?? null;
+  // The item under edit: its stored nonPayable, for the same reason as the projection above. `p.kind`
+  // is the PENDING kind (the operator may be changing it in the form), but nonPayable is not on the
+  // form's preview payload, so the disk value is the honest answer here.
+  const targetNonPayable = recurring.find((r) => r.code.trim().toUpperCase() === code)?.nonPayable === true;
+  set.push({ code, rule: p.rule, amount: targetAmount, resolutionOrder: rankOf(code), kind: p.kind as string | null, orpOvertime: targetOrp, nonPayable: targetNonPayable });
+  const targetIdx = set.length - 1;
+
+  // BASIC is PINNED to the authoritative Personnel figure, exactly as the kernel pins it — the answer
+  // must agree with the run on what `component:'BASIC'` means, not just on the arithmetic.
+  const scope = { basic, daysWorked: days, hours, calendarDays, proratedBasic, components: { BASIC: basic } };
+  // 2da9937a — the same notices channel the run uses. On a screen it turns "RM 0.00" from a figure the
+  // admin has to explain to themselves into a sentence naming the input that was zero, BEFORE a payroll
+  // run has to surface it instead.
+  const notices: PayRuleComponentNotice[] = [];
+  // e318eaec — "show the working". The steps come OUT OF THE FOLD that produced the figure (see
+  // PayRuleTraceStep), for the TARGET item only, so the panel cannot describe a route to the answer that
+  // the evaluator did not take.
+  const steps: PayRuleTraceStep[] = [];
+  const resolvedAmounts = resolvePayComponentSet(set, scope, notices, { index: targetIdx, steps });
+
+  // Only the notice for the TARGET item — a zero divisor on some OTHER pay item is that item's problem and
+  // belongs on that item's screen, not on this answer.
+  const zeroDivisor = notices.find((n) => n.code === code) ?? null;
+  return {
+    amount: resolvedAmounts[targetIdx],
+    basic,
+    days,
+    hours,
+    resolved: set.map((s, i) => ({ code: s.code.trim().toUpperCase(), amount: resolvedAmounts[i] })),
+    zeroDivisor: zeroDivisor ? { divisor: zeroDivisor.divisor, step: zeroDivisor.step } : null,
+    steps,
+  };
+}
+
+// ── 2da9937a — a one-off transaction whose amount the PAY ITEM decides ───────────────────────────────
+
+/**
+ * Thrown when a one-off transaction names a pay item that works its amount out from a keyed quantity, and
+ * that quantity is missing (or not the input the rule reads).
+ *
+ * It is a REFUSAL rather than a default, and the difference matters: falling back to the employee's
+ * attendance total for the month would silently pay a full month of overtime for a row the operator meant
+ * to be ten hours. `unit` names the input the rule needs, so the screen can say which box to fill.
+ */
+export class TxnQuantityRequiredError extends Error {
+  constructor(public readonly unit: 'hours' | 'days') {
+    super(`This pay item calculates from ${unit}; a ${unit} quantity is required.`);
+    this.name = 'TxnQuantityRequiredError';
+  }
+}
+
+/**
+ * 34062f81 — a dated one-off transaction's Effective Date is not a real calendar day. Refused rather than
+ * ignored: silently falling back to the payroll month would price the line against the wrong month's
+ * calendar days, which is exactly the defect this date exists to close.
+ */
+export class TxnEffectiveDateInvalidError extends Error {
+  constructor(public readonly txnDate: string) {
+    super(`Effective date "${txnDate}" is not a valid calendar date.`);
+    this.name = 'TxnEffectiveDateInvalidError';
+  }
+}
+
+/** What a pay item does to a one-off transaction's amount. `derived: false` is the legacy case — a null or
+ *  `fixed` rule (and an unknown/archived item, which the ledger's own component guard refuses
+ *  authoritatively) leaves the operator's typed amount exactly as it was. */
+export type IndividualTxnAmountDerivation =
+  | { derived: false }
+  | {
+      derived: true;
+      /** The figure this item pays for these inputs, unrounded — the amount the row is written with. */
+      amount: number;
+      code: string;
+      ruleKind: string;
+      /** The input the quantity supplied (null when the rule needs nothing from the operator). */
+      inputUnit: 'hours' | 'days' | null;
+      /** Set when `amount` is 0 because a LIVE divisor resolved to zero for this employee — the
+       *  explanation, not a failure (see PayRuleZeroDivisorNotice). */
+      zeroDivisor: { divisor: string; step: number } | null;
+    };
+
+/**
+ * 2da9937a — WORK OUT what a one-off transaction on this pay item pays, from the item's own rule.
+ *
+ * THE DEFECT THIS CLOSES. The Individual Transaction write path never consulted the picked pay item's
+ * rule: it asked for an Amount and asserted it was positive, so an item configured as "RM x per hour" was
+ * a box the operator had to do the arithmetic for by hand, and the configured rule never ran at all. This
+ * is the resolution step that was missing — and it goes through resolveRuleForEmploymentTx, so it is the
+ * same evaluator, the same scope assembly and the same recorded resolution order the payslip uses. There
+ * is no second implementation to drift.
+ *
+ * WHAT IT DOES NOT DO. It does not touch an item with a null or `fixed` rule (byte-identical to before),
+ * it does not rewrite any transaction already on file, and it is not consulted by the payroll kernel —
+ * the kernel still pays a one-off row's STORED amount, which is what keeps every existing figure exactly
+ * where it is. All this changes is what gets stored when a new row is keyed.
+ *
+ * Read-only: no write, no domain event. The caller supplies the write.
+ */
+export function deriveIndividualTxnAmount(
+  ctx: SessionContext,
+  p: {
+    componentId: string;
+    employmentId: string;
+    /** The company the caller has already established it may act in. The employment must belong to it. */
+    companyId: string;
+    /** 'YYYY-MM' — the transaction's pay month, which bounds the attendance and recurring-item reads. */
+    payPeriod: string;
+    quantity: number | null;
+    unit: string | null;
+    /**
+     * 34062f81 — the transaction's Effective Date ('YYYY-MM-DD'). When given, `calendar_days` is the length
+     * of that date's month (leap years included) instead of the pay month's; nothing else moves. Omitted
+     * or null ⇒ the pay month, byte-identical to before. A malformed value is refused
+     * (TxnEffectiveDateInvalidError), never quietly ignored.
+     */
+    effectiveDate?: string | null;
+  },
+): Promise<IndividualTxnAmountDerivation> {
+  if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
+    return Promise.reject(new TxnEffectiveDateInvalidError(p.effectiveDate));
+  }
+  return withTenant(ctx, (tx) => deriveIndividualTxnAmountTx(tx, ctx, p));
+}
+
+/** Same pricing owner, kept in the caller's ledger transaction for an import confirmation. */
+export async function deriveIndividualTxnAmountTx(
+ tx:Tx,ctx:SessionContext,p:Parameters<typeof deriveIndividualTxnAmount>[1],
+):Promise<IndividualTxnAmountDerivation>{
+    if (p.effectiveDate != null && !isTransactionEffectiveDate(p.effectiveDate)) {
+      throw new TxnEffectiveDateInvalidError(p.effectiveDate);
+    }
+    // COMPANY SCOPE IS AN APPLICATION CONCERN — RLS only isolates tenants. Without this an admin scoped to
+    // one company could ask what a formula pays for an employee in another and read their basic salary
+    // back out of the figure. Answering "nothing derived" rather than throwing is deliberate: the write
+    // path's own C3 guard (CompanyMismatchError) is what refuses the save, and a second refusal here would
+    // give one mistake two names — and tell the caller the employment exists.
+    const [emp] = await tx
+      .select({ companyId: employment.companyId })
+      .from(employment)
+      .where(eq(employment.id, p.employmentId))
+      .limit(1);
+    if (!emp || emp.companyId !== p.companyId) return { derived: false };
+
+    const [item] = await tx
+      .select({ code: payComponent.code, kind: payComponent.kind, rule: payComponent.rule, archivedAt: payComponent.archivedAt, pendingInputKind: payComponent.pendingInputKind })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.id, p.componentId)))
+      .limit(1);
+    // An unknown or archived item is not this function's refusal to make: the ledger's assertTxnComponents
+    // rejects both with InvalidTxnComponentError, and inventing a second error here would give the same
+    // mistake two names. Report "nothing derived" and let the write path refuse.
+    if (!item || item.archivedAt != null) return { derived: false };
+    assertPayComponentReady(item);
+    const rule = item.rule as PayRule | null;
+    // Builder inputs are persisted verbatim and evaluated by the payroll provider in its real cycle.
+    // A one-off entry cannot substitute a guessed cycle or replace its raw input with a preview result.
+    if (rule?.kind==='formula_builder') return { derived: false };
+    if (!payRuleDerivesAmount(rule)) return { derived: false };
+
+    const inputUnit = payRuleInputUnit(rule);
+    if (inputUnit != null && (p.unit !== inputUnit || p.quantity == null || !(p.quantity > 0))) {
+      throw new TxnQuantityRequiredError(inputUnit);
+    }
+
+    const [year, month1] = p.payPeriod.split('-').map(Number);
+    const periodStart = `${p.payPeriod}-01`;
+    // Date.UTC with day 0 of the NEXT month is the last day of this one — leap years included.
+    const periodEnd = new Date(Date.UTC(year, month1, 0)).toISOString().slice(0, 10);
+
+    const r = await resolveRuleForEmploymentTx(tx, ctx.tenantId, {
+      code: item.code.trim().toUpperCase(),
+      rule,
+      kind: item.kind,
+      employmentId: p.employmentId,
+      periodStart,
+      periodEnd,
+      ...(p.effectiveDate != null ? { calendarDate: p.effectiveDate } : {}),
+      override:
+        inputUnit === 'hours'
+          ? { hours: p.quantity }
+          : inputUnit === 'days'
+            ? { days: p.quantity }
+            : undefined,
+    });
+    return {
+      derived: true,
+      amount: r.amount,
+      code: item.code.trim().toUpperCase(),
+      ruleKind: rule!.kind,
+      inputUnit,
+      zeroDivisor: r.zeroDivisor,
+    };
+
+}
+
+// ── 2da9937a — the worked overtime examples the reporter asked for ───────────────────────────────────
+
+/** One overtime item to create, as a MULTIPLE of the reference item's hourly rate. */
+export type OvertimeMultiplierSeed = { code: string; name: string; multiplier: number };
+
+/** Overtime 2.0 and Overtime 3.0, alongside the Overtime 1.5 the tenant already configured. */
+export const OVERTIME_MULTIPLIER_SEEDS: readonly OvertimeMultiplierSeed[] = [
+  { code: 'OT2_0', name: 'Overtime 2.0', multiplier: 2 },
+  { code: 'OT3_0', name: 'Overtime 3.0', multiplier: 3 },
+];
+
+/** Thrown when the reference overtime item cannot be used as the model for the new ones. `not_found` = no
+ *  such code in this tenant's catalog; `archived` = the code exists but has been deliberately switched
+ *  off, so its rate is a RETIRED figure nobody has stood behind since — scaling live items off it would
+ *  propagate a rate the tenant has already withdrawn; `not_per_hour` = it exists but does not carry a
+ *  per-hour rate, so there is no hourly figure to scale and GUESSING one would seed a wrong rate into
+ *  payroll. */
+export class OvertimeReferenceUnusableError extends Error {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'not_per_hour') {
+    super(`The reference overtime pay item is unusable (${reason}).`);
+    this.name = 'OvertimeReferenceUnusableError';
+  }
+}
+
+/**
+ * 2da9937a — create Overtime 2.0 and Overtime 3.0 from the tenant's existing Overtime 1.5.
+ *
+ * THE RATE IS DERIVED, NOT ASSUMED. The reference item already carries this tenant's own per-hour figure at
+ * 1.5×, so the plain hourly rate is that figure divided by 1.5, and 2.0× / 3.0× are multiples of it. A
+ * hard-coded rate would be a number nobody in this codebase is entitled to choose; a rate scaled from the
+ * one the tenant configured is the same money they already agreed to, at the multiplier they asked for.
+ *
+ * IT GOES THROUGH upsertPayComponent — the writer the admin screen uses — rather than an INSERT, so the
+ * new items pass the same rule validation (structural + catalog-aware), get their resolution order
+ * recorded, and append the same `pay-component.created` event an admin's own save would. A raw insert
+ * would produce rows that no audit trail explains and that the graph planner has never seen.
+ *
+ * EVERY STATUTORY FLAG IS COPIED FROM THE REFERENCE. Overtime's EPF / SOCSO / PCB / HRDF treatment is a
+ * legal matter this function has no view on; the tenant already settled it on Overtime 1.5, and 2.0× of
+ * the same payment is treated the same way. Copying is the only answer that cannot be wrong here.
+ *
+ * IDEMPOTENT BY SKIPPING, NOT BY OVERWRITING. `upsertPayComponent` is upsert-by-code, so a re-run would
+ * silently reset a rate an admin had since corrected. An existing code (archived or not) is reported as
+ * skipped and left exactly as it is.
+ */
+export function seedOvertimeMultipliers(
+  ctx: SessionContext,
+  p: {
+    /** The already-configured overtime item to model the new ones on. */
+    fromCode?: string;
+    /** The multiplier that reference item's rate already encodes. */
+    fromMultiplier?: number;
+    seeds?: readonly OvertimeMultiplierSeed[];
+  } = {},
+): Promise<{ created: string[]; skipped: string[]; hourlyRate: number }> {
+  p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
+  const fromCode = (p.fromCode ?? 'OT1_5').trim().toUpperCase();
+  const fromMultiplier = p.fromMultiplier ?? 1.5;
+  const seeds = p.seeds ?? OVERTIME_MULTIPLIER_SEEDS;
+  const readNomination=() => withTenant(ctx, async (tx) => {
+    const [ref] = await tx
+      .select()
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, fromCode)))
+      .limit(1);
+    if (!ref) throw new OvertimeReferenceUnusableError('not_found');
+    // AN ARCHIVED REFERENCE IS REFUSED, AND THIS CHECK MUST STAY ABOVE THE not_per_hour ONE. The lookup
+    // above filters tenant + code only, so before this guard an archived-but-per_hour reference SUCCEEDED
+    // and seeded OT2_0 / OT3_0 scaled off a rate the tenant had deliberately switched off — a silent wrong
+    // outcome, not merely a mislabelled error. Ordering is load-bearing for the other half: placed after
+    // the cast, an archived item carrying a fixed or absent rule would report `not_per_hour` and the real
+    // cause (it is switched off) would be lost to whoever reads the message.
+    if (ref.archivedAt != null) throw new OvertimeReferenceUnusableError('archived');
+    const refRule = ref.rule as PayRule | null;
+    if (refRule == null || refRule.kind !== 'per_hour') throw new OvertimeReferenceUnusableError('not_per_hour');
+    // Four decimals, not two: the plain hourly rate is an INTERMEDIATE (RM 16.50 at 1.5× is RM 11.00 here,
+    // but RM 16.35 is RM 10.90), and rounding it to cents before multiplying would shift the 2.0× and 3.0×
+    // rates by more than the rounding itself.
+    const hourlyRate = Math.round((refRule.rate / fromMultiplier) * 1e4) / 1e4;
+
+    return {ref,hourlyRate};
+  });
+  return (async()=>{
+    const nomination=await readNomination();
+    const {ref,hourlyRate}=nomination;
+    const created: string[] = [];
+    const skipped: string[] = [];
+    for (const seed of seeds) {
+      const code = seed.code.trim().toUpperCase();
+      const made=await withTenant(ctx,async tx=>{
+      await lockPayComponentCatalogTx(tx,ctx);
+      const [current]=await tx.select().from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,fromCode))).limit(1);
+      // Resolution rank is derived and an earlier item in THIS seed may legitimately re-rank the reference.
+      // All actual copied source facts, including rule/classification/archived state, must remain exact.
+      const facts=(row:typeof ref)=>{const {resolutionOrder:_rank,...value}=row;return value;};
+      if(!current||JSON.stringify(facts(current))!==JSON.stringify(facts(ref)))throw new OvertimeReferenceUnusableError('not_found');
+      const [existing] = await tx
+        .select({ id: payComponent.id })
+        .from(payComponent)
+        .where(and(eq(payComponent.tenantId, ctx.tenantId), eq(payComponent.code, code)))
+        .limit(1);
+      if (existing) {
+        return false;
+      }
+      await upsertPayComponentTx(tx, ctx, {
+        code,
+        name: seed.name,
+        label: seed.name,
+        kind: ref.kind as PayComponentInput['kind'],
+        includedInEpf: ref.includedInEpf,
+        includedInSocsoEis: ref.includedInSocsoEis,
+        includedInPcb: ref.includedInPcb,
+        includedInHrdfBase: ref.includedInHrdfBase,
+        isNonPayable: ref.isNonPayable,
+        prorates: ref.prorates,
+        eaFormLine: ref.eaFormLine,
+        roundingMethod: ref.roundingMethod ?? undefined,
+        // THE LHDN CLASSIFICATION IS COPIED ONLY WHEN THE REFERENCE HAS ONE. Passing an explicit null
+        // reads as "supplied" (classificationOf), which turns on the mandatory-classification guard — and
+        // a PCB-taxable overtime item whose tenant has not filled that in yet would then be refused a seed
+        // because of a field the item it is copying leaves blank. Undefined is "not supplied", the legacy
+        // caller's semantics, which is exactly what this is.
+        ...(ref.pcbRemunerationType != null || ref.pcbExemptionCode != null || ref.epfBonus2012
+          ? {
+              epfBonus2012: ref.epfBonus2012,
+              pcbRemunerationType: ref.pcbRemunerationType as PcbRemunerationType | null,
+              pcbExemptionCode: ref.pcbExemptionCode,
+            }
+          : {}),
+        // The payslip box this prints in — Overtime, not Bonus. Copied for the same reason the flags are.
+        displayCategory: ref.displayCategory,
+        rule: { kind: 'per_hour', rate: Math.round(hourlyRate * seed.multiplier * 1e4) / 1e4 },
+      });
+      return true;
+      });
+      if(made)created.push(code);else skipped.push(code);
+    }
+    return { created, skipped, hourlyRate };
+  })();
+}
+
+/**
+ * Hard-delete a catalog component (#21). GUARDED: refuse if referenced by any recurring per-employment
+ * value OR any batch line (draft or closed) — deleting would orphan those rows / past payslips. Callers
+ * should use archivePayComponent to retire an in-use component instead. RLS confines all reads/writes to
+ * the tenant + admin.
+ */
+export function deletePayComponent(ctx: SessionContext, id: string) {
+  ctx=capturePayCatalogContext(ctx);
+  return withTenant(ctx, async (tx) => {
+    await lockPayComponentCatalogTx(tx,ctx);
+    const [rec] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(employmentPayComponent)
+      .where(eq(employmentPayComponent.componentId, id));
+    const [bat] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(payrollBatchComponent)
+      .where(eq(payrollBatchComponent.componentId, id));
+    const [formulaHistory]=await tx.execute<{n:number}>(sql`select count(*)::int as n from pay_formula_event where tenant_id=${ctx.tenantId}::uuid and component_id=${id}::uuid`);
+    const refs = (rec?.n ?? 0) + (bat?.n ?? 0) + (formulaHistory?.n??0);
+    if (refs > 0) throw new PayComponentInUseError(refs);
+    await tx.delete(payComponent).where(eq(payComponent.id, id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'pay-component',
+      aggregateId: id,
+      eventType: 'pay-component.deleted',
+      actor: actorOf(ctx),
+    });
+    return { id };
+  });
+}
+
+// ───────────────────── Per-employment recurring ─────────────────────
+
+/**
+ * 1.2.1 Fixed Transaction — thrown at WRITE time when the effective end-date precedes the effective start
+ * (`effectiveTo < effectiveFrom`). The start<=end rule is enforced here rather than as a DB CHECK because
+ * valid_from/valid_to carry supersession-chain semantics (a naive CHECK can be violated on a legitimate
+ * supersession insert). The UI surfaces the message inline.
+ */
+export class FixedTransactionDateError extends Error {
+  constructor() {
+    super('fixed-transaction-date-invalid');
+    this.name = 'FixedTransactionDateError';
+  }
+}
+
+/**
+ * 1.2.1 Fixed Transaction — thrown at WRITE time when a non-MYR currency is supplied. The kernel is MYR-only
+ * and does no FX conversion, so a non-MYR amount could never be paid correctly. This single write-time guard
+ * (parity with setPayrollBatchComponent's UnsupportedBatchComponentError) tells the admin at entry; there is
+ * deliberately NO second kernel-side throw (a MYR-default UI can't produce a non-MYR value).
+ */
+export class UnsupportedFixedCurrencyError extends Error {
+  constructor(public readonly currency: string) {
+    super(`Currency "${currency}" is not supported — payroll is computed in MYR only.`);
+    this.name = 'UnsupportedFixedCurrencyError';
+  }
+}
+
+/**
+ * Fixed Transaction screen (feedback b7fc8583) — thrown at WRITE time when the amount is not strictly
+ * positive (<= 0). The invariant is enforced on the aggregate (setEmploymentPayComponent) so BOTH UI write
+ * paths (the new Fixed Transaction screen AND the people-detail editor, which previously coerced a bad input
+ * to 0 and silently wrote it) inherit the guard. The backfill helpers legitimately seed a 0-amount row for a
+ * zero-allowance compensation line — they opt out explicitly via `allowZeroAmount: true`, and only they do.
+ */
+export class FixedTransactionAmountError extends Error {
+  constructor() {
+    super('fixed-transaction-amount-invalid');
+    this.name = 'FixedTransactionAmountError';
+  }
+}
+
+/**
+ * 2aed39d4 — thrown at WRITE time when the window being written would COVER A DAY that a live row for the
+ * same employment + pay item already covers, and the clash cannot be resolved by versioning.
+ *
+ * WHY THIS IS AN APPLICATION ERROR AND NOT JUST A CONSTRAINT. Migration 0426 adds
+ * `employment_pay_component_no_overlap` (EXCLUDE USING gist, inclusive-inclusive daterange, WHERE
+ * superseded_at IS NULL) as the BACKSTOP. But a raw Postgres 23P01 reaching the screen would be worse
+ * than today's silent duplicate: there is no precedent in this repo for mapping one, and the operator
+ * would see "conflicting key value violates exclusion constraint". So the app refuses FIRST, with the
+ * clashing row's own code and dates in the message, and the constraint exists to catch anything that
+ * ever reaches the table by another route.
+ *
+ * WHAT `run_type` (Payroll Cycle) HAS TO DO WITH IT: NOTHING, DELIBERATELY. The reporting ticket asked
+ * for the key to be employee + pay item + period + Payroll Cycle. It is employee + pay item + period.
+ * The kernel (core/payroll.ts) selects on employment, component and the date window ONLY and pays every
+ * returned row its FULL amount — it never reads run_type — so two rows differing only by cycle both pay,
+ * in every run. Including the cycle in the key would have LEGALISED 2 of the 10 clashes measured on
+ * production. The cost is stated in the approved plan: a Regular and a Bonus line for the same item
+ * cannot be held over the same dates.
+ */
+export class FixedTransactionOverlapError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly validFrom: string,
+    public readonly validTo: string | null,
+  ) {
+    super(
+      `Pay item "${code}" already has a record covering ${validFrom} to ${validTo ?? 'open'} for this employee. End that record first, or choose dates that do not overlap it.`,
+    );
+    this.name = 'FixedTransactionOverlapError';
+  }
+}
+
+/**
+ * 2aed39d4 — thrown when a restatement is dated BEFORE the start of the row it would have to close.
+ *
+ * Split out of FixedTransactionDateError, which it used to share. That class means "the end date is
+ * before the start date", and the UI resolved it through `payroll.transactions.fixed.dateError` — "End
+ * date cannot be before the start date" — which names the wrong field entirely: nothing is wrong with
+ * the end date here, the START date is behind an existing record. Carries the blocking row's code and
+ * dates so the message can name it.
+ */
+export class FixedTransactionBackwardsError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly validFrom: string,
+    public readonly validTo: string | null,
+  ) {
+    super(
+      `Pay item "${code}" already starts on ${validFrom}. A new value must take effect on or after that date — restating it from an earlier date would rewrite history.`,
+    );
+    this.name = 'FixedTransactionBackwardsError';
+  }
+}
+
+/**
+ * a3d485f6 — thrown when a change to a recurring pay item would take effect PART-WAY THROUGH A MONTH
+ * while a live record for the same pay item still covers part of that same month.
+ *
+ * ── WHY THIS EXISTS (the last double-pay hole) ───────────────────────────────────────────────────────
+ * 2f889bae closed the prior row the day BEFORE the new one starts, which fixed the month-boundary case
+ * (…-04-30 / 05-01: the two windows land in different months). r185's `employment_pay_component_no_overlap`
+ * then made a genuine OVERLAP impossible. Neither touches the case where the two windows are ADJACENT
+ * INSIDE ONE MONTH: end on the 9th, start on the 10th. They do not overlap by a single day, so the
+ * EXCLUDE constraint correctly permits them — but `core/payroll.ts` selects
+ * `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)` and pays EVERY returned row
+ * its FULL amount, and both of them satisfy that for the month containing the boundary. A 777.00
+ * allowance restated that way paid 1,554.00. The first regression test written for it returned exactly
+ * that, and it sat in test/fixed-transaction.test.ts as a labelled `it.fails` until this class landed.
+ *
+ * ── WHY THE REFUSAL IS HERE AND NOT IN THE KERNEL ────────────────────────────────────────────────────
+ * Flipping the kernel's `gte` to `gt` was considered and REJECTED in r180: it silently changes what
+ * every EXISTING end-dated row pays in its final month. Prorating a partial window by days was
+ * considered and rejected in this item's own approved plan: 24 live rows on production start part-way
+ * through a month (mid-month joiners, earliest 2016-10-04) and every one of them is paid a full month
+ * today, so proration would cut all 24 — real money, and a separate question from the one asked.
+ * Refusing at the writer moves no existing figure at all: it changes only what can be ENTERED.
+ *
+ * ── WHAT IT MUST NOT REFUSE ──────────────────────────────────────────────────────────────────────────
+ *   • A mid-month FIRST line for a pay item the employee does not already hold. That is the new-hire
+ *     case and it is those same 24 production rows. One row in a month pays once; there is nothing to
+ *     refuse. The predicate below therefore keys on a SURVIVING SIBLING, never on the date alone.
+ *   • A mid-month restatement that SUPERSEDES the only live row (same `effectiveFrom`). A superseded row
+ *     is invisible to the kernel (`isNull(supersededAt)` — core/payroll.ts), so one row remains and it
+ *     pays once. Refusing it would leave those 24 mid-month rows permanently uncorrectable, which the
+ *     approved plan's "nothing already saved is touched" rules out.
+ *   • An END date. `endEmploymentPayComponent` is untouched — stopping an item early is a real thing to
+ *     need, and one row ending mid-month cannot pay anyone twice.
+ *
+ * `nextFirstOfMonth` is the date the operator can actually use, computed from the tenant's MYT calendar
+ * day (see the `today` parameter on setEmploymentPayComponent) rather than from a UTC instant, which
+ * names YESTERDAY between 00:00 and 08:00 MYT.
+ */
+export class FixedTransactionMidMonthError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly effectiveFrom: string,
+    public readonly nextFirstOfMonth: string,
+  ) {
+    super(
+      `Pay item "${code}" already has a live record covering part of ${effectiveFrom.slice(0, 7)}. A change to a recurring pay item must take effect on the first of a month, or that month pays both records in full — use ${nextFirstOfMonth}.`,
+    );
+    this.name = 'FixedTransactionMidMonthError';
+  }
+}
+
+/**
+ * a3d485f6 — the first day of the month AFTER `iso`. `2026-05-10` → `2026-06-01`.
+ *
+ * Built from the existing pure `YYYY-MM` helpers rather than from a `Date`, so it never crosses a
+ * timezone on the way through (`addMonths` does its arithmetic in UTC on a month string, which has no
+ * time-of-day to shift).
+ */
+const firstOfNextMonth = (iso: string): string => `${addMonths(monthOf(iso), 1)}-01`;
+
+/**
+ * Effective-dated upsert of a recurring component value for an employee (mirrors setCompensation).
+ *
+ * 1.2.1 Fixed Transaction extends this with an optional effective END date (written to `validTo` of the new
+ * row), a store-only `currency`, a per-employee `prorateOverride` (null = inherit the catalog flag), and
+ * free-text `remarks`. The kernel and `listEmploymentPayComponents` are period-aware (they bound by valid_from
+ * /valid_to), so setting `effectiveTo` auto-deactivates the item once the period passes its end — no separate
+ * "deactivate" path is needed.
+ *
+ * ── HOW A CLASH WITH AN EXISTING ROW IS RESOLVED (2aed39d4 rewrote this whole paragraph) ─────────────
+ *
+ * The previous doc block here said the `cur` lookup matched the OPEN row only, that an end-dated row was
+ * therefore left alone "(intended: the old item ended, a new one begins)", and that the one ambiguous
+ * case was "handled by the supersession close below". ALL THREE CLAIMS WERE WRONG BY THE TIME THEY WERE
+ * READ, and the third had never been true:
+ *   • the close is at `effectiveFrom - 1`, not at `effectiveFrom` (34cc8137 fixed that, and the old text
+ *     was left describing the overpaying version);
+ *   • leaving an end-dated row alone is only "intended" when the windows do not TOUCH. When they do, the
+ *     kernel pays BOTH rows in full for every month both cover. That is the defect this item exists to
+ *     close: X000001 carried three HANDPHONE ALLOWANCE rows all running 2026-07-01..2026-07-01, and a
+ *     re-run of July would have paid 400.00 where the issued payslip paid 100.00;
+ *   • the "ambiguous case" it claimed to handle — an end-dated row whose validTo is after the new
+ *     effectiveFrom — was NEVER MATCHED AT ALL, because the lookup required `validTo IS NULL`.
+ *
+ * The lookup is now every LIVE row (supersededAt IS NULL) of the same employment + component whose
+ * INCLUSIVE window touches the new one. `validTo` is INCLUSIVE here — see the long note at the close
+ * below — so "touches" means `validFrom <= newTo` AND `(validTo IS NULL OR validTo >= newFrom)`, which is
+ * exactly the predicate the kernel selects on and exactly the daterange the 0426 constraint indexes.
+ *
+ * Each clashing row is then resolved by ONE of three rules:
+ *   1. it is the row this write is a NEW VERSION OF (`replacesId`, passed only by
+ *      updateEmploymentPayComponent) or it is the OPEN row → version it: supersede if the new value
+ *      starts on its own start date (a zero-day row is never closed into an inverted window), else close
+ *      it the day before the new start. This is the reporter's expected-behaviour point 3 and it is what
+ *      34cc8137 shipped for the open row; it now applies to an ended row being edited as well, which is
+ *      what stops Save on an already-ended record from adding a copy of it.
+ *   2. the new value starts BEFORE that row starts → FixedTransactionBackwardsError. There is no
+ *      truncation that fixes this: closing at `effectiveFrom - 1` would write an end date before the
+ *      row's own start, which is how production came to carry an inverted row.
+ *   3. anything else — i.e. some OTHER live end-dated row that the new window runs into →
+ *      FixedTransactionOverlapError, naming that row. This is the reporter's expected-behaviour point 2
+ *      verbatim ("existing 01/01/2026-31/12/2026, new start 01/06/2026 must not be allowed").
+ *
+ * Refusals are raised BEFORE any write (both passes run over the scan result first), so a rejected save
+ * leaves the table exactly as it found it.
+ *
+ * ── AND ONE REFUSAL THAT IS NOT ABOUT A CLASH AT ALL (a3d485f6) ──
+ * A change that takes effect PART-WAY THROUGH A MONTH while a live sibling still covers part of that
+ * same month is refused with FixedTransactionMidMonthError, because the kernel would pay both rows in
+ * full for that month even though their windows never touch. It is scanned over the calendar MONTH
+ * rather than over `clashes` above, because the shape that pays twice without overlapping — stopped on
+ * the 9th, restarted on the 15th — is not a clash by any of the three rules. A mid-month FIRST line, and
+ * a mid-month restatement that supersedes its only sibling, both stay allowed; see that class.
+ *
+ * ── CLOSED PAY RUNS ──
+ * A write whose window touches a month a CLOSED run already paid is refused (FixedTransactionPaidError).
+ * Processed-but-not-closed is deliberately allowed — see archiveEmploymentPayComponent.
+ */
+export function setEmploymentPayComponent(
+  ctx: SessionContext,
+  p: {
+    employmentId: string;
+    componentId: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    currency?: string;
+    prorateOverride?: boolean | null;
+    remarks?: string | null;
+    // Fixed Transaction screen (feedback b7fc8583) — the Payroll Cycle tag. Cleaned to one of
+    // regular/off_cycle/bonus/adjustment or null (unspecified). Stored + event-logged; the kernel ignores it.
+    // IGNORED when `payrollCycleId` is given: the run type is then the cycle's own.
+    runType?: FixedTransactionCycle | null;
+    // 4fffe638 — the CONFIGURED Payroll Cycle to link the row to. Resolved inside the transaction against
+    // the employment's company (FixedTransactionCycleError on missing / archived / other-company) and the
+    // row's runType is set from it. Omitted / null = unlinked, exactly as before (the personnel editor
+    // never sends it). Like runType, the kernel never reads it.
+    payrollCycleId?: string | null;
+    // 4fffe638 — INTERNAL to updateEmploymentPayComponent: the superseded row's link and run type, carried
+    // forward verbatim on an edit that did not touch the cycle. Not re-validated on purpose — a row linked
+    // to a cycle that has since been made inactive must keep that link through an amount or date change.
+    inheritCycle?: { payrollCycleId: string | null; runType: FixedTransactionCycle | null };
+    // Backfill-only opt-out of the amount>0 guard: the compensation backfill legitimately seeds a 0-amount
+    // row for a zero-allowance line. ONLY the backfill call sites pass this true; every UI path inherits the guard.
+    allowZeroAmount?: boolean;
+    // 2aed39d4 — the id of the row this write is a NEW VERSION OF. Passed ONLY by
+    // updateEmploymentPayComponent, which knows which row the admin opened. That row is versioned
+    // (closed or superseded) instead of being reported as a clash, which is what makes Save on an
+    // already-ended record CHANGE it rather than add a copy of it. Every other live row that the new
+    // window runs into is still refused.
+    replacesId?: string;
+    // 2aed39d4 — backfill-only opt-out of the overlap refusal: SUPERSEDE every live row this write
+    // overlaps instead of refusing. Only backfillEmploymentComponentsFromCompensation passes this. It
+    // re-states BASIC/ALLOWANCE from the compensation record, which is the system of record for both, so
+    // "replace whatever pay-component rows sit in the way" is exactly its documented intent
+    // ("re-running just re-states it") — and it is the only shape that keeps the backfill runnable now
+    // that overlaps are refused. Every UI path inherits the refusal.
+    supersedeOverlaps?: boolean;
+    // 2aed39d4 — backfill-only opt-out of the CLOSED-run refusal. Kept as its own flag rather than folded
+    // into supersedeOverlaps so each opt-out is named for exactly what it waives and both are greppable.
+    // The backfill mirrors compensation from that row's OWN validFrom, which on a long-serving employee
+    // is years back and will cover closed months on any tenant that has ever closed a run — so without
+    // this the housekeeping helper could not run at all. It is not a hole in the rule: the amount it
+    // writes comes from `compensation`, which enforces its own closed-period guard on the way in
+    // (core/comp.ts), so nothing a closed run relied on can be changed THROUGH here that was not already
+    // allowed to change. ONLY the backfill passes it.
+    allowClosedPeriod?: boolean;
+    // a3d485f6 — the tenant's calendar day, used ONLY to word the mid-month refusal's suggested date.
+    // Injectable on the repo's established `p.today ?? todayInKualaLumpur()` idiom (core/leave.ts,
+    // core/roster.ts) so a test can pin the suggestion; every production caller omits it and gets the
+    // MYT day. It is never used in a comparison that decides whether a write is allowed.
+    today?: string;
+  },
+  outerTx?: Tx,
+) {
+  // start<=end validation (before any write). effectiveTo is an inclusive end-date on the same axis as
+  // effectiveFrom; ISO 'YYYY-MM-DD' strings compare chronologically.
+  const effectiveTo = p.effectiveTo ?? null;
+  // Currency guard — single write-time site, MYR-only kernel.
+  const currency = p.currency ?? 'MYR';
+  // Cycle tag — cleaned to the enum or null inside `run` (it may come from a configured cycle there);
+  // never trust a raw form/URL value.
+  const run = async (tx: Tx) => {
+    // Validate inside the returned promise (not at call time) so the function ALWAYS returns a promise — a
+    // bad value rejects rather than throwing synchronously, giving callers (and `.rejects` in tests) a single
+    // uniform contract. Both checks still run before any write.
+    if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
+    if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
+    const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
+      .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
+    if (component) assertPayComponentReady(component);
+    if (!p.allowClosedPeriod) await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId,employmentId:p.employmentId,effectiveDate:p.effectiveFrom}]);
+    // Amount>0 invariant on the aggregate — inherited by every UI write path. The backfill opts out for its
+    // legitimate zero-allowance seed rows only (allowZeroAmount).
+    if (!p.allowZeroAmount && !(p.amount > 0)) throw new FixedTransactionAmountError();
+    // 4fffe638 — the cycle link. Resolved BEFORE any write, so a refused cycle leaves the table untouched.
+    let payrollCycleId: string | null = null;
+    let runType: FixedTransactionCycle | null = cleanCycle(p.runType);
+    if (p.inheritCycle) {
+      payrollCycleId = p.inheritCycle.payrollCycleId;
+      runType = cleanCycle(p.inheritCycle.runType);
+    } else if (p.payrollCycleId) {
+      const c = await resolveFixedTxnCycle(tx, { employmentId: p.employmentId, payrollCycleId: p.payrollCycleId });
+      payrollCycleId = c.id;
+      runType = c.runType;
+    }
+    // 2aed39d4 — a change whose window touches a month a CLOSED run already paid is refused. Removal
+    // uses the identical test (archiveEmploymentPayComponent); PROCESSED-but-open is deliberately fine.
+    if (!p.allowClosedPeriod) {
+      await assertNoClosedRunCovers(tx, {
+        employmentId: p.employmentId,
+        componentId: p.componentId,
+        validFrom: p.effectiveFrom,
+        validTo: effectiveTo,
+      });
+    }
+    // 2aed39d4 — EVERY live row of this employment+component whose INCLUSIVE window touches the new one,
+    // not just the open row. The old lookup required `validTo IS NULL`, so a live END-DATED row was
+    // invisible to the writer and a second set inserted a duplicate over the top of it. See the long
+    // note on this function for the three resolution rules.
+    const clashes = await tx
+      .select({
+        id: employmentPayComponent.id,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        code: payComponent.code,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          eq(employmentPayComponent.componentId, p.componentId),
+          isNull(employmentPayComponent.supersededAt),
+          lte(employmentPayComponent.validFrom, effectiveTo ?? '9999-12-31'),
+          or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, p.effectiveFrom)),
+        ),
+      )
+      .orderBy(employmentPayComponent.validFrom);
+
+    // PASS 1 — REFUSE BEFORE WRITING ANYTHING. Both refusals are raised over the whole scan first, so a
+    // rejected save cannot leave a half-versioned row behind (the old code closed `cur` and only then
+    // discovered the insert was bad).
+    if (!p.supersedeOverlaps) {
+      for (const c of clashes) {
+        // The row being edited and the open row are versionable (pass 2). Any OTHER live end-dated row
+        // the window runs into is the reporter's point 2 and is refused outright.
+        const versionable = c.id === p.replacesId || c.validTo == null;
+        if (!versionable) throw new FixedTransactionOverlapError(c.code, c.validFrom, c.validTo);
+      }
+      for (const c of clashes) {
+        // Closing at effectiveFrom-1 would write an end date before the row's own start. Before the
+        // 34cc8137 guard this wrote an inverted row silently; production still carries one.
+        //
+        // EXCEPT for the row being edited. Moving THAT row's own start date earlier is a correction of
+        // the record the admin has open — the ticket's Edit function asks for exactly that — and it
+        // rewrites nothing, because the row is superseded outright rather than closed into an inverted
+        // window (pass 2). The refusal is for a restatement that would have to reach BACKWARDS THROUGH A
+        // ROW THE ADMIN IS NOT LOOKING AT, which is a different act with a different blast radius.
+        if (c.id !== p.replacesId && p.effectiveFrom < c.validFrom) {
+          throw new FixedTransactionBackwardsError(c.code, c.validFrom, c.validTo);
+        }
+      }
+      // a3d485f6 — MID-MONTH RESTATEMENT. See FixedTransactionMidMonthError for why this is a writer
+      // refusal and not a kernel change.
+      //
+      // THE PREDICATE IS "WOULD A SIBLING STILL BE LIVE IN THIS MONTH AFTER THE WRITE", NOT "IS THE DATE
+      // MID-MONTH". Those are not the same question, and answering the easy one would have refused every
+      // mid-month new-hire line — 24 of them on production. Concretely:
+      //   • no live row covers the month at all  → a first line, nothing to double-pay → ALLOWED;
+      //   • the only covering row is one this write SUPERSEDES (same effectiveFrom) → it vanishes from
+      //     the kernel's view, one row remains → ALLOWED (this is how those 24 rows stay correctable);
+      //   • a covering row will be CLOSED at effectiveFrom-1 → that end date is in the SAME month, so
+      //     both rows pay in full → REFUSED. This is the 777 + 777 case.
+      //
+      // It is deliberately keyed on the MONTH, not on the clash list, because two rows can both pay a
+      // month without ever touching each other and so without ever being a clash: stop an item on the
+      // 9th (endEmploymentPayComponent, untouched) and start the next on the 15th, and the EXCLUDE
+      // constraint, the overlap refusal and the backwards refusal all correctly stay silent while the
+      // month pays twice. Scanning the month catches that shape and the adjacent one with one rule.
+      //
+      // Skipped for the backfill (supersedeOverlaps), like the two refusals above: it re-states
+      // BASIC/ALLOWANCE from each compensation row at THAT ROW'S own validFrom, which is routinely
+      // mid-month on a mid-month joiner, and it supersedes everything it covers rather than closing it.
+      const monthFirst = `${monthOf(p.effectiveFrom)}-01`;
+      if (p.effectiveFrom !== monthFirst) {
+        const monthLast = monthRange(monthOf(p.effectiveFrom)).to;
+        const covering = await tx
+          .select({
+            id: employmentPayComponent.id,
+            code: payComponent.code,
+          })
+          .from(employmentPayComponent)
+          .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+          .where(
+            and(
+              eq(employmentPayComponent.employmentId, p.employmentId),
+              eq(employmentPayComponent.componentId, p.componentId),
+              isNull(employmentPayComponent.supersededAt),
+              lte(employmentPayComponent.validFrom, monthLast),
+              or(isNull(employmentPayComponent.validTo), gte(employmentPayComponent.validTo, monthFirst)),
+            ),
+          )
+          .orderBy(employmentPayComponent.validFrom);
+        // PASS 2 supersedes exactly the clashes that start on or after the new start date; those rows
+        // leave the kernel's view entirely, so they cannot double-pay and must not block the write.
+        const vanishing = new Set(clashes.filter((c) => p.effectiveFrom <= c.validFrom).map((c) => c.id));
+        const survivor = covering.find((c) => !vanishing.has(c.id));
+        if (survivor) {
+          // The suggestion is anchored on the LATER of the entered date and today so it is never a
+          // first-of-month that has already gone by — a date the operator is being asked to re-enter has
+          // to be one they can still adopt. `today` is the MYT calendar day (see the parameter).
+          const today = p.today ?? todayInKualaLumpur();
+          const anchor = p.effectiveFrom > today ? p.effectiveFrom : today;
+          throw new FixedTransactionMidMonthError(survivor.code, p.effectiveFrom, firstOfNextMonth(anchor));
+        }
+      }
+    }
+
+    // PASS 2 — resolve each clash. Nothing below can throw.
+    for (const c of clashes) {
+      // 2f889bae — CLOSE THE PRIOR ROW THE DAY BEFORE THE NEW ONE STARTS, NOT ON IT.
+      //
+      // This used to set validTo = effectiveFrom and the comment claimed "so there is no double-count".
+      // That was false, and it had already overpaid on issued payslips. `validTo` is INCLUSIVE for pay
+      // components — the kernel selects validFrom <= periodEnd AND (validTo IS NULL OR validTo >=
+      // periodStart) and pays each returned row its FULL amount for the period — so closing ON the new
+      // start date leaves BOTH rows inside the month that contains it, and the item pays twice.
+      //
+      // WHY NOT FIX THE KERNEL INSTEAD: flipping that gte to gt would silently change what every EXISTING
+      // end-dated row pays in its final month. This changes only new writes.
+      //
+      // WHY compensation GETS AWAY WITH THE SAME LINE (core/comp.ts): its kernel reads a single open row
+      // and its compensation_no_overlap EXCLUDE constraint uses a HALF-OPEN daterange, so valid_to is
+      // exclusive there. Same writer shape, opposite boundary semantics — do not "align" one to the other
+      // without changing the reader that goes with it. Migration 0426 makes that asymmetry explicit: the
+      // pay-component constraint is the same shape with '[]' bounds instead of '[)'.
+      if (p.effectiveFrom <= c.validFrom) {
+        // Superseded, not closed: the row would cover zero days (a same-start restatement replaces it
+        // outright), or — supersedeOverlaps only — the backfill is re-stating over the top of it.
+        await tx
+          .update(employmentPayComponent)
+          .set({ supersededAt: sql`now()` })
+          .where(eq(employmentPayComponent.id, c.id));
+      } else {
+        await tx
+          .update(employmentPayComponent)
+          .set({ validTo: addDaysIso(p.effectiveFrom, -1) })
+          .where(eq(employmentPayComponent.id, c.id));
+      }
+    }
+    const [row] = await tx
+      .insert(employmentPayComponent)
+      .values({
+        tenantId: ctx.tenantId,
+        employmentId: p.employmentId,
+        componentId: p.componentId,
+        amount: money(p.amount),
+        validFrom: p.effectiveFrom,
+        validTo: effectiveTo,
+        currency,
+        prorateOverride: p.prorateOverride ?? null,
+        remarks: p.remarks ?? null,
+        runType,
+        payrollCycleId,
+      })
+      .returning({ id: employmentPayComponent.id });
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: row.id,
+      eventType: 'employment-pay-component.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // ADR-0030 Layer 0: amount lives on employment_pay_component[aggregateId]; reference, not cleartext.
+      // effectiveTo / currency / prorateOverride / runType are non-PII references/flags (not in the banned
+      // set). runType is a constrained enum (cleaned above) so it is safe in the immutable log — unlike the
+      // free-text `remarks`, which stays deliberately EXCLUDED here (PDPA Layer-0).
+      payload: { employmentId: p.employmentId, componentId: p.componentId, effectiveFrom: p.effectiveFrom, effectiveTo, currency, prorateOverride: p.prorateOverride ?? null, runType, payrollCycleId },
+    });
+    return { id: row.id };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+/**
+ * Thrown when an edit/stop/archive targets a row that does not exist (or is not visible to the caller's
+ * tenant/scope — RLS confines the read, so a foreign id simply comes back empty). Surfaces a friendly
+ * "not found" rather than a silent no-op so a URL-tampered / stale id can be mapped to a localised message.
+ */
+export class FixedTransactionNotFoundError extends Error {
+  constructor() {
+    super('fixed-transaction-not-found');
+    this.name = 'FixedTransactionNotFoundError';
+  }
+}
+
+/**
+ * 4fffe638 — thrown when the Payroll Cycle named on a Fixed Transaction write cannot be linked.
+ *
+ *  - `not_found`        — no such cycle row (or RLS hides it).
+ *  - `archived`         — the cycle has been made inactive; the screen does not offer it, so a write
+ *                         naming it is a stale form or a tampered id. (An UNTOUCHED edit of a row already
+ *                         linked to a since-archived cycle never reaches this check: it inherits the
+ *                         superseded row's link instead, see updateEmploymentPayComponent.)
+ *  - `company_mismatch` — the cycle belongs to another company. Cycles are per company and the company is
+ *                         taken from the EMPLOYMENT, never from the client.
+ *
+ * Every reason is a refusal raised before any write, never a silent fallback to "no cycle".
+ */
+export class FixedTransactionCycleError extends Error {
+  constructor(public readonly reason: 'not_found' | 'archived' | 'company_mismatch') {
+    super(`Invalid payroll cycle for this fixed transaction (${reason}).`);
+    this.name = 'FixedTransactionCycleError';
+  }
+}
+
+/**
+ * 4fffe638 — resolve a configured Payroll Cycle for a Fixed Transaction write, inside the write's own
+ * transaction, against the EMPLOYMENT's company (getActivePayrollCycle's rule: missing, archived or
+ * other-company is refused). Returns the id to store and the run type the row must carry — the run type
+ * comes from the cycle row, never from the client.
+ */
+async function resolveFixedTxnCycle(
+  tx: Tx,
+  p: { employmentId: string; payrollCycleId: string },
+): Promise<{ id: string; runType: FixedTransactionCycle }> {
+  const [emp] = await tx
+    .select({ companyId: employment.companyId })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .limit(1);
+  const [row] = await tx
+    .select({ id: payrollCycle.id, companyId: payrollCycle.companyId, runType: payrollCycle.runType, archivedAt: payrollCycle.archivedAt })
+    .from(payrollCycle)
+    .where(eq(payrollCycle.id, p.payrollCycleId))
+    .limit(1);
+  if (!row) throw new FixedTransactionCycleError('not_found');
+  if (!emp || row.companyId !== emp.companyId) throw new FixedTransactionCycleError('company_mismatch');
+  if (row.archivedAt != null) throw new FixedTransactionCycleError('archived');
+  return { id: row.id, runType: row.runType as FixedTransactionCycle };
+}
+
+/**
+ * Enhancement of Individual/Fixed Transaction (feedback 1e2704f2) — EDIT an existing recurring fixed pay
+ * value by VERSIONING (the aggregate is an effective-dated, supersede-on-write log; this is the system's
+ * design rule per ticket point #8 "overwrite OR version" — we version to preserve history and avoid
+ * double-pay). The edit re-invokes the existing `set` path from a new `effectiveFrom`, which auto-closes the
+ * prior row at that date (no double-count across the supersession close) and inherits every guard
+ * (FixedTransactionDateError / UnsupportedFixedCurrencyError / FixedTransactionAmountError). The `id`
+ * identifies WHICH row the admin is editing; we resolve its `componentId`/`employmentId` from the row itself
+ * so a tampered componentId can't retarget the write, then apply the new amount/dates/cycle/remarks as a
+ * fresh version. Event: `employment-pay-component.set` is appended by the underlying `set` (the versioned
+ * write IS a set); no separate `.updated` event is needed and none is fabricated.
+ *
+ * 2aed39d4 — THE ONE-CLICK DUPLICATE THIS CLOSES. `[id]/page.tsx` renders the Edit form for an ENDED row
+ * too (the `ended` flag only hides the Stop card), with the dates defaulted from the row. Save then went
+ * through a `set` whose prior-row lookup required `validTo IS NULL` — so for an employee with no OPEN row
+ * for that item nothing was found, and Save INSERTED A CLONE with the identical window. That is how
+ * X000001 came to hold three HANDPHONE ALLOWANCE rows all running 2026-07-01..2026-07-01, two of them
+ * written two minutes apart. The row's own id is now passed as `replacesId`, so the `set` treats it as
+ * the row being versioned rather than as an unrelated clash: Save CHANGES the record instead of copying
+ * it, and any OTHER live row the new window runs into is still refused.
+ */
+export function updateEmploymentPayComponent(
+  ctx: SessionContext,
+  p: {
+    id: string;
+    employmentId: string;
+    amount: number;
+    effectiveFrom: string;
+    effectiveTo?: string | null;
+    runType?: FixedTransactionCycle | null;
+    // 4fffe638 — a string links the new version to that configured cycle (validated, runType from it);
+    // null unlinks it (runType from `runType`). When BOTH this and `runType` are omitted the edit did not
+    // touch the cycle, and the superseded row's payroll_cycle_id and run_type are carried forward as-is.
+    payrollCycleId?: string | null;
+    remarks?: string | null;
+    prorateOverride?: boolean | null;
+  },
+) {
+  return withTenant(ctx, async (tx) => {
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
+    // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
+    // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
+    const [row] = await tx
+      .select({
+        componentId: employmentPayComponent.componentId,
+        currency: employmentPayComponent.currency,
+        runType: employmentPayComponent.runType,
+        payrollCycleId: employmentPayComponent.payrollCycleId,
+      })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    // Version via the existing set path (auto-closes the prior open row at effectiveFrom, appends its event,
+    // re-runs the date/currency/amount guards). We pass the row's own currency through so an edit on a legacy
+    // MYR row stays MYR (the UI is MYR-only; this just avoids re-defaulting).
+    return setEmploymentPayComponent(
+      ctx,
+      {
+        employmentId: p.employmentId,
+        componentId: row.componentId,
+        amount: p.amount,
+        effectiveFrom: p.effectiveFrom,
+        effectiveTo: p.effectiveTo ?? null,
+        currency: row.currency,
+        prorateOverride: p.prorateOverride ?? null,
+        remarks: p.remarks ?? null,
+        runType: p.runType ?? null,
+        payrollCycleId: p.payrollCycleId ?? null,
+        // 4fffe638 — an edit that said nothing about the cycle keeps the one the row already had. The
+        // screen's select is ALWAYS submitted, so "untouched" is decided by the action from its hidden
+        // cycleTouched flag (CLAUDE.md §8), which omits both fields here.
+        ...(p.payrollCycleId === undefined && p.runType === undefined
+          ? { inheritCycle: { payrollCycleId: row.payrollCycleId, runType: cleanCycle(row.runType) } }
+          : {}),
+        // 2aed39d4 — THE row the admin opened. Without this an edit of an ended row reads as a clash
+        // with itself and is either refused or cloned; with it, the row is versioned.
+        replacesId: p.id,
+      },
+      tx,
+    );
+  });
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — STOP a recurring fixed item from a date: set its inclusive `validTo` to
+ * the last month it should pay. The row survives, keeps paying THROUGH `validTo`, and drops out of the kernel
+ * afterward (the kernel selects on `validFrom <= periodEnd AND (validTo IS NULL OR validTo >= periodStart)
+ * AND supersededAt IS NULL` — core/payroll.ts). It still appears in the list marked "Ended"
+ * (listEmploymentPayComponents filters only supersededAt). Guards effectiveTo >= the row's validFrom.
+ */
+export function endEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string; effectiveTo: string },
+  outerTx?:Tx,
+) {
+  const run=async(tx:Tx)=>{
+    await lockFixedItemWriterTx(tx, ctx, p.employmentId);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
+    const [row] = await tx
+      .select({ validFrom: employmentPayComponent.validFrom })
+      .from(employmentPayComponent)
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    // Inclusive end-date must not precede the start (same axis, ISO strings compare chronologically).
+    if (p.effectiveTo < row.validFrom) throw new FixedTransactionDateError();
+    await tx
+      .update(employmentPayComponent)
+      .set({ validTo: p.effectiveTo })
+      .where(eq(employmentPayComponent.id, p.id));
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: p.id,
+      eventType: 'employment-pay-component.ended',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // effectiveTo is a non-PII date reference (mirrors the `set` payload); no amount, no free-text remarks.
+      payload: { employmentId: p.employmentId, effectiveTo: p.effectiveTo },
+    });
+    return { id: p.id };
+  };return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/**
+ * Thrown when a recurring fixed item is changed or removed in a way that would affect a month a CLOSED
+ * pay run has already paid. `payPeriod` is that closed month, so the message can be specific.
+ *
+ * ── 2aed39d4 REVERSED WHAT THIS MEANS. READ THIS BEFORE RE-TIGHTENING IT. ──
+ *
+ * f1123afd introduced this error to refuse removal as soon as any PROCESSED payslip carried the item.
+ * The reporter's expected-behaviour point 7 asks for the opposite, explicitly and with a worked example:
+ * HR discovers a wrong fixed transaction AFTER payroll has been processed, deletes it, and reprocesses.
+ * Their table is unambiguous — Processed/Not Closed: View Y, Edit Y, Delete Y, Reprocess Y; Closed:
+ * View only, "unless the payroll is reopened/unlocked according to the payroll control". So the test is
+ * now the BATCH STATUS, not the payslip's line evidence.
+ *
+ * WHY THE OLD TEST HAD TO GO RATHER THAN BE KEPT ALONGSIDE. It was never a rule, it was a coin flip.
+ * There is no payslip LINE table; the per-item detail lives in `payslip.statutory.componentLines` /
+ * `recordLines`, which the kernel only started stamping on 2026-08-01 (feedback 862ed0ad). Slips older
+ * than that carry no line list at all, so the guard could not see them and ALLOWED the removal. Roughly
+ * half the live items a processed payslip covered were therefore removable and half were not, with
+ * nothing on screen to say which — X000001's three A0027 rows were all undeletable (the July slip
+ * itemises A0027) while an adjacent employee's identical row was not. "Processed" is now uniformly
+ * allowed and "closed" uniformly refused, which is both the reporter's rule and a rule at all.
+ *
+ * Nothing is closed on production today (22 batches, all `processed`, none carrying `closed_at`,
+ * re-measured 2026-08-11), so this rule has no effect on existing data — which is exactly why it is
+ * covered by tests rather than by observation.
+ *
+ * The right action when a run IS closed is `endEmploymentPayComponent` — end it from a date, which stops
+ * future payment and leaves what was already paid intact. The refusal message names it.
+ */
+export class FixedTransactionPaidError extends Error {
+  constructor(
+    public readonly code: string,
+    public readonly payPeriod: string,
+  ) {
+    super(
+      `Pay run ${payPeriod} is closed, so pay item "${code}" can no longer be changed or removed for that period. Reopen the run, or end the item from a date instead.`,
+    );
+    this.name = 'FixedTransactionPaidError';
+  }
+}
+
+/**
+ * 2aed39d4 — is any CLOSED pay run's period inside this row's window? If so the row is frozen for that
+ * period: changing or removing it would alter what a closed run relied on.
+ *
+ * ONE DEFINITION OF "PAYROLL EVIDENCE", NOT A FOURTH. The period helpers are `closedPeriodsTx` and
+ * `overlapsClosedPeriod` from core/comp.ts — the same pair the Basic Salary card uses to decide which
+ * compensation rows are deletable, and the same pair a Movement correction refuses on. Writing a fourth
+ * period helper here is how two rules that are supposed to agree start disagreeing.
+ *
+ * ⚠️ THE BOUNDARY CONVERSION IS LOAD-BEARING. `overlapsClosedPeriod(periods, from, to)` treats `to` as
+ * EXCLUSIVE — it was written for `compensation`, whose valid_to is exclusive. `employment_pay_component`
+ * valid_to is INCLUSIVE (the kernel selects `validTo >= periodStart` and pays the row in full for that
+ * month; migration 0426's daterange uses '[]' bounds for the same reason). So the inclusive end date is
+ * converted with `addDaysIso(validTo, 1)` on the way in. Passing validTo straight through would let a
+ * row whose LAST paid month is a closed month slip past the guard.
+ *
+ * WHAT THIS REPLACED, AND WHY THE OLD ONE IS GONE RATHER THAN KEPT: see FixedTransactionPaidError. The
+ * previous test read `payslip.statutory.componentLines` — line evidence the kernel only began stamping
+ * on 2026-08-01 — so it refused on about half the live items a processed payslip covered and allowed the
+ * rest, with nothing on screen to say which. There is still no payslip LINE table and no stored link
+ * from a payslip to the `employment_pay_component.id` that produced the money; the batch's status and
+ * period are the only facts about a run that are recorded for every run, which is why the rule is built
+ * on them.
+ *
+ * Read-only, and cheap: one indexed lookup over one employee's payslips.
+ */
+async function closedRunCovering(
+  tx: Tx,
+  p: { employmentId: string; validFrom: string; validTo: string | null },
+): Promise<string | null> {
+  const closed = await closedPeriodsTx(tx, p.employmentId);
+  if (closed.length === 0) return null;
+  // Inclusive validTo -> exclusive `to`. See the warning above.
+  const exclusiveTo = p.validTo == null ? null : addDaysIso(p.validTo, 1);
+  if (!overlapsClosedPeriod(closed, p.validFrom, exclusiveTo)) return null;
+  // Name the EARLIEST closed period the window covers, so the message is stable rather than dependent on
+  // the order the periods came back in.
+  const hit = closed
+    .filter((period) => overlapsClosedPeriod([period], p.validFrom, exclusiveTo))
+    .sort()[0];
+  return hit ?? null;
+}
+
+/**
+ * 2aed39d4 — the write-side half of the same rule, shared by setEmploymentPayComponent (and therefore by
+ * updateEmploymentPayComponent, which delegates to it). Resolves the pay item's code only when it is
+ * about to throw, so the common path stays one query.
+ */
+async function assertNoClosedRunCovers(
+  tx: Tx,
+  p: { employmentId: string; componentId: string; validFrom: string; validTo: string | null },
+): Promise<void> {
+  const period = await closedRunCovering(tx, p);
+  if (period == null) return;
+  const [c] = await tx
+    .select({ code: payComponent.code })
+    .from(payComponent)
+    .where(eq(payComponent.id, p.componentId))
+    .limit(1);
+  throw new FixedTransactionPaidError(c?.code ?? 'component', period);
+}
+
+/**
+ * Enhancement (feedback 1e2704f2) — REMOVE/ARCHIVE (void) a recurring fixed item: set `supersededAt = now()`.
+ * The kernel then excludes it ENTIRELY (its select requires supersededAt IS NULL) and
+ * listEmploymentPayComponents drops it from the screen — the true "delete/archive ⇒ no longer used in
+ * payroll, no longer shown" semantics (ticket point #11). No hard delete: the row is preserved for audit /
+ * replay, consistent with the effective-dated log design.
+ */
+/** Fixed-item writers (set, edit, end, archive) under the SHARED Access lock (reader/writer wave 4):
+ * the employee's payroll inputs key makes the change wait for an in-flight run of the employee's
+ * company, so that run either reads it or has already committed and the change is a post-run edit.
+ * Writers for different employees overlap. Taken before any fixed-item, catalogue or payroll row. */
+async function lockFixedItemWriterTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
+}
+/** A fixed-item change for an employee a background payroll processing job has already paid marks that run for
+ * recalculation (an employee it has not reached yet reads the change). Called by each writer after its inputs key,
+ * inside the write (a rolled-back preview rolls the mark back with it). Lazy import: payroll imports this module. */
+async function markProcessingRunsForFixedItemTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
+ await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[employmentId]});
+}
+/** Native archive and reviewed preview share one interval: the shared Access lock and the employee's
+ * payroll inputs key, which every payroll create/close/process membership owner takes exclusively for
+ * the company. History acquisition is TRY-only after Access; a busy source must abort the WHOLE caller
+ * transaction. Locks are acquired BEFORE any preview savepoint and survive its rollback. */
+export async function lockFixedItemArchiveIntervalTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ await lockFixedItemWriterTx(tx,ctx,p.employmentId);
+ if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new FixedTransactionNotFoundError();
+ await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
+ const rows=await tx.execute<{componentId:string;companyId:string}>(sql`select q.component_id as "componentId",e.company_id as "companyId" from employment_pay_component q join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${p.id}::uuid and q.employment_id=${p.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid for update of q,e nowait`);
+ if(rows.length!==1)throw new FixedTransactionNotFoundError();
+ await tx.execute(sql`select p.id from person p join employment e on e.person_id=p.id and e.tenant_id=p.tenant_id where e.id=${p.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for share of p nowait`);
+ await tx.execute(sql`select id from company where id=${rows[0].companyId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
+ await tx.execute(sql`select id from pay_component where id=${rows[0].componentId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
+ // The inputs key prevents new native drafts, close/create/process/reset/delete membership changes. These
+ // physical locks additionally retain existing relevant payroll tuples against direct competing writes.
+ const batches=await tx.execute(sql`select b.id from payroll_batch b join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=b.tenant_id where (b.company_id=${rows[0].companyId}::uuid or exists(select 1 from payslip subject_slip where subject_slip.batch_id=b.id and subject_slip.tenant_id=b.tenant_id and subject_slip.employment_id=${p.employmentId}::uuid)) and b.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by b.id limit 2001 for share of b nowait`);
+ if(batches.length>2000)throw Error('Fixed item payroll history is too large for review.');
+ const slips=await tx.execute(sql`select p.id from payslip p join payroll_batch b on b.id=p.batch_id and b.tenant_id=p.tenant_id join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=p.tenant_id where p.employment_id=${p.employmentId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by p.id limit 2001 for share of p nowait`);
+ if(slips.length>2000)throw Error('Fixed item payroll history is too large for review.');
+}
+export const FIXED_ARCHIVE_FIELDS_SQL=sql`jsonb_build_object('componentId',q.component_id,'code',c.code,'name',c.name,'amount',q.amount::text,'currency',q.currency,'validFrom',q.valid_from,'validTo',q.valid_to,'prorateOverride',q.prorate_override,'remarks',q.remarks,'runType',q.run_type,'payrollCycleId',q.payroll_cycle_id,'archived',q.superseded_at is not null)`;
+async function fixedArchiveSnapshotTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ const [row]=await tx.execute<{fields:unknown;revision:string;catalogRevision:string}>(sql`select ${FIXED_ARCHIVE_FIELDS_SQL} as fields,q.xmin::text as revision,c.xmin::text as "catalogRevision" from employment_pay_component q join pay_component c on c.id=q.component_id and c.tenant_id=q.tenant_id where q.id=${p.id}::uuid and q.employment_id=${p.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid`);
+ if(!row)throw new FixedTransactionNotFoundError();return row;
+}
+/** SAME native command, rollback-only. Never digest speculative timestamps, generated event IDs or xids. */
+export async function prepareFixedItemArchiveTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ await lockFixedItemArchiveIntervalTx(tx,ctx,p);const before=await fixedArchiveSnapshotTx(tx,ctx,p);
+ const payroll=await tx.execute<{id:string;payPeriod:string;status:string;revision:string}>(sql`select b.id,b.pay_period as "payPeriod",b.status,b.xmin::text as revision from payroll_batch b join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=b.tenant_id join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where (b.company_id=e.company_id or exists(select 1 from payslip subject_slip where subject_slip.batch_id=b.id and subject_slip.tenant_id=b.tenant_id and subject_slip.employment_id=${p.employmentId}::uuid)) and b.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by b.id limit 2001`);
+ const slips=await tx.execute(sql`select p.id,p.batch_id,p.xmin::text as revision from payslip p join payroll_batch b on b.id=p.batch_id and b.tenant_id=p.tenant_id join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=p.tenant_id where p.employment_id=${p.employmentId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by p.id limit 2001`);
+ await tx.execute(sql`SAVEPOINT native_fixed_archive_preview`);let after:unknown;
+ try{await archiveEmploymentPayComponent(ctx,p,tx);after=(await fixedArchiveSnapshotTx(tx,ctx,p)).fields;}
+ finally{await tx.execute(sql`ROLLBACK TO SAVEPOINT native_fixed_archive_preview`);await tx.execute(sql`RELEASE SAVEPOINT native_fixed_archive_preview`);}
+ return{before:before.fields,after,revision:before.revision,catalogRevision:before.catalogRevision,payroll:Array.from(payroll),payslips:Array.from(slips)};
+}
+
+export function archiveEmploymentPayComponent(
+  ctx: SessionContext,
+  p: { id: string; employmentId: string },
+  outerTx?:Tx,
+) {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};p={...p};
+  const run=async(tx:Tx)=>{
+    await lockFixedItemArchiveIntervalTx(tx,ctx,p);
+    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
+    const [row] = await tx
+      .select({
+        id: employmentPayComponent.id,
+        code: payComponent.code,
+        name: payComponent.name,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+      })
+      .from(employmentPayComponent)
+      .innerJoin(payComponent, eq(payComponent.id, employmentPayComponent.componentId))
+      .where(
+        and(
+          eq(employmentPayComponent.id, p.id),
+          eq(employmentPayComponent.employmentId, p.employmentId),
+          isNull(employmentPayComponent.supersededAt),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new FixedTransactionNotFoundError();
+    // 2aed39d4 — REFUSE only when a CLOSED run covers this row's window. A run that is merely PROCESSED
+    // is deliberately NOT a refusal: the reporter's expected-behaviour point 7 asks for exactly the
+    // sequence "payroll processed -> HR finds the wrong item -> delete -> reprocess", and this used to
+    // refuse it (unevenly — see FixedTransactionPaidError). Refused BEFORE any write.
+    const closedPeriod = await closedRunCovering(tx, {
+      employmentId: p.employmentId,
+      validFrom: row.validFrom,
+      validTo: row.validTo,
+    });
+    if (closedPeriod) throw new FixedTransactionPaidError(row.code, closedPeriod);
+    const [written]=await tx.update(employmentPayComponent).set({supersededAt:new Date()})
+      .where(eq(employmentPayComponent.id,p.id)).returning({archiveRowHash:sql<string>`encode(sha256(convert_to(to_jsonb(employment_pay_component)::text,'UTF8')),'hex')`});
+    if(!written)throw new FixedTransactionNotFoundError();
+    const eventId=await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'employment-pay-component',
+      aggregateId: p.id,
+      eventType: 'employment-pay-component.archived',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      payload: { employmentId: p.employmentId,archiveRowHash:written.archiveRowHash },
+    },{returnId:true});
+    return { id: p.id,eventId };
+  };return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+// ───────────────────── Per-batch one-off ─────────────────────
+
+/**
+ * Thrown at WRITE time when an admin tries to put a PCB-taxable component that v1 cannot tax onto a batch
+ * — a non-payable/BIK, or a PCB-only earning (neither EPF nor SOCSO). The payroll kernel fails closed on
+ * the same case at generate time (UnsupportedPayComponentError, ADR-0025 §5); this guard surfaces it at
+ * entry/import time so the admin is told immediately, not after a green import when payroll won't run.
+ */
+export class UnsupportedBatchComponentError extends Error {
+  constructor(public readonly code: string) {
+    super(`Pay component "${code}" is PCB-taxable but cannot be computed in this version (non-payable/PCB-only). Remove it from the batch or use a payable component.`);
+    this.name = 'UnsupportedBatchComponentError';
+  }
+}
+
+/** The kernel's fail-closed condition (core/payroll.ts earningsOf), evaluated on a catalog row's flags.
+ *  Feedback 09b554e9: a pay code carrying a DECLARED pcb_remuneration_type is no longer "unsupported" —
+ *  the kernel routes it by the declared classification, so the guard only fires for PCB-ticked codes
+ *  LACKING classification (legacy rows keep the legacy fail-closed behaviour).
+ *
+ *  EXPORTED for f35f758a note 8, so the pay item MASTER SAVE (app/admin/pay-components/actions.ts) runs
+ *  the same predicate the batch picker, `setPayrollBatchComponent` and the CSV importer already run.
+ *  Exported rather than copied deliberately: a second hand-written copy of a fail-closed rule is how the
+ *  entry gate and the kernel start disagreeing about which pay codes are allowed to exist. STATE-BASED —
+ *  it reads the row being saved, so an already-bad row can still be edited back into a good one. */
+export type TaxableComponentClassification = {
+  code?: string; kind?: string; displayCategory?: string | null; eaFormLine?: string | null;
+  epfBonus2012?: boolean; includedInEpf: boolean; includedInSocsoEis: boolean;
+  includedInPcb: boolean; isNonPayable: boolean; pcbRemunerationType?: string | null;
+};
+export type UnsupportedTaxableReason = 'classification_conflict' | 'unsupported_kind' | 'normal_remuneration_required' | 'unrecognised_taxable_item';
+
+/** The classifier remains the benefit owner; callers retain the reason rather than inventing one. */
+export function unsupportedTaxableReason(c: TaxableComponentClassification): UnsupportedTaxableReason | null {
+  if (c.isNonPayable) {
+    try {
+      if (classifyNonCashBenefit({ code: c.code ?? 'pay-item', kind: c.kind ?? 'allowance',
+        nonPayable: true, pcb: c.includedInPcb, displayCategory: c.displayCategory,
+        eaFormLine: c.eaFormLine, pcbRemunerationType: c.pcbRemunerationType, epfBonus2012: c.epfBonus2012 })) return null;
+    } catch (error) {
+      if (error instanceof NonCashBenefitConfigurationError && error.reason !== 'month_baseline_unavailable') return error.reason;
+      throw error;
+    }
+  }
+  return c.includedInPcb && (c.isNonPayable || (c.pcbRemunerationType == null && !c.includedInEpf && !c.includedInSocsoEis))
+    ? 'unrecognised_taxable_item' : null;
+}
+export const isUnsupportedTaxableComponent = (c: TaxableComponentClassification) => unsupportedTaxableReason(c) !== null;
+
+/** Upsert a one-off component value for an employee on a draft batch (by batch+employment+component). */
+export function setPayrollBatchComponent(
+  ctx: SessionContext,
+  p: { batchId: string; employmentId: string; componentId: string; amount: number; notes?: string },
+  outerTx?: Tx,
+) {
+  const run = async (tx: Tx) => {
+    // Write-time guard parity with the kernel (ADR-0025 §5): reject a PCB-taxable BIK / PCB-only earning
+    // here rather than letting a green write fail later at payslip generation.
+    const [comp] = await tx
+      .select({
+        code: payComponent.code,
+        pendingInputKind: payComponent.pendingInputKind,
+        kind:payComponent.kind,displayCategory:payComponent.displayCategory,eaFormLine:payComponent.eaFormLine,epfBonus2012:payComponent.epfBonus2012,
+        includedInEpf: payComponent.includedInEpf,
+        includedInSocsoEis: payComponent.includedInSocsoEis,
+        includedInPcb: payComponent.includedInPcb,
+        isNonPayable: payComponent.isNonPayable,
+        pcbRemunerationType: payComponent.pcbRemunerationType,
+      })
+      .from(payComponent)
+      .where(eq(payComponent.id, p.componentId))
+      .limit(1);
+    if (comp) assertPayComponentReady(comp);
+    if (comp && isUnsupportedTaxableComponent(comp)) throw new UnsupportedBatchComponentError(comp.code);
+    const [batch] = await tx.select({payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
+    if (!batch) throw new Error('Payroll run is unavailable.');
+    await assertPayComponentCompaniesTx(tx, ctx, [{componentId:p.componentId,employmentId:p.employmentId,effectiveDate:batch.payPeriod+'-01'}]);
+    const [cur] = await tx
+      .select({ id: payrollBatchComponent.id })
+      .from(payrollBatchComponent)
+      .where(
+        and(
+          eq(payrollBatchComponent.batchId, p.batchId),
+          eq(payrollBatchComponent.employmentId, p.employmentId),
+          eq(payrollBatchComponent.componentId, p.componentId),
+        ),
+      )
+      .limit(1);
+    let id: string;
+    if (cur) {
+      await tx.update(payrollBatchComponent).set({ amount: money(p.amount), notes: p.notes ?? null }).where(eq(payrollBatchComponent.id, cur.id));
+      id = cur.id;
+    } else {
+      const [row] = await tx
+        .insert(payrollBatchComponent)
+        .values({ tenantId: ctx.tenantId, batchId: p.batchId, employmentId: p.employmentId, componentId: p.componentId, amount: money(p.amount), notes: p.notes ?? null })
+        .returning({ id: payrollBatchComponent.id });
+      id = row.id;
+    }
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-batch-component',
+      aggregateId: id,
+      eventType: 'payroll-batch-component.set',
+      actor: actorOf(ctx),
+      subjectEmploymentId: p.employmentId,
+      // ADR-0030 Layer 0: amount lives on payroll_batch_component[aggregateId]; reference, not cleartext.
+      payload: { batchId: p.batchId, componentId: p.componentId },
+    });
+    return { id };
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+// ───────────────────── Backfill (legacy → components) ─────────────────────
+
+/** Seed BASIC + ALLOWANCE recurring components from every open compensation row. Idempotent:
+ *  setEmploymentPayComponent supersedes whatever live rows the compensation window overlaps, so
+ *  re-running just re-states it.
+ *  Feedback 64fb5e48 — OPTIONAL housekeeping only: the payroll engine now always pays basic from the
+ *  Personnel compensation record, so BASIC component amounts no longer drive pay (a divergent one only
+ *  surfaces as the staleBasicComponent warning in the pre-processing checks, and a missing one is not a
+ *  gap at all). Kept for tenants that want the BASIC line mirrored into the typed component tables.
+ *
+ *  2aed39d4 — WHY THIS PASSES THREE EXPLICIT OPT-OUTS, AND WHY SKIPPING ANY OF THEM BREAKS IT.
+ *  This helper re-states BASIC and ALLOWANCE from each open compensation row at THAT ROW'S OWN
+ *  validFrom, which is routinely years behind whatever the pay-component table now holds. It is not a
+ *  hypothetical: it PRODUCED one of the ten overlaps measured on production (EMP-0001 BASIC 3000.00
+ *  ending 2026-08-01 sitting alongside BASIC 6800.00 starting 2026-08-01), and 34cc8137's
+ *  backwards-restatement guard had already put it one run away from throwing before this item existed.
+ *    • allowZeroAmount   — a zero-allowance compensation line is a legitimate 0-amount row.
+ *    • supersedeOverlaps — re-state over whatever sits in the way instead of refusing. Compensation is
+ *      the system of record for both codes, so replacing the pay-component mirror is the whole point.
+ *    • allowClosedPeriod — the window reaches back over closed months by construction.
+ *  Each is named for exactly what it waives; none of them is inherited by any UI path. */
+export function backfillEmploymentComponentsFromCompensation(ctx: SessionContext) {
+  return withTenant(ctx, async (tx) => {
+    const basicId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.basic);
+    const allowId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.allowance);
+    if (!basicId || !allowId) throw new Error('Pay-component catalog not seeded — run seedPayComponentCatalog first.');
+    const comps = await tx
+      .select()
+      .from(compensation)
+      .where(and(isNull(compensation.validTo), isNull(compensation.supersededAt)));
+    let count = 0;
+    for (const c of comps) {
+      // allowZeroAmount: a compensation line may legitimately have basic 0 or a zero allowance; the backfill
+      // must seed those 0-amount rows so the typed path stays byte-identical. Only the backfill opts out.
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: basicId, amount: Number(c.basicSalary), effectiveFrom: c.validFrom, allowZeroAmount: true, supersedeOverlaps: true, allowClosedPeriod: true }, tx);
+      await setEmploymentPayComponent(ctx, { employmentId: c.employmentId, componentId: allowId, amount: Number(c.monthlyAllowance ?? 0), effectiveFrom: c.validFrom, allowZeroAmount: true, supersedeOverlaps: true, allowClosedPeriod: true }, tx);
+      count += 1;
+    }
+    return { employments: count };
+  });
+}
+
+/** Seed OVERTIME / BONUS / CLAIM one-off components for a draft batch from its payroll_input rows. */
+export function backfillBatchComponentsFromInput(ctx: SessionContext, batchId: string) {
+  return withTenant(ctx, async (tx) => {
+    const otId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.overtime);
+    const bonusId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.bonus);
+    const claimId = await componentIdByCode(tx, ctx.tenantId, BACKFILL_COMPONENT_CODES.claim);
+    if (!otId || !bonusId || !claimId) throw new Error('Pay-component catalog not seeded.');
+    const inputs = await tx.select().from(payrollInput).where(eq(payrollInput.batchId, batchId));
+    let count = 0;
+    for (const i of inputs) {
+      if (Number(i.overtimeAmount) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: otId, amount: Number(i.overtimeAmount) }, tx);
+      if (Number(i.bonusAmount) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: bonusId, amount: Number(i.bonusAmount) }, tx);
+      if (Number(i.claimAllowance) > 0) await setPayrollBatchComponent(ctx, { batchId, employmentId: i.employmentId, componentId: claimId, amount: Number(i.claimAllowance) }, tx);
+      count += 1;
+    }
+    return { inputs: count };
+  });
+}
+
+// ───────────────────── CSV import of one-off batch components (ADR-0035 1D, #12) ─────────────────────
+
+export type ComponentImportRow = {
+  line: number;
+  employee: string;
+  name: string | null;
+  code: string;
+  componentName: string | null;
+  amount: number | null;
+  notes: string | null;
+  ok: boolean;
+  error: string | null;
+};
+export type ComponentImportResult = { dryRun: boolean; rows: ComponentImportRow[]; valid: number; imported: number };
+
+/**
+ * Bulk-load one-off pay-component lines (allowance/deduction/OT/bonus — any catalog component) onto a DRAFT
+ * batch from CSV (columns: employee[/email], component[/code], amount, notes). Reconciles employee email →
+ * employment in the batch's company and component code → catalog; dry-run previews + flags every bad row,
+ * commit upserts via setPayrollBatchComponent (each event-logged). The server re-reconciles on commit — the
+ * client preview is never trusted. Only meaningful with TYPED_PAY_COMPONENTS_ENABLED (kernel reads these).
+ */
+export async function importBatchComponents(
+  ctx: SessionContext,
+  p: { batchId: string; csvText: string; dryRun: boolean },
+): Promise<ComponentImportResult> {
+  const { records } = parseCsvRecords(p.csvText);
+  return withTenant(ctx, async (tx) => {
+    const [batch] = await tx
+      .select({ id: payrollBatch.id, companyId: payrollBatch.companyId, status: payrollBatch.status })
+      .from(payrollBatch)
+      .where(eq(payrollBatch.id, p.batchId))
+      .limit(1);
+    if (!batch) throw new Error('Batch not found.');
+    if (batch.status !== 'draft') throw new Error('Components can only be imported into a draft batch.');
+
+    const emps = await tx
+      .select({ employmentId: employment.id, email: person.primaryEmail, name: person.fullName })
+      .from(employment)
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(eq(employment.companyId, batch.companyId));
+    const byEmail = new Map(emps.filter((e) => e.email).map((e) => [e.email!.toLowerCase(), e]));
+
+    const comps = await tx
+      .select({
+        id: payComponent.id,
+        pendingInputKind: payComponent.pendingInputKind,
+        code: payComponent.code,
+        name: payComponent.name,
+        kind: payComponent.kind,
+        displayCategory: payComponent.displayCategory,
+        eaFormLine: payComponent.eaFormLine,
+        epfBonus2012: payComponent.epfBonus2012,
+        includedInEpf: payComponent.includedInEpf,
+        includedInSocsoEis: payComponent.includedInSocsoEis,
+        includedInPcb: payComponent.includedInPcb,
+        isNonPayable: payComponent.isNonPayable,
+        pcbRemunerationType: payComponent.pcbRemunerationType,
+      })
+      .from(payComponent)
+      .where(and(eq(payComponent.tenantId, ctx.tenantId), isNull(payComponent.archivedAt)));
+    const byCode = new Map(comps.map((c) => [c.code.toUpperCase(), c]));
+
+    const rows: ComponentImportRow[] = records.map((rec, i) => {
+      const employee = rec.employee || rec.email || rec.employee_email || '';
+      const code = (rec.component || rec.component_code || rec.code || '').toUpperCase();
+      const amountRaw = rec.amount ?? '';
+      const emp = byEmail.get(employee.toLowerCase());
+      const comp = byCode.get(code);
+      const amount = amountRaw === '' ? NaN : Number(amountRaw);
+      let error: string | null = null;
+      if (!employee) error = 'Missing employee';
+      else if (!emp) error = `Unknown employee: ${employee}`;
+      else if (!code) error = 'Missing component';
+      else if (!comp) error = `Unknown component: ${code}`;
+      else if (comp.pendingInputKind != null) error = `Complete the calculation for ${code} before assigning it.`;
+      else if (!Number.isFinite(amount)) error = `Invalid amount: ${amountRaw}`;
+      // Same complete classification as the picker and single-row writer, before any import write.
+      else if (isUnsupportedTaxableComponent(comp)) {
+        const reason = unsupportedTaxableReason(comp);
+        const explanation = reason === 'classification_conflict'
+          ? 'BIK and living accommodation classifications conflict; make Pay Category and EA reporting consistent.'
+          : reason === 'normal_remuneration_required'
+            ? 'Monthly BIK and living accommodation require Normal remuneration and cannot use EPF Bonus 2012.'
+            : reason === 'unsupported_kind'
+              ? 'The category cannot represent a non-cash benefit; review Category and Pay Category.'
+              : 'No supported taxable classification; select the applicable benefit Pay Category and tax settings.';
+        error = `Unsupported component: ${code}. ${explanation}`;
+      }
+      return {
+        line: i + 2,
+        employee,
+        name: emp?.name ?? null,
+        code,
+        componentName: comp?.name ?? null,
+        amount: Number.isFinite(amount) ? amount : null,
+        notes: rec.notes || null,
+        ok: !error,
+        error,
+      };
+    });
+
+    let imported = 0;
+    if (!p.dryRun) {
+      for (const r of rows) {
+        if (!r.ok) continue;
+        const emp = byEmail.get(r.employee.toLowerCase())!;
+        const comp = byCode.get(r.code)!;
+        await setPayrollBatchComponent(ctx, { batchId: p.batchId, employmentId: emp.employmentId, componentId: comp.id, amount: r.amount!, notes: r.notes ?? undefined }, tx);
+        imported += 1;
+      }
+    }
+    return { dryRun: p.dryRun, rows, valid: rows.filter((r) => r.ok).length, imported };
+  });
+}
