@@ -924,6 +924,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:"app.payroll_history_maintenance_identity_page(uuid[],uuid[],text[],text[],integer,integer)",app:false},
    {fn:"app.payroll_history_maintenance_subjects(uuid[],text[],text[],integer,integer)",app:true},
    {fn:"app.payroll_history_maintenance_identity(uuid[],integer,integer)",app:true},
+   //6700: frozen505597 kernel-only retained insert plus private deferred custody.
+   {fn:'app.payroll_history_maintenance_payslip(uuid,text,uuid,uuid)',app:true},
+   {fn:'app.payroll_history_retained_insert_custody()',app:false},
    //6680–85/88–89: reviewed source design; private custody and bounded explicit HR recovery.
    {fn:'app.personnel_completion_phone_valid(text)',app:true},
    {fn:'app.personnel_completion_group(text)',app:true},
@@ -1092,6 +1095,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {"fn":"app.payroll_history_maintenance_legacy_proven(uuid,uuid,jsonb,uuid,uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_maintenance_new_destination(text)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_maintenance_page(uuid,text,text,integer,integer,boolean,uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
+   {"fn":"app.payroll_history_maintenance_payslip(uuid,text,uuid,uuid)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_maintenance_permission(uuid,text)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_maintenance_permissions(uuid[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_maintenance_revision_bind()","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
@@ -1117,6 +1121,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {"fn":"app.payroll_history_native_tax_predecessors(uuid[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_native_values(payslip)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_native_write_allowed(uuid,uuid,uuid)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
+   {"fn":"app.payroll_history_retained_insert_custody()","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_reviewed_job_admission()","owner":"OWNER","definer":false,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_stage_authorized(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_stage_join(uuid)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
@@ -2161,8 +2166,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'payroll_history_import_revision',name:'payroll_history_maintenance_revision_binding',kind:7,fn:'app.payroll_history_maintenance_revision_bind()'},
    {rel:'payroll_history_import_revision',name:'payroll_history_maintenance_state_binding',kind:7,fn:'app.payroll_history_maintenance_state_bind()'},
    {rel:'payroll_history_import_revision',name:'payroll_history_native_revision_binding',kind:7,fn:'app.payroll_history_native_revision_guard()'},
+   {rel:'payslip',name:'payroll_history_retained_insert_custody',kind:5,fn:'app.payroll_history_retained_insert_custody()'},
   ].map(row=>({...row,enabled:'O',condition:null,args:0})).sort((a,b)=>a.rel===b.rel?(a.name<b.name?-1:1):a.rel<b.rel?-1:1);
   expect(await storage.client`select t.tgrelid::regclass::text as rel,t.tgname::text as name,t.tgtype::integer as kind,t.tgfoid::regprocedure::text as fn,t.tgenabled::text as enabled,pg_get_expr(t.tgqual,t.tgrelid) as condition,t.tgnargs::integer as args from pg_trigger t where t.tgname=any(${historyTriggers.map(trigger=>trigger.name)}::text[]) order by t.tgrelid::regclass::text,t.tgname`).toEqual(historyTriggers);
+  // A normal AFTER trigger is insufficient: the accepted revision is written after the payslip
+  // in the same worker step, so custody must be a real, initially deferred constraint trigger.
+  expect(await storage.client`select t.tgconstraint<>0 as "constraint",t.tgisinternal as internal,t.tgdeferrable as deferrable,t.tginitdeferred as deferred from pg_trigger t where t.tgrelid='public.payslip'::regclass and t.tgname='payroll_history_retained_insert_custody'`)
+   .toEqual([{constraint:true,internal:false,deferrable:true,deferred:true}]);
   //6610/6613 add only these three private/checked tables and one nullable canonical-version column.
   // Types/defaults/generated markers are a literal schema review, separate from SQL source hash admission.
   const templateColumnPlan:Record<string,readonly [string,string,boolean,string,string|null][]>= {
