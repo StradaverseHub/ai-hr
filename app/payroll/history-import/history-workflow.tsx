@@ -66,7 +66,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
    <ActionButton guardNavigation={false} aria-busy={busy==='validate'} actionKind="uploading" type="button" onClick={validate} disabled={!file||file.size>10*1024*1024||busy!==null} className={button+' bg-primary text-primary-foreground'}>{busy==='validate'?t('validating'):t('validate')}</ActionButton>
   </section>
   {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
-  {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
+  {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}{file&&<span className="mt-1 block break-all text-sm font-normal text-muted-foreground">{file.name}</span>}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
    <RevisionPreview key={preview.attemptId} plan={preview.plan} selection={done||!replaceable.length?undefined:{ticked,toggle:key=>setTicked(prev=>{const next=new Set(prev);if(!next.delete(key))next.add(key);return next;}),
     toggleAll:on=>setTicked(on?new Set(replaceable.map(historyRecordKey)):new Set())}}/>
    {jobId&&<HistoryJobPanel jobId={jobId} onFinished={finished}/>}

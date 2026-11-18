@@ -44897,6 +44897,13 @@
     "pushField": "Hantar {field} ke Pengurusan Personel"
   },
   "payrollHistoryMaintenance": {
+    "impactKinds": {
+          "payroll": "{count} larian gaji sedia ada kekal tidak berubah. Semak input sejarahnya secara berasingan.",
+          "report": "{count} laporan berkanun yang direkodkan kekal tidak berubah. Semak laporan terjejas secara berasingan.",
+          "payment": "{count} eksport ringkasan pembayaran yang direkodkan kekal tidak berubah. Ini bukan bukti penyelesaian bank.",
+          "issued": "{count} hasil gaji yang dikeluarkan kekal tidak berubah. Salinan yang dikeluarkan tidak dijana semula atau dihantar semula.",
+          "review": "{count} rekod gaji layak memerlukan semakan sumber sebelum pemprosesan selanjutnya."
+    },
     "selectListedHint": "Pilih rekod pekerja-bulan yang jumlah Item Gaji tersenarainya perlu diubah. Item lain dikekalkan.",
     "selectListedRecord": "Kemas kini jumlah tersenarai untuk {employee} {period}",
     "revertReview": "Semak pembuangan sumbangan kelompok yang masih semasa daripada {count} rekod. Pembetulan kemudian dan item lain dikekalkan.",

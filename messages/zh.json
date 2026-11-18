@@ -44897,6 +44897,13 @@
     "pushField": "将 {field} 推送至人事管理"
   },
   "payrollHistoryMaintenance": {
+    "impactKinds": {
+          "payroll": "{count} 个现有薪资批次保持不变，请单独审查其历史输入。",
+          "report": "{count} 份已记录的法定报告保持不变，请单独审查受影响的报告。",
+          "payment": "{count} 份已记录的付款汇总导出保持不变，这不代表银行已结算。",
+          "issued": "{count} 份已发布薪资结果保持不变，不会重新生成或发送已发副本。",
+          "review": "{count} 条符合条件的薪资记录需要先审查来源，才能继续处理。"
+    },
     "selectListedHint": "选择需要更改所列薪资项目总额的员工月份记录，保留其他项目。",
     "selectListedRecord": "更新 {employee} {period} 的所列总额",
     "revertReview": "审查从 {count} 条记录中移除该批次仍有效的部分，保留后续更正和无关项目。",

@@ -11,16 +11,19 @@ import viMessages from '../messages/vi.json';
 import {HistoryMaintenanceControl} from '../app/payroll/history-import/maintenance-control';
 import {HistoryMaintenanceRecords} from '../app/payroll/history-import/records-view';
 import {HistoryMaintenanceAudit} from '../app/payroll/history-import/maintenance-audit';
+import {RevisionPreview} from '../app/payroll/history-import/revision-preview';
+import {RevertControl} from '../app/payroll/history-import/logs/[attemptId]/revert-control';
+import type {PayrollHistoryMaintenanceRequest} from '../lib/payroll-history-maintenance';
 import {HistoryWorkflow} from '../app/payroll/history-import/history-workflow';
-import {maintenanceDetail,maintenancePage,maintenancePlan,maintenanceEditPlan} from './fixtures/payroll-history/maintenance';
+import {maintenanceDetail,maintenancePage,maintenancePlan,maintenanceEditPlan,maintenanceRemovalPlan,maintenanceBatchPlan} from './fixtures/payroll-history/maintenance';
 import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
-const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),importConfirm:vi.fn(),refresh:vi.fn()}));
+const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),importConfirm:vi.fn(),revertPreview:vi.fn(),revertApply:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/payroll/history-import/maintenance-actions',()=>({previewHistoryMaintenanceAction:mocks.preview,confirmHistoryMaintenanceAction:mocks.confirm}));
-vi.mock('../app/payroll/history-import/workflow-actions',()=>({confirmHistoryUploadAction:mocks.importConfirm}));
+vi.mock('../app/payroll/history-import/workflow-actions',()=>({confirmHistoryUploadAction:mocks.importConfirm,previewHistoryRevertAction:mocks.revertPreview,revertHistoryUploadAction:mocks.revertApply}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 const wrap=(children:React.ReactNode,locale:keyof typeof catalogues='en')=><NextIntlClientProvider locale={locale} messages={catalogues[locale]}>{children}</NextIntlClientProvider>;
-beforeEach(()=>{mocks.preview.mockResolvedValue({ok:true,result:{attemptId:'review-attempt',plan:maintenanceEditPlan}});mocks.confirm.mockResolvedValue({ok:true,completed:true});});
+beforeEach(()=>{mocks.preview.mockImplementation(async(input:PayrollHistoryMaintenanceRequest)=>{const plan=input.operation==='remove_batch'?maintenanceBatchPlan:input.operation==='remove_items'?maintenanceRemovalPlan:maintenanceEditPlan;return{ok:true,result:{attemptId:'review-attempt',plan:{...plan,maintenance:{...plan.maintenance!,reason:input.reason}}}};});mocks.revertPreview.mockResolvedValue({ok:true,result:{attemptId:'attempt-original',count:1,previewHash:'fictional-revert-hash',plan:maintenanceBatchPlan,impact:maintenanceDetail.impact}});mocks.confirm.mockResolvedValue({ok:true,completed:true});});
 afterEach(()=>{cleanup();vi.resetAllMocks();vi.unstubAllGlobals();});
 it('previews exact item/revision/reason, retains canonical unlisted totals and confirms only the current reviewed hash',async()=>{
  const user=userEvent.setup();render(wrap(<HistoryMaintenanceControl detail={maintenanceDetail}/>));
@@ -60,4 +63,18 @@ it.each(scenarios)('renders actual payroll maintenance views in $locale / $theme
  fireEvent.change(screen.getByLabelText(t.newTotal.replace('{code}','ALLOWANCE')),{target:{value:'275.00'}});fireEvent.change(screen.getByLabelText(t.reason),{target:{value:'Fictional reviewed correction'}});await user.click(screen.getByRole('button',{name:t.reviewChanges}));
  expect(within(screen.getByRole('region',{name:t.maintainItems})).getByRole('button',{name:t.confirmChanges})).toBeDisabled();expect(screen.queryByText(/payrollHistoryMaintenance\./)).not.toBeInTheDocument();
  await captureAiReviewScreenshots(aiReviewDomHtml(container),locale,`feedback-5b47be17-maintenance-${theme}-${mode}`,'Actual upload preview, SQL-paged records, item review and audit components; fictional service output; no installed payroll operation',theme,mode);
+},30000);
+
+it('does not expose internal maintenance source snapshots as statutory money and labels exports without claiming settlement',()=>{
+ const plan={...maintenanceEditPlan,rows:maintenanceEditPlan.rows.map(row=>({...row,values:{...row.values!,statutory:{...row.values!.statutory,historyMaintenance:{version:1,items:[{id:'opaque-owned-source-id'}]}}}}))};
+ render(wrap(<><RevisionPreview plan={plan}/><HistoryMaintenanceAudit detail={maintenanceDetail}/></>));
+ expect(screen.queryByText(/opaque-owned-source-id|statutory.historyMaintenance/)).not.toBeInTheDocument();expect(screen.getByText('2 recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.')).toBeInTheDocument();
+});
+it.each(scenarios)('renders actual selected-item, batch and compatibility removal reviews in $locale / $theme / $mode',async({locale,theme,mode})=>{
+ const t=catalogues[locale].payrollHistoryMaintenance,old=catalogues[locale].payroll.historyRevisions,user=userEvent.setup();
+ const {container}=render(wrap(<div className="mx-auto max-w-7xl space-y-6"><h1 className="text-2xl font-semibold">{t.title}</h1><HistoryMaintenanceControl detail={maintenanceDetail}/><HistoryMaintenanceControl attemptId="attempt-original"/><div data-testid="compatibility-revert"><RevertControl attemptId="attempt-original" count={2}/></div></div>,locale));
+ const item=within(screen.getByRole('region',{name:t.maintainItems}));await user.click(item.getByLabelText(t.remove_items));await user.click(item.getByLabelText(t.removeCode.replace('{code}','ALLOWANCE')));fireEvent.change(item.getByLabelText(t.reason),{target:{value:'Fictional removal of incorrect allowance'}});await user.click(item.getByRole('button',{name:t.reviewChanges}));expect(item.getByRole('button',{name:t.confirmChanges})).toBeDisabled();expect(item.getByText(t.itemOperations.remove)).toBeInTheDocument();
+ const batch=within(screen.getByRole('region',{name:t.remove_batch}));fireEvent.change(batch.getByLabelText(t.reason),{target:{value:'Fictional original batch removal'}});await user.click(batch.getByRole('button',{name:t.reviewChanges}));expect(batch.getByRole('button',{name:t.confirmChanges})).toBeDisabled();expect(batch.getByText(t.laterCorrection)).toBeInTheDocument();
+ const compatibility=within(screen.getByTestId('compatibility-revert'));await user.click(compatibility.getByRole('button',{name:old.reviewRevert}));expect(compatibility.getByRole('button',{name:old.revert})).toBeDisabled();expect(mocks.confirm).not.toHaveBeenCalled();expect(mocks.revertApply).not.toHaveBeenCalled();
+ await captureAiReviewScreenshots(aiReviewDomHtml(container),locale,`feedback-5b47be17-removal-${theme}-${mode}`,'Actual selected-item removal, original-batch contribution removal and compatibility Revert review; fictional later correction retained; no live operation',theme,mode);
 },30000);
