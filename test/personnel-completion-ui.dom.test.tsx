@@ -56,3 +56,7 @@ it('keeps an unclassified linked field with HR until its classification is expli
 it('shows an exact locked Personnel select value even if the template options do not include it',()=>{
  const document=completionDocument(),field=document.fields.find(field=>field.id==='passport')!;field.type='select';field.options=['Fictional different option'];render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));const input=screen.getByRole('combobox',{name:/Passport number/});expect(input).toBeDisabled();expect(input).toHaveValue('Fictional passport in PM');expect((within(input).getByRole('option',{name:'Fictional passport in PM'})as HTMLOptionElement).selected).toBe(true);
 });
+
+it('labels whitespace-only previous Personnel values as missing during HR review',()=>{
+ const c=completionReviewCase();c.pmChanges[0].before='   ';render(view(<PersonnelReview c={c} writableKeys={['address']} busy={false} command={vi.fn()}/>));expect(screen.getByText('Not in PM')).toBeVisible();
+});
