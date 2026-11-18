@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import {personnelMergeGroups} from '../lib/lifecycle-v9-personnel-merge-fields';
-import {effectivePersonnelCompletion,initializePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,personnelCompletionClassification,personnelCompletionGroup,reconcilePersonnelCompletion,savePersonnelCompletionValue,validateCompletionPhone,validatePersonnelCompletionScalar,type CompletionDocument} from '../lib/lifecycle-v9-personnel-completion';
+import {effectivePersonnelCompletion,initializePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,personnelCompletionClassification,personnelCompletionGroup,reconcilePersonnelCompletion,savePersonnelCompletionValue,validateCompletionPhone,personnelCompletionMergeValues,validatePersonnelCompletionScalar,type CompletionDocument} from '../lib/lifecycle-v9-personnel-completion';
 import type {Field} from '../lib/lifecycle-v9-model';
 const actor={id:'employee',name:'Fictional employee'},hr={id:'hr',name:'Fictional HR'},at='2026-11-18T02:00:00Z';
 const field=(id:string,key:string,type:Field['type']='text'):Field=>({id,label:id,type,owner:'pmLocked',pmKey:key,required:true,sensitive:false,options:[],section:'main',when:null});
@@ -23,4 +23,8 @@ it('keeps signed content and its completion evidence immutable when the official
 it('validates jurisdiction and numbering prefixes, not only phone length, and applies scalar checks to nonempty draft answers',()=>{
  expect(()=>validateCompletionPhone('0123456789','MY')).not.toThrow();expect(()=>validateCompletionPhone('+6581234567','MY')).not.toThrow();for(const value of ['12345','0001234567','not a phone'])expect(()=>validateCompletionPhone(value,'MY')).toThrow();expect(()=>validateCompletionPhone('0123456789',null)).toThrow('international');expect(()=>validateCompletionPhone('+60123456789',null)).not.toThrow();
  expect(()=>validatePersonnelCompletionScalar(field('mail','personalEmail','email'),'invalid','MY')).toThrow();expect(()=>validatePersonnelCompletionScalar(field('date','custom','date'),'2026-02-30','MY')).toThrow();expect(()=>validatePersonnelCompletionScalar(field('date','custom','date'),'2028-02-29','MY')).not.toThrow();expect(()=>validatePersonnelCompletionScalar(field('number','custom','number'),'0xFF','MY')).toThrow();expect(()=>savePersonnelCompletionValue(fixture(),field('phone','mobile','phone'),'12345',{actor,at})).toThrow();
+});
+
+it('resolves field-ID aliases from a refreshed official source consistently and treats whitespace-only source as missing',()=>{
+ const d=fixture();d.fields[0].id='F51';d.values.F51='';d.personnelCompletion!.fields.F51=d.personnelCompletion!.fields.address;delete d.personnelCompletion!.fields.address;savePersonnelCompletionValue(d,d.fields[0],'Saved address',{actor,at});expect(personnelCompletionMergeValues(d).address).toBe('Saved address');reconcilePersonnelCompletion(d,{values:{name:'Official name',F51:'Official refreshed address'},sourceFingerprint:'source-2',actor:hr,at});expect(personnelCompletionMergeValues(d).address).toBe('Official refreshed address');d.personnelCompletion!.fields.F51.sourceValue='   ';expect(effectivePersonnelCompletion(d,d.fields[0])).toBe('employee');expect(personnelCompletionMergeValues(d).address).toBe('Official refreshed address');
 });
