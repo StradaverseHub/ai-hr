@@ -1,3 +1,4 @@
+import type {PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
 import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
 import {canEditSigningContent,type SigningDocument} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
@@ -87,6 +88,7 @@ export type Document = {
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
   supersededBy?: string;
   mergeValues?: Record<string, string>;
+  personnelCompletion?:PersonnelCompletionPolicy;
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
   /** Documents generated from a routed template version: each Sign step's signature, keyed by step id (`step:<id>` signature blocks). */
   stepSignatures?: Record<string, Signature>;
@@ -178,7 +180,7 @@ export type Mail = {
     /** Keys in to/cc that came from Employee (Personal email); masked for viewers without that Personnel permission. */
     personalKeys?: string[] };
 };
-export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
+export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string; provenance?:{kind:'missing-personnel';version:1;by:Actor;at:string} };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
