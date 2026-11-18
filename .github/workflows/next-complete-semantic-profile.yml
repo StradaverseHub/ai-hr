@@ -1,0 +1,203 @@
+name: next-complete-semantic-profile
+run-name: Frozen 34fe ONE complete semantic profile (diagnostic only)
+on:
+  push:
+    branches: ['codex/resignation-next-complete-profile-20261118']
+    paths:
+      - '.github/workflows/next-complete-semantic-profile.yml'
+      - '.github/ci/diagnostics/next-complete-semantic-profile.mjs'
+      - '.github/ci/diagnostics/next-complete-semantic-shim.cjs'
+  workflow_dispatch:
+    inputs:
+      source_sha: {description: Exact failed 34fe source only, required: true, type: string}
+      controller_sha: {description: Exact reviewed diagnostic controller, required: true, type: string}
+permissions:
+  contents: read
+concurrency:
+  group: next-complete-semantic-profile-34fe
+  cancel-in-progress: false
+env:
+  TZ: Asia/Kuala_Lumpur
+  LANG: en_US.UTF-8
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_DIAG_SOURCE_SHA: ${{ inputs.source_sha || '34fe96c83a15591b8868dfddf5237533d479a0b6' }}
+  AIHR_DIAG_CONTROLLER_SHA: ${{ inputs.controller_sha || github.sha }}
+jobs:
+  profile:
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/resignation-next-complete-profile-20261118')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Refuse unpinned diagnostic identity
+        shell: bash
+        run: |
+          [[ "$AIHR_DIAG_SOURCE_SHA" == 34fe96c83a15591b8868dfddf5237533d479a0b6 ]]
+          [[ "$AIHR_DIAG_CONTROLLER_SHA" =~ ^[a-f0-9]{40}$ && "$AIHR_DIAG_CONTROLLER_SHA" == "$AIHR_CI_CONTROL_HEAD" && "$GITHUB_SHA" == "$AIHR_CI_CONTROL_HEAD" ]]
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          fetch-depth: 16
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.source_sha || '34fe96c83a15591b8868dfddf5237533d479a0b6' }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '20.20.2', path: source}
+      - name: Run ONE actual Next CLI semantic profile at the existing whole-compiler heap
+        working-directory: source
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+        run: |
+          umask 077
+          ulimit -c 0
+          timeout --signal=TERM --kill-after=10s 900s /usr/bin/prlimit --fsize=2147483648 -- /usr/bin/time -v -o "$RUNNER_TEMP/next-complete-semantic-profile-34fe-time.txt" node ../automation/.github/ci/diagnostics/next-complete-semantic-profile.mjs compile "$RUNNER_TEMP/next-complete-semantic-profile-34fe"
+      - name: Independently remove only registered owned diagnostic processes before extraction
+        if: always()
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import glob,json,os,re,signal,stat,time
+          from pathlib import Path
+          source='34fe96c83a15591b8868dfddf5237533d479a0b6'
+          controller=os.environ['AIHR_DIAG_CONTROLLER_SHA']
+          run=os.environ['GITHUB_RUN_ID'];attempt=os.environ['GITHUB_RUN_ATTEMPT']
+          out=Path(os.environ['RUNNER_TEMP']).resolve()/'next-complete-semantic-profile-34fe'
+          report={'kind':'INDEPENDENT_REGISTERED_DIAGNOSTIC_CLEANUP','releaseEligible':False,'source':source,'controller':controller,'run':run,'attempt':attempt,'actions':[],'registryErrors':[],'ok':False}
+          roles={'compile-driver','typegen','configuration','helper','shim-showConfig','shim-semantic','compiler-showConfig','compiler-semantic'}
+          def snapshot(pid):
+              try:
+                  raw=Path('/proc',str(pid),'stat').read_text();parts=raw[raw.rfind(')')+2:].split()
+                  if parts[0] in ('Z','X'):return None
+                  return {'pid':pid,'pgid':int(parts[2]),'starttime':parts[19]}
+              except (FileNotFoundError,ProcessLookupError):return None
+          def binding(row):
+              return row.get('source')==source and row.get('controller')==controller and str(row.get('run'))==run and str(row.get('attempt'))==attempt
+          def same(row,current):
+              return current is not None and int(row['pid'])==current['pid'] and int(row['pgid'])==current['pgid'] and str(row['starttime'])==current['starttime']
+          # These controls exercise rejection without sending a signal.
+          sample={'source':source,'controller':controller,'run':run,'attempt':attempt,'pid':901,'pgid':901,'starttime':'123'}
+          assert binding(sample) and not binding({**sample,'controller':'0'*40}) and not binding({**sample,'run':'wrong'})
+          assert same(sample,{'pid':901,'pgid':901,'starttime':'123'}) and not same(sample,{'pid':901,'pgid':901,'starttime':'124'}) and not same(sample,{'pid':901,'pgid':902,'starttime':'123'})
+          def environment_owned(pid,role):
+              try:
+                  values=dict(item.split(b'=',1) for item in Path('/proc',str(pid),'environ').read_bytes().split(b'\0') if b'=' in item)
+                  expected={b'AIHR_DIAG_SOURCE_SHA':source.encode(),b'AIHR_DIAG_CONTROLLER_SHA':controller.encode(),b'GITHUB_RUN_ID':run.encode(),b'GITHUB_RUN_ATTEMPT':attempt.encode()}
+                  if any(values.get(k)!=v for k,v in expected.items()):return False
+                  if values.get(b'AIHR_DIAG_OUT')==str(out).encode():return True
+                  # The top-level driver receives OUT as argv before it sets child environment.
+                  argv=Path('/proc',str(pid),'cmdline').read_bytes().split(b'\0')
+                  return role=='compile-driver' and b'compile' in argv and str(out).encode() in argv
+              except FileNotFoundError:return False
+          def rows():
+              files=sorted(out.glob('*-identity.json'))
+              if len(files)>64:
+                  if 'Identity record bound exceeded' not in report['registryErrors']:report['registryErrors'].append('Identity record bound exceeded')
+                  files=files[:64]
+              result=[]
+              for file in files:
+                  try:
+                      if file.is_symlink() or file.stat().st_size>16384:raise RuntimeError('Identity file scope refused')
+                      row=json.loads(file.read_text())
+                      if not binding(row) or row.get('role') not in roles:raise RuntimeError('Identity binding refused')
+                      if type(row.get('pid')) is not int or type(row.get('pgid')) is not int or min(row['pid'],row['pgid'])<=1 or not re.fullmatch(r'[0-9]+',str(row.get('starttime',''))):raise RuntimeError('Identity process scope refused')
+                      if type(row.get('cleanupGroup')) is not bool:raise RuntimeError('Identity cleanup scope missing')
+                      result.append(row)
+                  except Exception as error:
+                      # A killed writer may leave one partial record; still clean other proven groups.
+                      message=file.name+': '+type(error).__name__
+                      if message not in report['registryErrors']:report['registryErrors'].append(message)
+              return result
+          def members(pgid):
+              result=[]
+              for procdir in glob.glob('/proc/[0-9]*'):
+                  current=snapshot(int(Path(procdir).name))
+                  if current and current['pgid']==pgid:result.append(current)
+              return result
+          def collect(records):
+              groups={};pids={}
+              for row in records:
+                  current=snapshot(row['pid'])
+                  if same(row,current):
+                      if not environment_owned(row['pid'],row['role']):raise RuntimeError('Live identity ownership refused')
+                      if row['cleanupGroup']:groups.setdefault(row['pgid'],[]).append(current)
+                      else:pids[row['pid']]=current
+                  elif row['cleanupGroup'] and row['role'].startswith('shim-'):
+                      # A dead shim leader can leave a compiler alive in the REGISTERED group.
+                      # Only current-run descendants with the exact output binding are admitted.
+                      owned=[p for p in members(row['pgid']) if int(p['starttime'])>=int(row['starttime']) and environment_owned(p['pid'],'compiler-semantic')]
+                      if owned:groups.setdefault(row['pgid'],[]).extend(owned)
+              for pgid in groups:
+                  live=members(pgid)
+                  if any(not environment_owned(p['pid'],'compiler-semantic') for p in live):raise RuntimeError('Unowned member in registered group; no signal sent')
+                  groups[pgid]=live
+              return groups,pids
+          scope_ok=False
+          try:
+              assert re.fullmatch(r'[0-9a-f]{40}',controller) and os.environ['AIHR_DIAG_SOURCE_SHA']==source
+              if not out.exists():
+                  print('No diagnostic directory or registered processes exists; original failed phase remains authoritative.')
+                  raise SystemExit(0)
+              if out.is_symlink() or out.resolve()!=out or stat.S_IMODE(out.stat().st_mode)&0o077:raise RuntimeError('Output directory refused')
+              scope_ok=True
+              # Two bounded passes also catch a shim registered while its parent was terminating.
+              for sweep in range(2):
+                  groups,pids=collect(rows())
+                  if not groups and not pids:break
+                  for pid,expected in pids.items():
+                      if same(expected,snapshot(pid)):
+                          try:os.kill(pid,signal.SIGTERM);report['actions'].append({'pid':pid,'starttime':expected['starttime'],'signal':'SIGTERM'})
+                          except ProcessLookupError:pass
+                  for pgid,expected in groups.items():
+                      if any(same(p,snapshot(p['pid'])) for p in expected):
+                          try:os.killpg(pgid,signal.SIGTERM);report['actions'].append({'pgid':pgid,'signal':'SIGTERM'})
+                          except ProcessLookupError:pass
+                  time.sleep(5)
+                  for pid,expected in pids.items():
+                      if same(expected,snapshot(pid)) and environment_owned(pid,'compile-driver'):
+                          try:os.kill(pid,signal.SIGKILL);report['actions'].append({'pid':pid,'starttime':expected['starttime'],'signal':'SIGKILL'})
+                          except ProcessLookupError:pass
+                  for pgid,expected in groups.items():
+                      live=members(pgid)
+                      if live and any(same(p,snapshot(p['pid'])) for p in expected):
+                          if any(not environment_owned(p['pid'],'compiler-semantic') for p in live):raise RuntimeError('Group ownership changed; hard kill refused')
+                          try:os.killpg(pgid,signal.SIGKILL);report['actions'].append({'pgid':pgid,'signal':'SIGKILL'})
+                          except ProcessLookupError:pass
+                  # Signal delivery is not proof of exit; allow bounded kernel teardown/reaping.
+                  for _ in range(100):
+                      remaining_groups,remaining_pids=collect(rows())
+                      if not remaining_groups and not remaining_pids:break
+                      time.sleep(0.05)
+              groups,pids=collect(rows())
+              if groups or pids:raise RuntimeError('Registered diagnostic process remains alive')
+              report['ok']=not report['registryErrors'];report['negativeOwnershipControls']='passed-without-signals'
+          except Exception as error:
+              report['error']=type(error).__name__+': '+str(error)
+          finally:
+              if scope_ok and out.exists() and not out.is_symlink():
+                  with (out/'independent-cleanup.json').open('x') as file:json.dump(report,file,indent=2);file.write('\n')
+          if not report['ok']:raise SystemExit(1)
+          PY
+      - name: Stream original trace and catalogue without changing raw evidence
+        if: always()
+        working-directory: source
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=512
+        run: |
+          umask 077
+          ulimit -c 0
+          timeout --signal=TERM --kill-after=10s 120s /usr/bin/prlimit --fsize=2147483648 -- node ../automation/.github/ci/diagnostics/next-complete-semantic-profile.mjs summarize "$RUNNER_TEMP/next-complete-semantic-profile-34fe"
+      - name: Preserve original raw diagnostic evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: next-complete-semantic-profile-34fe-development-only
+          path: ${{ runner.temp }}/next-complete-semantic-profile-34fe/
+          if-no-files-found: error
+          retention-days: 14
