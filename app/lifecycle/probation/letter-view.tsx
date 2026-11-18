@@ -7,7 +7,7 @@ import {useTranslations} from 'next-intl';
 import type {ProbationLetterView} from '@/packs/probation/service';
 import {currentRoundActions,pendingSigningSteps,signingComplete,signingSendBack,signingStepAction,type SigningStep} from '@/lib/document-signing-model';
 import {PersonnelCompletionDocumentBody} from '@/components/lifecycle-v9/personnel-completion';
-import {personnelCompletionIssues} from '@/lib/lifecycle-v9-personnel-completion';
+import {personnelCompletionLocked,personnelCompletionIssues} from '@/lib/lifecycle-v9-personnel-completion';
 import {DraftGuard} from './draft-guard';
 import {SignerControls} from './signer-controls';
 import {SignatureInput,type SignatureInputLabels} from '@/components/lifecycle-v9/signature-input';
@@ -23,7 +23,7 @@ import {signLetter,resendLetter,releaseLetter,editLetterContent} from './actions
 export function LetterView({letter,actor,signerCandidates,embedded=false}:{letter:ProbationLetterView;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];embedded?:boolean}){
  const t=useTranslations('probation'),s=useTranslations('documentSigning'),l=useTranslations('probation.caseView.letter'),f=useTranslations('probation.caseView.form'),router=useRouter(),[busy,start]=useTransition(),[signerDirty,setSignerDirty]=useState(false),[reason,setReason]=useState(''),[error,setError]=useState(''),document=letter.signing?.document,route=letter.route??document?.route;
  const [editing,setEditing]=useState(false),[edits,setEdits]=useState<Record<string,string>>({}),[fieldValues,setFieldValues]=useState(letter.document.values),[editReason,setEditReason]=useState('');
- const editDirty=Object.keys(edits).length>0||Object.entries(fieldValues).some(([key,value])=>value!==letter.document.values[key]);
+ const completionLocked=!!letter.document.personnelCompletion&&personnelCompletionLocked(letter.document),editDirty=!completionLocked&&(Object.keys(edits).length>0||Object.entries(fieldValues).some(([key,value])=>value!==letter.document.values[key]));
  const completionIssues=letter.document.personnelCompletion?personnelCompletionIssues(letter.document,{final:true}):[];
  const pending=document&&route?pendingSigningSteps({...document,route}):[];
  const step=pending.find(step=>step.holderId===actor.id),complete=document?signingComplete(document,{requiredRoles:document.route.steps.filter(step=>step.required).map(step=>step.role)}):false;
