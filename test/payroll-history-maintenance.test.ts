@@ -1,7 +1,7 @@
 /** Fictional accepted history; canonical API and actual RLS/immutable owner guards. */
 import {afterAll,beforeEach,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
@@ -9,6 +9,7 @@ import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryMaintenanceSource,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewPayrollHistoryMaintenance} from '../core/payroll-history-maintenance';
 import {payrollHistoryMaintenanceRecords,payrollHistoryMaintenanceRecord} from '../core/payroll-history-maintenance-read';
+import {requestPayrollHistoryConfirm} from '../core/payroll-history-job';
 import {previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -87,4 +88,14 @@ it('replays merged listed and unlisted items through the historical tax preview 
 it('holds case-folded duplicate configured codes rather than choosing an arbitrary component UUID',async()=>{
  await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'trv',name:'Fictional ambiguous duplicate',kind:'allowance',displayCategory:'allowance'});
  await expect(upload([['BASIC','1000.00'],['TRV','500.00'],['PCB','0.00']],'replace')).rejects.toThrow(/unmapped|unavailable|ambiguous/);expect(await owner.db.select().from(schema.payrollHistoryImportRecord)).toEqual([]);
+});
+
+it('refuses new legacy or unknown kernel removal operations and admits the saved versioned removal as confirm',async()=>{
+ const original=await accept([['BASIC','1000.00'],['PCB','50.00']]);
+ for(const operation of ['revert','unknown'])await expect(withTenant(ctx,tx=>tx.execute(sql`select app.bulk_job_enqueue('payroll_history',${randomUUID()}::uuid,ARRAY[${b.companyId}::uuid],'',null::bytea,${JSON.stringify({operation,attemptId:original.attemptId,previewHash:'0'.repeat(64)})}::jsonb)`))).rejects.toThrow(/reviewed maintenance receipt/);
+ const review=await previewPayrollHistoryMaintenance(ctx,{version:1,operation:'remove_batch',attemptId:original.attemptId,reason:'Reviewed removal has its own immutable reason'}),job=await requestPayrollHistoryConfirm(ctx,{attemptId:review.attemptId,previewHash:review.plan.previewHash,confirmReplacement:true});if(!('jobId' in job))throw Error('Expected a newly admitted maintenance job');const [saved]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,job.jobId));expect(saved.input).toMatchObject({operation:'confirm',attemptId:review.attemptId,previewHash:review.plan.previewHash});expect((await detail()).withdrawn).toBe(false);
+});
+it('requires an actual preexisting sealed worker step for raw legacy restoration, even with removal authority or physical owner access',async()=>{
+ const original=await accept([['BASIC','1000.00'],['PCB','50.00']]),current=await detail(),row={tenantId:b.tenantId,recordId:current.id,ordinal:2,attemptId:original.attemptId,previousRevisionId:current.currentRevisionId,snapshotId:null,kind:'revert' as const,cycleName:'Month end'};
+ await expect(withTenant(ctx,tx=>tx.insert(schema.payrollHistoryImportRevision).values(row))).rejects.toThrow(/sealed worker step/);await expect(owner.withTenant(ctx,tx=>tx.insert(schema.payrollHistoryImportRevision).values(row))).rejects.toThrow(/sealed worker step/);expect((await detail()).currentRevisionId).toBe(current.currentRevisionId);
 });

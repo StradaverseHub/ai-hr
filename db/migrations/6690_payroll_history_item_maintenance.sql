@@ -20,11 +20,11 @@ BEGIN
  OR NEW.maintenance->>'operation' IS DISTINCT FROM source.plan->'maintenance'->>'mode'
  OR NEW.maintenance->>'reason' IS DISTINCT FROM source.plan->'maintenance'->>'reason'
  OR source.plan->'maintenance'->>'mode' NOT IN ('replace','update_listed','edit','remove_items','remove_batch')
- OR CASE WHEN source.plan->'maintenance'->>'mode' IN ('edit','remove_items','remove_batch') THEN
+ OR (CASE WHEN source.plan->'maintenance'->>'mode' IN ('edit','remove_items','remove_batch') THEN
    source.plan->'maintenance'->'request'->>'operation' IS DISTINCT FROM source.plan->'maintenance'->>'mode'
    OR source.plan->'maintenance'->'request'->>'version' IS DISTINCT FROM '1'
    OR source.plan->'maintenance'->'request'->>'reason' IS DISTINCT FROM source.plan->'maintenance'->>'reason'
-  ELSE source.plan->'maintenance'->'request' IS NOT NULL AND source.plan->'maintenance'->'request'<>'null'::jsonb END
+  ELSE source.plan->'maintenance'->'request' IS NOT NULL AND source.plan->'maintenance'->'request'<>'null'::jsonb END)
  THEN RAISE EXCEPTION 'Payroll history maintenance authority or source unavailable' USING ERRCODE='42501'; END IF;
  SELECT value INTO planned FROM jsonb_array_elements(source.plan->'rows') WHERE value->>'companyId'=identity.company_id::text
  AND value->>'employmentId'=identity.employment_id::text AND value->>'period'=identity.period AND value->>'cycleId'=identity.cycle_id::text;
@@ -190,14 +190,14 @@ BEGIN
   FOR entry_ IN SELECT value FROM jsonb_array_elements(chain_.value) LOOP
    item_:=entry_->'item';
    IF jsonb_typeof(entry_) IS DISTINCT FROM 'object' OR NOT(entry_?&ARRAY['attemptId','item']) OR (item_<>'null'::jsonb AND (jsonb_typeof(item_) IS DISTINCT FROM 'object' OR item_->>'key' IS DISTINCT FROM chain_.key OR coalesce(item_->>'amount','')!~'^[0-9]+\.[0-9]{2}$' OR length(item_->>'amount')>13 OR coalesce(item_->>'direction','') NOT IN ('earning','deduction','noncash','statutory'))) THEN RAISE EXCEPTION 'Payroll history maintenance item identity unavailable' USING ERRCODE='23514';END IF;
-   IF item_<>'null'::jsonb AND NOT CASE item_->>'destination'
+   IF item_<>'null'::jsonb AND NOT(CASE item_->>'destination'
     WHEN 'basic' THEN item_->>'direction'='earning' AND chain_.key='destination:basic'
     WHEN 'allowance' THEN item_->>'direction'='earning' AND chain_.key LIKE 'component:%'
     WHEN 'overtime' THEN item_->>'direction'='earning' AND chain_.key LIKE 'component:%'
     WHEN 'bonus' THEN item_->>'direction'='earning' AND chain_.key LIKE 'component:%'
     WHEN 'other_deduction' THEN item_->>'direction'='deduction' AND chain_.key LIKE 'component:%'
     WHEN 'noncash' THEN item_->>'direction'='noncash' AND chain_.key LIKE 'component:%'
-    ELSE item_->>'direction'='statutory' AND chain_.key='statutory:'||(item_->>'destination') AND item_->>'destination'=ANY(ARRAY['epf_employee','epf_employer','socso_employee','socso_employer','socso_skbbk','eis_employee','eis_employer','pcb','cp38','zakat','lp','hrdf']) END
+    ELSE item_->>'direction'='statutory' AND chain_.key='statutory:'||(item_->>'destination') AND item_->>'destination'=ANY(ARRAY['epf_employee','epf_employer','socso_employee','socso_employer','socso_skbbk','eis_employee','eis_employer','pcb','cp38','zakat','lp','hrdf']) END)
    THEN RAISE EXCEPTION 'Payroll history maintenance monetary kind changed' USING ERRCODE='23514';END IF;
    IF entry_->>'attemptId'=NEW.attempt_id::text THEN
     IF item_<>'null'::jsonb AND item_->>'destination' IS DISTINCT FROM app.payroll_history_maintenance_new_destination(item_->>'code') THEN RAISE EXCEPTION 'Payroll history maintenance Pay Item mapping changed' USING ERRCODE='23514';END IF;
