@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "Penggunaan pengecualian majikan terdahulu yang asal bagi tahun taksiran ini",
       "originalStatutoryInputs": "Input pengiraan berkanun asal",
       "originalTaxCategoryAndReliefs": "Kategori cukai dan pelepasan asal",
-      "originalPriorEmployerIncome": "Input pendapatan majikan terdahulu yang asal"
+      "originalPriorEmployerIncome": "Input pendapatan majikan terdahulu yang asal",
+      "nonCashSourceOwnership": "Pemilikan sumber bukan tunai asal",
+      "optionalDeductionOwnership": "Pecahan pelepasan dan potongan pilihan asal",
+      "historicalTaxInputs": "Pemilikan input cukai asal"
     },
     "affectedValues": {
       "taxableWages": "upah bercukai",
       "exemptWages": "upah dikecualikan",
       "optionalDeductions": "potongan pilihan",
-      "pcbComparison": "perbandingan PCB"
+      "pcbComparison": "perbandingan PCB",
+      "noncashWages": "input manfaat bukan tunai"
     }
   },
   "entra": {

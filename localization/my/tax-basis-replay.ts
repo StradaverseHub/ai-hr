@@ -36,7 +36,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   if(nc!==undefined&&!readPcbNonCash(nc))fail(`${slip.period}: original noncash ownership is malformed.`);
   const nonCashEntries:NonCashEntry[]=[],nonCashEaEntries:NonCashEaEntry[]=[];
   let earned=0,deducted=0,normal=0,additional=0,exempt=0,declaredLp=0,pcbDeduct=0;
-  const exemptionUsed:Record<string,number>={},oneOffExemptionUsed:Record<string,number>={},items:TaxBasisItem[]=[];
+  const exemptionUsed:Record<string,number>={},items:TaxBasisItem[]=[];
   const consume=(code:string,amount:number,table:'pcb'|'lp')=>{
    if(!Object.prototype.hasOwnProperty.call(tables[table],code))fail(`${slip.period}: exemption ${code} is unsupported for this assessment year.`);
    const cap=tables[table][code];if(!Number.isFinite(cap))fail('The exemption limit is malformed.');
@@ -72,7 +72,6 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
     }else if(line.direction==='deduction'){pcbDeduct=round(pcbDeduct+amount);latestTreatment='Taxable remuneration deduction';}
     else{
      if(setting.pcbExemptionCode){if(!setting.pcbExemptionCode.startsWith('PCB_'))fail('The exemption classification conflicts with the remuneration stream.');itemExempt=consume(setting.pcbExemptionCode,amount,'pcb');}
-     if(slip.sourceKind==='import'&&stream==='additional'&&setting.pcbExemptionCode&&itemExempt>0)oneOffExemptionUsed[setting.pcbExemptionCode]=round((oneOffExemptionUsed[setting.pcbExemptionCode]??0)+itemExempt);
      taxable=round(amount-itemExempt);if(stream==='normal')normal=round(normal+taxable);else additional=round(additional+taxable);
      latestTreatment=`${itemExempt===amount?'Tax-Exempt':'Taxable'} · ${stream}${setting.pcbExemptionCode?' · '+setting.pcbExemptionCode:''}`;
     }
@@ -89,7 +88,7 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   try{nonCash=nonCashReplay({period:slip.period,cashNormal:normal,owned:nonCashEntries,ownedEa:nonCashEaEntries,original:savedNonCash,completeSource:slip.sourceKind==='import'||savedNonCash!==null});}
   catch(error){fail(`${slip.period}: ${error instanceof NonCashBenefitConfigurationError?error.componentCode:'Noncash'} original month source ownership is incomplete or duplicated.`);}
 
-  const basis:TaxBasisValue={version:1,period:slip.period,pcb:round(normal+additional),normal,additional,exempt,lp:round(preservedLp+declaredLp),exemptionUsed,items,rulesHash:resolution.hash,...(slip.sourceKind==='import'?{oneOffExemptionUsed}:{}),...((nonCash.eaEntries.length||savedNonCash)?{pcbNonCash:nonCash}:{})};
+  const basis:TaxBasisValue={version:1,period:slip.period,pcb:round(normal+additional),normal,additional,exempt,lp:round(preservedLp+declaredLp),exemptionUsed,items,rulesHash:resolution.hash,...((nonCash.eaEntries.length||savedNonCash)?{pcbNonCash:nonCash}:{})};
   return {payslipId:slip.id,period:slip.period,basis};
  });
 }

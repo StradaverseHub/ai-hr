@@ -5406,7 +5406,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // the room again (a recurring item's usage is re-folded here and is not read). An outstanding-payment
         // employment already carries the whole of each earlier slip's usage just above.
         if(!postEmploymentIds.has(r.employmentId)){
-          const oneOffUsed=((correction?.statutory??savedStatutory) as {oneOffExemptionUsed?:Record<string,unknown>}|null)?.oneOffExemptionUsed;
+          const oneOffUsed=(savedStatutory as {oneOffExemptionUsed?:Record<string,unknown>}|null)?.oneOffExemptionUsed;
           if(oneOffUsed&&typeof oneOffUsed==='object'){
             const used=exemptUsedByEmp.get(r.employmentId)??{};
             for(const [code,amount] of Object.entries(oneOffUsed))if(typeof amount==='number'&&Number.isFinite(amount)&&amount>0)used[code]=round2((used[code]??0)+amount);

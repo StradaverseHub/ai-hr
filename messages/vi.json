@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "Mức miễn thuế đã sử dụng ban đầu tại chủ lao động trước trong năm tính thuế này",
       "originalStatutoryInputs": "Đầu vào tính toán theo luật định ban đầu",
       "originalTaxCategoryAndReliefs": "Nhóm thuế và giảm trừ ban đầu",
-      "originalPriorEmployerIncome": "Đầu vào thu nhập ban đầu từ chủ lao động trước"
+      "originalPriorEmployerIncome": "Đầu vào thu nhập ban đầu từ chủ lao động trước",
+      "nonCashSourceOwnership": "Quyền sở hữu nguồn phi tiền mặt ban đầu",
+      "optionalDeductionOwnership": "Phân chia giảm trừ và khấu trừ tùy chọn ban đầu",
+      "historicalTaxInputs": "Quyền sở hữu đầu vào thuế ban đầu"
     },
     "affectedValues": {
       "taxableWages": "tiền lương chịu thuế",
       "exemptWages": "tiền lương được miễn thuế",
       "optionalDeductions": "khấu trừ tùy chọn",
-      "pcbComparison": "so sánh PCB"
+      "pcbComparison": "so sánh PCB",
+      "noncashWages": "đầu vào phúc lợi phi tiền mặt"
     }
   },
   "entra": {

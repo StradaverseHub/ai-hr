@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "การใช้สิทธิยกเว้นเดิมจากนายจ้างก่อนหน้าสำหรับปีภาษีนี้",
       "originalStatutoryInputs": "ข้อมูลคำนวณตามกฎหมายเดิม",
       "originalTaxCategoryAndReliefs": "ประเภทภาษีและค่าลดหย่อนเดิม",
-      "originalPriorEmployerIncome": "ข้อมูลรายได้เดิมจากนายจ้างก่อนหน้า"
+      "originalPriorEmployerIncome": "ข้อมูลรายได้เดิมจากนายจ้างก่อนหน้า",
+      "nonCashSourceOwnership": "ที่มาของรายการที่ไม่ใช่เงินสดเดิม",
+      "optionalDeductionOwnership": "การแยกค่าลดหย่อนและรายการหักทางเลือกเดิม",
+      "historicalTaxInputs": "ที่มาของข้อมูลภาษีเดิม"
     },
     "affectedValues": {
       "taxableWages": "ค่าจ้างที่เสียภาษี",
       "exemptWages": "ค่าจ้างที่ยกเว้นภาษี",
       "optionalDeductions": "รายการหักทางเลือก",
-      "pcbComparison": "การเปรียบเทียบ PCB"
+      "pcbComparison": "การเปรียบเทียบ PCB",
+      "noncashWages": "ฐานสิทธิประโยชน์ที่ไม่ใช่เงินสด"
     }
   },
   "entra": {

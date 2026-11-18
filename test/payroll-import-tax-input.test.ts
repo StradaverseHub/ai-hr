@@ -50,6 +50,14 @@ describe('historical opening evidence boundary',()=>{
  });
 });
 
+describe('imported cash classification does not establish occurrence ownership',()=>{
+ for(const stream of ['normal','additional'] as const)it(`retains ${stream} capped usage without inventing a one-off receipt`,()=>{
+  const setting={...SYSTEM_BASIC_TAX_SETTING,id:'capped',code:'CAPPED',name:'Capped cash',pcbRemunerationType:stream,pcbExemptionCode:'PCB_TRA_BUSINESS'};
+  const [result]=replayMyTaxBasis({year:2026,upToMonth:1,openingExemptionUsed:{},settings:[setting],rulesByPeriod:{'2026-01':{rules:DEFAULT_MY_STATUTORY,hash:'verified'}},slips:[{id:'source',period:'2026-01',runOrder:1,sourceKind:'import',sourceLines:[{code:'CAPPED',settingId:'capped',amount:500,direction:'earning'}],statutory:{},expectedGross:500,expectedOtherDeductions:0}]});
+  expect(result.basis.exemptionUsed).toEqual({PCB_TRA_BUSINESS:500});expect(result.basis).not.toHaveProperty('oneOffExemptionUsed');
+ });
+});
+
 describe('canonical noncash cycle ownership reconstruction',()=>{
  const owned=(sourceId:string,amount:number)=>({kind:'bik' as const,code:'BIK',source:'one_off' as const,sourceId,entered:amount,exempt:0,taxable:amount});
  const ea=(sourceId:string,amount:number)=>({kind:'bik' as const,code:'BIK',source:'one_off' as const,sourceId,entered:amount,reportableAmount:amount,exemptAmount:0,eaFormLine:'EA_B3',subjectPCB:true});

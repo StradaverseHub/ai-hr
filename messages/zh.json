@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "本课税年度原始前雇主豁免使用记录",
       "originalStatutoryInputs": "原始法定计算输入",
       "originalTaxCategoryAndReliefs": "原始税务类别和减免",
-      "originalPriorEmployerIncome": "原始前雇主收入输入"
+      "originalPriorEmployerIncome": "原始前雇主收入输入",
+      "nonCashSourceOwnership": "原始非现金来源归属",
+      "optionalDeductionOwnership": "原始减免与可选扣款分配",
+      "historicalTaxInputs": "原始税务输入归属"
     },
     "affectedValues": {
       "taxableWages": "应税工资",
       "exemptWages": "豁免工资",
       "optionalDeductions": "可选扣款",
-      "pcbComparison": "PCB 比较"
+      "pcbComparison": "PCB 比较",
+      "noncashWages": "非现金福利输入"
     }
   },
   "entra": {

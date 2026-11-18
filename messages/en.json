@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "Original prior-employer exemption usage for this assessment year",
       "originalStatutoryInputs": "Original statutory calculation inputs",
       "originalTaxCategoryAndReliefs": "Original tax category and reliefs",
-      "originalPriorEmployerIncome": "Original prior-employer income inputs"
+      "originalPriorEmployerIncome": "Original prior-employer income inputs",
+      "nonCashSourceOwnership": "Original noncash source ownership",
+      "optionalDeductionOwnership": "Original relief and optional-deduction split",
+      "historicalTaxInputs": "Original tax-input ownership"
     },
     "affectedValues": {
       "taxableWages": "taxable wages",
       "exemptWages": "exempt wages",
       "optionalDeductions": "optional deductions",
-      "pcbComparison": "PCB comparison"
+      "pcbComparison": "PCB comparison",
+      "noncashWages": "noncash benefit inputs"
     }
   },
   "entra": {

@@ -11,6 +11,7 @@ import {setCompensation} from '../core/comp';
 import {eaStatement} from '../localization/my/reports';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips} from '../core/payroll';
+import {setEmploymentPayComponent} from '../packs/payroll/service';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
@@ -195,7 +196,9 @@ it('uses a proven later native opening for the earlier imported prefix without f
  await owner.client`update payroll_batch set status='processed',employee_count=1 where id=${later.batchId}::uuid`;
  const prefix=await previewTaxBasisRecalculation(ctx,selection());expect(prefix.employees[0].reason).toMatch(/Later saved months/);expect(prefix.employees[0].months.map(month=>month.taxable)).toEqual([5000,5000,5000]);expect(prefix.employees[0].missingEvidence).toBeUndefined();
  const complete=await previewTaxBasisRecalculation(ctx,{...selection(),upToMonth:10});expect(complete.eligibleCount).toBe(1);expect(complete.employees[0].months.map(month=>month.taxable)).toEqual([5000,5000,5000,5000]);expect(complete.employees[0].exempt).toBe(1500);
- await confirm(complete);const january=sources.find(source=>source.period==='2026-01')!.id;expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true}))).size).toBe(1);await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true,sameMonth:true}))).rejects.toThrow(/monthly exemption source ownership/);for(const saved of original)expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved.id)))[0]).toEqual(saved);
+ await confirm(complete);const january=sources.find(source=>source.period==='2026-01')!.id;expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true}))).size).toBe(1);await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true,sameMonth:true}))).rejects.toThrow(/monthly exemption source ownership/);
+ await owner.db.update(schema.payComponent).set({pcbRemunerationType:'additional'}).where(eq(schema.payComponent.id,travel));const additional=await previewTaxBasisRecalculation(ctx,{...selection(),upToMonth:10});await confirm(additional);await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[january],{includeImported:true,sameMonth:true}))).rejects.toThrow(/monthly exemption source ownership/);
+ for(const saved of original)expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved.id)))[0]).toEqual(saved);
 });
 it('invalidates an eligible open run when only owned noncash taxability changes and preserves closed history',async()=>{
  await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BIK_OWNED',name:'Owned historical benefit',kind:'allowance',displayCategory:'bik',eaFormLine:'EA_B3',isNonPayable:true,includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'});
@@ -264,6 +267,9 @@ it('owns imported BIK once across two historical cycles and reconstructs the com
  const snapshots=sources.map(source=>effective.get(source.id)!.basis.pcbNonCash as {owned:{bik:number};cumulative:{bik:number};before:{bik:number};ownedEntries:{sourceId:string}[]});
  expect(snapshots.map(snapshot=>snapshot.owned.bik).sort((a,b)=>a-b)).toEqual([200,300]);expect(snapshots[0].before.bik).toBe(0);expect(snapshots[1].before.bik).toBe(snapshots[0].owned.bik);expect(snapshots[1].cumulative.bik).toBe(500);expect(new Set(snapshots.flatMap(snapshot=>snapshot.ownedEntries.map(entry=>entry.sourceId))).size).toBe(2);
  const preview=await previewTaxBasisRecalculation(ctx,selection());expect(preview.employees[0].months.filter(month=>month.period==='2026-01').map(month=>(month.basis.pcbNonCash as {owned:{bik:number}}).owned.bik).sort((a,b)=>a-b)).toEqual([200,300]);
+ await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,sources.map(source=>source.id),{includeImported:true,sameMonth:true}))).rejects.toThrow(/monthly noncash source ownership/);
+ const [benefit]=await owner.db.select().from(schema.payComponent).where(eq(schema.payComponent.code,'BIK_CYCLE'));const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));await setModule(b.tenantId,'typed_pay_components','active');ctx=await entitledCtx(b);await setEmploymentPayComponent(ctx,{employmentId:employee,componentId:benefit.id,amount:300,effectiveFrom:'2026-01-01'});await setCompensation(ctx,{employmentId:employee,basicSalary:5000,effectiveFrom:'2025-01-01'});await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:'850202025555',taxCategory:1,numChildren:0});const laterCycle=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-01'});await expect(generatePayslips(ctx,{batchId:laterCycle.batchId})).rejects.toThrow(/monthly noncash source ownership/);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,laterCycle.batchId))).toHaveLength(0);
+
 });
 
 it('keeps reviewed receipts current for later calculations without treating display-name edits as tax changes',async()=>{

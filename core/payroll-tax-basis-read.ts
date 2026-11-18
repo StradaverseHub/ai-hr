@@ -110,7 +110,7 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
   if(basis.period!==source.period)throw new PayrollTaxBasisError('The corrected tax period does not match its original source.');
   if(!object(original))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
   const correction:TaxBasisCorrectionRef={id:row.id,batchId:row.batchId,sourceHash:row.sourceHash,basisVersion:1};
-  const statutory={...original,...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{}),...(object(basis.oneOffExemptionUsed)?{oneOffExemptionUsed:basis.oneOffExemptionUsed}:{}),bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),taxBasisCorrection:correction};
+  const statutory={...original,...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{}),bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),taxBasisCorrection:correction};
   if(requested.has(row.payslipId))out.set(row.payslipId,{statutory,correction,basis});
  }
  // New imported inputs are never silently replaced by the legacy gross-pay fallback. A reviewed
@@ -131,16 +131,18 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
   }
   if(options.sameMonth){
    const basis=reviewed?.basis??validatedTaxBasis(stamp.basis),evidence=reviewed?.basis.rulesEvidence??stamp.rulesEvidence;
+   const noncash=readPcbNonCash(basis.pcbNonCash);
+   if(noncash?.ownedEaEntries.some(entry=>entry.entered>0))throw new PayrollTaxBasisError(`Imported monthly noncash source ownership is unavailable for ${source.period}. The original recurring/one-off and regular-run baseline evidence is required before a later cycle can be calculated.`);
    const exemptions=object(evidence)&&object(evidence.pcbExemptions)?evidence.pcbExemptions:null;
    if(!exemptions)unavailable();
-   const normalCap=basis.items.some(item=>settings.some(setting=>setting.code===item.code&&setting.includedInPcb===true&&setting.isNonPayable!==true&&setting.epfBonus2012!==true&&setting.pcbRemunerationType==='normal'&&typeof setting.pcbExemptionCode==='string'&&object(exemptions!.pcb)&&Number(exemptions!.pcb[setting.pcbExemptionCode])>0&&item.exempt>0));
+   const cashCap=basis.items.some(item=>settings.some(setting=>setting.code===item.code&&setting.includedInPcb===true&&setting.isNonPayable!==true&&(setting.epfBonus2012===true||setting.pcbRemunerationType==='normal'||setting.pcbRemunerationType==='additional')&&typeof setting.pcbExemptionCode==='string'&&object(exemptions!.pcb)&&Number(exemptions!.pcb[setting.pcbExemptionCode])>0&&item.exempt>0));
    const optionalCap=Object.entries(basis.exemptionUsed).some(([code,amount])=>code.startsWith('LP_')&&amount>0&&object(exemptions!.lp)&&Number(exemptions!.lp[code])>0);
-   if(normalCap||optionalCap)throw new PayrollTaxBasisError(`Imported monthly exemption source ownership is unavailable for ${source.period}. The original recurring/one-off or optional-deduction evidence is required before a later cycle can be calculated.`);
+   if(cashCap||optionalCap)throw new PayrollTaxBasisError(`Imported monthly exemption source ownership is unavailable for ${source.period}. The original recurring/one-off or optional-deduction evidence is required before a later cycle can be calculated.`);
   }
   if(reviewed)continue;
   const basis=validatedTaxBasis(stamp.basis);
   if(!object(statutory.bases)||statutory.bases.pcb!==basis.pcb)unavailable();
-  out.set(source.id,{correction:null,basis,statutory:{...statutory,...(object(basis.oneOffExemptionUsed)?{oneOffExemptionUsed:basis.oneOffExemptionUsed}:{}),bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})}});
+  out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})}});
  }
  if(options.includeImported){
   // Eligible consumers ask for their saved prefix. Recompose cumulative noncash snapshots from
@@ -150,7 +152,7 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
   for(const source of ordered){
    const effective=out.get(source.id),stat=effective?.statutory??source.source.statutory;if(!object(stat))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
    const saved=readPcbNonCash(stat.pcbNonCash);if(stat.pcbNonCash!==undefined&&!saved)throw new PayrollTaxBasisError('Original month noncash ownership is malformed.');
-   const key=source.companyId+':'+source.employmentId,builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
+   const key=source.companyId+':'+source.employmentId+':'+source.period.slice(0,4),builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
    let rebuilt:ReturnType<typeof builder>;
    try{rebuilt=builder({period:source.period,cashNormal:typeof effective?.basis.normal==='number'?effective.basis.normal:saved?.cashNormal??0,owned:saved?.ownedEntries??[],ownedEa:saved?.ownedEaEntries??[],original:saved,completeSource:saved!==null||object(stat.importedTaxBasis)});}catch{throw new PayrollTaxBasisError('Original month noncash source ownership is incomplete or duplicated. Review the complete month prefix.');}
    if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt}});

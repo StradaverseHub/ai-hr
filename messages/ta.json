@@ -35646,13 +35646,17 @@
       "priorEmployerExemptionUsage": "இந்த மதிப்பீட்டு ஆண்டுக்கான முந்தைய நிறுவனத்தின் மூல விலக்குப் பயன்பாடு",
       "originalStatutoryInputs": "மூல சட்டப்பூர்வக் கணக்கீட்டு உள்ளீடுகள்",
       "originalTaxCategoryAndReliefs": "மூல வரி வகை மற்றும் நிவாரணங்கள்",
-      "originalPriorEmployerIncome": "மூல முந்தைய நிறுவன வருமான உள்ளீடுகள்"
+      "originalPriorEmployerIncome": "மூல முந்தைய நிறுவன வருமான உள்ளீடுகள்",
+      "nonCashSourceOwnership": "மூல பணமல்லா உள்ளீட்டின் உரிமை",
+      "optionalDeductionOwnership": "மூல நிவாரணம் மற்றும் விருப்பப் பிடித்தத்தின் பிரிவு",
+      "historicalTaxInputs": "மூல வரி உள்ளீட்டின் உரிமை"
     },
     "affectedValues": {
       "taxableWages": "வரிக்குட்பட்ட ஊதியம்",
       "exemptWages": "விலக்களிக்கப்பட்ட ஊதியம்",
       "optionalDeductions": "விருப்பப் பிடித்தங்கள்",
-      "pcbComparison": "PCB ஒப்பீடு"
+      "pcbComparison": "PCB ஒப்பீடு",
+      "noncashWages": "பணமல்லா நன்மை உள்ளீடுகள்"
     }
   },
   "entra": {

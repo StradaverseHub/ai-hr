@@ -50,7 +50,7 @@ it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('renders the ready, 
  expect(screen.getByRole('region',{name:copy.availableItems})).toHaveTextContent(copy.includedBeforeExemption);expect(screen.getByRole('region',{name:copy.missingEvidenceTitle})).toHaveTextContent(copy.evidenceFields.priorEmployerExemptionUsage);expect(screen.getByRole('region',{name:copy.importWageBasis})).toHaveTextContent(copy.originalImportedPcb);
 });
 it.each(['light','dark'] as const)('captures actual ready/partial and import-preview components on desktop/phone (%s)',async mode=>{
- show('en','held');for(const details of document.querySelectorAll('details'))details.setAttribute('open','');
+ show('en','held');for(const details of document.querySelectorAll('details'))if(details.querySelector('summary')?.textContent!==en.payroll.historyRevisions.compare)details.setAttribute('open','');
  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en',mode==='light'?'feedback-import-pcb-preview-light':'feedback-import-pcb-preview-dark','Actual payroll results and import preview; fictional illustrative amounts; wage inputs are not recalculated PCB; no live payroll or data write','atelier',mode);
 },120000);
 
@@ -64,4 +64,17 @@ it('keeps monthly cash wages separate from owned/current BIK and VOLA inputs, wi
  render(<NextIntlClientProvider locale="en" messages={en}><TaxBasisResults employees={[employee]}/></NextIntlClientProvider>);for(const details of document.querySelectorAll('details'))details.setAttribute('open','');
  const nc=screen.getByRole('region',{name:en.payrollTaxBasis.noncashPcbWages+' · 2026-01'});expect(nc).toHaveTextContent('BIK');expect(nc).toHaveTextContent('VOLA');expect(within(nc).getAllByText(en.payrollTaxBasis.currentNoncashTaxable)).toHaveLength(2);expect(within(nc).getAllByText(en.payrollTaxBasis.ownedNoncashTaxable)).toHaveLength(2);expect(within(nc).getAllByText(/700\.00/)).toHaveLength(2);
  const item=screen.getByText('BENEFIT · Fictional BIK').closest('div')!;expect(item).toHaveTextContent(en.payrollTaxBasis.noncashPcbWages);expect(item).not.toHaveTextContent(en.payrollTaxBasis.cashPcbWages);expect(screen.getByText(en.payrollTaxBasis.basisNotTax)).toBeVisible();
+});
+
+it('places the new wage disclosure below the wide record grid, labels its source, and retains replacement selection',()=>{
+ const r=row();r.operation='replace';const selected=new Set<string>(),toggle=()=>{},toggleAll=()=>{};
+ render(<NextIntlClientProvider locale="en" messages={en}><RevisionPreview plan={plan(r)} selection={{ticked:selected,toggle,toggleAll}}/></NextIntlClientProvider>);
+ const summary=screen.getByText(en.payrollTaxBasis.importWageBasis).closest('summary')!;expect(summary.closest('td')).toBeNull();expect(summary).toHaveTextContent('F001 · Sample employee A');expect(summary).toHaveTextContent('2026-01');expect(summary).toHaveTextContent('Monthly');expect(summary.closest('[data-import-wage-details]')).not.toBeNull();
+ expect(screen.getAllByRole('checkbox')).toHaveLength(2);fireEvent.click(summary);expect(screen.getByRole('region',{name:en.payrollTaxBasis.importWageBasis})).toHaveTextContent('5,000.00');
+});
+it.each(Object.keys(catalogs) as (keyof typeof catalogs)[])('names missing noncash, relief-split and tax-source ownership in %s',locale=>{
+ const fields=['nonCashSourceOwnership','optionalDeductionOwnership','historicalTaxInputs'] as const;
+ const employee:TaxBasisEmployee={...held,missingEvidence:fields.map(field=>({field,affects:['noncashWages'],reason:'The original historical source is not retained.'}))};
+ render(<NextIntlClientProvider locale={locale} messages={catalogs[locale]}><TaxBasisResults employees={[employee]}/></NextIntlClientProvider>);for(const details of document.querySelectorAll('details'))details.setAttribute('open','');
+ const copy=catalogs[locale].payrollTaxBasis,evidence=screen.getByRole('region',{name:copy.missingEvidenceTitle});for(const field of fields)expect(evidence).toHaveTextContent(copy.evidenceFields[field]);expect(evidence).toHaveTextContent(copy.affectedValues.noncashWages);
 });
