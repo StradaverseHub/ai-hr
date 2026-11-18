@@ -104,6 +104,14 @@ describe('Personnel to probation reconciliation',()=>{
   const[queued]=await owner.db.execute<{last_success_at:unknown}>(sql`select last_success_at from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);expect(queued.last_success_at).toBeNull();
   await drain();expect((await read()).lastSuccessfulCheck).toBeTruthy();
  });
+ it('does not scan or claim a successful pass for a suspended tenant',async()=>{
+  await owner.db.execute(sql`delete from probation_reconciliation_intent where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`insert into probation_reconciliation_schedule(tenant_id) values(${b.tenantId}::uuid) on conflict(tenant_id) do update set next_check_at=now(),last_success_at=null`);
+  await owner.db.execute(sql`update tenant set status='suspended' where id=${b.tenantId}::uuid`);
+  await tick();
+  const[state]=await owner.db.execute<{last_success_at:unknown;pass_count:string}>(sql`select last_success_at,pass_count::text from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);
+  expect(state).toEqual({last_success_at:null,pass_count:'0'});
+ });
  it('refuses application-role worker/admission escalation and crosses no tenant boundary',async()=>{
   await starter();
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_reconciliation_schedule_tick()`))).rejects.toThrow();
