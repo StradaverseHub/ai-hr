@@ -223,7 +223,11 @@ describe('case 151 — HR decides a reward once, and the database re-checks ever
     const events = await owner.db.execute<{ payload: Record<string, unknown> }>(sql`select payload from domain_event where tenant_id = ${base.tenantId}::uuid
       and event_type = 'recruitment-referral-reward.decided' order by sequence`);
     expect(events.map((e) => e.payload.decision)).toEqual(['approved', 'declined']);
-    expect(JSON.stringify(events)).not.toContain('400');
+    // UUIDs can contain the amount's digits; assert the complete permitted payload instead.
+    expect(events.map(event => event.payload)).toEqual([
+      { decision: 'approved', companyId: base.companyId, referralId: ready.referralId, payeeCompanyId: base.companyId },
+      { decision: 'declined', companyId: base.companyId, referralId: decline.referralId, payeeCompanyId: null },
+    ]);
   });
 
   it('refuses approval when the referrer has left', async () => {

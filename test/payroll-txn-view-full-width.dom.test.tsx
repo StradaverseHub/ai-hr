@@ -199,7 +199,7 @@ const historyRow: ProcessedPayslipViewRow = {
   net: '5284.13',
 };
 
-describe('1372d169 · identity columns render on one line', () => {
+describe('1372d169 · identity layouts retain employee and company facts', () => {
   it('Individual tab — employee and company are nowrap, notes is truncated instead', () => {
     render(wrap(<IndividualTxnTable rows={[individualRow]} />));
     expect(bodyCell('Employee').className).toContain('whitespace-nowrap');
@@ -217,10 +217,17 @@ describe('1372d169 · identity columns render on one line', () => {
     expect(bodyCell('Company').className).toContain('whitespace-nowrap');
   });
 
-  it('History tab — employee and company are nowrap on the widest table (13 columns)', () => {
+  it('History tab retains the complete stacked identity and wrappable company across 15 columns', () => {
     render(wrap(<HistoryTable rows={[historyRow]} hrdfRegisteredCompanyIds={[]} />));
-    expect(bodyCell('Employee').className).toContain('whitespace-nowrap');
-    expect(bodyCell('Company').className).toContain('whitespace-nowrap');
+    const identity = bodyCell('Employee').querySelector('[data-ui-employee-name]');
+    expect(identity).not.toBeNull();
+    expect(identity?.children[0]).toHaveTextContent('X000001');
+    expect(identity?.children[1]).toHaveTextContent(LONG_NAME);
+    expect(bodyCell('Company')).toHaveTextContent(LONG_COMPANY);
+    expect(bodyCell('Company')).toHaveClass('whitespace-normal');
+    expect(bodyCell('Company')).not.toHaveClass('whitespace-nowrap');
+    expect(screen.getAllByRole('columnheader')).toHaveLength(15);
+    expect(screen.getByRole('table')).toHaveAttribute('data-wrap-headings');
   });
 
   it('leaves the HEADER captions wrappable — TOTAL DEDUCTIONS needs two lines', () => {

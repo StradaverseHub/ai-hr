@@ -37,6 +37,8 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'action:leave.adjustment.apply','action:notifications.email_preferences.save',
  ],
  'semantic,corpus':[
+ // Existing guide links now cover these routes; their remaining requirements stay explicit.
+ 'page:/lifecycle/v9','page:/tasks',
  // AI Centre restructure (owner decisions 26–29, 4 Nov 2026), truthfully: the setup co-pilot's page was this one by mistake
  // (it shows no stages; the pointer moved to /payroll/setup, whose semantic and corpus gaps closed), so Record readiness, whose
  // own entity (readiness_gap) has no read yet, has none. The Build list is Opportunities' ranked list, moved here; no read
@@ -130,7 +132,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/leave/employee-records','page:/letters/approval','page:/letters/fields','page:/letters/generate','page:/letters/generate/new',
  'page:/letters/register','page:/letters/reports','page:/letters/settings','page:/letters/settings/automation','page:/letters/settings/policy',
  'page:/letters/templates','page:/letters/templates/new','page:/lifecycle/acknowledgement','page:/lifecycle/onboarding/checklists',
- 'page:/lifecycle/requisitions/onboarding','page:/lifecycle/v9','page:/me/calendar','page:/me/ea','page:/me/home','page:/me/letters',
+ 'page:/lifecycle/requisitions/onboarding','page:/me/calendar','page:/me/ea','page:/me/home','page:/me/letters',
  'page:/me/lifecycle','page:/me/tp3','page:/payroll/borang-8a/preview','page:/payroll/borang-8b/preview','page:/payroll/borang-a/preview',
  'page:/payroll/borang-bbcd/preview','page:/payroll/configuration','page:/payroll/configuration/eis','page:/payroll/configuration/epf',
  'page:/payroll/configuration/hrdf','page:/payroll/configuration/pcb','page:/payroll/configuration/skbbk','page:/payroll/configuration/socso',
@@ -147,7 +149,7 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/performance/feedback','page:/performance/home','page:/performance/leaders','page:/performance/led','page:/performance/my',
  'page:/performance/my/kpis','page:/performance/plan','page:/performance/plan/profile','page:/performance/plan/team','page:/performance/team',
  'page:/performance/team/kpis','page:/performance/workspace','page:/reports/employee-master','page:/rewards/approvals','page:/roster/exceptions',
- 'page:/roster/import','page:/system-testing','page:/tasks',
+ 'page:/roster/import','page:/system-testing',
  ],
  'semantic,readiness,corpus':[
  'action:claims.draft.save',
