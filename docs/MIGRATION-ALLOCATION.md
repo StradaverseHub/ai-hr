@@ -1,11 +1,17 @@
-# Contract company scope and private digest retention — 18 November 2026 (reserved, unapplied)
+# Contract company scope and private digest retention — 18 November 2026 (registered, unapplied)
 
 Reserve `6501_contract_company_scope_retention`, idx `5901`, when `1794988006501`.
-The reviewed SQL body and ordinary journal registration are pending; this reservation grants no
-installation, acceptance or provider authority. It repairs the three actual company/tenant key gaps
+The source-reviewed SQL body is registered with SHA-256 `3790725363457523357f24369be874a54440bb14d63c1ba1abeed30666a3bdfd`.
+This grants no installation, acceptance or provider authority. It repairs the three actual company/tenant key gaps
 on `app.contract_system_digest`, `public.contract_access_member` and `public.contract_shared_settings`,
 and declares private digest retention through the existing scoped company-deletion owner.
+A matching private digest `(tenant_id,company_id)` index supports the retained-company lookup.
 Existing applied SQL, single-column foreign keys, object owners, ACLs, principals and tenant scope stay intact.
+The exact old 144-entry tail vector remains `1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77`; the 145-entry vector is
+`63c7c63e258e3a05b2e75b964e0a00b7858638c63a7a524beef60a73077a6277`. The 924-row baseline is unchanged; the journal now contains 1,069 entries.
+Native source-derived tests include atomic named-constraint refusals, genuine scheduler/case/digest provenance,
+full function identity/ACL preservation and 70-company/1,000-employment role/scope equivalence. Runtime checks
+are still pending; no test result is inferred from source review.
 
 A fresh source survey covered 4,834 local/origin ref commits, 772 distinct journals, 516 allocation
 blobs and 529 registered worktrees (eight conflict-marked journals). It found no tag, idx, time,
