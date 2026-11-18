@@ -41128,9 +41128,9 @@
     },
     "businessPartners": {
       "title": "Business Partner responsibilities",
-      "intro": "Applies to Contract Management and Probation. Assign the current Business Partner responsible for each employee scope.",
+      "intro": "Used for Contract Management and as the Business Partner fallback in Probation when no designated routing applies.",
       "separate": "These responsibilities do not grant Access roles or choose document signers. Named recipient and signing routings remain separate.",
-      "empty": "No Business Partner responsibilities configured. Add reviewed current assignments to enable BP-dependent Contract/Probation actions.",
+      "empty": "No Business Partner responsibilities configured. Add reviewed current assignments to enable BP-dependent Contract actions and the Probation Business Partner fallback. Existing designated Probation routing still applies.",
       "add": "Add responsibility",
       "assignment": "Responsibility {number}",
       "remove": "Remove",

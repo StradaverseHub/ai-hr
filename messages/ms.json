@@ -41128,9 +41128,9 @@
     },
     "businessPartners": {
       "title": "Tanggungjawab Business Partner",
-      "intro": "Digunakan untuk Pengurusan Kontrak dan Percubaan. Tetapkan Business Partner semasa bagi setiap skop pekerja.",
+      "intro": "Digunakan untuk Pengurusan Kontrak dan sebagai pilihan sandaran Business Partner dalam Percubaan apabila tiada penghalaan yang ditetapkan terpakai.",
       "separate": "Tanggungjawab ini tidak memberikan peranan Akses atau memilih penandatangan dokumen. Penghalaan penerima dan tandatangan bernama kekal berasingan.",
-      "empty": "Tiada tanggungjawab Business Partner dikonfigurasi. Tambah penugasan semasa yang telah disemak untuk membolehkan tindakan Kontrak/Percubaan yang memerlukan BP.",
+      "empty": "Tiada tanggungjawab Business Partner dikonfigurasi. Tambah penugasan semasa yang telah disemak untuk membolehkan tindakan Kontrak yang memerlukan BP serta sandaran Business Partner Percubaan. Penghalaan Percubaan yang telah ditetapkan masih terpakai.",
       "add": "Tambah tanggungjawab",
       "assignment": "Tanggungjawab {number}",
       "remove": "Buang",

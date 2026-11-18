@@ -41128,9 +41128,9 @@
     },
     "businessPartners": {
       "title": "Trách nhiệm Business Partner",
-      "intro": "Áp dụng cho Quản lý hợp đồng và Thử việc. Chỉ định Business Partner hiện tại cho từng phạm vi nhân viên.",
+      "intro": "Dùng cho Quản lý hợp đồng và làm phân công Business Partner dự phòng trong Thử việc khi không có quy tắc chỉ định nào áp dụng.",
       "separate": "Các trách nhiệm này không cấp vai trò Truy cập hoặc chọn người ký tài liệu. Quy tắc người nhận và ký tên riêng vẫn độc lập.",
-      "empty": "Chưa cấu hình trách nhiệm Business Partner. Thêm các phân công hiện tại đã được rà soát để bật thao tác Hợp đồng/Thử việc cần BP.",
+      "empty": "Chưa cấu hình trách nhiệm Business Partner. Thêm phân công hiện tại đã rà soát để bật thao tác Hợp đồng cần BP và phân công Business Partner dự phòng cho Thử việc. Quy tắc Thử việc đã chỉ định hiện có vẫn áp dụng.",
       "add": "Thêm trách nhiệm",
       "assignment": "Trách nhiệm {number}",
       "remove": "Xóa",
