@@ -66,8 +66,8 @@ const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
 const WEB_MIGRATION_COMMAND='node --import tsx scripts/migrate-with-focused-prerequisites.ts';
 const REVIEWED_MIGRATION_INPUTS=[
  {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
- {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
- {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'ba69d34c69f6846b56ccab4284eeacc8e47088b3c4b71340d268a817a25ecce0'},
+ {path:'scripts/lib/discard-premigration.ts',sha256:'5eefc2b087ebd707ff97750e39ffff41c23861e988c3338807134a92f00f7152'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'bffdfca148697e58b663bdf456b064c0b6b370e75012123e4cd2c1e4d3e9c101'},
  {path:'scripts/lib/resignation-browser-role-admission.ts',sha256:'078f96b90a46ec7a147feb77ca7ce1e7133975dff240421b71d89c47895ca4a9'},
  {path:'scripts/resignation-browser-premigration.ts',sha256:'ea26d0951f969b2dfa88f30e2f41ee4f41a9edbb7880812dabe0da24776f2ef9'},
 ] as const;

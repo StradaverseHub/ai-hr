@@ -188,7 +188,8 @@ describe('protected Contract decision preview and submission',()=>{
   const workerStarted=performance.now();
   try{expect((await finishPreview(requested.jobId,f.proposer,8_000)).state).toBe('completed');}finally{console.info('[Contract preview5001 native worker ms]',Math.round(performance.now()-workerStarted));}
   expect((await readContractSharedDecisionPreview(f.proposer,requested.previewId)).plan?.blockers).toEqual([]);
- });
+ // Gate 44354971179 timed out at 33.254 s; its worker settled at 39.763 s. Allow 3x headroom, retaining the 8 s SQL statement limit.
+ },120000);
  it('queues shared email with frozen rich wording, default CC and a source-bound individual approval link',async()=>{
   const origin='https://contract-mail-fixture.invalid',templateId=randomUUID();
   for(const userId of [f.admin.userId!,f.proposer.userId!])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
