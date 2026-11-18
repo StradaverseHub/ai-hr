@@ -23,7 +23,7 @@ BEGIN
   IF jsonb_array_length(coalesce(p_render->'documents','[]'::jsonb))>100 THEN RAISE EXCEPTION 'Too many document references' USING ERRCODE='22023';END IF;
   FOR asset IN SELECT value FROM jsonb_array_elements(coalesce(p_render->'documents','[]'::jsonb)) LOOP
    IF NOT EXISTS(SELECT 1 FROM probation_file f JOIN probation_part part ON part.id=f.part_id AND part.tenant_id=f.tenant_id JOIN probation_builder_definition b ON b.id::text=part.data->>'letterTemplateId' AND b.tenant_id=f.tenant_id AND b.kind='template'
-     WHERE f.tenant_id=t AND f.case_id=p_subject AND f.kind='letter_released' AND f.id::text=asset->>'id' AND f.content_hash=asset->>'contentHash' AND b.definition_key::text=asset->>'templateId'
+     WHERE f.tenant_id=t AND f.case_id=p_subject AND f.kind='letter_released' AND f.id::text=asset->>'id' AND f.content_hash=asset->>'contentHash' AND b.definition_key::text=asset->>'templateId' AND f.name=asset->>'name' AND asset->>'path'='/lifecycle/probation/'||p_subject::text||'/files/'||f.id::text
       AND (coalesce((asset->>'link')::boolean,false) IS NOT TRUE OR definition->'links'?b.definition_key::text)
       AND (coalesce((asset->>'attach')::boolean,false) IS NOT TRUE OR definition->'attachments'?b.definition_key::text OR definition->>'outcomeLetter'='true' AND asset->>'outcome'='true' AND EXISTS(SELECT 1 FROM probation_outcome o WHERE o.tenant_id=t AND o.case_id=p_subject AND o.id::text=asset->>'outcomeId' AND o.letter_file_id=f.id AND o.letter_part_id=part.id AND o.released_at IS NOT NULL)))
    THEN RAISE EXCEPTION 'Generated email document unavailable' USING ERRCODE='22023';END IF;

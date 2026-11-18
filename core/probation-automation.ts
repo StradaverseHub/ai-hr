@@ -25,6 +25,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {randomUUID} from 'node:crypto';
 import {runAutomationEventTx,resumeAutomationRunsTx,liveAutomationWorkflowsTx,sqlAutomationRunStore} from './automation-runtime';
+import {isModuleEnabled} from './entitlements';
 import {pgSqlState} from '../lib/db-error';
 import {resumeAutomationRun,newAutomationRun,resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
 import {conditionFieldsForTrigger} from '../lib/automation/catalogue';
@@ -272,7 +273,7 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
       const template = templates.get(text(step.params.emailTemplateId));
       if (!template) return {status: 'skipped', reason: 'the email template no longer exists.'};
       const delivery = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body,template.definition?{id:template.id,definition:template.definition}:undefined);
-      if('hold' in delivery){
+      if(typeof delivery.hold==='string'){
         await tx.execute(sql`select app.probation_email_hold_context(${record.id}::uuid,${template.id}::uuid,${run.id}::uuid,${JSON.stringify({trigger:input.trigger,facts,pending:input.pending,released:input.released===true})}::jsonb)`);
         return {status:'hold',resourceId:template.id,message:delivery.hold};
       }
@@ -509,7 +510,11 @@ export async function probationAutomationHistoryTx(tx: Tx, caseId: string): Prom
 export async function resumeProbationEmailFilesTx(tx:Tx,ctx:SessionContext,caseId:string,templateId:string){
  const store=sqlAutomationRunStore(tx),runs=await store.waiting('probation',caseId,templateId);
  if(!runs.length)return;
- const record=await probationAutomationCaseTx(tx,caseId);if(!record)return;
+ const record=await probationAutomationCaseTx(tx,caseId);if(!record)return false;
+ if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle',record.companyId))return false;
+ const[ready]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from probation_activation a where a.tenant_id=app.current_tenant_id() and a.company_id=${record.companyId}::uuid and a.enabled and a.activation_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date) and app.probation_case_company_current(${caseId}::uuid) and not app.probation_case_source_moved(${caseId}::uuid) as ok`);
+ if(!ready?.ok)return false;
+ await tx.execute(sql`select app.probation_assert_case_runtime(${caseId}::uuid)`);
  const context=await probationAutomationContextTx(tx,caseId);
  for(const run of runs){
   const[snapshot]=await tx.execute<{data:{trigger:string;facts:ProbationEventFacts;pending:string[]|null;released:boolean}|null}>(sql`select app.probation_email_hold_context(${caseId}::uuid,${templateId}::uuid,${run.id}::uuid,null) as data`);
@@ -530,7 +535,8 @@ export async function sweepProbationEmailHolds(ctx:SessionContext,connection:imp
  let failed=0;
  for(const item of due){try{await connection.withTenant(ctx,async tx=>{
    await tx.execute(sql`select app.probation_write_lock()`);
-   await resumeProbationEmailFilesTx(tx,ctx,item.case_id,item.template_id);
+   const resumed=await resumeProbationEmailFilesTx(tx,ctx,item.case_id,item.template_id);
+   if(resumed===false)return;
    await tx.execute(sql`update automation_email_hold_context set needs_check=false,checked_at=now() where tenant_id=app.current_tenant_id() and case_id=${item.case_id}::uuid and template_id=${item.template_id}::uuid`);
  });}catch{failed++;}}
  return{checked:due.length,failed};

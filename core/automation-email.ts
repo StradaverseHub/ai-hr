@@ -74,6 +74,7 @@ export async function saveAutomationEmailTemplate(ctx: SessionContext, input: { 
       if (problems.length) throw new AutomationError('invalid', 'Fix the email template before saving it.', problems);
     }
     if(template.definition) {
+      const warnings=automationEmailMergeWarnings(template,catalogue);if(warnings.length)throw new AutomationError('invalid','Convert the named fields before saving this rich email.',warnings);
       const documents=await tx.execute<{id:string}>(sql`select distinct definition_key as id from probation_builder_definition where tenant_id=app.current_tenant_id() and kind='template' and state in ('draft','published') order by definition_key limit 500`);
       try { template.definition=parseProbationEmailDefinition(template.definition,documents.map(row=>row.id)); }
       catch(error) { throw new AutomationError('invalid',error instanceof Error?error.message:'Invalid email definition.'); }

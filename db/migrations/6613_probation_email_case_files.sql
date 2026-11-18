@@ -85,7 +85,7 @@ REVOKE ALL ON FUNCTION app.automation_email_case_files(uuid,uuid,text) FROM PUBL
 GRANT EXECUTE ON FUNCTION app.automation_email_case_files(uuid,uuid,text) TO ai_hr_app;
 
 --> statement-breakpoint
-CREATE TABLE automation_email_hold_context(run_id uuid PRIMARY KEY REFERENCES automation_run(id),tenant_id uuid NOT NULL REFERENCES tenant(id),case_id uuid NOT NULL REFERENCES probation_case(id),template_id uuid NOT NULL,facts jsonb NOT NULL CHECK(jsonb_typeof(facts)='object' AND pg_column_size(facts)<=50000),needs_check boolean NOT NULL DEFAULT false,checked_at timestamptz,created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE automation_email_hold_context(run_id uuid NOT NULL,tenant_id uuid NOT NULL REFERENCES tenant(id),case_id uuid NOT NULL REFERENCES probation_case(id),template_id uuid NOT NULL,facts jsonb NOT NULL CHECK(jsonb_typeof(facts)='object' AND pg_column_size(facts)<=50000),needs_check boolean NOT NULL DEFAULT false,checked_at timestamptz,created_at timestamptz NOT NULL DEFAULT now(),PRIMARY KEY(tenant_id,run_id),FOREIGN KEY(tenant_id,run_id) REFERENCES automation_run(tenant_id,id));
 --> statement-breakpoint
 ALTER TABLE automation_email_hold_context ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -99,7 +99,7 @@ CREATE FUNCTION app.probation_email_hold_context(p_case uuid,p_template uuid,p_r
 DECLARE result jsonb;
 BEGIN
  IF app.automation_can_run('probation',p_case) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM automation_run r WHERE r.id=p_run AND r.tenant_id=app.current_tenant_id() AND r.subject_id=p_case AND r.module='probation' AND r.status IN ('running','waiting')) THEN RAISE EXCEPTION 'Workflow unavailable' USING ERRCODE='42501';END IF;
- IF p_facts IS NOT NULL THEN INSERT INTO automation_email_hold_context(run_id,tenant_id,case_id,template_id,facts) VALUES(p_run,app.current_tenant_id(),p_case,p_template,p_facts) ON CONFLICT(run_id) DO NOTHING;END IF;
+ IF p_facts IS NOT NULL THEN INSERT INTO automation_email_hold_context(run_id,tenant_id,case_id,template_id,facts) VALUES(p_run,app.current_tenant_id(),p_case,p_template,p_facts) ON CONFLICT(tenant_id,run_id) DO NOTHING;END IF;
  SELECT facts INTO result FROM automation_email_hold_context WHERE run_id=p_run AND case_id=p_case AND template_id=p_template AND tenant_id=app.current_tenant_id();RETURN result;
 END $$;
 --> statement-breakpoint

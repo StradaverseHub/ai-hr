@@ -42,9 +42,15 @@ CREATE TRIGGER automation_email_asset_integrity BEFORE INSERT ON automation_emai
 -- Wrap the unchanged canonical writer. Only the new revision created in this transaction receives rich metadata.
 CREATE FUNCTION app.automation_rich_email_template_save(p_template uuid,p_module text,p_name text,p_active boolean,p_subject text,p_body text,p_cc jsonb,p_retired boolean,p_expected integer,p_reason text,p_definition jsonb)
 RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE rev integer; asset jsonb; stored automation_email_asset;
+DECLARE rev integer; asset jsonb; stored automation_email_asset;prior_definition jsonb;
 BEGIN
  IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR app.automation_can_configure(p_module) IS NOT TRUE THEN RAISE EXCEPTION 'Email templates unavailable' USING ERRCODE='42501';END IF;
+ PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtextextended('automation-email-template:'||app.current_tenant_id()::text||':'||p_template::text,0));
+ SELECT v.definition INTO prior_definition FROM automation_email_template_version v WHERE v.tenant_id=app.current_tenant_id() AND v.template_id=p_template ORDER BY v.revision DESC LIMIT 1;
+ IF prior_definition IS NOT NULL AND p_definition IS NULL THEN
+  IF p_retired THEN p_definition:=prior_definition;ELSE RAISE EXCEPTION 'Open this email in the rich template builder before saving' USING ERRCODE='22023';END IF;
+ END IF;
  IF p_definition IS NOT NULL THEN
   IF p_module<>'probation' OR jsonb_typeof(p_definition) IS DISTINCT FROM 'object' OR pg_column_size(p_definition)>300000 OR p_definition->>'version'<>'1'
     OR jsonb_typeof(p_definition->'bodyDoc') IS DISTINCT FROM 'object'
@@ -67,3 +73,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.automation_rich_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text,jsonb) FROM PUBLIC;
 --> statement-breakpoint
 GRANT EXECUTE ON FUNCTION app.automation_rich_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- The old writer is an internal implementation. Public callers use the checked rich/legacy wrapper.
+REVOKE EXECUTE ON FUNCTION app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text) FROM ai_hr_app;
