@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
@@ -9,6 +10,8 @@ import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-pane
 import { EmployeePicker, type PickerEmployee } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
 import { TxnImportButtons } from '../import-excel/txn-import-dialog';
+import { queueFixedTransactionImportAction } from '../import-excel/fixed-actions';
+import { FIXED_TXN_IMPORT_LOG } from '@/lib/fixed-transaction-import-log';
 import { buildTxnTemplateReference } from '../import-excel/reference';
 import { FixedTxnList, type FixedTxnRow } from './fixed-list';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -65,6 +68,7 @@ export default async function FixedTransactionPage({
 }) {
   const { s, scopeIds } = await scopedAdmin();
   const t = await getTranslations('payroll.transactions');
+  const tImport = await getTranslations('payroll.individualImport');
   const { employmentId, error, clashCode, clashFrom, clashTo, clashPeriod, nextFirst } = await searchParams;
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
@@ -104,7 +108,7 @@ export default async function FixedTransactionPage({
   // 5c65367d — the Excel import's reference sheets. Read WITHOUT a selected employee on purpose: an
   // import is multi-employee by nature (the reporter's whole point is loading a month for forty people),
   // so requiring somebody to be picked first would be the friction it exists to remove.
-  const importReference = await buildTxnTemplateReference(s, scopeIds);
+  const importReference = await buildTxnTemplateReference(s, scopeIds, { preferredCompanyId: selectedEmp?.companyId });
 
   // ENDED is derived against the TENANT timezone, on the server. Deriving it in the browser would call an
   // item ended a day early or late for anyone whose device clock sits either side of MYT midnight.
@@ -172,7 +176,13 @@ export default async function FixedTransactionPage({
         // 5c65367d — Import Excel + Download Template. In the page header rather than beside Add,
         // because Add belongs to ONE selected employee and an import does not: these two must be
         // reachable before anybody is picked.
-        actions={<TxnImportButtons kind="fixed" reference={importReference} />}
+        actions={
+          <>
+            <TxnImportButtons kind="fixed" reference={importReference} queueFixedAction={queueFixedTransactionImportAction} />
+            <Link className="inline-flex items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+              href={FIXED_TXN_IMPORT_LOG}>{tImport('log')}</Link>
+          </>
+        }
       />
 
       {!typedComponentsOn && (

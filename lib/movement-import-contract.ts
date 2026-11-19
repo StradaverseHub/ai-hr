@@ -19,7 +19,7 @@ export type MovementImportRecord={row:number;employeeCode:string;
   *  a Group Join Date Correction / Join Date Change row may then move across closed payroll, which stays as paid. */
  acknowledgeClosedPayroll?:boolean;cells:Partial<Record<MovementFormField,string>>;ignoredOrganisation?:{parentCompany?:string;businessUnit?:string};errors:string[];incrementAmount?:string;importVersion?:2;source?:{sheet:string;row:number};companyCode?:string;companyId?:string;employeeName?:string;before?:Record<string,string>;sourceRows?:number[];action?:MovementImportAction;movementId?:string;reason?:string;
  /** Board 154511c4 — classified as history for this employee (see core/movement-history.ts classifyHistoryRows). */
- history?:boolean};
+ history?:boolean;requestedHistory?:boolean};
 export type MovementImportRow={row:number;employeeCode:string;eventType:string;effectiveDate:string;status:'valid'|'invalid'|'excluded'|'imported'|'failed';errors:string[];warnings?:string[];source?:{sheet:string;row:number};sourceRows?:number[];companyCode?:string;baselineDate?:string;before?:Record<string,string|null>;proposed?:Record<string,string|null>;scheduled?:boolean;payrollFlaggedPeriods?:string[];action?:MovementImportAction;movementId?:string;closedPayrollPeriods?:string[];
  /** Board 154511c4 — recorded as history: the period [from, to] is rewritten with the Before values. */
  history?:{from:string;to:string}};

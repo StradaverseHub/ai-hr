@@ -2582,7 +2582,8 @@
           "movement_label_other_company": "Không thể dùng giá trị này cho công ty của nhân viên vào ngày này. Hãy chọn giá trị có sẵn cho công ty đó",
           "movement_backdated_reason_required": "Biến động này có ngày trước các biến động sau đó. Hãy nhập Ghi chú giải thích lý do chèn vào.",
           "movement_before_join_date": "Ngày này trước Ngày gia nhập tập đoàn của nhân viên (%date%). Nếu nhân viên gia nhập sớm hơn, hãy sửa Ngày gia nhập tập đoàn trước (dòng Sửa ngày gia nhập tập đoàn trong tệp này cũng được tính), hoặc dùng ngày muộn hơn.",
-          "movement_history_fields": "Chỉ có thể ghi lịch sử cho Công ty, Phòng ban, Vị trí, Đơn vị kinh doanh và Địa điểm làm việc, kèm giá trị Trước cho mỗi mục.",
+          "movement_history_fields": "Chọn các trường lịch sử được hỗ trợ và nhập giá trị Trước hợp lệ.",
+          "movement_history_pay_scope": "Bạn cần quyền quản lý lương cho hồ sơ việc làm và mọi công ty trong kỳ lịch sử.",
           "movement_history_before_required": "Hãy nhập giá trị Trước cho mọi trường mà dòng lịch sử này thiết lập.",
           "movement_history_future": "Chỉ có thể ghi lịch sử cho ngày đến hôm nay.",
           "movement_history_no_period": "Nhân viên không có giai đoạn nào được ghi nhận trước ngày này.",
@@ -2698,8 +2699,10 @@
           "action": {
             "create": "Tạo",
             "update": "Cập nhật",
-            "delete": "Xóa"
+            "delete": "Xóa",
+            "history": "Ghi lịch sử"
           },
+          "guideHistory": "Dùng Ghi lịch sử cho bất kỳ loại sự kiện nào. Nhập giá trị trước đó vào Trước và giá trị tại ngày hiệu lực vào Sau.",
           "guideAction": "Thao tác: để trống hoặc chọn Tạo để ghi nhận biến động mới. Chọn Cập nhật để sửa một biến động hiện có hoặc Xóa để hoàn tác nó. Cập nhật và Xóa cần Mã sự kiện biến động và Lý do.",
           "guideMovementId": "Mã sự kiện biến động: sao chép từ cột Mã sự kiện biến động trong tệp tải xuống Lịch sử công việc của nhân viên (Tải Excel trên thẻ Biến động). Mã phải thuộc về nhân viên ở dòng đó.",
           "guideUpdate": "Cập nhật: nhập một dòng cho mỗi trường cần sửa, với giá trị mới ở cột Sau. Ô trống giữ nguyên giá trị đã ghi nhận, kể cả Ngày hiệu lực hoặc Loại sự kiện để trống; không có gì bị xóa trắng. Xóa: một dòng để trống Trường hệ thống, Trước và Sau.",
@@ -8046,6 +8049,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Xuất Excel",
+          "title": "Tệp Excel giao dịch",
+          "back": "Quay lại chế độ xem giao dịch",
+          "unavailable": "Tệp Excel này không khả dụng.",
+          "empty": "Chưa có tệp Excel.",
+          "fixed": "Giao dịch cố định",
+          "individual": "Giao dịch cá nhân",
+          "workbook": "Tệp Excel giao dịch",
+          "failed": "Không thể tạo tệp Excel.",
+          "download": "Tải xuống Excel",
+          "preparing": "Đang tạo tệp Excel",
+          "expired": "Liên kết tải xuống đã hết hạn"
+        },
         "title": "Xem giao dịch",
         "subtitle": "Tra cứu tập trung, chỉ đọc các giao dịch lương.",
         "readOnly": "Chỉ tra cứu — không thể tạo hoặc thay đổi bản ghi tại đây.",
@@ -8695,6 +8712,7 @@
       "filterYear": "Năm",
       "noPayslip": "Chưa có kỳ lương nào được tính cho nhân viên này trong kỳ và chu kỳ đã chọn.",
       "cycleRun": "{cycle} — lần chạy {n}",
+      "matchingRuns": "Các đợt tính lương phù hợp",
       "payDateLine": "Ngày thanh toán: {date}",
       "payPeriodLine": "Kỳ lương: {period}",
       "segmentPeriodLine": "Làm việc tại công ty này từ {from} đến {to}",
@@ -9018,6 +9036,7 @@
       "noSelection": "Chọn một phiếu lương để xem các khoản khấu trừ pháp định được tính như thế nào.",
       "notFound": "Không có phiếu lương nào khớp với liên kết đó.",
       "notRecordedShort": "Không được ghi lại",
+      "historicalRuns": "Hồ sơ lịch sử chưa được liên kết với chu kỳ lương đã cấu hình",
       "otherRuns": "Các lần chạy lương trong lựa chọn này",
       "otherRunsHint": "Có nhiều hơn một lần chạy lương khớp với công ty, năm, tháng và chu kỳ này — ví dụ một lần chạy thưởng bên cạnh lần chạy thường. Hãy chọn lần chạy cần giải thích.",
       "payslipHint": "Tiền lương mà mỗi cơ quan dùng làm căn cứ, quy tắc được áp dụng, cùng số tiền của người lao động và của công ty — đọc từ những gì lần chạy lương này đã ghi lại, không tính lại.",
@@ -9246,6 +9265,7 @@
         "quantityInvalid": "Số lượng {value} không phải là số",
         "quantityRequiredHours": "Mục lương này tính theo giờ — hãy nhập số giờ",
         "quantityRequiredDays": "Mục lương này tính theo ngày — hãy nhập số ngày",
+        "startDateCorrection": "Nhập Ngày bắt đầu sớm hơn và Ngày bắt đầu trước đó chính xác của mục hiện có. Giữ nguyên các giá trị khác.",
         "startDateInvalid": "Ngày bắt đầu {value} không hợp lệ (dùng YYYY-MM-DD)",
         "endDateInvalid": "Ngày kết thúc {value} không hợp lệ (dùng YYYY-MM-DD)",
         "txnDateInvalid": "Ngày giao dịch {value} không hợp lệ (dùng YYYY-MM-DD)",
@@ -9270,7 +9290,9 @@
         "duplicateInFile": "Dòng {row} của tệp này đã có {code} cho nhân viên này với cùng số tiền",
         "duplicateImported": "Dòng này của tệp này đã được nhập trước đó",
         "runMissingForCycle": "Chưa có kỳ lương {cycle} đang mở cho {period} — hãy tạo trước rồi nhập",
-        "dailyItemUnsupported": "Khoản lương này không hỗ trợ nhập hàng ngày tính tiền từ số lượng.",
+        "dailyItemUnsupported": "Mục lương này không hỗ trợ nhập theo ngày.",
+        "inputTypeRequired": "Nhập một Loại đầu vào.",
+        "dailyInputTypeMismatch": "Dùng {value} cho mục lương này.",
         "inputTypeInvalid": "Loại đầu vào phải là đơn vị nhập thủ công được hỗ trợ và đúng quy tắc khoản lương.",
         "cycleAmbiguous": "Chu kỳ lương bị thiếu hoặc không rõ. Chọn mã hoặc tên chính xác thuộc công ty nhân viên.",
         "runAmbiguous": "Có nhiều kỳ có thể sửa khớp với chu kỳ và tháng. Giải quyết sự trùng khớp trước khi nhập.",
@@ -10559,7 +10581,9 @@
       "daily": "Theo từng ngày",
       "monthlyTemplate": "Tải mẫu hàng tháng",
       "dailyTemplate": "Tải mẫu theo ngày",
-      "dailyHint": "Nhập theo ngày yêu cầu khoản lương hỗ trợ nhập hàng ngày và tính tiền từ số lượng.",
+      "dailyHint": "Mỗi dòng theo ngày cần một Loại đầu vào. Kiểm tra trang tính Mục lương.",
+      "dailyInstructions": "Chọn Loại đầu vào của mục lương. Nhập số giờ hoặc số ngày vào Số lượng cho mục được tính. Với mục nhập tiền trực tiếp, chọn amount và nhập số tiền vào Số lượng.",
+      "downloadNewDailyTemplate": "Đây là mẫu theo ngày cũ. Tải mẫu mới và bổ sung Loại đầu vào cho từng dòng.",
       "file": "Tệp",
       "working": "Đang xử lý…",
       "validate": "Kiểm tra tệp",
@@ -40109,6 +40133,20 @@
         "cancelled": {
           "title": "Đã hủy việc xử lý ngày nghỉ bù",
           "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Đã nhập giao dịch cố định",
+          "body": "Mở nhật ký nhập để xem kết quả từng dòng."
+        },
+        "failed": {
+          "title": "Nhập giao dịch cố định thất bại",
+          "body": "Mở nhật ký nhập để xem lỗi."
+        },
+        "cancelled": {
+          "title": "Đã dừng nhập giao dịch cố định",
+          "body": "Mở nhật ký nhập để xem các dòng đã lưu."
         }
       },
       "payrollHistory": {

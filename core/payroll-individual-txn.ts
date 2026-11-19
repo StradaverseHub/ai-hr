@@ -1,3 +1,4 @@
+import { isTxnUnit } from '../lib/payroll-transaction-units';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {individualTxnPricingMarkerTx,priceIndividualTxnInputTx,type IndividualCalculationMethod} from '../packs/payroll/individual-calculation';
 import { assertPayComponentCompaniesTx } from './pay-component-company';
@@ -63,9 +64,7 @@ export type TxnKind = (typeof TXN_KINDS)[number];
 export const isTxnKind = (v: unknown): v is TxnKind => TXN_KINDS.includes(v as TxnKind);
 
 /** The descriptive unit set for `quantity` (validated app-side; mirrors the ROUNDING_METHODS pattern). */
-export const TXN_UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
-export type TxnUnit = (typeof TXN_UNITS)[number];
-export const isTxnUnit = (v: unknown): v is TxnUnit => TXN_UNITS.includes(v as TxnUnit);
+export { TXN_UNITS, isTxnUnit, type TxnUnit } from '../lib/payroll-transaction-units';
 
 /**
  * 4e403268 (0432) — WHERE a ledger line came from. Same shape as TXN_UNITS above and for the same reason:

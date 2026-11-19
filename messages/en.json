@@ -2582,7 +2582,8 @@
           "movement_label_other_company": "This value cannot be used in the employee’s company on this date. Choose a value available to that company",
           "movement_backdated_reason_required": "This movement is dated before later movements. Enter Remarks explaining why it is being inserted.",
           "movement_before_join_date": "This date is before the employee’s Group Join Date (%date%). If the employee joined earlier, correct the Group Join Date first (a Group Join Date Correction row in this file counts), or use a later date.",
-          "movement_history_fields": "History can only be recorded for Company, Department, Position, Business Unit and Work Location, with a Before value for each.",
+          "movement_history_fields": "Choose supported historical fields and enter a valid Before value for each field.",
+          "movement_history_pay_scope": "You need payroll authority for the employment and all companies covered by the historical period.",
           "movement_history_before_required": "Enter the Before value for every field this history row sets.",
           "movement_history_future": "History can only be recorded for a date up to today.",
           "movement_history_no_period": "The employee has no recorded period before this date.",
@@ -2698,8 +2699,10 @@
           "action": {
             "create": "Create",
             "update": "Update",
-            "delete": "Delete"
+            "delete": "Delete",
+            "history": "Record history"
           },
+          "guideHistory": "Use Record history to enter a historical assignment for any event type. Enter the earlier value in Before and the value that applies on the effective date in After. This action records only the period before that date.",
           "guideAction": "Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.",
           "guideMovementId": "Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.",
           "guideUpdate": "Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.",
@@ -8046,6 +8049,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Export Excel",
+          "title": "Transaction workbooks",
+          "back": "Back to Transaction View",
+          "unavailable": "This workbook is unavailable.",
+          "empty": "No workbooks yet.",
+          "fixed": "Fixed Transaction",
+          "individual": "Individual Transaction",
+          "workbook": "Transaction workbook",
+          "failed": "The workbook could not be prepared.",
+          "download": "Download Excel",
+          "preparing": "Preparing workbook",
+          "expired": "Download expired"
+        },
         "title": "Transaction View",
         "subtitle": "Centralized read-only inquiry of payroll transactions.",
         "readOnly": "Inquiry only — records cannot be created or changed here.",
@@ -8695,6 +8712,7 @@
       "filterYear": "Year",
       "noPayslip": "No payroll has been calculated for this employee in the selected period and cycle.",
       "cycleRun": "{cycle} run {n}",
+      "matchingRuns": "Matching payroll runs",
       "payDateLine": "Payment date: {date}",
       "payPeriodLine": "Payroll period: {period}",
       "segmentPeriodLine": "Employed by this company {from} to {to}",
@@ -9018,6 +9036,7 @@
       "noSelection": "Choose a payslip to see how its statutory deductions were worked out.",
       "notFound": "No payslip matches that link.",
       "notRecordedShort": "Not recorded",
+      "historicalRuns": "Historical records without a configured payroll cycle",
       "otherRuns": "Payroll runs in this selection",
       "otherRunsHint": "More than one payroll run matches this company, year, month and cycle — for example a bonus run beside the regular one. Choose the one to explain.",
       "payslipHint": "The wage each body was charged on, the rule applied, and the employee and employer amounts — read from what this payroll run recorded, not recalculated.",
@@ -9246,6 +9265,7 @@
         "quantityInvalid": "Quantity {value} is not a number",
         "quantityRequiredHours": "This pay item calculates from hours — enter the hours",
         "quantityRequiredDays": "This pay item calculates from days — enter the days",
+        "startDateCorrection": "Enter an earlier Start Date and the exact Previous Start Date of the existing item. Keep its other values the same.",
         "startDateInvalid": "Start date {value} is not a valid date (use YYYY-MM-DD)",
         "endDateInvalid": "End date {value} is not a valid date (use YYYY-MM-DD)",
         "txnDateInvalid": "Transaction date {value} is not a valid date (use YYYY-MM-DD)",
@@ -9270,7 +9290,9 @@
         "duplicateInFile": "Row {row} of this file already has {code} for this employee at the same amount",
         "duplicateImported": "This row of this file has already been imported",
         "runMissingForCycle": "There is no open {cycle} pay run for {period} — create it first, then import",
-        "dailyItemUnsupported": "This pay item does not support a quantity-calculated daily entry.",
+        "dailyItemUnsupported": "This pay item does not support Day-by-Day entry.",
+        "inputTypeRequired": "Enter an Input Type.",
+        "dailyInputTypeMismatch": "Use {value} for this pay item.",
         "inputTypeInvalid": "Input Type must match a supported manual-entry unit and the pay item rule.",
         "cycleAmbiguous": "Pay Cycle is missing or ambiguous for this employee company. Choose its exact configured cycle code or name.",
         "runAmbiguous": "More than one writable run matches this cycle and month. Resolve the run ambiguity before importing.",
@@ -10559,7 +10581,9 @@
       "daily": "Day by Day",
       "monthlyTemplate": "Download monthly template",
       "dailyTemplate": "Download day-by-day template",
-      "dailyHint": "Daily imports require a pay item that supports daily entry and calculates its amount from quantity.",
+      "dailyHint": "Daily rows require an Input Type. Check the Pay Items sheet for the required type.",
+      "dailyInstructions": "Choose the Input Type listed for the pay item. Enter the hours or days in Quantity for a calculated item. For a daily item that takes a direct amount, choose amount and enter the money value in Quantity.",
+      "downloadNewDailyTemplate": "This is an older Day-by-Day template. Download the current Day-by-Day template and add an Input Type to each row.",
       "file": "File",
       "working": "Working…",
       "validate": "Validate file",
@@ -40109,6 +40133,20 @@
         "cancelled": {
           "title": "Replacement leave settlement cancelled",
           "body": "Credits already settled stay settled. Run it again to settle the rest."
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Fixed Transaction import complete",
+          "body": "Open the import log to review the row results."
+        },
+        "failed": {
+          "title": "Fixed Transaction import failed",
+          "body": "Open the import log to review the failure."
+        },
+        "cancelled": {
+          "title": "Fixed Transaction import stopped",
+          "body": "Open the import log to review any rows already saved."
         }
       },
       "payrollHistory": {

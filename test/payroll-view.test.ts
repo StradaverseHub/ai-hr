@@ -17,6 +17,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
+import { upsertPayrollCycle } from '../core/payroll-cycle';
 import { createIndividualTxn } from '../core/payroll-individual-txn';
 import { listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
 // a3d485f6 — the fixture clock. The reader under test resolves "today" through todayInKualaLumpur(),
@@ -29,6 +30,7 @@ import {
   listIndividualTxnsAcross,
   listPayrollRegisterAcross,
   listProcessedPayslipsAcross,
+  latestProcessedPayslipPeriod,
 } from '../core/payroll-view';
 // 080de5cf — the History grid's fold. Exercised HERE against real kernel output as well as in
 // test/history-pivot.test.ts against fixtures: the fixtures catch a wrong fold, this catches a wrong
@@ -308,8 +310,10 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
 
     // Nothing processed yet ⇒ no history at all, even though two draft batches exist.
     expect(await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] })).toEqual([]);
+    expect(await latestProcessedPayslipPeriod(a, { companyIds: [base.companyId] })).toBeNull();
 
     await generatePayslips(a, { batchId: bMay.batchId });
+    expect(await latestProcessedPayslipPeriod(a, { companyIds: [base.companyId], employmentId: e.employmentId })).toBe('2026-05');
     const rows = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] });
     expect(rows).toHaveLength(1); // May processed, June still draft ⇒ excluded by construction
     const r = rows[0];
@@ -356,13 +360,21 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     const a = adminCtx(base);
     await hirePayrollReady(a, base.companyId, base.deptA, 'Hist A', '900101011234');
     await hirePayrollReady(a, companyB.companyId, companyB.deptId, 'Hist B', '900202021235');
-    const bA = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05' });
-    const bB = await createBatch(a, { companyId: companyB.companyId, payPeriod: '2026-06' });
+    const aCycle = await upsertPayrollCycle(a, { companyId: base.companyId, name: 'Monthly', code: 'ME', runType: 'regular' });
+    const bCycle = await upsertPayrollCycle(a, { companyId: companyB.companyId, name: 'Monthly', code: 'ME', runType: 'regular' });
+    const bA = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-05', payrollCycleId: aCycle.id });
+    const bB = await createBatch(a, { companyId: companyB.companyId, payPeriod: '2026-06', payrollCycleId: bCycle.id });
     await generatePayslips(a, { batchId: bA.batchId });
     await generatePayslips(a, { batchId: bB.batchId });
 
     const both = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId, companyB.companyId] });
     expect(both).toHaveLength(2);
+    const companyIds = [base.companyId, companyB.companyId];
+    expect(await latestProcessedPayslipPeriod(a, { companyIds })).toBe('2026-06');
+    expect(await latestProcessedPayslipPeriod(a, { companyIds, payrollCycleId: aCycle.id })).toBe('2026-05');
+    expect(await latestProcessedPayslipPeriod(a, { companyIds: [base.companyId], payrollCycleId: bCycle.id })).toBeNull();
+    const byCycle = await listProcessedPayslipsAcross(a, { companyIds, payrollCycleId: aCycle.id });
+    expect(byCycle.map((row) => [row.id, row.payrollCycleId])).toEqual([[both[1].id, aCycle.id]]);
 
     // Scope fence: only company A's processed results.
     const onlyA = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] });

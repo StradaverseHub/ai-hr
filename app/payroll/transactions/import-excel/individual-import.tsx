@@ -15,7 +15,7 @@ export function IndividualImportButtons({reference,cycles}:{reference:TxnTemplat
  const [open,setOpen]=useState(false),[method,setMethod]=useState<IndividualImportMethod>('monthly'),[file,setFile]=useState<File|null>(null),[error,setError]=useState(''),[busy,start]=useTransition();
  const operation=useRef<string|null>(null);
  const message=(e:unknown)=>{const key=e instanceof Error?e.message:'';return t.has(key)?t(key as never):t('failed');};
- async function template(which:IndividualImportMethod){setError('');try{const bytes=await buildIndividualTxnWorkbook(which,reference,cycles,t('instructions'));const url=URL.createObjectURL(new Blob([bytes as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=`individual-${which}-transactions.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){setError(message(e));}}
+ async function template(which:IndividualImportMethod){setError('');try{const bytes=await buildIndividualTxnWorkbook(which,reference,cycles,t(which==='daily'?'dailyInstructions':'instructions'));const url=URL.createObjectURL(new Blob([bytes as BlobPart],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));const a=document.createElement('a');a.href=url;a.download=`individual-${which}-transactions.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){setError(message(e));}}
  function submit(){
   if(!file)return;
   start(async()=>{

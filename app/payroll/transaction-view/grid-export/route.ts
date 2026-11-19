@@ -21,6 +21,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { scopedAdmin } from '@/lib/scope';
 import { listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
+import { listPayrollCyclesForCompanies } from '@/core/payroll-cycle';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
 import { toXlsxReport, type ReportData } from '@/lib/report-export';
@@ -70,6 +71,12 @@ export async function GET(req: Request) {
   const months = cleanMonths(sp.getAll('months'));
   const rawCycle = sp.get('cycle');
   const cycle = rawCycle && (CYCLES as readonly string[]).includes(rawCycle) ? rawCycle : undefined;
+  if ((rawCompany && !companyId) || (rawEmployment && !selected)) return new Response(null, { status: 404 });
+  const rawPayrollCycleId = sp.get('payrollCycleId');
+  const configuredCycle = rawPayrollCycleId
+    ? (await listPayrollCyclesForCompanies(s, companyIds)).find((row) => row.id === rawPayrollCycleId)
+    : undefined;
+  if (rawPayrollCycleId && !configuredCycle) return new Response(null, { status: 404 });
   const hideZero = sp.get('hideZero') !== '0';
   const hideSystem = sp.get('hideSystem') === '1';
   // 0253dc7c — the third switch. Same posture as the other two: off unless the link says on, so a
@@ -87,6 +94,7 @@ export async function GET(req: Request) {
         year,
         employmentId: selected.employmentId,
         cycle,
+        payrollCycleId: configuredCycle?.id,
       })
     : [];
   const hrdfRegisteredCompanyIds = selected
@@ -176,7 +184,7 @@ export async function GET(req: Request) {
         : String(year),
       description: [
         `${t('view.filters.month')}: ${grid.months.map((m) => labels[m - 1]).join(', ')}`,
-        `${t('view.filters.cycle')}: ${cycle ? t(`individual.cycle.${cycle}`) : t('view.filters.all')}`,
+        `${t('view.filters.cycle')}: ${configuredCycle?.name ?? (cycle ? t(`individual.cycle.${cycle}`) : t('view.filters.all'))}`,
       ].join('  ·  '),
     },
   };

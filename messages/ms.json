@@ -2582,7 +2582,8 @@
           "movement_label_other_company": "Nilai ini tidak boleh digunakan dalam syarikat pekerja pada tarikh ini. Pilih nilai yang tersedia untuk syarikat itu",
           "movement_backdated_reason_required": "Pergerakan ini bertarikh sebelum pergerakan kemudian. Masukkan Catatan yang menerangkan sebab ia disisipkan.",
           "movement_before_join_date": "Tarikh ini sebelum Tarikh Sertai Kumpulan pekerja (%date%). Jika pekerja menyertai lebih awal, betulkan Tarikh Sertai Kumpulan dahulu (baris Pembetulan Tarikh Sertai Kumpulan dalam fail ini dikira), atau gunakan tarikh yang lebih lewat.",
-          "movement_history_fields": "Sejarah hanya boleh direkodkan untuk Syarikat, Jabatan, Jawatan, Unit Perniagaan dan Lokasi Kerja, dengan nilai Sebelum bagi setiap satu.",
+          "movement_history_fields": "Pilih medan sejarah yang disokong dan masukkan nilai Sebelum yang sah.",
+          "movement_history_pay_scope": "Anda memerlukan kuasa gaji untuk pekerjaan dan semua syarikat dalam tempoh sejarah.",
           "movement_history_before_required": "Masukkan nilai Sebelum bagi setiap medan yang ditetapkan oleh baris sejarah ini.",
           "movement_history_future": "Sejarah hanya boleh direkodkan untuk tarikh sehingga hari ini.",
           "movement_history_no_period": "Pekerja tiada tempoh yang direkodkan sebelum tarikh ini.",
@@ -2698,8 +2699,10 @@
           "action": {
             "create": "Cipta",
             "update": "Kemas kini",
-            "delete": "Padam"
+            "delete": "Padam",
+            "history": "Rekod sejarah"
           },
+          "guideHistory": "Gunakan Rekod sejarah untuk sebarang jenis peristiwa. Isi nilai terdahulu dalam Sebelum dan nilai pada tarikh berkuat kuasa dalam Selepas.",
           "guideAction": "Tindakan: biarkan kosong atau pilih Cipta untuk merekod pergerakan baharu. Pilih Kemas kini untuk membetulkan pergerakan sedia ada atau Padam untuk membatalkannya. Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan dan Sebab.",
           "guideMovementId": "ID Peristiwa Pergerakan: salin daripada lajur ID Peristiwa Pergerakan dalam muat turun Sejarah Pekerjaan pekerja (Muat Turun Excel pada tab Pergerakan). Ia mesti milik pekerja dalam baris tersebut.",
           "guideUpdate": "Kemas kini: masukkan satu baris bagi setiap medan yang hendak dibetulkan, dengan nilai baharu dalam Selepas. Sel kosong mengekalkan nilai yang direkodkan, termasuk Tarikh Berkuat Kuasa atau Jenis Peristiwa yang kosong; tiada apa yang dikosongkan. Padam: satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",
@@ -8046,6 +8049,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Eksport Excel",
+          "title": "Buku kerja transaksi",
+          "back": "Kembali ke Paparan Transaksi",
+          "unavailable": "Buku kerja ini tidak tersedia.",
+          "empty": "Belum ada buku kerja.",
+          "fixed": "Transaksi Tetap",
+          "individual": "Transaksi Individu",
+          "workbook": "Buku kerja transaksi",
+          "failed": "Buku kerja tidak dapat disediakan.",
+          "download": "Muat turun Excel",
+          "preparing": "Sedang menyediakan buku kerja",
+          "expired": "Muat turun telah tamat tempoh"
+        },
         "title": "Paparan Transaksi",
         "subtitle": "Semakan berpusat baca sahaja untuk transaksi gaji.",
         "readOnly": "Semakan sahaja — rekod tidak boleh dicipta atau diubah di sini.",
@@ -8695,6 +8712,7 @@
       "filterYear": "Tahun",
       "noPayslip": "Tiada gaji dikira untuk pekerja ini bagi tempoh dan kitaran yang dipilih.",
       "cycleRun": "Larian {n} — {cycle}",
+      "matchingRuns": "Proses gaji yang sepadan",
       "payDateLine": "Tarikh bayaran: {date}",
       "payPeriodLine": "Tempoh gaji: {period}",
       "segmentPeriodLine": "Bekerja dengan syarikat ini {from} hingga {to}",
@@ -9018,6 +9036,7 @@
       "noSelection": "Pilih satu slip gaji untuk melihat cara potongan statutorinya dikira.",
       "notFound": "Tiada slip gaji sepadan dengan pautan itu.",
       "notRecordedShort": "Tidak direkodkan",
+      "historicalRuns": "Rekod sejarah tanpa kitaran gaji yang dikonfigurasikan",
       "otherRuns": "Larian gaji dalam pilihan ini",
       "otherRunsHint": "Lebih daripada satu larian gaji sepadan dengan syarikat, tahun, bulan dan kitaran ini — contohnya larian bonus di samping larian biasa. Pilih yang hendak diterangkan.",
       "payslipHint": "Upah yang dikenakan oleh setiap badan, peraturan yang digunakan, serta jumlah pekerja dan majikan — dibaca daripada apa yang direkodkan oleh larian gaji ini, bukan dikira semula.",
@@ -9246,6 +9265,7 @@
         "quantityInvalid": "Kuantiti {value} bukan nombor",
         "quantityRequiredHours": "Item gaji ini mengira daripada jam — masukkan jam",
         "quantityRequiredDays": "Item gaji ini mengira daripada hari — masukkan hari",
+        "startDateCorrection": "Masukkan Tarikh Mula yang lebih awal dan Tarikh Mula Sebelumnya yang tepat bagi item sedia ada. Kekalkan nilai lain.",
         "startDateInvalid": "Tarikh mula {value} bukan tarikh sah (guna YYYY-MM-DD)",
         "endDateInvalid": "Tarikh tamat {value} bukan tarikh sah (guna YYYY-MM-DD)",
         "txnDateInvalid": "Tarikh transaksi {value} bukan tarikh sah (guna YYYY-MM-DD)",
@@ -9270,7 +9290,9 @@
         "duplicateInFile": "Baris {row} fail ini sudah mempunyai {code} untuk pekerja ini pada jumlah yang sama",
         "duplicateImported": "Baris fail ini telah pun diimport",
         "runMissingForCycle": "Tiada larian gaji {cycle} yang terbuka bagi {period} — cipta dahulu, kemudian import",
-        "dailyItemUnsupported": "Item gaji ini tidak menyokong input harian yang dikira daripada kuantiti.",
+        "dailyItemUnsupported": "Item gaji ini tidak menyokong kemasukan Hari demi Hari.",
+        "inputTypeRequired": "Masukkan Jenis Input.",
+        "dailyInputTypeMismatch": "Gunakan {value} untuk item gaji ini.",
         "inputTypeInvalid": "Input Type mesti sepadan dengan unit manual yang disokong dan peraturan item gaji.",
         "cycleAmbiguous": "Kitaran gaji tiada atau tidak jelas. Pilih kod atau nama tepat kitaran syarikat pekerja.",
         "runAmbiguous": "Lebih daripada satu proses gaji boleh ditulis sepadan dengan kitaran dan bulan ini. Selesaikan pertindihan dahulu.",
@@ -10559,7 +10581,9 @@
       "daily": "Hari demi Hari",
       "monthlyTemplate": "Muat turun templat bulanan",
       "dailyTemplate": "Muat turun templat harian",
-      "dailyHint": "Import harian memerlukan item gaji yang menyokong input harian dan mengira amaun berdasarkan kuantiti.",
+      "dailyHint": "Baris harian memerlukan Jenis Input. Semak jenis yang diperlukan dalam helaian Item Gaji.",
+      "dailyInstructions": "Pilih Jenis Input bagi item gaji. Masukkan jam atau hari dalam Kuantiti untuk item yang dikira. Untuk amaun terus, pilih amount dan masukkan nilai wang dalam Kuantiti.",
+      "downloadNewDailyTemplate": "Ini templat Hari demi Hari lama. Muat turun templat terkini dan tambah Jenis Input pada setiap baris.",
       "file": "Fail",
       "working": "Sedang diproses…",
       "validate": "Sahkan fail",
@@ -40109,6 +40133,20 @@
         "cancelled": {
           "title": "Penyelesaian cuti ganti dibatalkan",
           "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Import Transaksi Tetap selesai",
+          "body": "Buka log import untuk menyemak keputusan baris."
+        },
+        "failed": {
+          "title": "Import Transaksi Tetap gagal",
+          "body": "Buka log import untuk menyemak kegagalan tersebut."
+        },
+        "cancelled": {
+          "title": "Import Transaksi Tetap dihentikan",
+          "body": "Buka log import untuk menyemak baris yang telah disimpan."
         }
       },
       "payrollHistory": {

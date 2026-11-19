@@ -161,7 +161,11 @@ describe('5c65367d · the overlap predicate is the CONSTRAINT’s own', () => {
 describe('5c65367d · the workbooks', () => {
   it('Fixed Transaction: five sheets, the fill-in one FIRST, identity columns text-formatted', async () => {
     const XLSX = await import('xlsx');
-    const bytes = await buildTxnImportWorkbook('fixed', REFERENCE);
+    const bytes = await buildTxnImportWorkbook('fixed', {
+      ...REFERENCE,
+      cycles: [{ code: 'ME', label: 'Monthly', company: 'Demo Group Holdings Bhd' }],
+      fixedExampleCycleCode: 'ME',
+    });
     expect(bytes.byteLength).toBeGreaterThan(1000);
 
     // cellStyles: true — the `@` format lives in the STYLE table, not on the cell record. A plain read
@@ -214,7 +218,11 @@ describe('5c65367d · the workbooks', () => {
       raw: true,
       blankrows: false,
     });
-    expect(cycles.flat().map(String)).toContain('regular');
+    expect(cycles).toContainEqual(['ME', 'Monthly', 'Demo Group Holdings Bhd']);
+    const examples = XLSX.utils.sheet_to_json<string[]>(wb.Sheets[TXN_IMPORT_SHEETS.example], {
+      header: 1, raw: true, blankrows: false,
+    });
+    expect(examples.slice(2).map((row) => row[FIXED_TXN_COLUMNS.indexOf('payroll_cycle')])).toEqual(['ME', 'ME']);
   });
 
   /**
@@ -276,7 +284,7 @@ describe('5c65367d · the workbooks', () => {
       filled,
       XLSX.utils.aoa_to_sheet([
         [...FIXED_TXN_HEADERS],
-        ['0012345', 'Leading Zero', 'HANDPHONE', 'Handphone Allowance', '100', 'regular', '2026-08-01', '', 'note'],
+        ['0012345', 'Leading Zero', 'HANDPHONE', 'Handphone Allowance', '100', '001', '2026-08-01', '', 'note'],
       ]),
       wb.SheetNames[0],
     );
@@ -289,6 +297,7 @@ describe('5c65367d · the workbooks', () => {
     expect(records[0].employee_id).toBe('0012345');
     expect(records[0].pay_item_code).toBe('HANDPHONE');
     expect(records[0].amount).toBe('100');
+    expect(records[0].payroll_cycle).toBe('001');
     expect(records[0].start_date).toBe('2026-08-01');
     expect(records[0].end_date).toBe('');
   });
