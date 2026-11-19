@@ -1,5 +1,8 @@
 /** Independent grouped shape fixture. Expected money/order is derived from fixture constants, never the projection. */
-import {afterAll,expect,it} from 'vitest';
+import {afterAll,expect,it,vi} from 'vitest';
+import * as database from '../db/client';
+import {PgDialect} from 'drizzle-orm/pg-core';
+import type {SQL} from 'drizzle-orm';
 import {owner,resetDb,seedBase,setModule,entitledCtx,closeAll} from './harness';
 import {createBatch} from '../core/payroll';
 import {previewTaxBasisRecalculation,taxBasisOptions} from '../core/payroll-tax-basis';
@@ -16,7 +19,17 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  await owner.client`insert into payslip(tenant_id,batch_id,employment_id,basic_salary,allowance,gross_pay,other_deductions,total_deductions,net_pay,employer_cost,statutory) select ${b.tenantId}::uuid,${batch.batchId}::uuid,id,5000,500,5500,0,20,5480,5500,${JSON.stringify(statutory)}::jsonb from employment where tenant_id=${b.tenantId}::uuid and company_id=${b.companyId}::uuid and employee_code like 'PCB-SCALE-%'`;
  await owner.client`update payroll_batch set status='processed',employee_count=930 where id=${batch.batchId}::uuid`;
  const expected=Array.from({length:930},(_,index)=>'PCB-SCALE-'+String(index+1).padStart(4,'0'));
- const preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null});
+ // Diagnostic records only fixed query categories/durations, never SQL parameters or Personnel values.
+ const real=database.withTenant,dialect=new PgDialect(),queries:{phase:string;durationMs:number}[]=[];
+ const measured:typeof real=(context,work,options)=>real(context,tx=>work(new Proxy(tx,{get(target,key,receiver){
+  if(key!=='execute')return Reflect.get(target,key,receiver);
+  return async(query:SQL)=>{const text=dialect.sqlToQuery(query).sql;const phase=text.includes('payroll_tax_basis_subjects')?'subjects':text.includes('pg_column_size')?'source-budget':text.includes('row_number() over')?'source-page':text.includes('to_jsonb(p)')?'source-identity':text.includes('native_tax_predecessors')?'native-predecessors':text.includes('payroll_tax_basis_revision')?'corrections':text.includes('statutory')?'statutory':'other';const started=performance.now();try{return await target.execute(query);}finally{queries.push({phase,durationMs:performance.now()-started});}};
+ }})),options);
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(measured),started=performance.now();
+ let preview:Awaited<ReturnType<typeof previewTaxBasisRecalculation>>;
+ try{preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null});}
+ finally{spy.mockRestore();console.info('PCB_SCALE_PHASE_DIAGNOSTIC',JSON.stringify({elapsedMs:performance.now()-started,queryCount:queries.length,queries}));}
+
  expect(preview.employees.map(employee=>employee.employeeNo)).toEqual(expected);expect(preview.eligibleCount).toBe(930);expect(preview.blockedCount).toBe(0);expect(preview.recordCount).toBe(930);expect(preview.totals).toMatchObject({beforeTaxable:4650000,taxable:5115000,difference:465000});
  expect(preview.employees.every(employee=>employee.months.length===1&&employee.months[0].taxable===5500&&employee.months[0].items.find(item=>item.code==='TRV')?.taxable===500)).toBe(true);
  const options=await taxBasisOptions(ctx);expect(options.companies).toHaveLength(70);expect(options.employees.map(employee=>employee.employeeNo)).toEqual(expected);
