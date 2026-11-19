@@ -318,6 +318,22 @@ describe('5c65367d — payroll transaction Excel import', () => {
     ]);
   });
 
+  it('retains a validation-only failed upload without applying any rows',async()=>{
+    const a=adminCtx(base);
+    const id=await queueFixedTransactionImport(a,{
+      csv:'Employee ID,Pay Item Code,Amount,Start Date\nUNKNOWN,BONUS,100,2026-08-01\n',
+      fileName:'validation-only.xlsx',companyIds:scopeIds,operationKey:randomUUID(),validationOnly:true,
+    });
+    let job=await readFixedTransactionImport(a,id,scopeIds);
+    for(let tick=0;tick<10&&!['failed','completed'].includes(job.state);tick++){
+      await runBulkJobTick(owner.client,{handlers:[fixedTransactionImportJobHandler]});
+      job=await readFixedTransactionImport(a,id,scopeIds);
+    }
+    expect(job).toMatchObject({state:'failed',error:'noValidRows',counters:{total:1,invalid:1},
+      rows:[{rowNum:2,state:'invalid',reason:'employeeUnknown'}]});
+    expect(await listEmploymentPayComponents(a,employmentId)).toEqual([]);
+  });
+
   it('keeps fixed workbook results across visits and commits each accepted row only once', async () => {
     const a = adminCtx(base);
     const input = {
