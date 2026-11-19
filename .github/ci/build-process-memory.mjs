@@ -117,7 +117,7 @@ export function createBuildMemoryTimeline(binding,{now=Date.now,sampleLimit=512,
   job:['build','linux-build','production-renderer'].includes(binding.job)?binding.job:null};
  const startedAtMs=now(),history=[],phases=[],issues={},streams={stdout:{decoder:new StringDecoder('utf8'),line:'',dropping:false},stderr:{decoder:new StringDecoder('utf8'),line:'',dropping:false}};
  let totalSamples=0,minSample=null,lastAtMs=null,maxSampleGapMs=0,lastPhase=null;
- const noteFailure=key=>{assert(['host_read','owned_read','diagnostics_read','phase_read','output_drain_timeout','sample_truncated','processes_truncated','phases_truncated','line_truncated','clock_regression'].includes(key));issues[key]=(issues[key]??0)+1;};
+ const noteFailure=key=>{assert(['host_read','owned_read','diagnostics_read','phase_read','output_drain_timeout','output_cleanup_failure','sample_truncated','processes_truncated','phases_truncated','line_truncated','clock_regression'].includes(key));issues[key]=(issues[key]??0)+1;};
  function phaseLine(line,channel){
   const clean=line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'');
   const phase=phasePatterns.find(([,pattern])=>pattern.test(clean))?.[0];
@@ -165,13 +165,33 @@ export function createBuildMemoryTimeline(binding,{now=Date.now,sampleLimit=512,
   report:()=>({kind:'BOUNDED_BUILD_MEMORY_TIMELINE_NOT_ACCEPTANCE',releaseAuthorized:false,binding:identity,bindingComplete:Object.values(identity).every(Boolean),
    runtime:{node:process.version,arch:process.arch,platform:process.platform},runnerImage:{ImageOS:safe(binding.imageOS,/^[A-Za-z0-9._-]{1,32}$/),ImageVersion:safe(binding.imageVersion,/^[A-Za-z0-9._-]{1,64}$/)},
    environmentScope:'Measured command inherits its existing environment unchanged. This metadata does not assert renderer auth/closed-DB-URL/Playwright-OS-dependency parity.',
-   startedAtMs,endedAtMs:now(),sampleLimit,processLimit,phaseLimit,lineLimit,totalSamples,maxSampleGapMs,truncated:Boolean(issues.sample_truncated||issues.processes_truncated||issues.phases_truncated||issues.line_truncated),issues:{...issues},
+   startedAtMs,endedAtMs:now(),sampleLimit,processLimit,phaseLimit,lineLimit,totalSamples,maxSampleGapMs,truncated:Boolean(issues.sample_truncated||issues.processes_truncated||issues.phases_truncated||issues.line_truncated||issues.output_drain_timeout),issues:{...issues},
    minimumSample:minSample,samples:history,outputPhaseMarkers:phases,attributionComplete:false,
    limitations:['Host memory and owned status are sequential reads in one callback, not an atomic physical-memory snapshot.','Owned rows contain current VmRSS, never HWM sums; shared pages may appear in multiple processes.','Next diagnostics are last reported stages, possibly stale; stdout/stderr markers record receipt time, not internal transition time.','Polling/bounds/read gaps may omit processes or phase markers; no whole-host process attribution, PSS or acceptance claim.']})};
 }
 
 /** Node piping retains backpressure and forwards original bytes; the parser retains enums only. */
 export function forwardBuildOutput(stream,target,timeline,channel){
- stream.on('data',chunk=>{try{timeline?.consume(channel,chunk);}catch{try{timeline?.noteFailure('phase_read');}catch{}}});
+ const observe=chunk=>{try{timeline?.consume(channel,chunk);}catch{try{timeline?.noteFailure('phase_read');}catch{}}};
+ stream.on('data',observe);
  stream.pipe(target,{end:false});
+ return ()=>{stream.off('data',observe);stream.unpipe(target);stream.destroy();};
+}
+
+/** Bound post-exit reader ownership too, not only the wait for inherited output FDs to close. */
+export function createBuildOutputDrain(child,disconnects,timeline,{timeoutMs=1000}={}){
+ assert(Number.isSafeInteger(timeoutMs)&&timeoutMs>0&&timeoutMs<=1000&&disconnects.length===2);
+ let closed=false,timer,childClose;
+ const outputClosed=new Promise(done=>{childClose=()=>{closed=true;done(true);};child.once('close',childClose);});
+ // Retain exactly our listener so an inherited FD timeout cannot leave it attached.
+ return async()=>{
+  try{
+   const drained=closed||await Promise.race([outputClosed,new Promise(done=>{timer=setTimeout(()=>done(false),timeoutMs);})]);
+   if(!drained){
+    try{timeline?.noteFailure('output_drain_timeout');}catch{}
+    for(const disconnect of disconnects)try{disconnect();}catch{try{timeline?.noteFailure('output_cleanup_failure');}catch{}}
+   }
+   return Boolean(drained);
+  }finally{clearTimeout(timer);child.off('close',childClose);}
+ };
 }

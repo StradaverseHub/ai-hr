@@ -14,7 +14,7 @@ import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync,openSync,fstatSync,readSync,closeSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createBuildProcessObserver,createBuildMemoryTimeline,nextBuildStage,forwardBuildOutput} from './build-process-memory.mjs';
+import {createBuildProcessObserver,createBuildMemoryTimeline,nextBuildStage,forwardBuildOutput,createBuildOutputDrain} from './build-process-memory.mjs';
 
 export const BUILD_HEAP_DEFAULT_MB=6144;
 export const BUILD_HEAP_CEILING_MB=8192; // Hard ceiling. Changing it needs owner review.
@@ -152,8 +152,7 @@ async function measure(dir,argv){
  const startedAt=new Date().toISOString();
  const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:['inherit','pipe','pipe'],env:e});
  // Forward both streams byte-for-byte, with pipe backpressure; retain only recognized phase enums.
- forwardBuildOutput(child.stdout,process.stdout,timeline,'stdout');forwardBuildOutput(child.stderr,process.stderr,timeline,'stderr');
- const outputClosed=new Promise(done=>child.once('close',()=>done(true)));
+ const drainOutput=createBuildOutputDrain(child,[forwardBuildOutput(child.stdout,process.stdout,timeline,'stdout'),forwardBuildOutput(child.stderr,process.stderr,timeline,'stderr')],timeline);
  const observe=()=>{try{observer?.sample();}catch{observerFailure=true;try{observer?.noteFailure();}catch{}}};
  try{
   try{observer=createBuildProcessObserver(child.pid);observe();processTimer=setInterval(observe,500);}catch{observerFailure=true;}
@@ -161,8 +160,7 @@ async function measure(dir,argv){
  }finally{
   clearInterval(timer);clearInterval(processTimer);sample();
   // Do not await diagnostic stream closure indefinitely after the original command exit/sample.
-  let drainTimer;const outputDrained=await Promise.race([outputClosed,new Promise(done=>{drainTimer=setTimeout(()=>done(false),1000);})]);clearTimeout(drainTimer);
-  if(!outputDrained)diagnosticFailure('output_drain_timeout');
+  const outputDrained=await drainOutput();
   try{if(outputDrained)timeline?.finish();if(timeline){const text=JSON.stringify(timeline.report(),null,2)+'\n';assert(Buffer.byteLength(text)<=16*1024**2);writeFileSync(join(dir,'build-memory-timeline.json'),text,{flag:'wx',mode:0o600});}}
   catch{console.log('::warning::Optional bounded build-memory timeline unavailable; original memory verdict remains authoritative');}
   try{observe();const attribution=observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'};attribution.observerFailure=observerFailure;writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(attribution,null,2)+'\n',{flag:'wx',mode:0o600});}

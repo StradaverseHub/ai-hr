@@ -7,6 +7,7 @@ import {join} from 'node:path';
 import {parseProcessStat,parseProcessMemory,buildProcessKind,createBuildProcessObserver,createBuildMemoryTimeline,nextBuildStage,forwardBuildOutput} from './build-process-memory.mjs';
 import {PassThrough,Writable} from 'node:stream';
 import {once} from 'node:events';
+import {spawnSync} from 'node:child_process';
 import {BUILD_HEAP_CEILING_MB,BUILD_HEAP_DEFAULT_MB,BUILD_HEAP_PROFILE,BUILD_HEAP_NODE_OPTIONS,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB,BUILD_RSS_DEFAULT_FAIL_KIB,BUILD_MEM_AVAILABLE_MIN_KIB,buildMemoryBudget,availableMemoryVerdict,
  parseMemTotalKiB,parseMaxRssKiB,assertBuildHeapRunner,assertRequestedHeapMb,admitBuildHeap,assertBuildHeapEnvironment,admittedBuildNodeOptions,rssVerdict} from './build-heap.mjs';
 
@@ -103,6 +104,24 @@ test('output forwarding preserves original stdout/stderr bytes while diagnostics
   let errors=0;forwardBuildOutput(stream,target,{consume(){throw Error('diagnostic only');},noteFailure(key){assert.equal(key,'phase_read');errors++;}},channel);
   const ended=once(stream,'end'),bytes=Buffer.from([0,27,91,51,50,109,226,156,147,10,255]);stream.end(bytes);await ended;
   assert.deepEqual(Buffer.concat(chunks),bytes);assert(errors>0);assert.equal(target.writableEnded,false);target.end();
+ }
+});
+test('post-exit drain closes inherited readers so an owned descendant cannot keep the wrapper alive',()=>{
+ const module=new URL('./build-process-memory.mjs',import.meta.url).href;
+ const holdingChild=`const {spawn}=require('node:child_process');const leaf=spawn(process.execPath,['-e','setTimeout(()=>{},10000)'],{stdio:'inherit'});leaf.unref();process.stdout.write('original-bytes\\n');`;
+ const script=`import {spawn} from 'node:child_process';import {once} from 'node:events';import {forwardBuildOutput,createBuildOutputDrain} from ${JSON.stringify(module)};
+ const issues={},timeline={consume(){},noteFailure(key){issues[key]=(issues[key]??0)+1;}};
+ const child=spawn(process.execPath,['-e',${JSON.stringify(holdingChild)}],{stdio:['ignore','pipe','pipe']});
+ const drain=createBuildOutputDrain(child,[forwardBuildOutput(child.stdout,process.stdout,timeline,'stdout'),forwardBuildOutput(child.stderr,process.stderr,timeline,'stderr')],timeline,{timeoutMs:50});
+ await once(child,'exit');const drained=await drain();console.log(JSON.stringify({drained,issues,exit:child.exitCode,signal:child.signalCode,stdoutClosed:child.stdout.destroyed,stderrClosed:child.stderr.destroyed,closeListeners:child.listenerCount('close')}));`;
+ const result=spawnSync(process.execPath,['--input-type=module','-e',script],{detached:true,encoding:'utf8',timeout:5000,killSignal:'SIGKILL',maxBuffer:65536});
+ try{
+  assert(!result.error,String(result.error));assert.equal(result.status,0);assert.equal(result.signal,null);assert(result.stdout.startsWith('original-bytes\n'));
+  const observed=JSON.parse(result.stdout.trim().split('\n').at(-1));assert.equal(observed.drained,false);assert.equal(observed.issues.output_drain_timeout,1);
+  assert.equal(observed.exit,0);assert.equal(observed.signal,null);assert(observed.stdoutClosed&&observed.stderrClosed);assert.equal(observed.closeListeners,0);
+ }finally{
+  // Only this explicitly detached fixture process group, including the FD-holding leaf, is ours.
+  if(Number.isSafeInteger(result.pid)&&result.pid>1)try{process.kill(-result.pid,'SIGKILL');}catch(error){if(error.code!=='ESRCH')throw error;}
  }
 });
 import {readdirSync} from 'node:fs';
