@@ -161,6 +161,19 @@ async function readyContent(page,actor,path,timeout) {
   await main.locator('[data-roster-grid] tbody tr[data-roster-employment-id]:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
+ if(path==='/recruitment'){
+  await main.locator('li a[href="/recruitment/candidates"] .tabular-nums:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/me/cases'){
+  await main.locator('section[aria-labelledby="own-private-cases"]:visible').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(['/leave/employee-balances','/leave/employee-records'].includes(path)){
+  await main.getByTestId('pick-employee').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('input[type="search"]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
  return 'heading';
 }
 async function visit(page,actor,route,pass) {
@@ -216,8 +229,11 @@ async function measureShellLinks(fixture){
 async function measureRoutes(fixture){
  const plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
-  plan.push({role,actorIndex,requested:payrollHistoryPath,final:payrollHistoryPath});
+  for(const path of [payrollHistoryPath,'/recruitment']){
+   plan.push({role,actorIndex,requested:path,final:path});
+  }
  }
+ plan.push({role:'employee',actorIndex:4,requested:'/me/cases',final:'/me/cases'});
  report.plannedRoleRoutes=plan.length;
  const require=createRequire(join(process.cwd(),'package.json'));
  const {chromium}=require('playwright');
