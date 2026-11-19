@@ -33,7 +33,8 @@ class Fixture(unstarted_fixture.prior.Fixture):
 
 class PublishedUnstartedTests(unittest.TestCase):
  def fixture(self,legacy=False):
-  f,p,proof,a=unstarted_fixture.UnstartedTests.fixture(self,legacy=legacy,expired=True);f.__class__=Fixture;f.report['ExecMainCode']='0'
+  f,p,proof,a=unstarted_fixture.UnstartedTests.fixture(self,legacy=legacy,expired=True);f.__class__=Fixture;f.base.command=f.command;f.report['ExecMainCode']='0'
+  self.assertIs(f.base.command.__self__,f);self.assertIs(f.base.command.__func__,Fixture.command)
   original=ci.RuntimeObservation.complete_fence
   def fail(o,*args,**kwargs):
    if o.fence_count==5:
