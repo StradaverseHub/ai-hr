@@ -8046,6 +8046,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "导出 Excel",
+          "title": "交易工作簿",
+          "back": "返回交易视图",
+          "unavailable": "此工作簿不可用。",
+          "empty": "暂无工作簿。",
+          "fixed": "固定交易",
+          "individual": "个人交易",
+          "workbook": "交易工作簿",
+          "failed": "无法生成工作簿。",
+          "download": "下载 Excel",
+          "preparing": "正在生成工作簿",
+          "expired": "下载已过期"
+        },
         "title": "交易查询",
         "subtitle": "集中式只读薪资交易查询。",
         "readOnly": "仅供查询——此处无法新增或修改记录。",

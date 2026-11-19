@@ -16,7 +16,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
 import {seedPayComponentCatalog,listPayComponents,setEmploymentPayComponent} from '../core/pay-components';
-import {listFixedTransactionsAcross,listFixedTransactionsPage,listIndividualTxnsAcross,listIndividualTxnsPage} from '../core/payroll-view';
+import {listFixedTransactionsAcross,listFixedTransactionsPage,listIndividualTxnsAcross,listIndividualTxnsPage,readTransactionExport} from '../core/payroll-view';
 import {parsePageQuery} from '../lib/pagination';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -111,6 +111,10 @@ it('pages Fixed rows in native order with exact strings, full counts, status and
  expect(first.rows[0].amount).toBe('123.45');expect(typeof first.rows[0].amount).toBe('string');
  const ended=all.filter(row=>row.validTo!==null&&row.validTo<todayInKualaLumpur());
  expect(await listFixedTransactionsPage(a,{...p,status:'ended'},parsePageQuery({size:'all'}))).toEqual({total:ended.length,rows:ended});
+ await readTransactionExport(a,{kind:'fixed',filters:{...p,status:'ended'},asOf:todayInKualaLumpur()},async(total,rows)=>{
+  const ids:string[]=[];for await(const row of rows)ids.push(row.id);
+  expect(total).toBe(ended.length);expect(ids.sort()).toEqual(ended.map(row=>row.id).sort());
+ });
  expect(await listFixedTransactionsPage(a,{companyIds:[]},parsePageQuery())).toEqual({rows:[],total:0});
  expect(await listFixedTransactionsPage(a,p,parsePageQuery({page:'100'}))).toEqual({rows:[],total:51});
  expect(await listFixedTransactionsPage(a,{...p,componentId:randomUUID()},parsePageQuery())).toEqual({rows:[],total:0});
@@ -139,6 +143,10 @@ it('transports a bounded Individual page from retained rows and keeps count, qua
  const amounts=new Map([[initial.id,'12.25'],...retained.map(row=>[row.id,row.amount] as [string,string])]);
  for(const row of page.rows){expect(row.amount).toBe(amounts.get(row.id));expect(typeof row.amount).toBe('string');if(row.id!==initial.id)expect(row.quantity).toBe('1.50');}
  const allPage=await listIndividualTxnsPage(a,p,parsePageQuery({size:'all'}));expect(allPage.rows).toHaveLength(2000);expect(allPage.total).toBe(2052);
+ await readTransactionExport(a,{kind:'individual',filters:{...p,departmentId:b.deptA,batchStatus:'draft'}},async(total,rows)=>{
+  const ids:string[]=[];for await(const row of rows)ids.push(row.id);
+  expect(total).toBe(2052);expect(ids).toEqual(expectedIds);
+ });
  expect(await listIndividualTxnsPage(a,p,parsePageQuery({page:'10000'}))).toEqual({rows:[],total:2052});
  expect(await listIndividualTxnsPage(a,{...p,month:6},parsePageQuery())).toEqual({rows:[],total:0});
  expect(await listIndividualTxnsPage(a,{...p,departmentId:other.departmentId},parsePageQuery())).toEqual({rows:[],total:0});

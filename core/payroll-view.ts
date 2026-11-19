@@ -34,7 +34,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -208,6 +208,7 @@ export type FixedTransactionViewRow = {
   runType: RunType | null;
   /** 4fffe638 — the linked configured Payroll Cycle's name; null when the row is not linked. */
   payrollCycleName: string | null;
+  payrollCycleCode?: string | null;
   remarks: string | null;
 };
 
@@ -265,11 +266,11 @@ function individualInquiryOrder(sort:IndividualInquirySort){
   return sql`${field} ${sort.direction==='asc'?sql`asc`:sql`desc`},"id" asc`;
 }
 
-export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery):Promise<{rows:FixedTransactionViewRow[];total:number}>{
+export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery,asOf=todayIso()):Promise<{rows:FixedTransactionViewRow[];total:number}>{
   if(!p.companyIds.length)return Promise.resolve({rows:[],total:0});
   return withTenant(ctx,async tx=>{
     await tx.execute(sql`set transaction read only`);
-    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,todayIso()),sql`"employeeName","code","validFrom","id"`,page);
+    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,asOf),sql`"employeeName","code","validFrom","id"`,page);
   });
 }
 export async function listIndividualTxnsPage(ctx:SessionContext,p:IndividualTxnFilter,page:PageQuery,sort:IndividualInquirySort=parseIndividualInquirySort()):Promise<{rows:IndividualTxnViewRow[];total:number}>{
@@ -291,7 +292,7 @@ export function listFixedTransactionsAcross(
   return withTenant(ctx,tx=>fixedTransactionQuery(tx,p,todayIso()).orderBy(asc(person.fullName),asc(payComponent.code),asc(employmentPayComponent.validFrom),asc(employmentPayComponent.id)));
 }
 
-function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
+function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string,afterId?:string){
   return tx
       .select(inquiryColumns<FixedTransactionViewRow>({
         id: employmentPayComponent.id,
@@ -310,6 +311,7 @@ function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
         runType: employmentPayComponent.runType,
         // 4fffe638 — LEFT JOIN on a single FK: an unlinked row keeps its run-type label, nothing multiplies.
         payrollCycleName: payrollCycle.name,
+        payrollCycleCode: payrollCycle.code,
         remarks: employmentPayComponent.remarks,
       }))
       .from(employmentPayComponent)
@@ -321,6 +323,7 @@ function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
       .where(
         and(
           inArray(employment.companyId, p.companyIds),
+          afterId ? gt(employmentPayComponent.id, afterId) : undefined,
           isNull(employmentPayComponent.supersededAt),
           p.employmentId ? eq(employmentPayComponent.employmentId, p.employmentId) : undefined,
           p.componentId ? eq(employmentPayComponent.componentId, p.componentId) : undefined,
@@ -350,8 +353,10 @@ export type IndividualTxnViewRow = {
    *  never permission to choose another cycle of the same type. Archived names remain readable. */
   batchCycleId: string | null;
   batchCycleName: string | null;
+  batchCycleCode?: string | null;
   intendedCycleId: string | null;
   intendedCycleName: string | null;
+  intendedCycleCode?: string | null;
   batchStatus: string | null;
   kind: PayrollTxnKind;
   /** 4e403268 — THE PAY ITEM, on the listing row at last. Until this round the projection deliberately
@@ -415,7 +420,7 @@ export type IndividualTxnFilter = {
  * and LEFT-joined to the row's 'created' DomainEvent → app_user → person for the Created By / Created Date
  * dimensions. Read-only (pure SELECT — no event appended here).
  */
-function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
+function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter,afterId?:string){
   const kind = cleanTxnKind(p.kind);
   const batchStatus = cleanBatchStatus(p.batchStatus);
   const createdFrom = cleanDate(p.createdFrom);
@@ -437,8 +442,10 @@ function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
       runSeq: payrollBatch.runSeq,
       batchCycleId: payrollBatch.payrollCycleId,
       batchCycleName: individualBatchCycle.name,
+      batchCycleCode: individualBatchCycle.code,
       intendedCycleId: payrollIndividualTxn.intendedCycleId,
       intendedCycleName: individualIntendedCycle.name,
+      intendedCycleCode: individualIntendedCycle.code,
       batchStatus: payrollBatch.status,
       kind: payrollIndividualTxn.kind,
       componentId: payrollIndividualTxn.componentId,
@@ -507,6 +514,7 @@ function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
     .where(
       and(
         inArray(payrollIndividualTxn.companyId, p.companyIds),
+        afterId ? gt(payrollIndividualTxn.id, afterId) : undefined,
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
@@ -557,6 +565,41 @@ async function queryIndividualTxns(tx:Tx,p:IndividualTxnFilter):Promise<Individu
 export function listIndividualTxnsAcross(ctx: SessionContext, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, (tx) => queryIndividualTxns(tx, p));
+}
+
+export type TransactionExportQuery =
+  | { kind: 'fixed'; filters: FixedTransactionFilter; asOf: string }
+  | { kind: 'individual'; filters: IndividualTxnFilter };
+
+/** Page through the screen's exact predicates under one read snapshot, independent of its visible page. */
+export async function readTransactionExport<T>(
+  ctx: SessionContext,
+  query: TransactionExportQuery,
+  consume: (total: number, rows: AsyncIterable<FixedTransactionViewRow | IndividualTxnViewRow>) => Promise<T>,
+): Promise<T> {
+  const pageSize = 500;
+  return withTenant(ctx, async (tx) => {
+    const source = query.kind === 'fixed'
+      ? fixedTransactionQuery(tx, query.filters, query.asOf)
+      : individualTransactionQuery(tx, query.filters);
+    const [count] = await tx.execute<{total: string}>(sql`select count(*)::text as total from (${source}) as filtered_export`);
+    const total = Number(count?.total);
+    if (!Number.isSafeInteger(total) || total < 0) throw new Error('The payroll export count is unavailable.');
+    async function* rows() {
+      let afterId: string | undefined;
+      for (let remaining = total; remaining > 0;) {
+        const page: (FixedTransactionViewRow | IndividualTxnViewRow)[] = query.kind === 'fixed'
+          ? await fixedTransactionQuery(tx, query.filters, query.asOf, afterId).orderBy(asc(employmentPayComponent.id)).limit(pageSize)
+          : (await individualTransactionQuery(tx, query.filters, afterId).orderBy(asc(payrollIndividualTxn.id)).limit(pageSize))
+            .map((row) => ({ ...row, reprocessRequired: individualTxnReprocessRequired(row) }));
+        if (!page.length) break;
+        for (const row of page) yield row;
+        remaining -= page.length;
+        afterId = page.at(-1)?.id;
+      }
+    }
+    return consume(total, rows());
+  }, { readOnlySnapshot: true });
 }
 
 /**

@@ -7834,6 +7834,13 @@
       "when": 1794998006701,
       "tag": "6701_payroll_history_native_anomaly_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 10330,
+      "version": "7",
+      "when": 1795028006930,
+      "tag": "6930_payroll_transaction_export",
+      "breakpoints": true
     }
   ]
 }

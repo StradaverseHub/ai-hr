@@ -424,6 +424,11 @@ async function finalizeUnit(connection:postgres.ReservedSql,handler:BulkJobHandl
  // What finalize and release trust: the plan and input every unit, every step before the first unit after a step write.
  await verifySealOf(connection,c,'first');
  if(job.kind==='contract_posting_apply')return finalizeContractPostingUnit(connection,c,ctx);
+ // XLSX generation scans and compresses the full matching snapshot before publishing any parts.
+ if(job.kind==='payroll_transaction_export'){
+  await connection`update bulk_job set lease_expires_at=now()+make_interval(secs=>${PREPARE_LEASE_SECONDS})
+   where id=${job.id}::uuid and lease_token=${c.token}::uuid`;
+ }
  let finalizeUnitOf:BulkJobUnit=unit;
  if(handler.finalizeOwner){
   const [kind]=await connection<{finalize_owner:boolean}[]>`select finalize_owner from bulk_job_kind where kind=${job.kind}`;

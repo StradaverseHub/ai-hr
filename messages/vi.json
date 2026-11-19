@@ -8046,6 +8046,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Xuất Excel",
+          "title": "Tệp Excel giao dịch",
+          "back": "Quay lại chế độ xem giao dịch",
+          "unavailable": "Tệp Excel này không khả dụng.",
+          "empty": "Chưa có tệp Excel.",
+          "fixed": "Giao dịch cố định",
+          "individual": "Giao dịch cá nhân",
+          "workbook": "Tệp Excel giao dịch",
+          "failed": "Không thể tạo tệp Excel.",
+          "download": "Tải xuống Excel",
+          "preparing": "Đang tạo tệp Excel",
+          "expired": "Liên kết tải xuống đã hết hạn"
+        },
         "title": "Xem giao dịch",
         "subtitle": "Tra cứu tập trung, chỉ đọc các giao dịch lương.",
         "readOnly": "Chỉ tra cứu — không thể tạo hoặc thay đổi bản ghi tại đây.",

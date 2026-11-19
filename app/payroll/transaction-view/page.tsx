@@ -2,6 +2,10 @@ import { ExportDownloadLink } from '@/components/export-download-link';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { BulkJobError, BULK_JOB_ALREADY_RUNNING } from '@/core/bulk-job';
+import { enqueueTransactionExport } from '@/core/payroll-transaction-export';
+import { isCalendarDate } from '@/lib/calendar-date';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listPayrollCyclesForCompanies, listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
@@ -20,6 +24,7 @@ import {
   payslipForReview,
   listProcessedPayslipsAcross,
   listUnattachedTxnSummary,
+  type FixedTransactionFilter,
   type PayslipSourceTxnRow,
 } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
@@ -129,7 +134,7 @@ const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
 // INDIVIDUAL_TXN_STATUS_FILTERS there: an unknown value DROPS the filter (fails open, showing everything)
 // rather than erroring, so a missing entry here is silent.
 const TXN_STATUSES = INDIVIDUAL_TXN_STATUS_FILTERS;
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 
 /** Parse an optional positive-int query param within [min, max]; anything else ⇒ undefined. */
 function intParam(v: string | undefined, min: number, max: number): number | undefined {
@@ -256,29 +261,47 @@ export default async function TransactionViewPage({
     sp.departmentId && departmentOptions.some((d) => d.id === sp.departmentId) ? sp.departmentId : undefined;
   const txnStatus = TXN_STATUSES.includes(sp.txnStatus as (typeof TXN_STATUSES)[number]) ? sp.txnStatus : undefined;
   const createdBy = sp.createdBy && creators.some((c) => c.id === sp.createdBy) ? sp.createdBy : undefined;
-  const createdFrom = sp.createdFrom && ISO_DATE.test(sp.createdFrom) ? sp.createdFrom : undefined;
-  const createdTo = sp.createdTo && ISO_DATE.test(sp.createdTo) ? sp.createdTo : undefined;
+  const createdFrom = sp.createdFrom && isCalendarDate(sp.createdFrom) ? sp.createdFrom : undefined;
+  const createdTo = sp.createdTo && isCalendarDate(sp.createdTo) ? sp.createdTo : undefined;
+
+  const today = todayInKualaLumpur();
+  const fixedFilters: FixedTransactionFilter = { companyIds, employmentId, componentId, status };
+  const individualFilters = {
+    companyIds, year, month, employmentId, kind, departmentId, batchStatus: txnStatus,
+    createdBy, createdFrom, createdTo,
+  };
+  const transactionQuery = tab === 'fixed'
+    ? { kind: 'fixed' as const, filters: fixedFilters, asOf: today }
+    : { kind: 'individual' as const, filters: individualFilters };
+  async function startWorkbookExport() {
+    'use server';
+    const { s: actor, scopeIds: allowed } = await scopedAdmin();
+    if (!transactionQuery.filters.companyIds.length ||
+        transactionQuery.filters.companyIds.some((id) => !allowed.includes(id))) {
+      redirect('/payroll/transaction-view/workbooks?unavailable=1');
+    }
+    let jobId: string;
+    try {
+      const { row } = await enqueueTransactionExport(actor, transactionQuery);
+      jobId = row.id;
+    } catch (error) {
+      if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) {
+        redirect('/payroll/transaction-view/workbooks');
+      }
+      throw error;
+    }
+    redirect(`/payroll/transaction-view/workbooks?job=${jobId}`);
+  }
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
   const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
   const inquiryParams={...sp,tab,months:Array.isArray(sp.months)?sp.months.join(','):sp.months};
   const [fixedPage, individualPage, historyRows, statutoryRuns, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
-      ? listFixedTransactionsPage(s, { companyIds, employmentId, componentId, status },inquiryQuery)
+      ? listFixedTransactionsPage(s, fixedFilters, inquiryQuery, today)
       : Promise.resolve({rows:[],total:0}),
     tab === 'individual'
-      ? listIndividualTxnsPage(s, {
-          companyIds,
-          year,
-          month,
-          employmentId,
-          kind,
-          departmentId,
-          batchStatus: txnStatus,
-          createdBy,
-          createdFrom,
-          createdTo,
-        },inquiryQuery,inquirySort)
+      ? listIndividualTxnsPage(s, individualFilters, inquiryQuery, inquirySort)
       : Promise.resolve({rows:[],total:0}),
     // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
@@ -531,7 +554,7 @@ export default async function TransactionViewPage({
     { scope: 'all', label: t('view.history.exportAll'), hint: t('view.history.exportAllHint') },
   ];
 
-  const today = todayInKualaLumpur();
+
   const nowYear = new Date().getFullYear();
   const latestYearChoice = Math.max(nowYear + 1, year ?? 0, historyYear ?? 0);
   const years = tab === 'history' || tab === 'grid'
@@ -801,7 +824,14 @@ export default async function TransactionViewPage({
           {/* ── 1. Fixed Transaction View ── */}
           {tab === 'fixed' && (
             <Card className="overflow-hidden">
-              <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
+              <div className="flex items-center justify-between gap-3 pr-4">
+                <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
+                {companyIds.length > 0 && (
+                  <form action={startWorkbookExport}>
+                    <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
+                  </form>
+                )}
+              </div>
               <Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,fixedPage.total,fixedRows.length)}/>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -869,6 +899,12 @@ export default async function TransactionViewPage({
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
                 <SectionHeader title={t('view.tabs.individual')} count={individualPage.total} />
+                <div className="flex items-center gap-2">
+                {companyIds.length > 0 && (
+                  <form action={startWorkbookExport}>
+                    <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
+                  </form>
+                )}
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
                 <ExportDownloadLink
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
@@ -887,6 +923,7 @@ export default async function TransactionViewPage({
                 >
                   {t('view.exportCsv')}
                 </ExportDownloadLink>
+                </div>
               </div>
               {/* Sortable + searchable grid (feedback 7b2d4228): GET filters above narrow the set; this client table
                   adds column sorting over the fetched rows. */}

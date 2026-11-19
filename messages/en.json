@@ -8046,6 +8046,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Export Excel",
+          "title": "Transaction workbooks",
+          "back": "Back to Transaction View",
+          "unavailable": "This workbook is unavailable.",
+          "empty": "No workbooks yet.",
+          "fixed": "Fixed Transaction",
+          "individual": "Individual Transaction",
+          "workbook": "Transaction workbook",
+          "failed": "The workbook could not be prepared.",
+          "download": "Download Excel",
+          "preparing": "Preparing workbook",
+          "expired": "Download expired"
+        },
         "title": "Transaction View",
         "subtitle": "Centralized read-only inquiry of payroll transactions.",
         "readOnly": "Inquiry only — records cannot be created or changed here.",

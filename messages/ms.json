@@ -8046,6 +8046,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Eksport Excel",
+          "title": "Buku kerja transaksi",
+          "back": "Kembali ke Paparan Transaksi",
+          "unavailable": "Buku kerja ini tidak tersedia.",
+          "empty": "Belum ada buku kerja.",
+          "fixed": "Transaksi Tetap",
+          "individual": "Transaksi Individu",
+          "workbook": "Buku kerja transaksi",
+          "failed": "Buku kerja tidak dapat disediakan.",
+          "download": "Muat turun Excel",
+          "preparing": "Sedang menyediakan buku kerja",
+          "expired": "Muat turun telah tamat tempoh"
+        },
         "title": "Paparan Transaksi",
         "subtitle": "Semakan berpusat baca sahaja untuk transaksi gaji.",
         "readOnly": "Semakan sahaja — rekod tidak boleh dicipta atau diubah di sini.",
