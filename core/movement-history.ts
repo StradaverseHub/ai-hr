@@ -6,13 +6,13 @@
  * period BEFORE D and never touches D or anything after it.
  *
  * WHAT IT WRITES. Only the dated placement on `assignment` (company, department, position, business unit,
- * work location). Every live version in [start, D) is SUPERSEDED and re-inserted with the Before values over
+ * work location and employment type). Every live version in [start, D) is SUPERSEDED and re-inserted with the Before values over
  * the same dates; the version spanning D is split into [from, D) and [D, to). Nothing is updated in place and
  * nothing is deleted, exactly as Correct hire details does (core/hire-correction.ts). Today's company
  * (`employment.company_id`) never changes: D is never in the future and the record from D stays as it was.
  *
  * WHEN IT REFUSES (each with a row code the import names):
- *   - a field outside the five above, or a Before missing for a field the row sets;
+ *   - a field outside the dated placement above, or a Before missing for a field the row sets;
  *   - D in the future, or no recorded period before D;
  *   - the field already changes somewhere before D (an earlier change owns that period; correct it instead);
  *   - the version spanning D was created by a recorded movement (splitting it would break that movement's
@@ -29,9 +29,10 @@
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
-import {assignment,compensation,domainEvent,employment,location,payrollBatch,payslip,reportingLine} from '../db/schema';
+import {assignment,compensation,domainEvent,employment,employmentTypeEnum,location,payrollBatch,payslip,reportingLine} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
+import {MOVEMENT_HISTORY_FIELDS} from '../lib/movement-form-contract';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {lockEmploymentStatutoryOwnerTx} from './org';
@@ -41,7 +42,7 @@ export const MOVEMENT_HISTORY_EVENT='employment.history.recorded';
 export const MOVEMENT_HISTORY_REVERTED_EVENT='employment.history.reverted';
 export const MOVEMENT_HISTORY_EDITED_EVENT='employment.history.edited';
 /** The dated placement fields a history movement may set, in display order. */
-export const HISTORY_FIELDS=['companyId','departmentId','positionId','businessUnitId','locationId'] as const;
+export const HISTORY_FIELDS=MOVEMENT_HISTORY_FIELDS;
 export type HistoryField=(typeof HISTORY_FIELDS)[number];
 export type HistoryValues=Partial<Record<HistoryField,string|null>>;
 const isHistoryField=(field:string):field is HistoryField=>(HISTORY_FIELDS as readonly string[]).includes(field);
@@ -49,7 +50,7 @@ const isHistoryField=(field:string):field is HistoryField=>(HISTORY_FIELDS as re
 /** An error that already IS a finite import row code (with an optional `:detail`). */
 export class MovementHistoryError extends Error{constructor(code:string){super(code);this.name='MovementHistoryError';}}
 
-type Version={id:string;validFrom:string;validTo:string|null}&Record<HistoryField,string|null>;
+type Version={id:string;validFrom:string;validTo:string|null}&Record<Exclude<HistoryField,'employmentType'>,string|null>&{employmentType?:string|null};
 const covers=(v:{validFrom:string;validTo:string|null},day:string)=>v.validFrom<=day&&(v.validTo===null||v.validTo>day);
 export function dayBefore(day:string){const d=new Date(day+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-1);return d.toISOString().slice(0,10);}
 const valueAt=(versions:readonly Version[],day:string,field:HistoryField)=>{const v=versions.find(x=>covers(x,day));return v?v[field]??null:undefined;};
@@ -85,9 +86,9 @@ export function classifyHistoryRows(versions:readonly Version[],rows:readonly Hi
  return history;
 }
 
-/** The employee's live versions, oldest first, with the five history fields. */
+/** The employee's live versions, oldest first, with the supported history fields. */
 export async function historyVersionsTx(tx:Tx,employmentId:string):Promise<Version[]>{
- return tx.select({id:assignment.id,validFrom:assignment.validFrom,validTo:assignment.validTo,companyId:assignment.companyId,departmentId:assignment.departmentId,positionId:assignment.positionId,businessUnitId:assignment.businessUnitId,locationId:assignment.locationId})
+ return tx.select({id:assignment.id,validFrom:assignment.validFrom,validTo:assignment.validTo,companyId:assignment.companyId,departmentId:assignment.departmentId,positionId:assignment.positionId,businessUnitId:assignment.businessUnitId,locationId:assignment.locationId,employmentType:assignment.employmentType})
   .from(assignment).where(and(eq(assignment.employmentId,employmentId),isNull(assignment.supersededAt))).orderBy(asc(assignment.validFrom));
 }
 
@@ -115,6 +116,7 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  const fields=Object.keys(p.after);
  if(!fields.length||!fields.every(isHistoryField))throw new MovementHistoryError('movement_history_fields');
  if(!fields.every(f=>f in p.before))throw new MovementHistoryError('movement_history_before_required');
+ if(fields.includes('employmentType')&&(!p.before.employmentType||!(employmentTypeEnum.enumValues as readonly string[]).includes(p.before.employmentType)))throw new MovementHistoryError('movement_history_fields');
  const d=p.effectiveDate;
  if(!isCalendarDate(d)||d>todayInKualaLumpur())throw new MovementHistoryError('movement_history_future');
  const prior=dayBefore(d);

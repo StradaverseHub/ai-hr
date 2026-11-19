@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from '@/components/ui';
-import { personnelWorkflowControl, personnelWorkflowInput } from '@/lib/personnel-form-contract';
+import { personnelFormChoices, personnelFormLabel, personnelWorkflowControl, personnelWorkflowInput } from '@/lib/personnel-form-contract';
 import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
 import { DateField } from '@/components/ui/date-field';
 import type { HistoryValues } from '@/core/movement-history';
@@ -30,6 +30,7 @@ export function HistoryMovementEditForm({
   context: MovementPageContext;
 }) {
   const t = useTranslations('people.detail.movement');
+  const root = useTranslations();
   const [error, action, pending] = useActionState(saveMovementPageAction, null);
   const [companyId, setCompanyId] = useState(before.companyId ?? '');
   const [organisation, setOrganisation] = useState<HistoryValues>(before);
@@ -39,6 +40,8 @@ export function HistoryMovementEditForm({
     ['businessUnitId', t('field.businessUnit'), scope.businessUnits],
     ['positionId', t('field.position'), scope.positions],
     ['locationId', t('hireCorrection.fieldLocation'), scope.locations],
+    ['employmentType', personnelFormLabel(MOVEMENT_FORM_IDS.employmentType,(key,fallback)=>root.has(key)?root(key):fallback),
+      personnelFormChoices(MOVEMENT_FORM_IDS.employmentType).map(choice=>({id:choice.value,name:root(choice.labelKey)}))],
   ] as const;
   return (
     <form action={action} className="space-y-4 p-4" aria-busy={pending}>
@@ -61,7 +64,7 @@ export function HistoryMovementEditForm({
           <select name="history.companyId" className={inputCls} value={companyId}
             onChange={(event) => {
               setCompanyId(event.target.value);
-              setOrganisation({});
+              setOrganisation((existing) => ({ employmentType: existing.employmentType }));
             }}>
             <option value="">{t('form.historyUnchanged')}</option>
             {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
@@ -75,7 +78,7 @@ export function HistoryMovementEditForm({
                 ...current, [field]: event.target.value === '__clear__' ? null : event.target.value,
               }))}>
               <option value="">{t('form.historyUnchanged')}</option>
-              {field !== 'departmentId' && <option value="__clear__">{t('form.none')}</option>}
+              {field !== 'departmentId' && field !== 'employmentType' && <option value="__clear__">{t('form.none')}</option>}
               {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
             </select>
           </Field>

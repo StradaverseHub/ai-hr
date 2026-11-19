@@ -2698,8 +2698,10 @@
           "action": {
             "create": "Create",
             "update": "Update",
-            "delete": "Delete"
+            "delete": "Delete",
+            "history": "Record history"
           },
+          "guideHistory": "Use Record history to enter a historical assignment for any event type. Enter the earlier value in Before and the value that applies on the effective date in After. This action records only the period before that date.",
           "guideAction": "Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.",
           "guideMovementId": "Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.",
           "guideUpdate": "Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.",

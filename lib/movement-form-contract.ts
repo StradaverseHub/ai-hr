@@ -71,3 +71,8 @@ export function movementFormRequired(field:MovementFormField,behaviour:string):b
  const id=behaviour==='termination'&&field==='endDate'?'employment_history.event_information.lastworkingdate':MOVEMENT_FORM_IDS[field];
  return personnelFormRequired(id,'record',{movementEndDate:behaviour==='probationExtension'||behaviour==='termination'});
 }
+
+/** Assignment facts whose owners can safely replace the period before a Movement date. */
+export const MOVEMENT_HISTORY_FIELDS = [
+  'companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId', 'employmentType',
+] as const satisfies readonly MovementFormField[];

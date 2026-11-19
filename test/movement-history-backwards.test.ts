@@ -103,6 +103,19 @@ describe('recording history before a date',()=>{
   expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
  });
 
+ it('records historical employment type on a termination-labelled entry without ending employment',async()=>{
+  const id=await hire('HB-HIST-ONLY'),ctx=adminCtx(b);
+  const result=await recordHistoryMovement(ctx,{employmentId:id,typeCode:'termination',effectiveDate:TRANSFER,
+   before:{employmentType:'part_time'},remarks:'Historical contract context'});
+  expect(result.fields).toEqual(['employmentType']);
+  const assignments=await owner.db.select({type:schema.assignment.employmentType,from:schema.assignment.validFrom})
+   .from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt))).orderBy(asc(schema.assignment.validFrom));
+  expect(assignments).toEqual([{type:'part_time',from:HIRED},{type:'full_time',from:TRANSFER}]);
+  const [employee]=await owner.db.select({terminated:schema.employment.terminatedOn}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.terminated).toBeNull();
+  expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'termination',history:true,effectiveDate:TRANSFER}));
+ });
+
  it('refuses what history cannot mean, with a named reason',async()=>{
   const id=await hire('HB-2');
   await expect(record(id,{effectiveDate:'2099-01-01',after:{companyId:b.companyId},before:{companyId:coB}})).rejects.toThrow('movement_history_future');
@@ -149,6 +162,20 @@ describe('the Movement import',()=>{
   expect(result.imported).toBe(2);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,coC],['2025-12-01',coB],[TRANSFER,b.companyId]]);
  });
+ it('uses explicit history mode for a lifecycle workbook row and never runs the lifecycle action',async()=>{
+  const id=await hire('HB-IMP'),ctx=adminCtx(b);
+  const records:MovementImportRecord[]=[{row:2,employeeCode:'HB-IMP',requestedHistory:true,importVersion:2,
+   cells:{kind:'blacklist',effectiveDate:TRANSFER,employmentType:'full_time'},before:{employmentType:'part_time'},errors:[]}];
+  const preview=await previewMovementImport(ctx,{companyId:b.companyId,csv:'',records});
+  expect(preview.employees[0].rows[0]).toMatchObject({status:'valid',history:{from:HIRED,to:'2026-03-31'}});
+  const result=await commitMovementImport(ctx,{companyId:b.companyId,csv:'',records,selection:preview.selection,
+   inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.map(e=>[e.employeeCode,e.fingerprint!])),acknowledgeExcluded:false});
+  expect(result.imported).toBe(1);
+  const [employee]=await owner.db.select({blacklisted:schema.employment.blacklistedAt}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.blacklisted).toBeNull();
+  expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'blacklist',history:true,effectiveDate:TRANSFER}));
+ });
+
  it('names the correction a company change cannot be placed before (board 4604dccc; no database error)',async()=>{
   const id=await hire('HB-IMP');const ctx=adminCtx(b);
   // A transfer to a third company dated before a correction whose recorded "before" company is the original one.

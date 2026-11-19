@@ -23,7 +23,7 @@ type HistoryEntry={employmentId:string;typeCode:string;effectiveDate:string;befo
 async function applyHistoryEntryTx(tx:Tx,ctx:SessionContext,p:HistoryEntry,correction?:RecordHistoryInput['correction']){
  const fields=Object.keys(p.before);
  if(!fields.length||!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
- if(Object.values(p.before).some(value=>value!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)))throw new MovementHistoryError('movement_history_fields');
+ if(Object.entries(p.before).some(([field,value])=>field!=='employmentType'&&value!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)))throw new MovementHistoryError('movement_history_fields');
  if(!isCalendarDate(p.effectiveDate))throw new MovementHistoryError('movement_history_future');
  const type=await resolveMovementEventTypeTx(tx,ctx.tenantId,p.typeCode);
  if(!type?.active||correction&&type.behaviourKind!=='entityTransfer')throw new MovementHistoryError('movement_history_fields');

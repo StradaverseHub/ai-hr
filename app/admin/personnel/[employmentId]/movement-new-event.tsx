@@ -423,6 +423,9 @@ export function MovementNewEvent({
   // Board 154511c4 — "Record history": HR enters what the employee had BEFORE the effective date; the record on
   // the date stays as it is (core/movement-history-command.ts). New comparison movements only.
   const [historyMode, setHistoryMode] = useState(false);
+  const [historyCompany, setHistoryCompany] = useState('');
+  const historyScope = orgByCompany?.[historyCompany || current.companyId] ?? { departments, positions, businessUnits, locations };
+  const historyOrganisation = useDerivedOrganisation({ companyId: historyCompany || current.companyId, asOf: correctionDate });
 
   /** One comparison row: the field label, the read-only current value, and the editable new value. */
   const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
@@ -511,10 +514,12 @@ export function MovementNewEvent({
 
   // The requested field order, top to bottom (feedback 08913328).
   /** Board 154511c4 — one Before choice of "Record history" (blank = not recorded). */
-  const historySelect = (field: 'companyId' | 'departmentId' | 'positionId' | 'businessUnitId' | 'locationId', options: MovementOption[]) => (
+  const historySelect = (field: 'companyId' | 'departmentId' | 'positionId' | 'businessUnitId' | 'locationId' | 'employmentType', options: MovementOption[]) => (
     <label key={field} className="block space-y-1 text-sm">
       <span className="text-xs font-medium text-muted-foreground">{label(movementField(field))}</span>
-      <select name={`history.${field}`} defaultValue="" className={inputCls}>
+      <select key={field === 'companyId' || field === 'employmentType' ? field : historyCompany}
+        name={`history.${field}`} defaultValue={field === 'companyId' ? historyCompany : ''} className={inputCls}
+        onChange={field === 'companyId' ? (event) => setHistoryCompany(event.target.value) : undefined}>
         <option value="">{t('form.historyUnchanged')}</option>
         {options.map((o) => (
           <option key={o.id} value={o.id}>
@@ -823,6 +828,16 @@ export function MovementNewEvent({
           </label>
         )}
 
+        {!edit && !saved && !posting && (
+          <label className="flex items-start gap-2 text-sm sm:col-span-2">
+            <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode}
+              onChange={(event) => setHistoryMode(event.target.checked)} />
+            <span>{t('form.recordHistory')}
+              {historyMode && <span className="mt-1 block text-xs text-muted-foreground">{t('form.recordHistoryHint')}</span>}
+            </span>
+          </label>
+        )}
+
         {!historyMode && showEndDate && (
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             {/* ae9350f2 — for a Termination this slot IS the Last Working Day, and it is mandatory. Same
@@ -931,22 +946,21 @@ export function MovementNewEvent({
         )}
       </div>
 
-      {!edit && !saved && !posting && (
+      {historyMode && (
         <div className="space-y-3 border-t border-border px-4 py-3">
-          <label className="flex items-start gap-2 text-sm">
-            <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode} onChange={(e) => setHistoryMode(e.target.checked)} />
-            <span>{t('form.recordHistory')}</span>
-          </label>
-          {historyMode && (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {historySelect('companyId', companies?.length ? companies : [{ id: current.companyId, name: current.companyName ?? '' }])}
-              {historySelect('departmentId', departments)}
-              {historySelect('positionId', positions)}
-              {derivedOrganisation.data?.status === 'legacy' && !derivedOrganisation.data.managed ? historySelect('businessUnitId', businessUnits) : null}
-              {historySelect('locationId', locations)}
-              <p className="text-xs text-muted-foreground sm:col-span-2">{t('form.recordHistoryHint')}</p>
-            </div>
-          )}
+          <h3 className="text-sm font-medium">{tRoot('people.detail.employmentInfo.assignmentGroup')}</h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {historySelect('companyId', companies?.length ? companies : [{ id: current.companyId, name: current.companyName ?? '' }])}
+            {historySelect('departmentId', historyScope.departments)}
+            {historySelect('positionId', historyScope.positions)}
+            {historyOrganisation.data?.status === 'legacy' && !historyOrganisation.data.managed
+              ? historySelect('businessUnitId', historyScope.businessUnits) : null}
+            {historySelect('locationId', historyScope.locations)}
+          </div>
+          <h3 className="text-sm font-medium">{tRoot('people.detail.employmentInfo.title')}</h3>
+          {historySelect('employmentType', personnelFormChoices(movementField('employmentType')).map(choice => ({
+            id: choice.value, name: tRoot(choice.labelKey),
+          })))}
         </div>
       )}
 

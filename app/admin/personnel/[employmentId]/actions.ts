@@ -1,4 +1,6 @@
 'use server';
+
+import { MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
 import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
 
 import { editEntityHistoryMovement, recordHistoryMovement } from '@/core/movement-history-command';
@@ -495,11 +497,10 @@ async function parseMovementDocuments(formData: FormData): Promise<MovementDocum
 }
 
 /** Board 154511c4 — the Before values of New Event's "Record history" (blank selections are left out). */
-const HISTORY_FORM_FIELDS = ['companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId'] as const;
 function parseHistoryBefore(formData: FormData, editing = false): Record<string, string | null> | null {
   if (!editing && formData.get('recordHistory') !== '1') return null;
   const before: Record<string, string | null> = {};
-  for (const field of HISTORY_FORM_FIELDS) {
+  for (const field of MOVEMENT_HISTORY_FIELDS) {
     const value = String(formData.get('history.' + field) ?? '').trim();
     if (value) before[field] = value === '__clear__' && ['businessUnitId', 'positionId', 'locationId'].includes(field) ? null : value;
   }
