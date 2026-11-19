@@ -117,7 +117,7 @@ export function createBuildMemoryTimeline(binding,{now=Date.now,sampleLimit=512,
   job:['build','linux-build','production-renderer'].includes(binding.job)?binding.job:null};
  const startedAtMs=now(),history=[],phases=[],issues={},streams={stdout:{decoder:new StringDecoder('utf8'),line:'',dropping:false},stderr:{decoder:new StringDecoder('utf8'),line:'',dropping:false}};
  let totalSamples=0,minSample=null,lastAtMs=null,maxSampleGapMs=0,lastPhase=null;
- const noteFailure=key=>{assert(['host_read','owned_read','diagnostics_read','phase_read','sample_truncated','processes_truncated','phases_truncated','line_truncated','clock_regression'].includes(key));issues[key]=(issues[key]??0)+1;};
+ const noteFailure=key=>{assert(['host_read','owned_read','diagnostics_read','phase_read','output_drain_timeout','sample_truncated','processes_truncated','phases_truncated','line_truncated','clock_regression'].includes(key));issues[key]=(issues[key]??0)+1;};
  function phaseLine(line,channel){
   const clean=line.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g,'');
   const phase=phasePatterns.find(([,pattern])=>pattern.test(clean))?.[0];
