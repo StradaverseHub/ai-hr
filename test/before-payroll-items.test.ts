@@ -10,7 +10,7 @@
  *  - an owner that fails is "could not check", never done; a module not in use is "off";
  *  - the Ask read's disclosure: every returned field declared, no id or link with an id, health-indicative names withheld.
  * No database. */
-import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 
 const fx=vi.hoisted(()=>({approvalSummary:vi.fn(),cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
  own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no',
@@ -123,6 +123,9 @@ import type {SessionContext} from '../db/client';
 
 const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',personId:'00000000-0000-4000-8000-000000000003',roles:['employee']} as SessionContext;
 const TODAY='2026-11-10';
+// The Ask entry point gets today's date from the HR clock, so pin it to the fixture.
+beforeEach(()=>vi.useFakeTimers({toFake:['Date'],now:new Date(TODAY+'T12:00:00+08:00')}));
+afterEach(()=>vi.useRealTimers());
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
 beforeEach(()=>{fx.approvalSummary.mockReset();fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;fx.subjectGate=null;fx.subjectFails=false;});
