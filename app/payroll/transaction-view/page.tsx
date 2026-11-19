@@ -3,6 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { BulkJobAuthorityLost } from '@/core/bulk-job-worker';
 import { BulkJobError, BULK_JOB_ALREADY_RUNNING } from '@/core/bulk-job';
 import { enqueueTransactionExport } from '@/core/payroll-transaction-export';
 import { isCalendarDate } from '@/lib/calendar-date';
@@ -273,25 +274,39 @@ export default async function TransactionViewPage({
   const transactionQuery = tab === 'fixed'
     ? { kind: 'fixed' as const, filters: fixedFilters, asOf: today }
     : { kind: 'individual' as const, filters: individualFilters };
+  const workbookTab = tab === 'fixed' ? 'fixed' : 'individual';
+  const workbooksHref = `/payroll/transaction-view/workbooks?tab=${workbookTab}`;
   async function startWorkbookExport() {
     'use server';
     const { s: actor, scopeIds: allowed } = await scopedAdmin();
     if (!transactionQuery.filters.companyIds.length ||
         transactionQuery.filters.companyIds.some((id) => !allowed.includes(id))) {
-      redirect('/payroll/transaction-view/workbooks?unavailable=1');
+      redirect(`${workbooksHref}&unavailable=1`);
     }
     let jobId: string;
     try {
       const { row } = await enqueueTransactionExport(actor, transactionQuery);
       jobId = row.id;
     } catch (error) {
+      if (error instanceof BulkJobAuthorityLost) redirect(`${workbooksHref}&unavailable=1`);
       if (error instanceof BulkJobError && error.message === BULK_JOB_ALREADY_RUNNING) {
-        redirect('/payroll/transaction-view/workbooks');
+        redirect(workbooksHref);
       }
       throw error;
     }
-    redirect(`/payroll/transaction-view/workbooks?job=${jobId}`);
+    redirect(`${workbooksHref}&job=${jobId}`);
   }
+
+  const workbookControls = companyIds.length > 0 ? (
+    <>
+      <Button asChild variant="ghost" size="sm">
+        <Link href={workbooksHref}>{t('view.workbooks.title')}</Link>
+      </Button>
+      <form action={startWorkbookExport}>
+        <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
+      </form>
+    </>
+  ) : null;
 
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
   const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
@@ -826,11 +841,7 @@ export default async function TransactionViewPage({
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
                 <SectionHeader title={t('view.tabs.fixed')} count={fixedPage.total} />
-                {companyIds.length > 0 && (
-                  <form action={startWorkbookExport}>
-                    <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
-                  </form>
-                )}
+                <div className="flex flex-wrap items-center gap-2">{workbookControls}</div>
               </div>
               <Pager basePath="/payroll/transaction-view" params={inquiryParams} state={pageState(inquiryQuery,fixedPage.total,fixedRows.length)}/>
               <div className="overflow-x-auto">
@@ -899,12 +910,8 @@ export default async function TransactionViewPage({
             <Card className="overflow-hidden">
               <div className="flex items-center justify-between gap-3 pr-4">
                 <SectionHeader title={t('view.tabs.individual')} count={individualPage.total} />
-                <div className="flex items-center gap-2">
-                {companyIds.length > 0 && (
-                  <form action={startWorkbookExport}>
-                    <Button type="submit" variant="outline" size="sm">{t('view.workbooks.export')}</Button>
-                  </form>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {workbookControls}
                 {/* CSV export honouring the current (scope-guarded) filters — opens in Excel. */}
                 <ExportDownloadLink
                   href={`/payroll/transaction-view/export?${new URLSearchParams({
