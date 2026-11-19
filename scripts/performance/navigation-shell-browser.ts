@@ -10,7 +10,7 @@ async function visible(locator:Locator){
  for(let i=0;i<count;i++){const item=locator.nth(i);if(await item.isVisible())result.push(item);}
  return result;
 }
-async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden',beforeDestinationClick?:()=>void){
+async function traverseNativeShellDestination(page:Page,href:string,remaining:()=>number,mode:'click'|'hidden',beforeDestinationClick?:()=>void|Promise<void>){
  assert(staticShellHref(href),'Only reviewed static shell destinations are supported');
  const sidebar=page.locator('aside[data-app-sidebar]');
  await sidebar.waitFor({state:'visible',timeout:remaining()});
@@ -58,7 +58,7 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
    if(mode==='hidden')assert(links.length===0,'Denied destination became visible in the native shell');
    if(mode==='click'&&links.length){
     assert(await links[0].getAttribute('href')===href&&await links[0].isEnabled(),'Native shell destination changed or is unavailable');
-    beforeDestinationClick?.();
+    await beforeDestinationClick?.();
     await links[0].click({timeout:remaining()});return;
    }
    const available=await visible(page.locator(controls));let next:Locator|undefined,id='';
@@ -79,7 +79,7 @@ async function traverseNativeShellDestination(page:Page,href:string,remaining:()
  if(mode==='hidden')await assertHidden('Denied destination appeared before native shell observation completed');
  if(mode==='click')throw Error('Reviewed destination is absent from the actual native shell');
 }
-export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number,beforeDestinationClick?:()=>void){
+export async function clickNativeShellDestination(page:Page,href:string,remaining:()=>number,beforeDestinationClick?:()=>void|Promise<void>){
  await traverseNativeShellDestination(page,href,remaining,'click',beforeDestinationClick);
 }
 /** Absence is observed through the real disclosures, then the collector separately

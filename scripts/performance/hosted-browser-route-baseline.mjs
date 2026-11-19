@@ -414,13 +414,25 @@ async function measureShellLinks(fixture){
    const row={journey:'shell-navigation',role:actor.role,route:path,status:'incomplete'};
    report.journeys.push(row);
    let clickStart,documentRequests=0;
-   const observe=request=>{if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;};
+   const beforeClick={routeRequests:0,destinationRequests:0};
+   const observe=request=>{
+    if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;
+    if(clickStart!==undefined||request.method()!=='GET')return;
+    const url=new URL(request.url());
+    if(url.origin!==origin||url.pathname.startsWith('/api/')||
+     !(url.searchParams.has('_rsc')||request.headers().rsc==='1'))return;
+    beforeClick.routeRequests++;
+    if(url.pathname===path)beforeClick.destinationRequests++;
+   };
    try{
     await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000});
     page.on('request',observe);
     const deadline=performance.now()+30000;
     const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
-    await clickNativeShellDestination(page,path,remaining,()=>{
+    await clickNativeShellDestination(page,path,remaining,async ()=>{
+     // The flyout is visible but the user has not selected any link. Give browser
+     // scheduling and intent dwell time to emit speculative route requests.
+     await pause(250);
      clickStart=performance.now();
      documentRequests=0;
     });
@@ -432,7 +444,7 @@ async function measureShellLinks(fixture){
     row.elapsedMs=performance.now()-clickStart;
     row.status='observed';
    }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
-   finally{page.off('request',observe);row.documentRequests=documentRequests;save();}
+   finally{page.off('request',observe);row.documentRequests=documentRequests;row.beforeClick=beforeClick;save();}
   }
  }finally{await context.close();}
 }
