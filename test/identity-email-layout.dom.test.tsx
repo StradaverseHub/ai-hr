@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleRead:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -27,7 +27,7 @@ vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSumm
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
-vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>{await m.lifecycleRead();return {count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]};}}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
 // this no-database shell test sent it to the closed CI port, and postgres.js's shared reconnect backoff made each
 // later Layout call wait longer, up to the 5 s timeout (run 41626195537). The owner's rule has its own DB tests.
@@ -48,7 +48,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleRead.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -193,6 +193,30 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
  expect(propsOf(bell,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
  expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([]);
+});
+
+it('returns the interactive shell while the passive Lifecycle inbox is still pending',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+ m.operator.mockResolvedValue(false);
+ m.lifecycleCount=7;
+ let finish!:()=>void;
+ const held=new Promise<void>(resolve=>{finish=resolve;});
+ let workload:ReturnType<typeof currentDatabaseWorkload>|undefined;
+ m.lifecycleRead.mockImplementation(()=>{
+  workload=currentDatabaseWorkload();
+  return held;
+ });
+ let returned=false;
+ const layout=Layout({children:<main>Available before Lifecycle inbox</main>}).then(tree=>{returned=true;return tree;});
+ try{
+  await vi.waitFor(()=>expect(m.lifecycleRead).toHaveBeenCalledOnce());
+  await vi.waitFor(()=>expect(returned).toBe(true));
+  expect(workload).toBe('background');
+ }finally{finish();await layout;}
+ const tree=await layout;
+ expect(sidebarProps(tree)).toBeDefined();
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',lifecycleTaskCount:7});
+ expect(propsOf(await bellElement(tree),NotificationCenter)?.taskCount).toBe(7);
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
