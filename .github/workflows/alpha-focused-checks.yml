@@ -121,8 +121,8 @@ jobs:
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
-    environment: ${{ inputs.model_eval != '' && 'assistant-eval' || '' }}
-    timeout-minutes: ${{ inputs.model_eval != '' && 45 || 20 }}
+    environment: ${{ !inputs.browser_route_baseline && inputs.model_eval != '' && 'assistant-eval' || '' }}
+    timeout-minutes: ${{ inputs.browser_route_baseline && 50 || inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
         working-directory: source
@@ -132,7 +132,7 @@ jobs:
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
-      AIHR_EVAL_OPENROUTER_KEY: ${{ inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ !inputs.browser_route_baseline && inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
       AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
@@ -149,28 +149,44 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
-        with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
+        with:
+          capacity_profile: ${{ !inputs.browser_route_baseline && github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}
+          mobile: ${{ !inputs.browser_route_baseline }}
       - name: Provision multilingual fonts for AI review screenshots
         if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx') || contains(inputs.selected_tests, 'test/system-label-exchange-browser.test.ts') }}
         run: node ../automation/.github/ci/fixed-noto-bootstrap.mjs "$RUNNER_TEMP/aihr-focused/noto-font-setup.json"
       - name: Classify and execute only selected files
+        if: ${{ !inputs.browser_route_baseline }}
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
           AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-focused
       - name: Summarize opt-in harness phase timings
-        if: ${{ always() && inputs.profile_database }}
+        if: ${{ always() && !inputs.browser_route_baseline && inputs.profile_database }}
         run: node scripts/report-test-profile.mjs "$RUNNER_TEMP/aihr-focused/harness-profile" "$RUNNER_TEMP/aihr-focused/profile-summary.json"
       - name: Ensure owned database cleanup after interrupted checks
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop
         env:
           AIHR_CI_UNIT: db-1
-      - if: always()
+      - if: ${{ always() && !inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: focused-development-evidence
           path: ${{ runner.temp }}/aihr-focused/
           if-no-files-found: error
+          retention-days: 14
+      - run: pnpm exec playwright install --with-deps chromium
+        if: ${{ inputs.browser_route_baseline }}
+      - name: Measure the fictional production build in Chromium
+        if: ${{ inputs.browser_route_baseline }}
+        run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
+      - name: Retain route timings without fixture sessions or raw logs
+        if: ${{ always() && inputs.browser_route_baseline }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-route-baseline
+          path: ${{ runner.temp }}/browser-route-baseline.json
+          if-no-files-found: warn
           retention-days: 14
   typecheck:
     if: ${{ inputs.run_typecheck }}
@@ -195,10 +211,10 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || inputs.browser_route_baseline }}
+    if: ${{ inputs.run_build }}
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.browser_route_baseline && 50 || 30 }}
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: source
@@ -215,8 +231,7 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with:
-          node: ${{ inputs.browser_route_baseline && '22.23.3' || '20' }}
-          mobile: ${{ !inputs.browser_route_baseline }}
+          node: '20'
       # Bounded next build heap: exactly 8192 MB, only this step, only on a GitHub-hosted 16 GB Linux
       # runner (build-heap.mjs refuses anything else and any value above 8192). Raising the ceiling needs
       # owner review: docs/reviews/build-capacity-8192-proposal.md. Rollback: revert restores 6144.
@@ -226,7 +241,6 @@ jobs:
         env:
           AIHR_CI_BUILD_HEAP_MB: '8192'
       - name: Production build with peak memory telemetry
-        if: ${{ !inputs.browser_route_baseline }}
         run: node ../automation/.github/ci/build-heap.mjs measure "$RUNNER_TEMP/next-build-memory" -- pnpm build
         env:
           AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
@@ -234,32 +248,13 @@ jobs:
           AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
           AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Publish next build memory telemetry
-        if: ${{ always() && !inputs.browser_route_baseline && steps.build-heap.outcome == 'success' }}
+        if: ${{ always() && steps.build-heap.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: next-build-memory
           path: ${{ runner.temp }}/next-build-memory/
           if-no-files-found: warn
           retention-days: 14
-
-      - run: pnpm exec playwright install --with-deps chromium
-        if: ${{ inputs.browser_route_baseline }}
-      - name: Measure the fictional production build in Chromium
-        if: ${{ inputs.browser_route_baseline }}
-        run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
-        env:
-          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
-          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
-      - name: Retain route timings without fixture sessions or raw logs
-        if: ${{ always() && inputs.browser_route_baseline }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: browser-route-baseline
-          path: ${{ runner.temp }}/browser-route-baseline.json
-          if-no-files-found: warn
-          retention-days: 14
-
   native-typecheck:
     if: ${{ inputs.run_native_typecheck }}
     needs: resolve

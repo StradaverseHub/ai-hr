@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
-import {closeSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {closeSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
@@ -22,7 +22,8 @@ const appPort=3174;
 const env=process.env;
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
-assert(env.GITHUB_JOB==='linux-build'&&process.platform==='linux');
+assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
+assert(!env.AIHR_EVAL_MODEL&&!env.AIHR_EVAL_OPENROUTER_KEY,'Browser fixtures cannot run provider evaluation');
 assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'External auth configuration refused');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
@@ -30,6 +31,8 @@ assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??'
 assert.equal(git('status','--porcelain'),'');
 
 const privateDir=mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
+const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
+mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,controllerSha:env.AIHR_CI_CONTROL_HEAD,
  releaseEligible:false,fixture:{tenants:2,companies:10,users:500},phases:[],observations:[],journeys:[]};
@@ -39,11 +42,11 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
  AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'workflow-preflight',PERF_ATTENDANCE_DAYS:'180',
- PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:privateDir,AIHR_FOCUSED_EVIDENCE_DIR:privateDir,
+ PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:privateDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
- TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
- TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',NEXT_TELEMETRY_DISABLED:'1'};
+ TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
+ TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
 const buildEnv={...dbEnv,NODE_ENV:'production',NODE_OPTIONS:admittedBuildNodeOptions(env)};
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]=env[key];
 const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
@@ -54,11 +57,13 @@ function start(label,command,args,childEnv) {
  finally{closeSync(fd);}
 }
 async function run(label,command,args,childEnv,limit=180000) {
+ console.info('Browser fixture phase started',label);
  const started=performance.now(),child=start(label,command,args,childEnv);
  const timer=setTimeout(()=>child.kill('SIGKILL'),limit);
  try{
   const [code,signal]=await once(child,'close');
   report.phases.push({label,code,signal,elapsedMs:Math.round(performance.now()-started)});
+  console.info('Browser fixture phase finished',label,code,signal??'');
   save();
   assert(code===0&&signal===null,`${label} failed`);
  }finally{clearTimeout(timer);}
@@ -253,7 +258,8 @@ try{
  await step('verify-organisation-admission','scripts/provision-organisation-admission.ts');
  await step('seed-catalogues','scripts/seed-catalogs.ts');
  await run('seed-system-fixture',process.execPath,['--conditions=react-server','--import','tsx',
-  'scripts/performance/system-fixture.mjs'],dbEnv,600000);
+  'scripts/performance/system-fixture.mjs'],{...dbEnv,
+   TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  assert(fixture.users.length===500&&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
