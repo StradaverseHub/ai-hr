@@ -111,16 +111,38 @@ async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 
     ok: boolean;
 }>(tx, sql `select exists(select 1 from company where id=${companyId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.access_workforce_company(id,${'workforce.'+operation})) as ok`); if (!r?.ok)
     throw new JobDocumentError('Job record not available'); }
+type JobListFilters = Pick<Masters, 'companies' | 'businessUnit' | 'department' | 'grade' | 'family'>;
+
+async function readJobFilterOptions(tx: Tx, ctx: SessionContext): Promise<{ filters: JobListFilters; positions: Masters['position'] }> {
+    const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
+    if (!companies.length) return { filters: { companies, businessUnit: [], department: [], grade: [], family: [] }, positions: [] };
+    const ids = companies.map(v => v.value);
+    const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
+    const departments = await tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description, businessUnitId: department.businessUnitId, companyIds: labelCompanyIdsSql(department, 'department'), isGlobal: department.isGlobal }).from(department).where(and(eq(department.tenantId, ctx.tenantId), isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name), asc(department.id));
+    const positions = await tx.select({ id: position.id, title: position.title, code: position.title, label: position.label, description: position.description, family: position.jobFamily, companyIds: labelCompanyIdsSql(position, 'position'), isGlobal: position.isGlobal }).from(position).where(and(eq(position.tenantId, ctx.tenantId), isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', ids))).orderBy(asc(position.title), asc(position.id));
+    const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
+    const map = (options: readonly ((typeof bus)[number] | (typeof departments)[number] | (typeof positions)[number])[]) =>
+        organisationChoiceLabels(options).map(option => ({ ...option, value: option.id, label: option.displayLabel }));
+    const families = [...new Set(positions.map(option => option.family).filter((value): value is string => !!value))].sort();
+    return {
+        filters: {
+            companies, businessUnit: map(bus), department: map(departments),
+            grade: organisationChoiceLabels(grades).map(option => ({ value: option.id, label: option.displayLabel })),
+            family: families.map(value => ({ value, label: value })),
+        },
+        positions: map(positions),
+    };
+}
+
+/** The list needs organisation filters. Reviewer eligibility belongs to the document editor. */
+export async function getJobListFilters(ctx: SessionContext): Promise<JobListFilters> {
+    return jobPresentation(ctx, async (tx, scoped) => (await readJobFilterOptions(tx, scoped)).filters);
+}
+
 export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
-    actor(ctx);
-    return jobPresentation(ctx, async (tx,ctx) => {
-        const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
-        if(!companies.length)return{companies:[],businessUnit:[],department:[],position:[],grade:[],location:[],section:[],team:[],family:[],employmentType:[],people:[]};
-        const ids = companies.map(v => v.value);
-        const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
-        const departments = await tx.select({ id: department.id, name: department.name, code: department.name, label: department.label, description: department.description, businessUnitId: department.businessUnitId, companyIds: labelCompanyIdsSql(department, 'department'), isGlobal: department.isGlobal }).from(department).where(and(eq(department.tenantId, ctx.tenantId), isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name), asc(department.id));
-        const positions = await tx.select({ id: position.id, title: position.title, code: position.title, label: position.label, description: position.description, family: position.jobFamily, companyIds: labelCompanyIdsSql(position, 'position'), isGlobal: position.isGlobal }).from(position).where(and(eq(position.tenantId, ctx.tenantId), isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', ids))).orderBy(asc(position.title), asc(position.id));
-        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name, code: jobGrade.code }).from(jobGrade).where(and(eq(jobGrade.tenantId, ctx.tenantId), isNull(jobGrade.archivedAt))).orderBy(asc(jobGrade.rank), asc(jobGrade.id));
+    return jobPresentation(ctx, async (tx, ctx) => {
+        const { filters, positions } = await readJobFilterOptions(tx, ctx);
+        if (!filters.companies.length) return { ...filters, position: [], location: [], section: [], team: [], employmentType: [], people: [] };
         const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.access_workforce_company(${location.companyId},'workforce.view')`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
         const people = await rows<{value:string;label:string;companyIds:string[];isGlobal:boolean}>(tx,sql`
@@ -130,9 +152,14 @@ export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
           where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
            and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id))
           order by label,u.id`);
-
-        const map = (rs: readonly ((typeof bus)[number] | (typeof departments)[number] | (typeof positions)[number])[]) => organisationChoiceLabels(rs).map(v => ({ ...v, value: v.id, label: v.displayLabel }));
-        return { companies, businessUnit: map(bus), department: map(departments), position: map(positions), grade: organisationChoiceLabels(grades).map(v => ({ value: v.id, label: v.displayLabel })), location: locations.map(v => ({ value: v.id, label: v.name, companyIds: [v.companyId] })), section: organisationChoiceLabels(profiles.filter(v => v.category === 'section')).map(v => ({ value: v.value, label: v.displayLabel })), team: organisationChoiceLabels(profiles.filter(v => v.category === 'team')).map(v => ({ value: v.value, label: v.displayLabel })), family: [...new Set(positions.map(v => v.family).filter((v): v is string => !!v))].sort().map(v => ({ value: v, label: v })), employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(v => ({ value: v, label: v.replaceAll('_', ' ') })), people: people.map(v => ({ ...v, companyIds: v.companyIds ?? [] })) };
+        return {
+            ...filters, position: positions,
+            location: locations.map(option => ({ value: option.id, label: option.name, companyIds: [option.companyId] })),
+            section: organisationChoiceLabels(profiles.filter(option => option.category === 'section')).map(option => ({ value: option.value, label: option.displayLabel })),
+            team: organisationChoiceLabels(profiles.filter(option => option.category === 'team')).map(option => ({ value: option.value, label: option.displayLabel })),
+            employmentType: ['full_time', 'part_time', 'contract', 'intern'].map(value => ({ value, label: value.replaceAll('_', ' ') })),
+            people: people.map(option => ({ ...option, companyIds: option.companyIds ?? [] })),
+        };
     });
 }
 async function definitionTx(tx: Tx, ctx: SessionContext, companyId: string): Promise<FormDefinition> { const [r] = await rows<{
