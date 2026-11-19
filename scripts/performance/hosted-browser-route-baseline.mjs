@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
-import {closeSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
@@ -49,6 +49,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
 const buildEnv={...dbEnv,NODE_ENV:'production',NODE_OPTIONS:admittedBuildNodeOptions(env)};
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]=env[key];
+const buildMemoryDir=join(privateDir,'next-build-memory');
 const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
 
 function start(label,command,args,childEnv) {
@@ -248,8 +249,17 @@ async function measureActions(fixture){
 
 save();
 try{
- await run('production-build',process.execPath,['../automation/.github/ci/build-heap.mjs','measure',
-  join(privateDir,'next-build-memory'),'--','pnpm','build'],buildEnv,900000);
+ try{
+  await run('production-build',process.execPath,['../automation/.github/ci/build-heap.mjs','measure',
+   buildMemoryDir,'--','pnpm','build'],buildEnv,900000);
+ }finally{
+  const telemetry=join(buildMemoryDir,'build-memory.json');
+  if(existsSync(telemetry)){
+   const {exitCode,signal,heapProfile,peakRssKiB,minMemAvailableKiB,verdict}=JSON.parse(readFileSync(telemetry,'utf8'));
+   report.buildMemory={exitCode,signal,heapProfile,peakRssKiB,minMemAvailableKiB,verdict};
+   save();
+  }
+ }
  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
  assert(report.buildId,'Missing measured application build');
  databaseStarted=true;

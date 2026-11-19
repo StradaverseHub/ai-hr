@@ -150,6 +150,7 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with:
+          node: ${{ inputs.browser_route_baseline && '20' || '22.23.3' }}
           capacity_profile: ${{ !inputs.browser_route_baseline && github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}
           mobile: ${{ !inputs.browser_route_baseline }}
       - name: Provision multilingual fonts for AI review screenshots
@@ -177,9 +178,18 @@ jobs:
           retention-days: 14
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline }}
+      - name: Admit bounded next build heap for the browser fixture
+        if: ${{ inputs.browser_route_baseline }}
+        id: browser-build-heap
+        run: node ../automation/.github/ci/build-heap.mjs admit
+        env:
+          AIHR_CI_BUILD_HEAP_MB: '8192'
       - name: Measure the fictional production build in Chromium
         if: ${{ inputs.browser_route_baseline }}
         run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
+        env:
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.browser-build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.browser-build-heap.outputs.memtotal_kib }}
       - name: Retain route timings without fixture sessions or raw logs
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
