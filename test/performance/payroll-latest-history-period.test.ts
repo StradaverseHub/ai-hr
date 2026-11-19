@@ -1,12 +1,11 @@
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
 import {withPayrollTenant} from '../../core/module-gate';
 import {latestProcessedPayslipPeriod} from '../../core/payroll-view';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
-import type {SessionContext} from '../../db/client';
+import type {SessionContext,Tx} from '../../db/client';
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -112,6 +111,26 @@ async function seedRetainedHistory(tenant:string,actor:string) {
     where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
 }
 
+type RetainedDocuments=Awaited<ReturnType<typeof informationPayslipDocuments>>;
+async function legacyRetainedDocuments(tx:Tx,filters:{
+  companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;
+},limit:number):Promise<RetainedDocuments> {
+  const companies=[...new Set(filters.companyIds)];
+  const documents:RetainedDocuments=[];
+  for(let offset=0;offset<companies.length;offset+=100) {
+    const companyList=sql`ARRAY[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+    const rows=await tx.execute<{document:RetainedDocuments[number]}>(sql`
+      select d.document from app.information_payslip_documents(
+        ${companyList}, ${filters.year??null}::integer, ${filters.month??null}::integer,
+        ${filters.cycle??null}::text, ${filters.employmentId??null}::uuid, true
+      ) with ordinality as d(document, ordinal)
+      order by d.ordinal limit ${limit}
+    `);
+    documents.push(...rows.map(row=>row.document));
+  }
+  return documents;
+}
+
 async function revertEarlyRetainedDocument(tenant:string,actor:string,baseCompany:string) {
   return owner.client.begin(async tx=>{
     await tx`set local session_replication_role = replica`;
@@ -161,7 +180,7 @@ it('selects the latest visible retained period before building document payloads
     console.info('PAYROLL_RETAINED_PERIOD_STARTED',label);
     const outcome=await withPayrollTenant(ctx,async tx=>{
       const start=performance.now();
-      const docs=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit:1});
+      const docs=await legacyRetainedDocuments(tx,filters,1);
       const baseline=docs.map(doc=>informationDocumentRow(doc).payPeriod).sort().at(-1)??null;
       const baselineMs=Math.round(performance.now()-start),candidateStart=performance.now();
       const candidate=await latestInformationPayslipPeriod(tx,filters);
@@ -178,47 +197,31 @@ it('bounds retained document projection to the requested page with identical ord
   const {base,tenant,cases}=await seedHistory();
   await seedRetainedHistory(tenant,base.adminUserId);
   const revertedId=await revertEarlyRetainedDocument(tenant,base.adminUserId,base.companyId);
-  const fixture=readFileSync(new URL('./fixtures/bounded-retained-payroll-documents.sql',import.meta.url),'utf8');
-  await owner.client.begin(async tx=>{
-    for(const statement of fixture.split('--> statement-breakpoint')) {
-      await tx.unsafe(statement);
-    }
-  });
+  expect(await owner.client`select to_regprocedure('app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)') is not null as installed`)
+    .toEqual([{installed:true}]);
 
   const expectedCounts:Record<string,number>={
     'group-all':201,'group-single':20,'single-employment':1,'company-hr':5,
     'payroll-partner':20,'employee-outside-scope':0,
   };
   const evidence=[];
-  try {
-    for(const {label,ctx,scope,employmentId} of cases) {
-      const limit=label==='company-hr'?5:201;
-      const cycle=label==='group-single'?'regular':null;
-      const filters={companyIds:scope,employmentId,year:2026,month:3,cycle:cycle??undefined};
-      const companyList=sql`ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
-      const outcome=await withPayrollTenant(ctx,async tx=>{
-        const baselineStarted=performance.now();
-        const rows=await tx.execute<{document:unknown}>(sql`
-          select d.document from app.information_payslip_documents(
-            ${companyList}, ${filters.year}::integer, ${filters.month}::integer,
-            ${cycle}::text, ${employmentId??null}::uuid, true
-          ) with ordinality as d(document, ordinal)
-          order by d.ordinal limit ${limit}
-        `);
-        const baseline=rows.map(row=>row.document);
-        const baselineMs=Math.round(performance.now()-baselineStarted);
-        const candidateStarted=performance.now();
-        const candidate=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit});
-        return {baseline,candidate,baselineMs,
-          candidateMs:Math.round(performance.now()-candidateStarted)};
-      });
-      expect(outcome.baseline,label).toHaveLength(expectedCounts[label]);
-      expect(outcome.candidate,label).toEqual(outcome.baseline);
-      expect(outcome.candidate.map(document=>informationDocumentRow(document).id),label).not.toContain(revertedId);
-      evidence.push({label,rows:outcome.candidate.length,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
-    }
-  } finally {
-    await owner.client`drop function app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)`;
+  for(const {label,ctx,scope,employmentId} of cases) {
+    const limit=label==='company-hr'?5:201;
+    const cycle=label==='group-single'?'regular':undefined;
+    const filters={companyIds:scope,employmentId,year:2026,month:3,cycle};
+    const outcome=await withPayrollTenant(ctx,async tx=>{
+      const baselineStarted=performance.now();
+      const baseline=await legacyRetainedDocuments(tx,filters,limit);
+      const baselineMs=Math.round(performance.now()-baselineStarted);
+      const candidateStarted=performance.now();
+      const candidate=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit});
+      return {baseline,candidate,baselineMs,
+        candidateMs:Math.round(performance.now()-candidateStarted)};
+    });
+    expect(outcome.baseline,label).toHaveLength(expectedCounts[label]);
+    expect(outcome.candidate,label).toEqual(outcome.baseline);
+    expect(outcome.candidate.map(document=>informationDocumentRow(document).id),label).not.toContain(revertedId);
+    evidence.push({label,rows:outcome.candidate.length,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
   }
   console.info(JSON.stringify({kind:'PAYROLL_RETAINED_DOCUMENT_PAGE_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },360_000);

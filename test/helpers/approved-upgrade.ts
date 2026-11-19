@@ -465,6 +465,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10390,when:1795028006990,tag:'6990_individual_import_template_version'},
  {idx:10400,when:1795028007000,tag:'7000_movement_history_pay_evidence'},
  {idx:10420,when:1795028007020,tag:'7020_payroll_retained_period_scalar'},
+ {idx:10430,when:1795028007030,tag:'7030_payroll_retained_document_page'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -473,6 +474,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
  '7000_movement_history_pay_evidence':'4156a103b335c9078dfc4840ffd1dd5db644a53f7c14d82e5fcd3c1f74abda2c',
  '7020_payroll_retained_period_scalar':'b7e1507f89e7228a003e9ab894b76b1e866b9ceae1e2e325ad1a71924df7ec9f',
+ '7030_payroll_retained_document_page':'7ba058a8a7467086d3fc00a828aa581369b664979733f0532addad53a3773164',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
  '6501_contract_company_scope_retention':'3790725363457523357f24369be874a54440bb14d63c1ba1abeed30666a3bdfd',
  '6442_contract_probation_business_partner_owner':'056eb347fbd5aef43d86ff55b8968d1ab4144436c3ac5baa7e8d21efaaf37c99',

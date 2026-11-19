@@ -402,17 +402,25 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});
   expect(await ledger(restricted)).toEqual(expectedLedger);
 
-  // Verify the scalar reader installed by the journal with the literal owner's role topology.
-  const [retainedPeriodGrant]=await observer<{
-   owner:string;definer:boolean;appCanExecute:boolean;publicCanExecute:boolean;
-  }[]>`select pg_get_userbyid(p.proowner)::text as owner,p.prosecdef as definer,
+  // Check both retained-history readers under the installation's restricted migration owner.
+  const retainedReaderGrants=await observer<{
+   routine:string;owner:string;definer:boolean;appCanExecute:boolean;publicCanExecute:boolean;
+  }[]>`select p.proname::text as routine,pg_get_userbyid(p.proowner)::text as owner,p.prosecdef as definer,
    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
    exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicCanExecute"
-   from pg_proc p where p.oid='app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)'::regprocedure`;
-  expect(retainedPeriodGrant).toEqual({owner:OWNER,definer:true,appCanExecute:true,publicCanExecute:false});
+   from pg_proc p where p.oid in(
+    'app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)'::regprocedure,
+    'app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)'::regprocedure
+   ) order by p.proname`;
+  expect(retainedReaderGrants).toEqual([
+   {routine:'information_latest_retained_payslip_period',owner:OWNER,definer:true,appCanExecute:true,publicCanExecute:false},
+   {routine:'information_retained_payslip_documents_page',owner:OWNER,definer:true,appCanExecute:true,publicCanExecute:false},
+  ]);
   const app=connect(at(names.restricted,'ai_hr_app'));
   expect(await app`select app.information_latest_retained_payslip_period(array[]::uuid[],null,null,null,null) as period`)
    .toEqual([{period:null}]);
+  expect(await app`select * from app.information_retained_payslip_documents_page(array[]::uuid[],null,null,null,null,201)`)
+   .toEqual([]);
   await close(app);
  }finally{
   for(const sql of [...open])await sql.end({timeout:5});

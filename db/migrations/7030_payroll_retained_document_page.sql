@@ -1,4 +1,5 @@
--- Disposable performance proof for the ordered, capped retained-document path.
+-- Keep the existing retained history visibility rules and document order.
+-- Build display documents only after the requested visible page has been selected.
 CREATE FUNCTION app.information_retained_payslip_documents_page(
  p_companies uuid[], p_year integer, p_month integer, p_cycle text, p_employment uuid, p_limit integer
 ) RETURNS SETOF jsonb

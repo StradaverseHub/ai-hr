@@ -1,3 +1,16 @@
+# Payroll retained document page — 20 November 2026 (provisional development allocation)
+
+Reserve `7030_payroll_retained_document_page`, idx `10430`, when `1795028007030`.
+The SQL SHA-256 is `7ba058a8a7467086d3fc00a828aa581369b664979733f0532addad53a3773164`.
+The existing visibility predicates and document order determine the page. The query assembles
+document payloads after selecting the requested visible rows. The full document reader retains
+its original contract.
+
+The follow-up source survey covered 5,018 distinct ref heads, 788 journal blobs, 525 allocation
+blobs and 621 readable worktree journals out of 629. It found existing claims for 7010 and 7020.
+Keep that order. Confirm both installed ledgers and current peer reservations before release admission.
+This allocation is for isolated development verification.
+
 # Payroll retained period read — 20 November 2026 (provisional development allocation)
 
 Reserve `7020_payroll_retained_period_scalar`, idx `10420`, when `1795028007020`.

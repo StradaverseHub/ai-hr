@@ -1302,6 +1302,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
    {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
    {fn:'app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)',app:true},
+   {fn:'app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.
@@ -1374,6 +1375,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Literal new routine security metadata; never infer expected privileges from the final function.
   const maintenanceRoutineSecurity=[
    {"fn":"app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
+   {"fn":"app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_document_shared_routing_row(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_offboarding_document_routings(uuid,integer,text[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    // Reviewed protocol-specific metadata; aliases preserve the canonical source owner.
