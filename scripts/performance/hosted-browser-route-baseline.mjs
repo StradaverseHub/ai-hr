@@ -141,10 +141,11 @@ async function signedInContext(actor){
   return context;
  }catch(error){await context.close();throw error;}
 }
-async function readyContent(page,actor,path,timeout) {
+async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
  const main=page.locator('main:visible').first();
  await main.getByRole('heading',{level:1}).first().waitFor({state:'visible',timeout:timeout()});
  await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
+ onHeading();
  if(path===payrollHistoryPath){
   await main.locator('tbody button[data-table-disclosure]:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
@@ -188,13 +189,26 @@ async function visit(page,actor,route,pass) {
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  try{
   const response=await page.goto(origin+route.requested,{waitUntil:'domcontentloaded',timeout:timeout()});
-  assert(response?.status()===200&&page.url()===origin+route.final,'Unexpected rendered route');
-  observation.readiness=await readyContent(page,actor,route.requested,timeout);
+  observation.httpStatus=response?.status()??null;
+  observation.destination=page.url()===origin+route.final?'expected':
+   new URL(page.url()).pathname==='/login'?'sign-in':'other-route';
+  assert(observation.httpStatus===200&&observation.destination==='expected','Unexpected rendered route');
+  observation.readiness=await readyContent(page,actor,route.requested,timeout,()=>{
+   observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
+  });
   await assertContentAvailable(page);
   observation.status='observed';
  }catch(error){observation.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
  finally{
   observation.elapsedMs=Math.round(performance.now()-started);
+  if(observation.destination==='expected'){
+   observation.documentTiming=await page.evaluate(()=>{
+    const [entry]=performance.getEntriesByType('navigation');
+    if(!entry||entry.responseStart<=0)return null;
+    return {firstByteMs:Math.round(entry.responseStart),domContentLoadedMs:Math.round(entry.domContentLoadedEventEnd),
+     transferBytes:entry.transferSize};
+   }).catch(()=>null);
+  }
   report.observations.push(observation);save();
  }
 }
