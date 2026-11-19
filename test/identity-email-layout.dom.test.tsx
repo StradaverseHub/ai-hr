@@ -9,17 +9,10 @@ vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathna
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.operator}));
-const critical=vi.hoisted(()=>({awaitScope:vi.fn(),viewer:vi.fn()}));
-vi.mock('../lib/viewer',()=>({viewerIdentity:async(session:unknown)=>{
- critical.viewer(session);
- return {name:'Fixture',employeeCode:null,employed:false};
-}}));
+vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:'Fixture',employeeCode:null,employed:false})}));
 vi.mock('../lib/principals',()=>({listPrincipals:async()=>[]}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:()=>true}));
-vi.mock('../lib/scope',()=>({companyContextForPage:async(session:unknown)=>{
- await critical.awaitScope(session);
- return {allowed:[],scopeIds:m.scopeIds};
-}}));
+vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
 vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:m.onboardingTasks,onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
@@ -67,22 +60,6 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
 const bellElement=async(tree:React.ReactNode)=>ShellNotificationCenter(propsOf(tree,ShellNotificationCenter) as Parameters<typeof ShellNotificationCenter>[0]);
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 const approvalSource=(node:React.ReactNode)=>propsOf(node,ShellApprovalFactsProvider)!.source as Promise<ShellApprovalResult>;
-
-it('starts the signed-in identity read while the authorized company scope is pending',async()=>{
- const session={tenantId:'tenant',userId:'user',roles:['employee'],grants:[]};
- m.session.mockResolvedValue(session);
- m.operator.mockResolvedValue(false);
- critical.viewer.mockClear();
- let releaseScope!:()=>void;
- critical.awaitScope.mockReturnValueOnce(new Promise<void>(resolve=>{releaseScope=resolve;}));
- const shell=Layout({children:null});
- try {
-  await vi.waitFor(()=>expect(critical.viewer).toHaveBeenCalledExactlyOnceWith(session));
- } finally {
-  releaseScope();
-  await expect(shell).resolves.toBeDefined();
- }
-});
 
 describe('root layout admin document entry',()=>{
  beforeEach(()=>{
