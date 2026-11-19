@@ -112,6 +112,36 @@ async function seedRetainedHistory(tenant:string,actor:string) {
     where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
 }
 
+async function revertEarlyRetainedDocument(tenant:string,actor:string,baseCompany:string) {
+  return owner.client.begin(async tx=>{
+    await tx`set local session_replication_role = replica`;
+    const [target]=await tx<{id:string;company_id:string;employment_id:string}[]>`
+      select p.id,b.company_id,p.employment_id
+      from payslip p join payroll_batch b on b.id=p.batch_id
+      where p.tenant_id=${tenant} and b.company_id<>${baseCompany} and b.pay_period='2026-03'
+      order by b.run_seq,p.id limit 1`;
+    const [cycle]=await tx<{id:string}[]>`
+      insert into payroll_cycle(tenant_id,company_id,name,run_type)
+      values(${tenant},${target.company_id},'Fictional retained month','regular') returning id`;
+    const [record]=await tx<{id:string}[]>`
+      insert into payroll_history_import_record(tenant_id,company_id,employment_id,period,cycle_id)
+      values(${tenant},${target.company_id},${target.employment_id},'2026-03',${cycle.id}) returning id`;
+    await tx`insert into payroll_history_import_snapshot(id,tenant_id,record_id,value_hash,"values")
+      values(${target.id},${tenant},${record.id},repeat('a',64),'{}'::jsonb)`;
+    const source=Buffer.from('Fictional payroll visibility test');
+    const [attempt]=await tx<{id:string}[]>`
+      insert into payroll_history_import_attempt(tenant_id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
+      values(${tenant},${actor},${randomUUID()},'fictional.csv','text/csv',encode(sha256(${source}),'hex'),${source},
+        array[${target.company_id}::uuid],jsonb_build_object('sourceHash',encode(sha256(${source}),'hex'))) returning id`;
+    const [imported]=await tx<{id:string}[]>`
+      insert into payroll_history_import_revision(tenant_id,record_id,ordinal,attempt_id,snapshot_id,kind,cycle_name)
+      values(${tenant},${record.id},1,${attempt.id},${target.id},'import','Fictional retained month') returning id`;
+    await tx`insert into payroll_history_import_revision(tenant_id,record_id,ordinal,attempt_id,previous_revision_id,kind,cycle_name)
+      values(${tenant},${record.id},2,${attempt.id},${imported.id},'revert','Fictional retained month')`;
+    return target.id;
+  });
+}
+
 it('selects the latest visible retained period before building document payloads',async()=>{
   const {base,tenant,cases}=await seedHistory();
   expect(await owner.client`select to_regprocedure('app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)') is not null as installed`)
@@ -147,6 +177,7 @@ it('selects the latest visible retained period before building document payloads
 it('bounds retained document projection to the requested page with identical order and visibility',async()=>{
   const {base,tenant,cases}=await seedHistory();
   await seedRetainedHistory(tenant,base.adminUserId);
+  const revertedId=await revertEarlyRetainedDocument(tenant,base.adminUserId,base.companyId);
   const fixture=readFileSync(new URL('./fixtures/bounded-retained-payroll-documents.sql',import.meta.url),'utf8');
   await owner.client.begin(async tx=>{
     for(const statement of fixture.split('--> statement-breakpoint')) {
@@ -182,6 +213,7 @@ it('bounds retained document projection to the requested page with identical ord
       });
       expect(outcome.baseline,label).toHaveLength(expectedCounts[label]);
       expect(outcome.candidate,label).toEqual(outcome.baseline);
+      expect(outcome.baseline.map(document=>informationDocumentRow(document).id),label).not.toContain(revertedId);
       evidence.push({label,rows:outcome.candidate.length,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
     }
   } finally {
