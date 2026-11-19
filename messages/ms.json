@@ -40108,6 +40108,20 @@
           "body": "Kredit yang telah diselesaikan kekal begitu. Jalankan sekali lagi untuk menyelesaikan selebihnya."
         }
       },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Import Transaksi Tetap selesai",
+          "body": "Buka log import untuk menyemak keputusan baris."
+        },
+        "failed": {
+          "title": "Import Transaksi Tetap gagal",
+          "body": "Buka log import untuk menyemak kegagalan tersebut."
+        },
+        "cancelled": {
+          "title": "Import Transaksi Tetap dihentikan",
+          "body": "Buka log import untuk menyemak baris yang telah disimpan."
+        }
+      },
       "payrollHistory": {
         "completed": {
           "title": "Perubahan sejarah gaji disimpan",

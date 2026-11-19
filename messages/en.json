@@ -40108,6 +40108,20 @@
           "body": "Credits already settled stay settled. Run it again to settle the rest."
         }
       },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Fixed Transaction import complete",
+          "body": "Open the import log to review the row results."
+        },
+        "failed": {
+          "title": "Fixed Transaction import failed",
+          "body": "Open the import log to review the failure."
+        },
+        "cancelled": {
+          "title": "Fixed Transaction import stopped",
+          "body": "Open the import log to review any rows already saved."
+        }
+      },
       "payrollHistory": {
         "completed": {
           "title": "Payroll history change committed",

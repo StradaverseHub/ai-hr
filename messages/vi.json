@@ -40108,6 +40108,20 @@
           "body": "Các khoản đã được xử lý vẫn giữ nguyên. Hãy chạy lại để xử lý phần còn lại."
         }
       },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Đã nhập giao dịch cố định",
+          "body": "Mở nhật ký nhập để xem kết quả từng dòng."
+        },
+        "failed": {
+          "title": "Nhập giao dịch cố định thất bại",
+          "body": "Mở nhật ký nhập để xem lỗi."
+        },
+        "cancelled": {
+          "title": "Đã dừng nhập giao dịch cố định",
+          "body": "Mở nhật ký nhập để xem các dòng đã lưu."
+        }
+      },
       "payrollHistory": {
         "completed": {
           "title": "Đã ghi nhận thay đổi lịch sử lương",

@@ -35,6 +35,10 @@ import { listEmploymentPayComponents, seedPayComponentCatalog, setEmploymentPayC
 import { upsertPayrollCycle } from '../core/payroll-cycle';
 import { listIndividualTxnsAcross } from '../core/payroll-view';
 import { commitTxnImport, validateTxnImport, type TxnImportRecord } from '../core/payroll-txn-import';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import {
+  fixedTransactionImportJobHandler, listFixedTransactionImports, queueFixedTransactionImport, readFixedTransactionImport,
+} from '../core/fixed-transaction-import-job';
 import {
   adminCtx,
   closeAll,
@@ -312,6 +316,37 @@ describe('5c65367d — payroll transaction Excel import', () => {
     expect(await listEmploymentPayComponents(a, employmentId)).toMatchObject([
       { payrollCycleId: cycle.id, runType: 'bonus' },
     ]);
+  });
+
+  it('keeps fixed workbook results across visits and commits each accepted row only once', async () => {
+    const a = adminCtx(base);
+    const input = {
+      csv: `Employee ID,Pay Item Code,Amount,Start Date\n${employeeCode},BONUS,100,2026-08-01\nNOTFOUND,BONUS,100,2026-08-01\n`,
+      fileName: 'fixed-transactions.xlsx',
+      companyIds: scopeIds,
+      operationKey: randomUUID(),
+    };
+    const id = await queueFixedTransactionImport(a, input);
+    expect(await queueFixedTransactionImport(a, input)).toBe(id);
+    await expect(queueFixedTransactionImport(a, { ...input, csv: input.csv.replace('100', '120') })).rejects.toThrow('operationChanged');
+    expect(await listFixedTransactionImports(a, scopeIds)).toMatchObject([{ id, state: 'queued' }]);
+    await expect(readFixedTransactionImport(a, id, [])).rejects.toThrow('Job unavailable.');
+
+    let job = await readFixedTransactionImport(a, id, scopeIds);
+    for (let tick = 0; tick < 15 && job.state !== 'completed' && job.state !== 'failed'; tick++) {
+      await runBulkJobTick(owner.client, { handlers: [fixedTransactionImportJobHandler] });
+      job = await readFixedTransactionImport(a, id, scopeIds);
+    }
+    expect(job).toMatchObject({
+      state: 'completed', sourceName: input.fileName, counters: { total: 2, invalid: 1, written: 1 },
+      rows: [
+        { rowNum: 2, employeeId: employeeCode, state: 'imported' },
+        { rowNum: 3, employeeId: 'NOTFOUND', state: 'invalid', reason: 'employeeUnknown' },
+      ],
+    });
+    expect(await queueFixedTransactionImport(a, input)).toBe(id);
+    expect(await listEmploymentPayComponents(a, employmentId)).toHaveLength(1);
+    expect(await listFixedTransactionImports(a, scopeIds)).toMatchObject([{ id, state: 'completed' }]);
   });
 
   // ══════════════════════ the happy path ══════════════════════

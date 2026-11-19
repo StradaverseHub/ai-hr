@@ -18,6 +18,8 @@ import {
 } from '@/lib/payroll-txn-import-schema';
 import { buildTxnImportWorkbook, type TxnTemplateReference } from '@/lib/import-template-xlsx';
 import { commitTxnImportAction, validateTxnImportAction } from './actions';
+import type { queueFixedTransactionImportAction } from './fixed-actions';
+import { FIXED_TXN_IMPORT_LOG } from '@/lib/fixed-transaction-import-log';
 
 /**
  * 5c65367d — ONE upload/preview/confirm surface, mounted on BOTH transaction screens.
@@ -63,10 +65,12 @@ function download(bytes: BlobPart, filename: string, type: string) {
 export function TxnImportButtons({
   kind,
   reference,
+  queueFixedAction,
 }: {
   kind: TxnImportKind;
   /** The live catalogues, read by the SCREEN from the same source the validator resolves against. */
   reference: TxnTemplateReference;
+  queueFixedAction?: typeof queueFixedTransactionImportAction;
 }) {
   const t = useTranslations('payroll.txnImport');
   const router = useRouter();
@@ -79,6 +83,7 @@ export function TxnImportButtons({
   const [reading, setReading] = useState(false);
   const [pending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const operationKey = useRef<string | null>(null);
 
   const reset = () => {
     setCsv('');
@@ -86,6 +91,7 @@ export function TxnImportButtons({
     setPreview(null);
     setResult(null);
     setError(null);
+    operationKey.current = null;
   };
 
   /** Resolve one row's failure reason. The key is resolved HERE, against the operator's own catalogue,
@@ -128,6 +134,7 @@ export function TxnImportButtons({
       }
       setCsv(text);
       setFileName(file.name);
+      if (queueFixedAction) operationKey.current = crypto.randomUUID();
       startTransition(async () => {
         try {
           setPreview(await validateTxnImportAction(text, kind));
@@ -147,6 +154,13 @@ export function TxnImportButtons({
     startTransition(async () => {
       setError(null);
       try {
+        if (queueFixedAction) {
+          if (!operationKey.current) throw new Error('No file was selected');
+          const id = await queueFixedAction({ csv, fileName: fileName ?? 'fixed-transactions.xlsx', operationKey: operationKey.current });
+          setOpen(false);
+          router.push(`${FIXED_TXN_IMPORT_LOG}/${id}`);
+          return;
+        }
         const r = await commitTxnImportAction(csv, kind);
         if(r.fileError){setError(t(`fileError.${r.fileError}` as never));setResult(null);setPreview(null);return;}
         setResult(r);
@@ -197,6 +211,7 @@ export function TxnImportButtons({
 
   useAssistantImportIntake(kind==='fixed'?'payroll_fixed':'payroll_individual',text=>{
     reset();setCsv(text);setOpen(true);
+    if (queueFixedAction) operationKey.current = crypto.randomUUID();
     startTransition(async()=>{try{setPreview(await validateTxnImportAction(text,kind));}catch{setError(t('fileReadError'));}});
   },setError);
 

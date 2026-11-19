@@ -301,6 +301,7 @@ async function loadLiveFixedRows(ctx: SessionContext, employmentIds: string[]) {
  *  re-parse the file's strings a second time and cannot reach a different conclusion from the preview. */
 export type ResolvedFixed = {
   employmentId: string;
+  companyId: string;
   componentId: string;
   amount: number;
   effectiveFrom: string;
@@ -637,6 +638,7 @@ async function analyzeFixed(
       base: { ...base, amount: amount.toFixed(2), effectiveFrom },
       r: {
         employmentId: emp.employmentId,
+        companyId: emp.companyId,
         componentId: comp.id,
         amount,
         effectiveFrom,
