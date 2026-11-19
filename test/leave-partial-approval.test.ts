@@ -42,7 +42,7 @@ import {
   MissingRejectReasonError,
 } from '../core/leave';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { leaveRequestDateBreakdown, plannedAbsences } from '../core/read';
+import { leaveRequestDateBreakdown, leaveRequestDateBreakdowns, plannedAbsences } from '../core/read';
 import { attendanceForDate, attendanceMonthSummary } from '../core/attendance';
 import { rosterVariance, createShift, assignShift } from '../core/roster';
 import { unpaidLeaveDaysForPeriod } from '../core/payroll';
@@ -605,16 +605,23 @@ describe('Partial Leave Approval — REPLACEMENT + multi-step guards', () => {
 
 describe('Partial Leave Approval — RLS', () => {
   it('a non-manager cannot read the breakdown or decide another employee\'s date; a manager who sees the parent sees the date rows', async () => {
-    const res = await requestSpan(D10, D12);
-    // The manager (can see the subject) sees all 3 date rows — RLS parity with the parent request.
-    const mgrView = await leaveRequestDateBreakdown(mgrCtx, res.leaveRequestId);
-    expect(mgrView).toHaveLength(3);
+    const res = await requestSpan(D10, D11);
+    const next = await requestSpan(D12, '2026-08-13');
+    const ordinary = await requestSpan('2026-08-14', '2026-08-14');
+    // The manager sees both per-date requests and the ordinary request needs no breakdown.
+    const requestIds = [next.leaveRequestId, res.leaveRequestId, ordinary.leaveRequestId, res.leaveRequestId];
+    const mgrView = await leaveRequestDateBreakdowns(mgrCtx, requestIds);
+    expect(mgrView.size).toBe(2);
+    expect(mgrView.get(res.leaveRequestId)?.map((row) => row.leaveDate)).toEqual([D10, D11]);
+    expect(mgrView.get(next.leaveRequestId)?.map((row) => row.leaveDate)).toEqual([D12, '2026-08-13']);
+    expect(mgrView.has(ordinary.leaveRequestId)).toBe(false);
 
     const other = await hire('Outsider');
     const uOther = await createAppUser(b.tenantId, other.personId, 'employee');
     const otherCtx: SessionContext = { tenantId: b.tenantId, userId: uOther, personId: other.personId, roles: ['employee'], entitlements: harnessSnapshot(b.tenantId) };
     // A plain employee cannot see the subject's date rows…
     expect(await leaveRequestDateBreakdown(otherCtx, res.leaveRequestId)).toHaveLength(0);
+    expect(await leaveRequestDateBreakdowns(otherCtx, requestIds)).toEqual(new Map());
     // …and cannot decide one (the request/date is not visible to them).
     await expect(
       decideLeaveDate(otherCtx, { leaveRequestId: res.leaveRequestId, leaveDate: D10, decision: 'approved' }),
