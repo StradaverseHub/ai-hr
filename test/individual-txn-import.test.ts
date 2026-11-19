@@ -11,7 +11,7 @@ import {seedPayComponentCatalog} from '../core/pay-components';
 import {createBatch} from '../core/payroll';
 import {upsertPayrollCycle} from '../packs/payroll/service';
 import {validateIndividualImport,confirmIndividualImport,revertIndividualImport,readIndividualImport,listIndividualImports} from '../core/individual-txn-import';
-import {INDIVIDUAL_IMPORT_HEADERS,type IndividualImportMethod} from '../lib/payroll-txn-import-schema';
+import {INDIVIDUAL_IMPORT_HEADERS,PREVIOUS_DAILY_IMPORT_HEADERS,type IndividualImportMethod} from '../lib/payroll-txn-import-schema';
 import {toCsv} from '../lib/csv';
 import {buildXlsx} from '../lib/spreadsheet';
 import {submitIndividualImportJob, readIndividualImportJob, readIndividualImportWorkbook, queueIndividualImportConfirmation} from '../core/individual-import-job';
@@ -90,6 +90,25 @@ describe('durable Individual Transaction import',()=>{
   expect(await readIndividualImportJob(ctx,id,scopeIds)).toMatchObject({state:'completed',processed:2,written:1});
   expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);
  });
+ it('finishes a queued former daily template under its admitted contract and refuses a new upload of it',async()=>{
+  const ctx=adminCtx(base), scopeIds=[base.companyId], legacyId=randomUUID(), newId=randomUUID();
+  await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
+  const content=Buffer.from(await buildXlsx([...PREVIOUS_DAILY_IMPORT_HEADERS],
+   [[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','2','legacy upload']]));
+  const input={name:'previous-daily.xlsx',content,method:'daily' as const,scopeIds};
+  const tick=()=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:ctx.entitlements}));
+  await submitIndividualImportJob(ctx,{...input,id:legacyId});
+  await owner.client`update payroll_individual_import_job set template_version=1 where id=${legacyId}::uuid`;
+  await tick();
+  expect(await readIndividualImportJob(ctx,legacyId,scopeIds)).toMatchObject({state:'ready',total:1});
+  expect(await queueIndividualImportConfirmation(ctx,legacyId,scopeIds)).toBe(true);
+  await tick();
+  expect(await readIndividualImportJob(ctx,legacyId,scopeIds)).toMatchObject({state:'completed',written:1});
+  await submitIndividualImportJob(ctx,{...input,id:newId});
+  await tick();
+  expect(await readIndividualImportJob(ctx,newId,scopeIds)).toMatchObject({state:'failed',error:'downloadNewDailyTemplate',written:0});
+ });
+
  it('retains equal-amount daily entries on distinct dates and refuses duplicates and mismatched types',async()=>{
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
   const row=(date:string)=>[employeeCode,'Import Example','2026-08','IMP','BONUS',date,'hours','2','daily'];
