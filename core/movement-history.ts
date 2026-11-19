@@ -31,6 +31,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
 import {assignment,compensation,domainEvent,employment,location,payrollBatch,payslip,reportingLine} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {isCalendarDate} from '../lib/calendar-date';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {lockEmploymentStatutoryOwnerTx} from './org';
@@ -38,6 +39,7 @@ import {assertContractPostingHistoryWriteTx,withContractPostingAssignmentOrgTx} 
 
 export const MOVEMENT_HISTORY_EVENT='employment.history.recorded';
 export const MOVEMENT_HISTORY_REVERTED_EVENT='employment.history.reverted';
+export const MOVEMENT_HISTORY_EDITED_EVENT='employment.history.edited';
 /** The dated placement fields a history movement may set, in display order. */
 export const HISTORY_FIELDS=['companyId','departmentId','positionId','businessUnitId','locationId'] as const;
 export type HistoryField=(typeof HISTORY_FIELDS)[number];
@@ -98,7 +100,13 @@ export async function closedPayrollInSpanTx(tx:Tx,employmentId:string,from:strin
  return rows.filter(r=>r.period>=first&&r.period<=last).sort((a,b)=>a.period.localeCompare(b.period));
 }
 
-export type RecordHistoryInput={employmentId:string;kind:string;typeCode?:string|null;effectiveDate:string;after:HistoryValues;before:HistoryValues;remarks?:string|null};
+export type HistoryMovementFacts={effectiveDate:string;before:HistoryValues;after:HistoryValues;remarks?:string|null};
+export type RecordHistoryInput=HistoryMovementFacts & {
+  employmentId:string;
+  kind:string;
+  typeCode?:string|null;
+  correction?:{movementId:string;reason:string;previous:HistoryMovementFacts};
+};
 export type RecordHistoryResult={eventId:string;spanFrom:string;spanTo:string;fields:HistoryField[];closedPayrollPeriods:string[]};
 
 /** Writes one history movement. The caller has already classified it (classifyHistoryRows); every rule is checked again here. */
@@ -107,8 +115,9 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  const fields=Object.keys(p.after);
  if(!fields.length||!fields.every(isHistoryField))throw new MovementHistoryError('movement_history_fields');
  if(!fields.every(f=>f in p.before))throw new MovementHistoryError('movement_history_before_required');
- const d=p.effectiveDate,prior=dayBefore(d);
- if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||d>todayInKualaLumpur())throw new MovementHistoryError('movement_history_future');
+ const d=p.effectiveDate;
+ if(!isCalendarDate(d)||d>todayInKualaLumpur())throw new MovementHistoryError('movement_history_future');
+ const prior=dayBefore(d);
  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
  await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
  // Lock the live versions (no other writer may close or split them under this rewrite).
@@ -170,8 +179,9 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
   }
  }
  const before=Object.fromEntries((fields as HistoryField[]).map(f=>[f,p.before[f]??null])),after=Object.fromEntries((fields as HistoryField[]).map(f=>[f,p.after[f]??null]));
- const event=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:MOVEMENT_HISTORY_EVENT,actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
+ const event=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:p.correction?MOVEMENT_HISTORY_EDITED_EVENT:MOVEMENT_HISTORY_EVENT,actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
   payload:{employmentId:p.employmentId,type:p.typeCode??p.kind,kind:p.kind,effectiveDate:d,spanFrom,fields,before,after,remarks:p.remarks?.trim()||null,
+   ...(p.correction?{movementId:p.correction.movementId,reason:p.correction.reason,previous:p.correction.previous}:{}),
    assignment:replaced,inserted,closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]}},{returnId:true});
  return{eventId:typeof event==='string'?event:'',spanFrom,spanTo:prior,fields:fields as HistoryField[],closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]};
 }
@@ -201,7 +211,18 @@ export async function reverseHistoryMovementTx(tx:Tx,ctx:SessionContext,e:{id:st
 
 /** Events whose `assignment` replacements Roll Back must follow (see originMapOf / liveIncarnationOf). */
 // An information correction applied from the join date records its replacements in the same shape.
-export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===HISTORY_START_ALIGNED_EVENT||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType==='employment.information.corrected'||eventType===INFORMATION_BOUNDARY_REAPPLIED_EVENT;
+export const isAssignmentReplacementEvent=(eventType:string,hireCorrected:string)=>eventType===hireCorrected||eventType===HISTORY_START_ALIGNED_EVENT||eventType===MOVEMENT_HISTORY_EVENT||eventType===MOVEMENT_HISTORY_REVERTED_EVENT||eventType===MOVEMENT_HISTORY_EDITED_EVENT||eventType==='employment.information.corrected'||eventType===INFORMATION_BOUNDARY_REAPPLIED_EVENT;
+
+export async function latestHistoryMovementRevisionTx(tx:Tx, employmentId:string, movementId:string){
+ const [row] = await tx.select({id:domainEvent.id,payload:domainEvent.payload,eventType:domainEvent.eventType})
+  .from(domainEvent)
+  .where(and(
+    eq(domainEvent.subjectEmploymentId,employmentId),
+    sql`((${domainEvent.id}=${movementId}::uuid AND ${domainEvent.eventType}=${MOVEMENT_HISTORY_EVENT}) OR
+      (${domainEvent.eventType}=${MOVEMENT_HISTORY_EDITED_EVENT} AND ${domainEvent.payload}->>'movementId'=${movementId}))`,
+  )).orderBy(sql`${domainEvent.sequence} DESC`).limit(1);
+ return row;
+}
 
 /**
  * Board 154511c4 — Correct information "in this company from the join date": the employee was ALWAYS in `to`,

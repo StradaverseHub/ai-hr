@@ -1,0 +1,94 @@
+'use client';
+
+import Link from 'next/link';
+import { useActionState, useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { Button, Field, inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
+import type { HistoryValues } from '@/core/movement-history';
+import type { MovementOrgScope, MovementOption } from './movement-new-event';
+import type { MovementPageContext } from '@/lib/personnel-movement-navigation';
+import { saveMovementPageAction } from './actions';
+
+export function HistoryMovementEditForm({
+  employmentId, movementId, revisionId, before, effectiveDate, remarks, today, companies, orgByCompany,
+  selectedCompanyId, fallbackOrganisation, cancelHref, context,
+}: {
+  employmentId: string;
+  movementId: string;
+  revisionId: string;
+  before: HistoryValues;
+  effectiveDate: string;
+  remarks?: string | null;
+  today: string;
+  companies: MovementOption[];
+  orgByCompany: Record<string, MovementOrgScope>;
+  selectedCompanyId: string;
+  fallbackOrganisation: MovementOrgScope;
+  cancelHref: string;
+  context: MovementPageContext;
+}) {
+  const t = useTranslations('people.detail.movement');
+  const [error, action, pending] = useActionState(saveMovementPageAction, null);
+  const [companyId, setCompanyId] = useState(before.companyId ?? '');
+  const [organisation, setOrganisation] = useState<HistoryValues>(before);
+  const scope = orgByCompany[companyId || selectedCompanyId] ?? fallbackOrganisation;
+  const fields = [
+    ['departmentId', t('field.department'), scope.departments],
+    ['businessUnitId', t('field.businessUnit'), scope.businessUnits],
+    ['positionId', t('field.position'), scope.positions],
+    ['locationId', t('hireCorrection.fieldLocation'), scope.locations],
+  ] as const;
+  return (
+    <form action={action} className="space-y-4 p-4" aria-busy={pending}>
+      <input type="hidden" name="movementPage" value="edit" />
+      <input type="hidden" name="historyEdit" value="1" />
+      <input type="hidden" name="employmentId" value={employmentId} />
+      <input type="hidden" name="movementId" value={movementId} />
+      <input type="hidden" name="revisionId" value={revisionId} />
+      <input type="hidden" name="from" value={context.from ?? ''} />
+      <input type="hidden" name="showCorrected" value={context.showCorrected ?? ''} />
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <p className="text-sm text-muted-foreground">{t('form.recordHistory')}</p>
+      <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
+        <Field label={t('columns.effectiveDate')}>
+          <DateField name="effectiveDate" max={today} required defaultValue={effectiveDate}
+            label={t('columns.effectiveDate')} className={inputCls} />
+        </Field>
+        <Field label={t('field.company')}>
+          <select name="history.companyId" className={inputCls} value={companyId}
+            onChange={(event) => {
+              setCompanyId(event.target.value);
+              setOrganisation({});
+            }}>
+            <option value="">{t('form.historyUnchanged')}</option>
+            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
+        </Field>
+        {fields.map(([field, label, options]) => (
+          <Field key={field} label={label}>
+            <select name={`history.${field}`} className={inputCls}
+              value={organisation[field] === null ? '__clear__' : organisation[field] ?? ''}
+              onChange={(event) => setOrganisation((current) => ({
+                ...current, [field]: event.target.value === '__clear__' ? null : event.target.value,
+              }))}>
+              <option value="">{t('form.historyUnchanged')}</option>
+              {field !== 'departmentId' && <option value="__clear__">{t('form.none')}</option>}
+              {options.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+            </select>
+          </Field>
+        ))}
+        <Field label={t('columns.remarks')}>
+          <input name="remarks" maxLength={200} defaultValue={remarks ?? ''} className={inputCls} />
+        </Field>
+        <Field label={t('correctionReasonLabel')}>
+          <input name="reason" maxLength={200} required className={inputCls} />
+        </Field>
+      </fieldset>
+      <div className="flex justify-end gap-2">
+        <Button asChild variant="outline"><Link href={cancelHref}>{t('form.cancel')}</Link></Button>
+        <Button type="submit" disabled={pending}>{t('form.saveCorrection')}</Button>
+      </div>
+    </form>
+  );
+}

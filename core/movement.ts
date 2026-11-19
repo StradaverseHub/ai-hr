@@ -114,7 +114,7 @@ import {
 import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // Board 154511c4 — history recorded backwards from the current record. Its event projects a movement row and
 // its row replacements join the hire correction's in the chain Roll Back follows.
-import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, alignHistoryToGroupJoinDateTx, reverseHistoryMovementTx, liftCorrectionBoundariesTx as maintainLiftCorrectionBoundariesTx,reapplyCorrectionBoundariesTx as maintainReapplyCorrectionBoundariesTx,replayContractPostingLiftBoundariesTx,replayContractPostingReapplyBoundariesTx, correctionCompanyOnTx } from './movement-history';
+import { MOVEMENT_HISTORY_EVENT, MOVEMENT_HISTORY_EDITED_EVENT, MOVEMENT_HISTORY_REVERTED_EVENT, MovementHistoryError, isAssignmentReplacementEvent, alignHistoryToGroupJoinDateTx, reverseHistoryMovementTx, latestHistoryMovementRevisionTx, liftCorrectionBoundariesTx as maintainLiftCorrectionBoundariesTx,reapplyCorrectionBoundariesTx as maintainReapplyCorrectionBoundariesTx,replayContractPostingLiftBoundariesTx,replayContractPostingReapplyBoundariesTx, correctionCompanyOnTx } from './movement-history';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -427,6 +427,10 @@ export type MovementDetail = {
   exitInformation?: { effectiveDate: string };
   payrollAdjustmentReview?:{periods:string[]};
   informationCorrections?: InformationHistoryCorrection[];
+  historyEdits?: {
+    id: string; recordedAt: string; reason: string; previousDate: string; correctedDate: string;
+    previousCompany: string | null; correctedCompany: string | null;
+  }[];
   row: MovementRowSummary;
   recordedResignation?:MovementRecordedResignation|null;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
@@ -533,6 +537,7 @@ const MOVEMENT_EVENT_TYPES = [
   // Board 154511c4 — a history movement (projects its row) and its rollback (no row; its replacements keep
   // the Roll Back chain whole).
   MOVEMENT_HISTORY_EVENT,
+  MOVEMENT_HISTORY_EDITED_EVENT,
   MOVEMENT_HISTORY_REVERTED_EVENT,
 ];
 
@@ -793,6 +798,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   /** 941c9dac — scheduled movement id → when the sweep applied it. Same after-the-loop application as
    *  `reversals`: the applied event is always later in the ledger than the scheduled event it refers to. */
   const applications = new Map<string, Date>();
+  const historyEdits = new Map<string, { effectiveDate: string; remarks: string | null }>();
   for (const e of events) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (e.payload ?? {}) as Record<string, any>;
@@ -1062,6 +1068,11 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         });
         break;
 
+      case MOVEMENT_HISTORY_EDITED_EVENT:
+        if (typeof p.movementId === 'string' && typeof p.effectiveDate === 'string') {
+          historyEdits.set(p.movementId, { effectiveDate: p.effectiveDate, remarks: p.remarks ?? null });
+        }
+        break;
       case MOVEMENT_HISTORY_REVERTED_EVENT:
         // No row: the reversal event marks the history row; this one only carries the restored rows.
         break;
@@ -1120,6 +1131,11 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   }
 
   for (const r of rows) {
+    const revision = r.history ? historyEdits.get(r.id) : undefined;
+    if (revision) {
+      r.effectiveDate = revision.effectiveDate;
+      r.remarks = revision.remarks;
+    }
     r.reversed = reversals.get(r.id) ?? null;
     r.appliedAt = applications.get(r.id) ?? null;
     // bd89ccd8 — a movement that was scheduled and never applied was CANCELLED, not rolled back. Both
@@ -1359,6 +1375,7 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
 function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
   const stateChanging = group.some((e) => eventChangesMovementState(e));
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
+  if (row.history) return { canReverse: !row.reversed, canEdit: !row.reversed && behaviour === 'entityTransfer', stateChanging };
   // Board 511aa74a — a Rehired event created an employment; only its own Roll Back (core/rehire.ts) can undo it.
   if (behaviour === 'rehire') return { canReverse: false, canEdit: false, stateChanging };
   if (isContractPostingMovementKind(behaviour)||group.some(event=>!!(event.payload as {movement?:MovementTag}|null)?.movement?.contractPostingId)) return {canReverse:false,canEdit:false,stateChanging};
@@ -1379,9 +1396,6 @@ function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolea
       (e.eventType !== 'employment.info.updated' || infoLegIsFlatOnly(e, behaviour)),
   );
   const canReverse = supported && !row.reversed;
-  // Board 154511c4 — a history movement is corrected by deleting it and recording it again (the import's
-  // Update does exactly that); the in-place edit replays forward writers and would change the wrong side.
-  if (row.history) return { canReverse, canEdit: false, stateChanging };
   const canEdit = canReverse && (!stateChanging || ((isComparisonKind(behaviour) || ['resignation','termination','probationExtension','joinDateChange','groupJoinDateCorrection','blacklist'].includes(behaviour)) && isLatest));
   return { canReverse, canEdit, stateChanging };
 }
@@ -2198,6 +2212,25 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
       }
     }
     if(before)before.informationEvidence=movementInformationEvidence(events,beforeDate,beforeBound,false);
+    const revisions = row.history ? events.flatMap((event) => {
+      if (event.eventType !== MOVEMENT_HISTORY_EDITED_EVENT) return [];
+      const payload = event.payload as {
+        movementId: string; effectiveDate: string; reason: string; before: { companyId?: string };
+        previous: { effectiveDate: string; before: { companyId?: string } };
+      };
+      return payload.movementId === row.id ? [{ event, payload }] : [];
+    }) : [];
+    const revisionCompanies = await companyNamesTx(tx, revisions.flatMap(({ payload }) =>
+      [payload.before.companyId, payload.previous.before.companyId].filter((id): id is string => !!id)));
+    const historyEdits = revisions.reverse().map(({ event, payload }) => ({
+      id: event.id,
+      recordedAt: event.occurredAt.toISOString(),
+      reason: payload.reason,
+      previousDate: payload.previous.effectiveDate,
+      correctedDate: payload.effectiveDate,
+      previousCompany: revisionCompanies.get(payload.previous.before.companyId ?? '') ?? null,
+      correctedCompany: revisionCompanies.get(payload.before.companyId ?? '') ?? null,
+    }));
     return {
       row: {
         id: row.id,
@@ -2211,6 +2244,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
       },
       ...(exitBoundary ? { exitInformation: { effectiveDate: row.effectiveDate } } : {}),
       informationCorrections:correctionView.corrections.get(row.id)??[],
+      ...(historyEdits.length ? { historyEdits } : {}),
       ...(row.kind==='hired'?{payrollAdjustmentReview:{periods:[...new Set(events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).flatMap(event=>{
         const review=(event.payload as {payrollAdjustmentReview?:{periods?:unknown[]}})?.payrollAdjustmentReview;
         return (review?.periods??[]).filter((period):period is string=>typeof period==='string'&&/^\d{4}-\d{2}$/.test(period));
@@ -4837,10 +4871,12 @@ async function reverseLegTx(
       // the whole rollback.
       return;
 
-    case MOVEMENT_HISTORY_EVENT:
+    case MOVEMENT_HISTORY_EVENT: {
       // Board 154511c4 — restore the period before the date, refused once a later write replaced it.
-      await reverseHistoryMovementTx(tx, ctx, { id: e.id, payload: e.payload, subjectEmploymentId: employmentId });
+      const active = await latestHistoryMovementRevisionTx(tx, employmentId, e.id) ?? e;
+      await reverseHistoryMovementTx(tx, ctx, { id: active.id, payload: active.payload, subjectEmploymentId: employmentId });
       return;
+    }
 
     case 'employment.movement.scheduled':
       // 941c9dac — the scheduling event never wrote anything itself. Cancelling a PENDING movement is
