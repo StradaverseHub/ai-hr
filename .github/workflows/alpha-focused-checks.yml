@@ -52,6 +52,10 @@ on:
         description: Time first and repeat browser opens against an isolated fictional installation
         default: false
         type: boolean
+      browser_fixture_only:
+        description: For browser_route_baseline, verify the disposable fixture without building or opening pages
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -118,7 +122,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: [resolve, linux-build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -178,14 +182,14 @@ jobs:
           if-no-files-found: error
           retention-days: 14
       - run: pnpm exec playwright install --with-deps chromium
-        if: ${{ inputs.browser_route_baseline }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
       - name: Verify the build for the exact browser source
-        if: ${{ inputs.browser_route_baseline }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           test "$(cat "$packet/source-sha")" = "$AIHR_CI_HEAD"
@@ -194,6 +198,8 @@ jobs:
       - name: Measure the fictional production build in Chromium
         if: ${{ inputs.browser_route_baseline }}
         run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
+        env:
+          AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Retain route timings without fixture sessions or raw logs
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -225,7 +231,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || inputs.browser_route_baseline }}
+    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
@@ -263,7 +269,7 @@ jobs:
           AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
           AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Package the fictional browser build
-        if: ${{ inputs.browser_route_baseline }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         env:
           AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
         run: |
@@ -272,7 +278,7 @@ jobs:
           python3 ../automation/.github/ci/build-bundle.py pack "$PWD" "$packet"
           printf '%s\n' "$AIHR_CI_HEAD" > "$packet/source-sha"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: ${{ inputs.browser_route_baseline }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build/

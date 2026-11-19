@@ -19,6 +19,7 @@ import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 const origin='https://localhost:3443';
 const appPort=3174;
 const env=process.env;
+const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -35,8 +36,9 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,controllerSha:env.AIHR_CI_CONTROL_HEAD,
- releaseEligible:false,fixture:{tenants:2,companies:10,users:500},phases:[],observations:[],journeys:[]};
+const report={kind:fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+ controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,fixture:{tenants:2,companies:10,users:500},
+ phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
@@ -247,8 +249,10 @@ async function measureActions(fixture){
 
 save();
 try{
- report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
- assert(report.buildId,'Missing measured application build');
+ if(!fixtureOnly){
+  report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
+  assert(report.buildId,'Missing measured application build');
+ }
  databaseStarted=true;
  await run('postgres-setup','bash',['../automation/.github/ci/postgres.sh','reset'],pgEnv);
  await run('migrate-fictional-database','pnpm',['db:migrate'],dbEnv,300000);
@@ -260,19 +264,22 @@ try{
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-  '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
- await waitForApp();
- await proxy();
- await measureRoutes(fixture);
- await measureShellLinks(fixture);
- await measureActions(fixture);
- const routesObserved=report.observations.length===2*report.plannedRoleRoutes
-  &&report.observations.every(row=>row.status==='observed');
- const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
- report.complete=routesObserved&&journeysObserved;
- assert(routesObserved,'Browser baseline had missing or failed visits');
- assert(journeysObserved,'Browser baseline had missing or failed actions');
+ report.fixtureVerified=true;
+ if(!fixtureOnly){
+  app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
+  await waitForApp();
+  await proxy();
+  await measureRoutes(fixture);
+  await measureShellLinks(fixture);
+  await measureActions(fixture);
+  const routesObserved=report.observations.length===2*report.plannedRoleRoutes
+   &&report.observations.every(row=>row.status==='observed');
+  const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
+  report.complete=routesObserved&&journeysObserved;
+  assert(routesObserved,'Browser baseline had missing or failed visits');
+  assert(journeysObserved,'Browser baseline had missing or failed actions');
+ }
 }finally{
  try{await browser?.close();}
  finally{
