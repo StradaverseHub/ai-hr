@@ -37,7 +37,7 @@ export async function validateTxnImportAction(csv: string, kind: TxnImportKind):
  * Commit. RE-VALIDATES server-side and writes from ITS OWN answer, not from the preview the client is
  * holding — a commit that trusted the client's verdicts would be a commit the client could widen.
  *
- * Every row goes through the live service (`setEmploymentPayComponent` / `createIndividualTxnsBulk`), so
+ * Every row goes through the live service (Fixed Transaction writer / `createIndividualTxnsBulk`), so
  * the overlap refusal, the closed-run refusal, the amount and date guards and — on Individual —
  * `markBatchNeedsRecalc` all fire exactly as they do for a row typed into the form.
  */

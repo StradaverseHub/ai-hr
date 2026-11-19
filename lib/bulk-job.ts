@@ -46,6 +46,7 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  toil_expiry:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  toil_year_close:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  payroll_history:{messages:'payrollHistory',linkPath:'/payroll/history-import/logs'},
+ fixed_transaction_import:{messages:'fixedTransactionImport',linkPath:'/payroll/transactions/fixed/imports'},
  payroll_reprocess:{messages:'payrollReprocess',linkPath:'/payroll'},
  movement_import:{messages:'movementImport',linkPath:'/admin/personnel/import/history?kind=movement'},
  movement_check:{messages:'movementCheck',linkPath:'/admin/personnel/import/history?kind=movement'},

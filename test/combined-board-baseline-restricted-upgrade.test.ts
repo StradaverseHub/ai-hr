@@ -39,7 +39,7 @@ type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:stri
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
 const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
-const PREFIX=924,TAIL=145,BOARD_TAIL=50,OWNER='ai_hr_owner';
+const PREFIX=924,TAIL=145,BOARD_TAIL=50,FOLLOW_ON_TAIL=5,OWNER='ai_hr_owner';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
 const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
 const TAIL_DIGEST='63c7c63e258e3a05b2e75b964e0a00b7858638c63a7a524beef60a73077a6277';
@@ -113,7 +113,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   // cannot redefine its145 bodies, digest, order or rehearsal merely by appending a migration.
   const journal=candidate;
   expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);
-  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL);
+  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+FOLLOW_ON_TAIL);
   expect({...currentJournal,entries:currentJournal.entries.slice(0,PREFIX+TAIL)}).toEqual(candidate);
   // This existing independent owner pins the exact current journal and literal SHA256 of each
   // reviewed forward SQL body. It runs before any connection and again before phase two.
@@ -290,7 +290,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   expect(secondLogin).toEqual({session:OWNER,current:OWNER,role:'none'});expect(await ownerAttributes(restricted)).toEqual(ATTRIBUTES);
   expect(await leftovers(observer)).toEqual([]);
   assertApprovedUpgradeTail(currentJournal.entries);
-  const boardTail=currentJournal.entries.slice(PREFIX+TAIL);expect(boardTail).toHaveLength(BOARD_TAIL);
+  const boardTail=currentJournal.entries.slice(PREFIX+TAIL);expect(boardTail).toHaveLength(BOARD_TAIL+FOLLOW_ON_TAIL);
   expect(boardTail[0].tag).toBe('6600_probation_reconciliation');
   const boardIdentities=boardTail.map((entry,index)=>{
    expect(entry.when).toBeGreaterThan(index?boardTail[index-1].when:journal.entries.at(-1)!.when);
@@ -299,7 +299,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
    writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
    return {hash:sha(bytes),created_at:String(entry.when)};
   });
-  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL);
+  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+FOLLOW_ON_TAIL);
   const referenceNoticeOffset=referenceNotices.length,ownerNoticeOffset=ownerNotices.length;
   writeFileSync(join(migrations,'meta/_journal.json'),JSON.stringify(currentJournal));
   await migrate(drizzle(reference),{migrationsFolder:migrations});

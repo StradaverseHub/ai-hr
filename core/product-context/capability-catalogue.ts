@@ -122,6 +122,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/employee-import-upload.ts':'Upload transport of the employee import.',
  'core/employee-import-worker.ts':'Background worker of the staged employee import.',
  'core/import-history-handlers.ts':'Shared import history and revert.',
+ 'core/fixed-transaction-import-job.ts':'Scoped queue, audit log and background handoff for the fixed transaction import owner.',
  'core/individual-import-job.ts':'Scoped workbook custody, admission and confirmation queue for the individual transaction import.',
  'core/individual-import-worker.ts':'Background worker invoking the individual transaction import owner after human confirmation.',
  'core/import-history.ts':'Shared import history and revert.',

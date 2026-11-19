@@ -71,3 +71,24 @@ export function movementFormRequired(field:MovementFormField,behaviour:string):b
  const id=behaviour==='termination'&&field==='endDate'?'employment_history.event_information.lastworkingdate':MOVEMENT_FORM_IDS[field];
  return personnelFormRequired(id,'record',{movementEndDate:behaviour==='probationExtension'||behaviour==='termination'});
 }
+
+/** Assignment facts whose owners can safely replace the period before a Movement date. */
+export const MOVEMENT_HISTORY_FIELDS = [
+  'companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId', 'employmentType',
+] as const satisfies readonly MovementFormField[];
+
+/** Dates documented on a historical event without replaying an employment lifecycle command. */
+export const MOVEMENT_HISTORY_DATE_FIELDS = [
+  'confirmationDate', 'contractEndDate', 'internshipEndDate', 'tenderResignationDate', 'resignationEffectiveDate',
+] as const satisfies readonly MovementFormField[];
+export type MovementHistoryDateField = (typeof MOVEMENT_HISTORY_DATE_FIELDS)[number];
+export function isMovementHistoryDateField(field: string): field is MovementHistoryDateField {
+  return (MOVEMENT_HISTORY_DATE_FIELDS as readonly string[]).includes(field);
+}
+export function movementHistoryDateFields(behaviour: string): readonly MovementHistoryDateField[] {
+  if (behaviour === 'resignation' || behaviour === 'termination') return MOVEMENT_HISTORY_DATE_FIELDS;
+  return ['confirmationDate', 'contractEndDate', 'internshipEndDate'];
+}
+export function historyInformationField(field: MovementHistoryDateField) {
+  return field === 'resignationEffectiveDate' ? 'resignationDate' : field;
+}

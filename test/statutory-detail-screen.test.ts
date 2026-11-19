@@ -40,6 +40,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, saveStatutoryAdjustment } from '../core/payroll';
+import { upsertPayrollCycle } from '../core/payroll-cycle';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import { explainStatutory } from '../core/statutory-explain';
 import StatutoryDetailPage from '../app/payroll/statutory-detail/page';
@@ -125,7 +126,8 @@ beforeEach(async () => {
     bankName: 'Maybank',
     bankAccountNo: '512345678901',
   });
-  ({ batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06' }));
+  const cycle = await upsertPayrollCycle(a, { companyId: base.companyId, name: 'Monthly', code: 'ME', runType: 'regular' });
+  ({ batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-06', payrollCycleId: cycle.id }));
   await generatePayslips(a, { batchId });
   const rows = await listProcessedPayslipsAcross(a, {
     companyIds: [base.companyId],

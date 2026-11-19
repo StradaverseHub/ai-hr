@@ -7841,6 +7841,34 @@
       "when": 1795028006960,
       "tag": "6960_board_public_guidance_function_kinds",
       "breakpoints": true
+    },
+    {
+      "idx": 10370,
+      "version": "7",
+      "when": 1795028006970,
+      "tag": "6970_fixed_transaction_import_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 10380,
+      "version": "7",
+      "when": 1795028006980,
+      "tag": "6980_payroll_transaction_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 10390,
+      "version": "7",
+      "when": 1795028006990,
+      "tag": "6990_individual_import_template_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 10400,
+      "version": "7",
+      "when": 1795028007000,
+      "tag": "7000_movement_history_pay_evidence",
+      "breakpoints": true
     }
   ]
 }

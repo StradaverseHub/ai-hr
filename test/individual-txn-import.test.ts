@@ -8,10 +8,11 @@ import * as schema from '../db/schema';
 import {hireEmployee,setEmployeeCode} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {seedPayComponentCatalog} from '../core/pay-components';
+import {getIndividualTxn,updateIndividualTxn} from '../core/payroll-individual-txn';
 import {createBatch} from '../core/payroll';
 import {upsertPayrollCycle} from '../packs/payroll/service';
 import {validateIndividualImport,confirmIndividualImport,revertIndividualImport,readIndividualImport,listIndividualImports} from '../core/individual-txn-import';
-import {INDIVIDUAL_IMPORT_HEADERS,type IndividualImportMethod} from '../lib/payroll-txn-import-schema';
+import {INDIVIDUAL_IMPORT_HEADERS,PREVIOUS_DAILY_IMPORT_HEADERS,type IndividualImportMethod} from '../lib/payroll-txn-import-schema';
 import {toCsv} from '../lib/csv';
 import {buildXlsx} from '../lib/spreadsheet';
 import {submitIndividualImportJob, readIndividualImportJob, readIndividualImportWorkbook, queueIndividualImportConfirmation} from '../core/individual-import-job';
@@ -90,19 +91,74 @@ describe('durable Individual Transaction import',()=>{
   expect(await readIndividualImportJob(ctx,id,scopeIds)).toMatchObject({state:'completed',processed:2,written:1});
   expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);
  });
- it('retains equal-amount daily entries on distinct dates and refuses true duplicates and amount-only items',async()=>{
+ it('processes a new Daily Excel workbook through the queue and reopens its typed amount for editing',async()=>{
+  const ctx=adminCtx(base),scopeIds=[base.companyId],id=randomUUID();
+  await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));
+  const content=Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.daily],
+   [[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','amount','45.50','daily typed']]));
+  await submitIndividualImportJob(ctx,{id,name:'daily.xlsx',content,method:'daily',scopeIds});
+  const tick=()=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:ctx.entitlements}));
+  await tick();
+  const ready=await readIndividualImportJob(ctx,id,scopeIds);
+  expect(ready).toMatchObject({state:'ready',total:1});
+  const pending=await readIndividualImport(ctx,ready!.attempt_id!,scopeIds);
+  expect(pending.preview.rows[0]).toMatchObject({inputType:'amount',inputValue:45.50,amount:'45.50'});
+  await queueIndividualImportConfirmation(ctx,id,scopeIds);
+  await tick();
+  const saved=await readIndividualImport(ctx,ready!.attempt_id!,scopeIds);
+  const transactionId=saved.outcomes[0].transactionId!;
+  expect(await getIndividualTxn(ctx,{id:transactionId})).toMatchObject({amount:'45.50',quantity:null,unit:'amount'});
+  await updateIndividualTxn(ctx,{id:transactionId,amount:50});
+  expect(await getIndividualTxn(ctx,{id:transactionId})).toMatchObject({amount:'50.00',quantity:null,unit:'amount'});
+ });
+
+ it('finishes a queued former daily template under its admitted contract and refuses a new upload of it',async()=>{
+  const ctx=adminCtx(base), scopeIds=[base.companyId], legacyId=randomUUID(), newId=randomUUID();
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
-  const row=(date:string)=>[employeeCode,'Import Example','2026-08','IMP','BONUS',date,'2','daily'];
+  const content=Buffer.from(await buildXlsx([...PREVIOUS_DAILY_IMPORT_HEADERS],
+   [[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','2','legacy upload']]));
+  const input={name:'previous-daily.xlsx',content,method:'daily' as const,scopeIds};
+  const tick=()=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:ctx.entitlements}));
+  await submitIndividualImportJob(ctx,{...input,id:legacyId});
+  await owner.client`update payroll_individual_import_job set template_version=1 where id=${legacyId}::uuid`;
+  await tick();
+  expect(await readIndividualImportJob(ctx,legacyId,scopeIds)).toMatchObject({state:'ready',total:1});
+  expect(await queueIndividualImportConfirmation(ctx,legacyId,scopeIds)).toBe(true);
+  await tick();
+  expect(await readIndividualImportJob(ctx,legacyId,scopeIds)).toMatchObject({state:'completed',written:1});
+  await submitIndividualImportJob(ctx,{...input,id:newId});
+  await tick();
+  expect(await readIndividualImportJob(ctx,newId,scopeIds)).toMatchObject({state:'failed',error:'downloadNewDailyTemplate',written:0});
+ });
+
+ it('retains equal-amount daily entries on distinct dates and refuses duplicates and mismatched types',async()=>{
+  await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
+  const row=(date:string)=>[employeeCode,'Import Example','2026-08','IMP','BONUS',date,'hours','2','daily'];
   const input=await validate('daily',[row('2026-07-30'),row('2026-07-31'),row('2026-07-31')]);expect(input.preview).toMatchObject({valid:2,invalid:1});
   const saved=await confirm(input.id);expect(saved.written).toBe(2);const rows=await owner.db.select().from(schema.payrollIndividualTxn);expect(rows.map(r=>r.amount)).toEqual(['20.00','20.00']);expect(new Set(rows.map(r=>r.txnDate)).size).toBe(2);
   const replay=await validate('daily',[row('2026-07-30'),row('2026-07-31')]);expect(replay.preview.valid).toBe(0);
-  await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));const unsupported=await validate('daily',[row('2026-08-10')]);expect(unsupported.preview.rows[0].reason).toBe('dailyItemUnsupported');
+  await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));const unsupported=await validate('daily',[row('2026-08-10')]);expect(unsupported.preview.rows[0].reason).toBe('dailyInputTypeMismatch');
+ });
+ it('validates explicit types by row and writes a direct daily amount without quantity',async()=>{
+  const daily=(date:string,unit:string,value:string)=>[employeeCode,'Import Example','2026-08','IMP','BONUS',date,unit,value,'daily'];
+  await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));
+  const a=await validate('daily',[
+   daily('2026-08-01','','9'),daily('2026-08-02','minutes','10'),
+   daily('2026-08-03','days','1'),daily('2026-08-04',' AMOUNT ','151.50'),
+  ]);
+  expect(a.preview.rows.map(r=>[r.rowNum,r.reason])).toEqual([[2,'inputTypeRequired'],[3,'inputTypeInvalid'],[4,'dailyInputTypeMismatch'],[5,'']]);
+  expect(a.preview.rows[3]).toMatchObject({inputType:'amount',inputValue:151.50,amount:'151.50'});
+  const saved=await confirm(a.id);expect(saved.written).toBe(1);
+  expect(saved.outcomes[3].snapshot).toMatchObject({quantity:null,unit:'amount',amount:'151.50'});
+  await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
+  const blocked=await validate('daily',[daily('2026-08-06','amount','999')]);
+  expect(blocked.preview.rows[0]).toMatchObject({reason:'dailyInputTypeMismatch',detail:{value:'hours'}});
  });
  it('34062f81: a Day by Day import prices calendar_days from each row\'s own date, in preview and on confirmation',async()=>{
   // basic / calendar_days x days, paid in October (31 days). Expected figures are independent literals for RM5,000 and 1 day.
   await owner.db.update(schema.payComponent).set({rule:{kind:'formula',start:{ref:'basic'},terms:[{op:'/',operand:{ref:'calendar_days'}},{op:'*',operand:{ref:'days'}}]}}).where(eq(schema.payComponent.id,componentId));
   const expected:[string,string][]=[['2026-09-28','166.67'],['2026-10-10','161.29'],['2026-02-15','178.57'],['2024-02-15','172.41']];
-  const input=await validate('daily',expected.map(([date])=>[employeeCode,'Import Example','2026-10','IMP','BONUS',date,'1','daily']));
+  const input=await validate('daily',expected.map(([date])=>[employeeCode,'Import Example','2026-10','IMP','BONUS',date,'days','1','daily']));
   expect(input.preview).toMatchObject({valid:4,invalid:0});expect(input.preview.rows.map(r=>r.amount)).toEqual(expected.map(([,amount])=>amount));
   const saved=await confirm(input.id);expect(saved.written).toBe(4);expect(saved.outcomes.map(o=>o.state)).toEqual(['imported','imported','imported','imported']);
   const rows=await owner.db.select().from(schema.payrollIndividualTxn).where(eq(schema.payrollIndividualTxn.employmentId,employeeId));
@@ -197,7 +253,7 @@ describe('durable Individual Transaction import',()=>{
  });
  it('requires a fresh preview after a pay-rule change instead of silently writing a new amount',async()=>{
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
-  const input=await validate('daily',[[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','2','daily']]);expect(input.preview.rows[0].amount).toBe('20.00');
+  const input=await validate('daily',[[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','hours','2','daily']]);expect(input.preview.rows[0].amount).toBe('20.00');
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:12}}).where(eq(schema.payComponent.id,componentId));
   const result=await confirm(input.id);expect(result.written).toBe(0);expect(result.outcomes[0]).toMatchObject({state:'failed',row:{reason:'previewChanged'}});expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(0);
  });

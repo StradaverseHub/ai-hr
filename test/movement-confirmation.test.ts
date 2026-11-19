@@ -384,8 +384,8 @@ describe('3ced1040 — Confirmation behaves like Promotion', () => {
     const dateKinds = src.match(/const DATE_VALUE_KINDS[^=]*=\s*\[([\s\S]*?)\];/);
     expect(dateKinds).not.toBeNull();
     expect(dateKinds![1]).toContain("'confirmation'");
-    const dateStart = src.indexOf('{showEffectiveDate && (');
-    const dateEnd = src.indexOf('{showEndDate && (', dateStart);
+    const dateStart = src.indexOf('{(showEffectiveDate || historyMode) && (');
+    const dateEnd = src.indexOf('{!historyMode && showEndDate && (', dateStart);
     expect(dateStart).toBeGreaterThan(-1);
     expect(dateEnd).toBeGreaterThan(dateStart);
     const date = src.slice(dateStart, dateEnd);
