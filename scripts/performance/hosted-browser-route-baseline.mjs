@@ -467,16 +467,27 @@ async function measureClaimApproval({page,user,db,report,save}){
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  const approved=main.locator(`tr[id="${rowId}"]`);
  const confirmation=page.locator('[data-sonner-toast][data-type="success"]').filter({hasText:'Claim approved'});
- await Promise.all([
-  confirmation.waitFor({state:'visible',timeout:timeout()}),
-  approved.locator('button[data-action-approval]').click({timeout:timeout()}),
- ]);
- await page.waitForURL(url=>url.pathname==='/approvals'&&url.searchParams.get('category')==='claim'
-  &&!url.searchParams.has('error'),{timeout:timeout()});
- await approved.waitFor({state:'hidden',timeout:timeout()});
- await main.locator('[data-approvals-header-actions] select').waitFor({state:'visible',timeout:timeout()});
- await assertContentAvailable(page);
- report.claimSteps=[{step:'approve-claim-and-refresh',elapsedMs:Math.round(performance.now()-started)}];
+ let cleanUrlRouteRequests=0;
+ const observe=request=>{
+  const url=new URL(request.url());
+  if(request.method()==='GET'&&url.origin===origin&&url.pathname==='/approvals'
+   &&url.searchParams.get('category')==='claim'&&url.searchParams.has('_rsc')
+   &&!['toast','successNotice','error','approvalSeal'].some(key=>url.searchParams.has(key)))cleanUrlRouteRequests++;
+ };
+ page.on('request',observe);
+ try{
+  await Promise.all([
+   confirmation.waitFor({state:'visible',timeout:timeout()}),
+   approved.locator('button[data-action-approval]').click({timeout:timeout()}),
+  ]);
+  const confirmedMs=Math.round(performance.now()-started);
+  await approved.waitFor({state:'hidden',timeout:timeout()});
+  await main.locator('[data-approvals-header-actions] select').waitFor({state:'visible',timeout:timeout()});
+  await page.waitForURL(origin+path,{timeout:timeout()});
+  await assertContentAvailable(page);
+  report.claimSteps=[{step:'approve-claim-and-refresh',elapsedMs:Math.round(performance.now()-started),
+   confirmedMs,cleanUrlRouteRequests}];
+ }finally{page.off('request',observe);}
  save();
 
  const result=await db`select claim.status,claim.decided_at is not null as decided,
