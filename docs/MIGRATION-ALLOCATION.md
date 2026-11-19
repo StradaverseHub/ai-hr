@@ -1,3 +1,12 @@
+# Fixed Transaction import log — 19 November 2026 (candidate only)
+
+The working branch uses `6920_fixed_transaction_import_job`, idx `10320`, when `1795028006920`, SQL SHA-256 `3558cdcdcbc94d8998d0ac1b4050e6abe0f1e751ecb0e2f6120553ae60660833`.
+The source scan covered 8,573 local and cached origin refs, 778 distinct journals and 580 registered
+worktrees. It found no tag, index or timestamp collision and the maximum observed timestamp was
+`1794998006701`. A read-only staging query found 924 migrations and watermark `1794841006104`.
+The release coordinator must recheck the live production and staging ledgers and active reservations before
+allocating this draft for integration. This entry registers only a kind on the shared worker.
+
 # Contract company scope and private digest retention — 18 November 2026 (registered, unapplied)
 
 Reserve `6501_contract_company_scope_retention`, idx `5901`, when `1794988006501`.

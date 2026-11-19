@@ -9248,6 +9248,7 @@
         "quantityInvalid": "Quantity {value} is not a number",
         "quantityRequiredHours": "This pay item calculates from hours — enter the hours",
         "quantityRequiredDays": "This pay item calculates from days — enter the days",
+        "startDateCorrection": "Enter an earlier Start Date and the exact Previous Start Date of the existing item. Keep its other values the same.",
         "startDateInvalid": "Start date {value} is not a valid date (use YYYY-MM-DD)",
         "endDateInvalid": "End date {value} is not a valid date (use YYYY-MM-DD)",
         "txnDateInvalid": "Transaction date {value} is not a valid date (use YYYY-MM-DD)",
@@ -40107,6 +40108,20 @@
         "cancelled": {
           "title": "Replacement leave settlement cancelled",
           "body": "Credits already settled stay settled. Run it again to settle the rest."
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "Fixed Transaction import complete",
+          "body": "Open the import log to review the row results."
+        },
+        "failed": {
+          "title": "Fixed Transaction import failed",
+          "body": "Open the import log to review the failure."
+        },
+        "cancelled": {
+          "title": "Fixed Transaction import stopped",
+          "body": "Open the import log to review any rows already saved."
         }
       },
       "payrollHistory": {

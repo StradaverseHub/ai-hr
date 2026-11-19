@@ -9248,6 +9248,7 @@
         "quantityInvalid": "数量 {value} 不是数字",
         "quantityRequiredHours": "此薪资项目按小时计算 — 请填写小时数",
         "quantityRequiredDays": "此薪资项目按天计算 — 请填写天数",
+        "startDateCorrection": "请输入更早的开始日期和现有项目准确的原开始日期。其他值须保持一致。",
         "startDateInvalid": "开始日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
         "endDateInvalid": "结束日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
         "txnDateInvalid": "交易日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
@@ -40107,6 +40108,20 @@
         "cancelled": {
           "title": "补假结算已取消",
           "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "固定交易导入已完成",
+          "body": "打开导入日志查看各行结果。"
+        },
+        "failed": {
+          "title": "固定交易导入失败",
+          "body": "打开导入日志查看失败原因。"
+        },
+        "cancelled": {
+          "title": "固定交易导入已停止",
+          "body": "打开导入日志查看已保存的行。"
         }
       },
       "payrollHistory": {
