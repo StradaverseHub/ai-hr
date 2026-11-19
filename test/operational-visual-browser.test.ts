@@ -43,6 +43,9 @@ it('renders affected operational routes at desktop and mobile widths without pag
     const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:120000});
     expect(response?.status()).toBe(200);expect(new URL(page.url()).pathname).toBe(route);
     await page.locator('main h1').first().waitFor();
+    await page.waitForLoadState('load');
+    await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));});
+    if(route.endsWith('system-labels'))await page.locator('[data-label-import-ready="true"]').waitFor();
     expect(await page.locator('main').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
     const metrics=await page.evaluate(()=>{const main=document.querySelector('main')!;return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:main.getBoundingClientRect().width,mainClientWidth:main.clientWidth,mainScrollWidth:main.scrollWidth};});
     expect(metrics.documentWidth).toBeLessThanOrEqual(width+1);expect(metrics.mainWidth).toBeGreaterThan(250);expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth+1);
