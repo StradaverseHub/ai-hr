@@ -429,6 +429,8 @@ try{
  await run('postgres-setup','bash',['../automation/.github/ci/postgres.sh','reset'],pgEnv);
  await run('migrate-fictional-database','pnpm',['db:migrate'],dbEnv,300000);
  await step('verify-organisation-admission','scripts/provision-organisation-admission.ts');
+ // The task, approvals, and profile reads use the installed Resignation verifier.
+ await step('provision-resignation-runtime','scripts/provision-resignation-runtime.ts');
  await step('seed-catalogues','scripts/seed-catalogs.ts');
  try{
   await run('seed-system-fixture',process.execPath,['--import','tsx',
