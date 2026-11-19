@@ -1,10 +1,12 @@
 /** First shadow lane: exact reviewed analytics header presentation change. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 
 const chart = 'components/charts/ChartCard.tsx';
 const journey = 'test/chart-card-export-wrap.browser.test.tsx';
+const reviewedJourneySha256 = '42dce0cae93a81887d96b3f4e8adf3b68f1ca8e9da99cdb47f9bab3603629834';
 const oldHeader = 'className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"';
 const newHeader = oldHeader.replace('flex items-center', 'flex flex-wrap items-center');
 const git = (cwd, ...args) => execFileSync('git', args, {cwd, encoding: 'utf8', maxBuffer: 1024 * 1024});
@@ -18,11 +20,16 @@ export function classifyPresentationPilot(cwd, base, candidate) {
     policy: 'aihr-presentation-shadow/v1', base, candidate,
     route: 'broad', reason, releaseAuthorized: false,
   });
-  if (!diff.every((entry, index) => entry === [`M\t${chart}`, `A\t${journey}`][index]) || diff.length !== 2) {
+  const admittedDiff = [`M\t${chart}`, `A\t${journey}`];
+  if (diff.length !== admittedDiff.length || diff.some((entry, index) => entry !== admittedDiff[index])) {
     return broad('The combined diff includes work outside the qualified presentation sample');
   }
   for (const path of [chart, journey]) {
     assert.match(git(cwd, 'ls-tree', candidate, '--', path), /^100644 blob /, 'Only regular source files are admitted');
+  }
+  const fixture = git(cwd, 'show', `${candidate}:${journey}`);
+  if (createHash('sha256').update(fixture).digest('hex') !== reviewedJourneySha256) {
+    return broad('The candidate supplies a different acceptance test');
   }
   const before = git(cwd, 'show', `${base}:${chart}`);
   const after = git(cwd, 'show', `${candidate}:${chart}`);
