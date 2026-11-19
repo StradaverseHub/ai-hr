@@ -2823,12 +2823,44 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    const index=legacyEmailAssetIndex(row);
    return index<0?row:{...row,...legacyEmailAssetPredicates[index].before};
   };
+  const sixItemRelations={
+   'app.movement_history_pay_evidence':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'app.payroll_transaction_export_part':{rls:false,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
+  };
+  const isSixItemRelation=(rel:string)=>Object.hasOwn(sixItemRelations,rel);
+  expect(beforePerformancePrivileges.relations.filter(row=>isSixItemRelation(row.rel))).toEqual([]);
+  expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isSixItemRelation(row.rel))
+   .map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(sixItemRelations);
+  expect(afterPerformancePrivileges.columns.filter(row=>isSixItemRelation(row.rel))).toEqual([]);
+  const isSixItemPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>
+   row.schemaname==='app'&&isSixItemRelation('app.'+row.tablename);
+  // Parse the literal access conditions separately from the installed policy catalogue.
+  const payEvidenceScope=`tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id)
+   and not exists(select from unnest(company_ids) as c(id) where not coalesce(app.can_admin_payroll_for(c.id),false))`;
+  const payEvidenceInsert=`${payEvidenceScope}
+   and exists(select from public.domain_event event where event.id=event_id
+    and event.tenant_id=app.current_tenant_id() and event.subject_employment_id=employment_id
+    and event.actor_id=app.current_user_id() and event.payload->>'hasPayEvidence'='true'
+    and event.event_type in ('employment.history.recorded','employment.history.edited'))`;
+  const sixItemPolicies=await storage.client.begin(async tx=>{
+   await tx.unsafe('create policy upgrade_expected_pay_insert on app.movement_history_pay_evidence for insert to ai_hr_app with check ('+payEvidenceInsert+')');
+   await tx.unsafe('create policy upgrade_expected_pay_select on app.movement_history_pay_evidence for select to ai_hr_app using ('+payEvidenceScope+')');
+   const rows=await tx`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
+    from pg_policies where schemaname='app' and tablename='movement_history_pay_evidence'
+    and policyname in ('upgrade_expected_pay_insert','upgrade_expected_pay_select') order by policyname`;
+   await tx`drop policy upgrade_expected_pay_insert on app.movement_history_pay_evidence`;
+   await tx`drop policy upgrade_expected_pay_select on app.movement_history_pay_evidence`;
+   return rows.map(row=>({...row,policyname:row.policyname.replace('upgrade_expected_pay_','movement_history_pay_')}));
+  });
+  expect(sixItemPolicies).toHaveLength(2);
+  expect(beforePerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual([]);
+  expect(afterPerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual(sixItemPolicies);
   const terminalComparable={
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
-   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)),
+   columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
