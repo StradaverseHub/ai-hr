@@ -35,8 +35,8 @@ it('finds the same latest visible Payroll history period without joining the his
       select tenant_id,company_id,id,period,(period||'-01')::date,
         case when period='2026-05' then 'draft'::payroll_status else 'processed'::payroll_status end
       from pay_period where tenant_id=${tenant}::uuid and company_id=any(${companies}::uuid[])`;
-    await tx`insert into payslip(tenant_id,batch_id,employment_id,basic_salary,gross_pay,statutory,net_pay,employer_cost)
-      select b.tenant_id,b.id,e.id,3000,3000,'{}'::jsonb,2800,3300
+    await tx`insert into payslip(tenant_id,batch_id,employment_id,basic_salary,gross_pay,statutory,total_deductions,net_pay,employer_cost)
+      select b.tenant_id,b.id,e.id,3000,3000,'{}'::jsonb,200,2800,3300
       from payroll_batch b join employment e on e.tenant_id=b.tenant_id and e.company_id=b.company_id
       where b.tenant_id=${tenant}::uuid and e.employee_code like 'history-%'
         and b.status='processed' and (b.company_id<>${base.companyId}::uuid or b.pay_period<>'2026-04')`;
