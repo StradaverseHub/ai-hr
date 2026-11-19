@@ -234,7 +234,7 @@ describe('public administrative page guidance',()=>{
   const guidance=admin.bindings.find(binding=>binding.name==='product_guidance')!;
   expect(await guidance.run({query:'How is an organisation proposal reviewed?',topic:'organisation_tagging'})).toMatchObject({ok:true,content:{page:'/admin/organization/organisation-tagging',humanBoundary:expect.stringContaining('Guidance cannot choose mappings')}});
   expect(guidance).toMatchObject({kind:'context',entity:null});
-  expect(guidance.spec.inputSchema).toMatchObject({properties:{topic:{type:'string',enum:['password_policy','correction_controls','organisation_tagging','reward_reviews']}},required:['query']});
+  expect(guidance.spec.inputSchema).toMatchObject({properties:{topic:{type:'string',enum:['password_policy','correction_controls','organisation_tagging','reward_reviews','offboarding_requisitions','document_signing','payroll_history_records']}},required:['query']});
   const gate=gateTurn('Where are Password Policy and Correction Controls, and who confirms changes?',{sensitive:HARNESS_SPEC.sensitive.topics});
   expect(gate).toEqual({privateReads:false,actions:true,reason:'other_person'});
   const offered=offerFor(admin.bindings,gate),offeredNames=offered.map(binding=>binding.name);

@@ -186,13 +186,21 @@ describe('individual AI read controls',()=>{
   expect(Array.from(rows).map(row=>row.function_key)).toEqual([...aiCentreReadKeys()].sort());
   // 50d9b809: the shared_leave_groups read registered by migration 4800, switchable like every other read.
   // 96a54ed2: the two attendance on-behalf reads registered by migration 5145.
-  for(const key of ['read:reward_reviews_guidance','read:shared_leave_groups','read:attendance_on_behalf_subjects','read:attendance_on_behalf_approvers'] as const){
+  for(const key of ['read:reward_reviews_guidance','read:shared_leave_groups','read:attendance_on_behalf_subjects','read:attendance_on_behalf_approvers','read:offboarding_requisitions_guidance','read:document_signing_guidance','read:payroll_history_records_guidance'] as const){
    expect(await aiCentreReadAllowed(group,key),key).toBe(true);
    await setAiCentreReadControl(group,key,false);
    expect(await aiCentreReadAllowed(group,key),key).toBe(false);
    await setAiCentreReadControl(group,key,true);
    expect(await aiCentreReadAllowed(group,key),key).toBe(true);
   }
+  // The three public board purposes have independent controls and inherit the same stop-all barrier.
+  const boardKeys=['read:offboarding_requisitions_guidance','read:document_signing_guidance','read:payroll_history_records_guidance'] as const;
+  const kinds=await owner.db.execute<{function_key:string;default_enabled:boolean}>(sql`select function_key,default_enabled from app.ai_centre_function_kind where function_key in (${sql.join(boardKeys.map(key=>sql`${key}`),sql`, `)}) order by function_key`);
+  expect(Array.from(kinds)).toEqual([{function_key:'read:document_signing_guidance',default_enabled:true},{function_key:'read:offboarding_requisitions_guidance',default_enabled:true},{function_key:'read:payroll_history_records_guidance',default_enabled:true}]);
+  await setMandateStopSwitch(group,true);
+  for(const key of boardKeys)expect(await aiCentreReadAllowed(group,key),key).toBe(false);
+  await setMandateStopSwitch(group,false);
+  for(const key of boardKeys)expect(await aiCentreReadAllowed(group,key),key).toBe(true);
   expect(await aiCentreReadAllowed(group,'read:future_unknown_function')).toBe(false);
   await expect(withTenant(group,tx=>tx.execute(sql`select app.ai_centre_read_set('read:future_unknown_function',true)`))).rejects.toBeTruthy();
  });

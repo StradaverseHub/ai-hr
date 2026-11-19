@@ -5126,3 +5126,22 @@ The same coordinator-owned block also allocates 6658 / idx 10058 / when 17949980
 2026-11-18 — coordinator source reservation: `codex/pm-recovery-sql-20261118` owns 6688–6689 / idx 10088–10089 / when 1794998006688–1794998006689 for explicit Personnel completion recovery review/adoption and bulk-job kinds. One target per worker checkpoint; no email replay. Source reservation only; final ordered ledger/hash and installation authority remain with the coordinator.
 
 2026-11-18 — approved imported-history maintenance 5b47be17 source reservation: CORE 6690–6709 / idx10090–10109 / when1794998006690–1794998006709; any separately leased UI/read support must coordinate before consuming a slot. Existing import record/snapshot/revision/event and staged bulk owners remain canonical. A fresh survey of 511 registered worktrees found no idx/when collision in 6690–6719; fetched main remains5f29160ef and alpha12098e9c5. The previously observed installation watermark is1794841006104; fresh installation and peer admission proofs remain required before release. This reservation authorises no live maintenance, installation or deployment.
+
+
+## Board public page-guidance control kinds — 19 November 2026
+
+Reserve `6960_board_public_guidance_function_kinds`, idx `10360`, when `1795028006960`,
+SQL SHA-256 `c1b4926b4d1860e6a4a79019685c39ba0988af3a97f30dbdebf2365565c0972b`. The coordinator's fresh
+read-only source survey covered 8,623 refs and 597 registered worktrees and found no
+exact or inclusive reservation-range claim. Its maximum foreign pending timestamp
+was `1795028006950`; the new reservation is above it. Private coordinator proof
+SHA-256: `adb6cbbdc2dc4c02f714bf781b410d618543abb6a197d0339b804b25b1fe232f`.
+
+This appends three literal public guidance read keys to the existing AI function
+control catalogue. It adds no function, schema, policy, grant, native action or
+business-data reader; stop and per-function controls remain canonical. All 1,119
+prior journal entries and existing SQL bodies are preserved. The observed staging
+baseline contains 1,069 ordered entries, maximum `1794988006501`; this
+reservation is not installation or acceptance evidence. Recheck the actual target's
+ordered ledger, watermarks and ownership at final admission. No live seed, registry
+update, deployment or provider approval is authorised by this source reservation.
