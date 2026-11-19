@@ -2579,7 +2579,8 @@
           "movement_label_other_company": "此值在该日期不能用于员工所属公司。请选择该公司可用的值",
           "movement_backdated_reason_required": "此异动的日期早于之后的异动。请在备注中说明插入原因。",
           "movement_before_join_date": "此日期早于员工的集团入职日期（%date%）。如果员工更早入职，请先更正集团入职日期（本文件中的集团入职日期更正行同样有效），或使用较晚的日期。",
-          "movement_history_fields": "只能为公司、部门、职位、业务单位和工作地点记录历史，且每项都需填写“之前”值。",
+          "movement_history_fields": "请选择受支持的历史字段，并为每个字段输入有效的之前值。",
+          "movement_history_pay_scope": "您需要拥有此雇佣关系及历史期间涉及的所有公司的工资管理权限。",
           "movement_history_before_required": "请为此历史行设置的每个字段填写“之前”值。",
           "movement_history_future": "只能为今天或之前的日期记录历史。",
           "movement_history_no_period": "该员工在此日期之前没有记录的期间。",
@@ -2695,8 +2696,10 @@
           "action": {
             "create": "新建",
             "update": "更新",
-            "delete": "删除"
+            "delete": "删除",
+            "history": "记录历史"
           },
+          "guideHistory": "任何事件类型均可选择记录历史。在“之前”填写历史值，在“之后”填写生效日期当天的值。",
           "guideAction": "操作：留空或选择“新建”以记录新的异动。选择“更新”更正现有异动，或选择“删除”将其撤销。更新和删除需要填写异动事件编号和原因。",
           "guideMovementId": "异动事件编号：从员工的雇佣历史下载文件（变动标签页上的“下载 Excel”）中的“异动事件编号”列复制。该编号必须属于该行的员工。",
           "guideUpdate": "更新：每个需更正的字段填写一行，并在“变更后”中填写新值。空白单元格保留已记录的值，包括空白的生效日期或事件类型；不会清空任何内容。删除：一行，系统字段、变更前和变更后留空。",
@@ -8043,6 +8046,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "导出 Excel",
+          "title": "交易工作簿",
+          "back": "返回交易视图",
+          "unavailable": "此工作簿不可用。",
+          "empty": "暂无工作簿。",
+          "fixed": "固定交易",
+          "individual": "个人交易",
+          "workbook": "交易工作簿",
+          "failed": "无法生成工作簿。",
+          "download": "下载 Excel",
+          "preparing": "正在生成工作簿",
+          "expired": "下载已过期"
+        },
         "title": "交易查询",
         "subtitle": "集中式只读薪资交易查询。",
         "readOnly": "仅供查询——此处无法新增或修改记录。",
@@ -8692,6 +8709,7 @@
       "filterYear": "年份",
       "noPayslip": "所选期间和周期内尚未为该员工计算薪资。",
       "cycleRun": "{cycle}（第 {n} 次批次）",
+      "matchingRuns": "匹配的工资批次",
       "payDateLine": "发放日期：{date}",
       "payPeriodLine": "薪资期间：{period}",
       "segmentPeriodLine": "在本公司任职 {from} 至 {to}",
@@ -9015,6 +9033,7 @@
       "noSelection": "请选择一张薪资单，以查看其法定扣除的计算方式。",
       "notFound": "没有薪资单与该链接相符。",
       "notRecordedShort": "未记录",
+      "historicalRuns": "未关联已配置薪资周期的历史记录",
       "otherRuns": "此选择范围内的薪资批次",
       "otherRunsHint": "有多个薪资批次同时符合此公司、年份、月份和周期，例如常规批次之外的花红批次。请选择要说明的批次。",
       "payslipHint": "各机构所依据的工资、所适用的规则，以及雇员与雇主的金额——取自本次薪资运算当时记录的数据，而非重新计算。",
@@ -9243,6 +9262,7 @@
         "quantityInvalid": "数量 {value} 不是数字",
         "quantityRequiredHours": "此薪资项目按小时计算 — 请填写小时数",
         "quantityRequiredDays": "此薪资项目按天计算 — 请填写天数",
+        "startDateCorrection": "请输入更早的开始日期和现有项目准确的原开始日期。其他值须保持一致。",
         "startDateInvalid": "开始日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
         "endDateInvalid": "结束日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
         "txnDateInvalid": "交易日期 {value} 不是有效日期（请用 YYYY-MM-DD）",
@@ -9267,7 +9287,9 @@
         "duplicateInFile": "本文件第 {row} 行已有该员工同一金额的 {code}",
         "duplicateImported": "本文件的这一行已经导入过了",
         "runMissingForCycle": "{period} 没有处于开启状态的{cycle}薪资批次 — 请先创建再导入",
-        "dailyItemUnsupported": "此薪资项目不支持根据数量计算金额的逐日输入。",
+        "dailyItemUnsupported": "此工资项目不支持逐日录入。",
+        "inputTypeRequired": "请输入输入类型。",
+        "dailyInputTypeMismatch": "此工资项目请使用 {value}。",
         "inputTypeInvalid": "输入类型必须是受支持的手工输入单位，并符合薪资项目规则。",
         "cycleAmbiguous": "员工公司的薪资周期缺失或不明确。请选择准确的周期代码或名称。",
         "runAmbiguous": "该周期和月份存在多个可修改的薪资批次，请先解决歧义。",
@@ -10556,7 +10578,9 @@
       "daily": "逐日输入",
       "monthlyTemplate": "下载月度模板",
       "dailyTemplate": "下载逐日模板",
-      "dailyHint": "逐日导入仅适用于支持逐日输入且根据数量计算金额的薪资项目。",
+      "dailyHint": "每日记录需要输入类型。请在薪资项目工作表中查看所需类型。",
+      "dailyInstructions": "选择工资项目要求的输入类型。按小时或天计算的项目，请在数量中填写小时数或天数。直接输入金额的项目，请选择 amount 并在数量中填写金额。",
+      "downloadNewDailyTemplate": "这是旧版逐日模板。请下载最新版并为每行添加输入类型。",
       "file": "文件",
       "working": "处理中…",
       "validate": "验证文件",
@@ -39969,6 +39993,20 @@
         "cancelled": {
           "title": "补假结算已取消",
           "body": "已处理的补假保持不变。请再次运行以处理其余部分。"
+        }
+      },
+      "fixedTransactionImport": {
+        "completed": {
+          "title": "固定交易导入已完成",
+          "body": "打开导入日志查看各行结果。"
+        },
+        "failed": {
+          "title": "固定交易导入失败",
+          "body": "打开导入日志查看失败原因。"
+        },
+        "cancelled": {
+          "title": "固定交易导入已停止",
+          "body": "打开导入日志查看已保存的行。"
         }
       },
       "payrollHistory": {

@@ -4,7 +4,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from '
 import * as s from '../db/schema';
 import {withTenant} from '../db/client';
 import {hireEmployee} from '../core/org';
-import {correctHireDetails} from '../core/hire-correction';
+import {correctHireDetails,hireCorrectionView} from '../core/hire-correction';
 import {informationCorrectionHistory} from '../core/information-correction';
 import {createMovementEvent,movementDetail,movementHistory} from '../core/movement';
 import {correctionAuditLabelsTx} from '../core/information-correction-audit';
@@ -50,6 +50,27 @@ describe('saved hire corrections agree across readers',()=>{
   expect((await movementDetail(adminCtx(b),id,hire.id))?.after.company).toBe(historical.legalName);
   const audit=await informationCorrectionHistory(adminCtx(b),id);
   expect(audit[0].payload).toMatchObject({afterLabels:{companyId:corrected.legalName}});
+ });
+ it('reads the corrected hire assignment when Company and Group Join Date are corrected together',async()=>{
+  const [corrected,later]=await owner.db.insert(s.company).values([
+   {tenantId:b.tenantId,legalName:'Corrected Hire Employer'},
+   {tenantId:b.tenantId,legalName:'Later Transfer Employer'},
+  ]).returning();
+  await owner.withTenant(adminCtx(b),tx=>tx.update(s.department).set({isGlobal:true}).where(eq(s.department.id,b.deptA)));
+  await createMovementEvent(adminCtx(b),{employmentId:id,kind:'entityTransfer',effectiveDate:'2026-03-01',companyId:later.id});
+  await correct({companyId:corrected.id,hiredOn:'2026-02-01'});
+
+  const rows=await movementHistory(adminCtx(b),id);
+  const hire=rows.find(row=>row.kind==='hired')!;
+  expect(hire).toMatchObject({company:corrected.legalName,effectiveDate:'2026-02-01'});
+  expect((await movementDetail(adminCtx(b),id,hire.id))?.after.company).toBe(corrected.legalName);
+  expect(await hireCorrectionView(adminCtx(b),id)).toMatchObject({companyId:corrected.id,hiredOn:'2026-02-01'});
+  expect(rows.find(row=>row.kind==='entityTransfer')?.company).toBe(later.legalName);
+  const [current]=await owner.db.select({companyId:s.employment.companyId}).from(s.employment).where(eq(s.employment.id,id));
+  expect(current.companyId).toBe(later.id);
+  expect((await informationCorrectionHistory(adminCtx(b),id))[0].payload).toMatchObject({
+   before:{companyId:b.companyId},after:{companyId:corrected.id},
+  });
  });
  it('displays a corrected hire grade while retaining the later deliberate grade',async()=>{
   const [original,later]=await owner.db.insert(s.jobGrade).values([{tenantId:b.tenantId,code:'FIX-FIRST',name:'Fictional Original Grade'},{tenantId:b.tenantId,code:'FIX-LATER',name:'Fictional Later Grade'}]).returning();

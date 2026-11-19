@@ -1,3 +1,16 @@
+# Approved board candidates — 19 November 2026 (draft allocation)
+
+| Candidate migration | Journal index | Timestamp | SQL SHA-256 |
+| --- | ---: | ---: | --- |
+| `6920_fixed_transaction_import_job` | 10320 | 1795028006920 | `92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed` |
+| `6930_payroll_transaction_export` | 10330 | 1795028006930 | `517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88` |
+| `6940_individual_import_template_version` | 10340 | 1795028006940 | `1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d` |
+| `6950_movement_history_pay_evidence` | 10350 | 1795028006950 | `4156a103b335c9078dfc4840ffd1dd5db644a53f7c14d82e5fcd3c1f74abda2c` |
+
+The source survey covered 8,573 local and cached origin refs, 778 distinct journals and 580 registered worktrees before the candidates were created. The largest timestamp was `1794998006701`. The read-only staging ledger had 924 migrations and a watermark of `1794841006104`.
+
+Confirm both live ledgers and all active reservations with the release coordinator before assigning these draft numbers for integration.
+
 # Contract company scope and private digest retention — 18 November 2026 (registered, unapplied)
 
 Reserve `6501_contract_company_scope_retention`, idx `5901`, when `1794988006501`.

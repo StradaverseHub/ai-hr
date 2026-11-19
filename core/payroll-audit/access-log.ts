@@ -91,17 +91,23 @@ export async function recordPayslipOpened(ctx:SessionContext,input:Readonly<{pay
 
 /** An export that spans several companies (a transaction view, a history workbook): one entry per company in it, written
  * together. `payPeriod` only when the export is for one month. */
-export async function recordPayrollExportAcross(ctx:SessionContext,entry:Readonly<{surface:PayrollAccessSurface;companyIds:readonly string[];payPeriod?:string;
- format?:string;detail?:string}>,file:Uint8Array|string,rows?:number):Promise<AccessRecord>{
+type PayrollExportScope=Readonly<{surface:PayrollAccessSurface;companyIds:readonly string[];payPeriod?:string;
+ format?:string;detail?:string}>;
+export function recordPayrollExportAcross(ctx:SessionContext,entry:PayrollExportScope,file:Uint8Array|string,rows?:number):Promise<AccessRecord>{
+ const bytes=typeof file==='string'?new TextEncoder().encode(file):file;
+ return recordPayrollExportReceiptAcross(ctx,entry,{fileSha256:sha256Hex(bytes),bytes:bytes.byteLength,rows});
+}
+
+export async function recordPayrollExportReceiptAcross(ctx:SessionContext,entry:PayrollExportScope,receipt:{fileSha256:string;bytes:number;rows?:number}):Promise<AccessRecord>{
  const skipped=unrecorded(ctx);if(skipped)return skipped;
- const bytes=typeof file==='string'?new TextEncoder().encode(file):file,fileSha256=sha256Hex(bytes);
+ const {fileSha256,bytes,rows}=receipt;
  const ids=[...new Set(entry.companyIds)];
  if(!ids.length)throw new Error('A payroll export names at least one company.');
  const eventIds=await withTenant(ctx,async tx=>{
   const out:string[]=[];
   for(const companyId of ids)out.push(await recordPayrollAccessTx(tx,ctx,{surface:entry.surface,action:'export',companyId,
    ...(entry.payPeriod?{payPeriod:entry.payPeriod}:{}),...(entry.format?{format:entry.format}:{}),...(entry.detail?{detail:entry.detail}:{}),
-   fileSha256,bytes:bytes.byteLength,...(rows===undefined?{}:{rows})}));
+   fileSha256,bytes,...(rows===undefined?{}:{rows})}));
   return out;
  });
  return Object.freeze({recorded:true as const,eventId:eventIds[0]!});

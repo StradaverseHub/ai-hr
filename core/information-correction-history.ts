@@ -28,7 +28,7 @@ import type {EmploymentStatus} from './employment-status';
 type RunType=PayslipReviewRow['runType'];
 /** Only retained document fields can overlay a live transaction. Money and publication stay canonical. */
 const profileFields=['employeeName','employee','employeeCode','company','companyReg','currency','cycleName','informationFields','businessUnit','department','position','jobGrade','employmentType','division','branch','region','line','section','team','base','category','paymentMethod','bankName','bankAccountNo','icNumber','passportNumber','epfNumber','socsoNumber','taxNumber','employmentStatus'] as const;
-type RawDocumentRow=Omit<PayslipReviewRow,'bankAccountMasked'|'bankAccountFull'|'identityNumber'|'identityIsPassport'> & {bankAccountNo:string|null;icNumber:string|null;passportNumber:string|null;employmentStatus:EmploymentStatus;batchStatus:typeof payrollBatch.$inferSelect.status};
+type RawDocumentRow=Omit<PayslipReviewRow,'bankAccountMasked'|'bankAccountFull'|'identityNumber'|'identityIsPassport'> & {bankAccountNo:string|null;icNumber:string|null;passportNumber:string|null;employmentStatus:EmploymentStatus;payrollCycleId:string|null;batchStatus:typeof payrollBatch.$inferSelect.status};
 type HistoricalDocument={metadata:Record<string,unknown>;batch:Record<string,unknown>;payslip:Record<string,unknown>};
 export function overlayInformationDocument<T extends object>(row:T,document:HistoricalDocument|null):T{
  if(!document)return row;
@@ -48,11 +48,13 @@ export const RETAINED_DOCUMENT_CEILING=5000;
  * companies" with no period passed 5,000 retained documents and the landing tab became an error page.
  * Without `limit` the ceiling still refuses rather than silently returning a partial set.
  */
-export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
+export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;payrollCycleId?:string;employmentId?:string;intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
  const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
  const limit=Number.isInteger(p.limit)&&p.limit!>0?Math.min(p.limit!,RETAINED_DOCUMENT_CEILING):undefined;
  for(let offset=0;offset<companies.length;offset+=100){
-  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) with ordinality as d(document,ordinal) order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
+  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) with ordinality as d(document,ordinal)
+    ${p.payrollCycleId ? sql`where d.document->'batch'->>'payroll_cycle_id' = ${p.payrollCycleId}` : sql``}
+    order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
   documents.push(...rows.map(r=>r.document));
   if(!limit&&documents.length>RETAINED_DOCUMENT_CEILING)throw new Error('Narrow the payroll period to view retained documents.');
  }
@@ -61,7 +63,7 @@ export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];y
 /** Fixed SQL projection supplies exact numeric strings, never JSON numeric conversions. */
 export function informationDocumentRow(d:HistoricalDocument):RawDocumentRow{
  const b=d.batch,p=d.payslip;
- return {...d.metadata,id:p.id,employmentId:p.employment_id,companyId:b.company_id,batchId:b.id,payPeriod:b.pay_period,runType:b.run_type as RunType,runSeq:b.run_seq,batchStatus:b.status,
+ return {...d.metadata,id:p.id,employmentId:p.employment_id,companyId:b.company_id,batchId:b.id, payrollCycleId:b.payroll_cycle_id??null,payPeriod:b.pay_period,runType:b.run_type as RunType,runSeq:b.run_seq,batchStatus:b.status,
  historyImportAttemptId:b.history_import_attempt_id,historyImportCycleName:b.history_import_cycle_name,releasedAt:b.released_at?new Date(String(b.released_at)):null,version:p.version,
  basic:p.basic_salary,allowance:p.allowance,overtime:p.overtime_pay,bonus:p.bonus,gross:p.gross_pay,statutory:p.statutory,otherDeductions:p.other_deductions,totalDeductions:p.total_deductions,net:p.net_pay,employerCost:p.employer_cost,daysWorked:p.days_worked,coverageFrom:p.coverage_from,coverageTo:p.coverage_to,payDate:b.history_import_attempt_id?null:b.batch_date} as RawDocumentRow;
 }

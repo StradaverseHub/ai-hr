@@ -1,8 +1,11 @@
 'use server';
+
+import { MOVEMENT_HISTORY_PAY_FIELDS, type HistoryPayFacts } from '@/lib/movement-history-pay';
+import { MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
 import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
 
-import { recordHistoryMovement } from '@/core/movement-history-command';
-import { MovementHistoryError } from '@/core/movement-history';
+import { editEntityHistoryMovement, recordHistoryMovement } from '@/core/movement-history-command';
+import { MovementHistoryError, type HistoryDateFacts } from '@/core/movement-history';
 import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
@@ -495,15 +498,36 @@ async function parseMovementDocuments(formData: FormData): Promise<MovementDocum
 }
 
 /** Board 154511c4 — the Before values of New Event's "Record history" (blank selections are left out). */
-const HISTORY_FORM_FIELDS = ['companyId', 'departmentId', 'positionId', 'businessUnitId', 'locationId'] as const;
-function parseHistoryBefore(formData: FormData): Record<string, string> | null {
-  if (formData.get('recordHistory') !== '1') return null;
-  const before: Record<string, string> = {};
-  for (const field of HISTORY_FORM_FIELDS) {
+function parseHistoryBefore(formData: FormData, editing = false): Record<string, string | null> | null {
+  if (!editing && formData.get('recordHistory') !== '1' && formData.get('historicalPageMode') !== '1') return null;
+  const before: Record<string, string | null> = {};
+  for (const field of MOVEMENT_HISTORY_FIELDS) {
     const value = String(formData.get('history.' + field) ?? '').trim();
-    if (value) before[field] = value;
+    if (value) before[field] = value === '__clear__' && ['businessUnitId', 'positionId', 'locationId'].includes(field) ? null : value;
   }
   return before;
+}
+
+function parseHistoryDates(form: FormData): HistoryDateFacts {
+  const dates: HistoryDateFacts = {};
+  for (const field of MOVEMENT_HISTORY_DATE_FIELDS) {
+    const before = String(form.get('historyDate.before.' + field) ?? '').trim();
+    const after = String(form.get('historyDate.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) dates[field] = { before, ...(after ? { after } : {}) };
+  }
+  return dates;
+}
+
+function parseHistoryPay(form: FormData): HistoryPayFacts | undefined {
+  const pay: HistoryPayFacts = {};
+  for (const field of MOVEMENT_HISTORY_PAY_FIELDS) {
+    const before = String(form.get('historyPay.before.' + field) ?? '').trim();
+    const after = String(form.get('historyPay.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) pay[field] = { before, ...(after ? { after } : {}) };
+  }
+  return Object.keys(pay).length ? pay : undefined;
 }
 
 export async function createMovementEventAction(formData: FormData) {
@@ -517,6 +541,8 @@ export async function createMovementEventAction(formData: FormData) {
         typeCode: String(formData.get('kind') ?? ''),
         effectiveDate: String(formData.get('effectiveDate') ?? ''),
         before: historyBefore,
+        dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
         remarks: String(formData.get('remarks') ?? '').trim() || null,
       });
     } catch (e) {
@@ -615,6 +641,30 @@ export async function createMovementEventAction(formData: FormData) {
 export async function editMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
+  if (formData.get('historyEdit') === '1') {
+    try {
+      await editEntityHistoryMovement(s, {
+        employmentId,
+        movementId: String(formData.get('movementId') ?? '').trim(),
+        revisionId: String(formData.get('revisionId') ?? '').trim(),
+        effectiveDate: String(formData.get('effectiveDate') ?? ''),
+        before: parseHistoryBefore(formData, true) ?? {},
+        dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
+        remarks: orNull(formData.get('remarks')),
+        reason: String(formData.get('reason') ?? ''),
+      });
+    } catch (e) {
+      const labels = await getTranslations();
+      const message = e instanceof MovementHistoryError
+        ? movementImportIssueText(e.message, (key, fallback) => (labels.has(key) ? labels(key) : fallback))
+        : await compensationErrorMessage(e);
+      if (formData.get('movementPage')) throw new Error(message);
+      redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(message)}`));
+    }
+    revalidatePath(`/admin/personnel/${employmentId}`);
+    redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  }
   try {
     const p = parseMovementForm(formData, 'edit');
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
