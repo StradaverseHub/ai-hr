@@ -327,11 +327,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
    }
    expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
   }
-  async function recycleNext(phase:string){
+  async function recycleNext(phase:string,currentPage:Page){
+   // Prevent the old page's hot-reload client from recompiling its route during the next phase.
+   const browserContext=currentPage.context();
+   await currentPage.close();
    const deadline=performance.now()+20000;
    await within(deadline,'phase server cleanup',()=>stopNext(deadline));
    sampleCapacity?.(phase+'-stopped');
    await startOwnedNext();
+   const nextPage=await browserContext.newPage();nextPage.setDefaultTimeout(90000);return nextPage;
   }
   await startOwnedNext();
   signal.throwIfAborted();
@@ -340,7 +344,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   signal.throwIfAborted();
   const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
   await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
-  const page=await context.newPage();page.setDefaultTimeout(90000);
+  let page=await context.newPage();page.setDefaultTimeout(90000);
   await navigate(page,labelsPath,en);
   // Even a fresh personal catalogue must retain its category rail and Excel export.
   await navigate(page,profilePath,en);
@@ -385,7 +389,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
   await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
   for(const locale of locales){
-   await recycleNext('locale-'+locale);
+   page=await recycleNext('locale-'+locale,page);
    const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
@@ -395,7 +399,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
     await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
    }
   }
-  await recycleNext('restricted-role');
+  page=await recycleNext('restricted-role',page);
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
@@ -433,7 +437,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const visualResults:unknown[]=[];
   const visualRoutes=['/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily','/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records','/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/'];
   for(const [routeIndex,route] of visualRoutes.entries()){
-   if(routeIndex%2===0)await recycleNext('operational-pair-'+Math.floor(routeIndex/2));
+   if(routeIndex%2===0)page=await recycleNext('operational-pair-'+Math.floor(routeIndex/2),page);
    for(const [name,width,height] of [['desktop',1440,1050],['mobile',390,844]] as const){
     await page.setViewportSize({width,height});
     const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:180000});
