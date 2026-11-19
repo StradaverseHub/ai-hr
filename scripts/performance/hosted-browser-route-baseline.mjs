@@ -867,6 +867,41 @@ async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
  save();
 }
 
+async function measurePublicLogin(){
+ report.publicLogin=[];
+ for(const locale of ['en','ms']){
+  const copy=JSON.parse(readFileSync('messages/'+locale+'.json','utf8'));
+  assert(typeof copy.internalAuth?.username==='string'&&copy.internalAuth.username.length>0);
+  const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
+  try{
+   await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:origin}]);
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   const errors=[];
+   page.on('pageerror',()=>{errors.push(true);});
+   page.on('console',message=>{
+    if(message.type()==='error'&&message.text().includes('MISSING_MESSAGE'))errors.push(true);
+   });
+   const started=performance.now();
+   const response=await page.goto(origin+'/login',{waitUntil:'commit',timeout:15000});
+   assert.equal(response?.status(),200);
+   assert.equal(new URL(page.url()).pathname,'/login');
+   const workspace=page.locator('form.login-workspace-form');
+   await workspace.locator('input[name="organization"]:enabled').waitFor({state:'visible',timeout:15000});
+   assert.equal(await page.locator('html').getAttribute('lang'),locale);
+   const workspaceReadyMs=Math.round(performance.now()-started);
+   await workspace.locator('input[name="organization"]').fill('perf-a',{timeout:15000});
+   await workspace.getByRole('button').click({timeout:15000});
+   await page.getByLabel(copy.internalAuth.username,{exact:true}).waitFor({state:'visible',timeout:15000});
+   await page.locator('input[name="password"]:enabled').waitFor({state:'visible',timeout:15000});
+   assert.equal(errors.length,0,'Localized login produced a browser or translation error');
+   report.publicLogin.push({locale,workspaceReadyMs,credentialsReadyMs:Math.round(performance.now()-started),
+    documentTiming:await documentTiming(page)});
+   save();
+  }finally{await context.close();}
+ }
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -1005,6 +1040,7 @@ try{
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
   await measureActions(fixture);
+  await measurePublicLogin();
   const routesObserved=report.observations.length===2*report.plannedRoleRoutes
    &&report.observations.every(row=>row.status==='observed');
   const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
