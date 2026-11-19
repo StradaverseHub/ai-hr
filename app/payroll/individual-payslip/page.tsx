@@ -373,8 +373,8 @@ export default async function IndividualPayslipPage({
   const showCompanyId = sel.companyId ?? companyId ?? '';
   const showYear = sel.year ?? year;
   const showMonth = sel.month ?? month;
-  const showCycle = selectedCycleId ?? (!strictFilter && legacyRunLink
-    ? runs.find(run => run.payslipId === sel.payslipId)?.payrollCycleId ?? '' : '');
+  const displayedRun = runs.find(run => run.payslipId === sel.payslipId);
+  const showCycle = selectedCycleId ?? (!strictFilter ? displayedRun?.payrollCycleId ?? '' : '');
   const cycleName = new Map(configuredCycles.map(option => [option.id, option.name]));
   const visibleCycles = configuredCycles.filter(option => !showCompanyId || option.companyId === showCompanyId || option.id === showCycle);
 
