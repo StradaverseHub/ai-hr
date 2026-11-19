@@ -1,4 +1,5 @@
 import type { SessionContext, Tx } from '@/db/client';
+import {readLeaveBalancePageInputsTx} from '@/core/own-leave-inputs';
 import { leaveInquirySnapshotForContext, leaveInquiryBalancePairsTx, type LeaveInquiryContext } from '@/packs/leave/service';
 import type { InquiryQuery } from '@/lib/leave-inquiry-query';
 import { employeeBalanceRows, type EmployeeBalanceRow } from './rows';
@@ -16,9 +17,12 @@ export async function inquiryBalancePage(ctx: SessionContext, scope: LeaveInquir
     ids.push(pair.leaveTypeId); byEmployee.set(pair.employee.employmentId, ids);
   }
   const hydrated = new Map<string, EmployeeBalanceRow>();
-  // Sequential employees bound connection pressure; each read retains the Leave owner's pool context.
+  const balanceInputs=await readLeaveBalancePageInputsTx(tx,[...byEmployee.keys()]);
+  // Calculate each visible row with the existing Leave rules and the page snapshot's source rows.
   for (const [employmentId, requestedTypeIds] of byEmployee) {
-    for (const row of await employeeBalanceRows(hydrationContext, employmentId, query.asOf, locale, {}, { requestedTypeIds, tx })) hydrated.set(`${employmentId}|${row.leaveTypeId}`, row);
+    for (const row of await employeeBalanceRows(hydrationContext, employmentId, query.asOf, locale, {}, {
+      requestedTypeIds,tx,inputs:balanceInputs.get(employmentId),
+    })) hydrated.set(`${employmentId}|${row.leaveTypeId}`, row);
   }
   const rows = page.rows.map(pair => {
     const row = hydrated.get(`${pair.employee.employmentId}|${pair.leaveTypeId}`);
