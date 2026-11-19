@@ -117,6 +117,25 @@ describe('legacy Schedule feedback forwarding', () => {
     expect(state.router.replace).toHaveBeenCalledExactlyOnceWith(path, {scroll:false});
   });
 
+  it('consumes a client-only success once and preserves live filters and the fragment', () => {
+    const path='/approvals';
+    location(path, 'category=claim&sort=oldest&successNotice=Claim+approved&approvalSeal=1', '#approvals-leave');
+    render(shell(<><ToastFromQuery/><ToastFromQuery/></>));
+    expect(state.success).toHaveBeenCalledExactlyOnceWith('Claim approved');
+    expect(state.router.replace).not.toHaveBeenCalled();
+    expect(window.location.pathname+window.location.search+window.location.hash)
+      .toBe('/approvals?category=claim&sort=oldest#approvals-leave');
+  });
+
+  it('leaves a newer URL alone when the previous transition delivers client-only feedback late', () => {
+    location('/approvals', 'category=claim&successNotice=Claim+approved', '');
+    window.history.replaceState(null, '', '/approvals?category=leave');
+    render(shell(<ToastFromQuery/>));
+    expect(state.success).not.toHaveBeenCalled();
+    expect(state.router.replace).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?category=leave');
+  });
+
   it('server alias guards first, forwards allowlisted query feedback and keeps its established default anchor', async () => {
     await expect(OldWorkSchedulePage({searchParams:Promise.resolve({error:['first & error','second'],toast:'Saved + done',target:'https://evil.example'})})).rejects.toThrow('REDIRECT:/admin/attendance/settings/work-schedule-overtime?error=first+%26+error&toast=Saved+%2B+done#work-schedule-overtime');
     expect(state.requireAdmin).toHaveBeenCalledOnce();

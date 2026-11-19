@@ -126,14 +126,14 @@ describe('panel structure', () => {
 describe('approvalsReturnUrl (the decide-action redirect builder)', () => {
   it('preserves category and sort on success and error paths alike', () => {
     expect(approvalsReturnUrl({ category: 'leave', sort: 'oldest', toast: 'Leave approved' })).toBe(
-      '/approvals?category=leave&sort=oldest&toast=Leave+approved',
+      '/approvals?category=leave&sort=oldest&successNotice=Leave+approved',
     );
     expect(approvalsReturnUrl({ category: 'overtime', sort: 'name_asc', error: 'nope' })).toBe(
       '/approvals?category=overtime&sort=name_asc&error=nope',
     );
   });
   it('omits the default category (all / empty) and an empty sort', () => {
-    expect(approvalsReturnUrl({ category: 'all', sort: '', toast: 'ok' })).toBe('/approvals?toast=ok');
+    expect(approvalsReturnUrl({ category: 'all', sort: '', toast: 'ok' })).toBe('/approvals?successNotice=ok');
     expect(approvalsReturnUrl({})).toBe('/approvals');
   });
 });

@@ -210,9 +210,9 @@ describe('the decision the approver makes beside it',()=>{
   fx.decideLeave.mockResolvedValueOnce({status:'pending'}).mockResolvedValueOnce({status:'approved'});
   const request=form({id:LR_PASS,decision:'approved'});
   await expect(approveLeaveAction(request)).rejects.toThrow('NEXT_REDIRECT');
-  expect(fx.redirects.at(-1)).toBe('/approvals?toast=Approval+stage+recorded');
+  expect(fx.redirects.at(-1)).toBe('/approvals?successNotice=Approval+stage+recorded');
   await expect(approveLeaveAction(request)).rejects.toThrow('NEXT_REDIRECT');
-  expect(fx.redirects.at(-1)).toBe('/approvals?toast=Leave+approved&approvalSeal=1');
+  expect(fx.redirects.at(-1)).toBe('/approvals?successNotice=Leave+approved&approvalSeal=1');
  });
  it('posts the record with each decision control',()=>{
   const view=wrap(<LeaveDecideControls id={LR_PASS} labels={{approve:'Approve',reject:'Reject',rejectReason:'Reason'}} nav={{category:'leave',sort:''}} recommendationRecordId={RECORD_PASS}/>);
@@ -232,7 +232,7 @@ describe('the decision the approver makes beside it',()=>{
   expect(fx.decideLeave).toHaveBeenCalledWith(MANAGER,{leaveRequestId:LR_PASS,decision:'approved',rejectReason:undefined});
   expect(fx.follow).toHaveBeenCalledWith(MANAGER,{recordId:RECORD_PASS,decision:'approved'});
   expect(order).toEqual(['decide','follow']);
-  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?category=leave&toast=Leave+approved');
+  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?category=leave&successNotice=Leave+approved');
 
   // A disagreement is the same follow-up with the native decision; the recommender records it as not followed.
   fx.follow.mockClear();
@@ -250,7 +250,7 @@ describe('the decision the approver makes beside it',()=>{
   fx.decideLeave.mockResolvedValue(undefined);
   fx.follow.mockRejectedValue(Error('Fixture record outage'));
   await expect(approveLeaveAction(form({id:LR_PASS,decision:'approved',recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
-  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?toast=Leave+approved');
+  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?successNotice=Leave+approved');
   fx.follow.mockReset();
   await expect(approveLeaveAction(form({id:LR_PASS,decision:'approved',recommendationRecordId:'not-a-record'}))).rejects.toThrow('NEXT_REDIRECT');
   await expect(approveLeaveAction(form({id:LR_PASS,decision:'approved'}))).rejects.toThrow('NEXT_REDIRECT');
@@ -319,6 +319,6 @@ describe('the per-date decision (slice 3 follow-up)',()=>{
   // A follow-up that cannot be written never fails the committed decision.
   fx.follow.mockReset();fx.follow.mockRejectedValue(Error('Fixture record outage'));fx.decideLeaveDates.mockResolvedValueOnce({status:'approved'});
   await expect(decideLeaveDatesAction(form({id:LR_PASS,decisions,recommendationRecordId:RECORD_PASS}))).rejects.toThrow('NEXT_REDIRECT');
-  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?toast=Leave+decided&approvalSeal=1');
+  expect(fx.redirects[fx.redirects.length-1]).toBe('/approvals?successNotice=Leave+decided&approvalSeal=1');
  });
 });

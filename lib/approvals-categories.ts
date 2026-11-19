@@ -13,6 +13,7 @@
  * core/approvals-summary.ts.
  */
 import { BULK_CATEGORY_ORDER, isOvertimeCorrection, type BulkCategory } from './approvals-bulk';
+import { CLIENT_SUCCESS_NOTICE } from './navigation-feedback';
 
 export type ApprovalCategory =
   | 'all'
@@ -159,7 +160,7 @@ export function approvalsReturnUrl(p: {
   const qs = new URLSearchParams();
   if (p.category && p.category !== 'all') qs.set('category', p.category);
   if (p.sort) qs.set('sort', p.sort);
-  if (p.toast) qs.set('toast', p.toast);
+  if (p.toast) qs.set(p.error ? 'toast' : CLIENT_SUCCESS_NOTICE, p.toast);
   if (p.error) qs.set('error', p.error);
   if (p.approvalSeal && p.toast && !p.error) qs.set('approvalSeal', '1');
   const s = qs.toString();
