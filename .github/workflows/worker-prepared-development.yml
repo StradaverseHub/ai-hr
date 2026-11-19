@@ -27,3 +27,4 @@ jobs:
           python3 -I -B test/fixtures/bank-import-worker-upgrade-tests.py
           python3 -I -B test/fixtures/bank-import-worker-operation-guard-tests.py
           python3 -I -B test/fixtures/bank-import-worker-prepared-tests.py
+          python3 -I -B test/fixtures/bank-import-worker-unstarted-tests.py

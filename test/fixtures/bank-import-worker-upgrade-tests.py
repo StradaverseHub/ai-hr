@@ -148,7 +148,9 @@ class WorkerUpgradeTests(unittest.TestCase):
             output=Path(tmp)/'helper.py'
             result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime'])
+            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime','guarded-recover-unstarted-ci-runtime'])
+            self.assertEqual(len(json.loads(result.stdout)['sourceFiles']),9)
+            self.assertEqual(json.loads(result.stdout)['sourceFiles']['deploy/systemd/bank_import_worker_unstarted_v1.py'],hashlib.sha256((ROOT/'deploy/systemd/bank_import_worker_unstarted_v1.py').read_bytes()).hexdigest())
             body=output.read_text();self.assertNotIn('spec_from_file_location',body)
             self.assertIn('types.ModuleType',body);self.assertEqual(output.stat().st_mode&0o777,0o600)
             result=subprocess.run([sys.executable,'-I','-B',str(output),'--help'],capture_output=True,text=True)

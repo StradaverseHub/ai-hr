@@ -110,6 +110,7 @@ def historical_activation(base,ci,a,f):
 
 def check_history(o):
     b,c,a,f=o.base,o.guard.ci,o.auth,o.recovery
+    if o.guard.stage=='recover-unstarted-ci-runtime':return c.UNSTARTED.check_history(o)
     old=historical_activation(b,c,a,f)
     b.check(all(old[k]==a[k]for k in('install','grantSha256','activatedSha256','runtimeSha256','drainSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','priorLastOkSha256','launch','firstStageApproval','firstStageApprovalSha256')),'original exact installation/failure pins differ')
     first=json.loads(o.first_bytes);b.check(first['helperSha256']==old['helperSha256'],'original helper provenance differs')
@@ -117,13 +118,15 @@ def check_history(o):
     if o.guard.stage=='recover-published-ci-runtime':c.PUBLISHED.load_seal(o.guard,o.fmt,b,c,c.RECOVERY)
 
 
-def failed_snapshot(o):return failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
+def failed_snapshot(o):
+    if o.guard.stage=='recover-unstarted-ci-runtime':return o.guard.ci.UNSTARTED.failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
+    return failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
 
 
 def admit_mutation(o):
     b=o.base;remaining=min(o.overall_deadline-time.monotonic(),o.guard.ci.epoch(o.auth['expiresAt'])-time.time())
     b.check(o.fence_count==3 and len(o.audits)==1 and len(o.content_proofs)==1,'full recovery pre-mutation proof graph required')
-    extra=40 if o.guard.stage=='recover-published-ci-runtime'else 0
+    extra=40 if o.guard.stage in ('recover-published-ci-runtime','recover-unstarted-ci-runtime')else 0
     b.check(o.guard.ci.epoch(o.auth['expiresAt'])-time.time()>=527+extra and remaining>=497+extra,'insufficient independently authorized recovery/global opportunity')
     failed_snapshot(o)
     return {'recoveryOnly':True,'originalReadinessWindowRevived':False,'expiredGrantWriteAuthority':False}
@@ -218,6 +221,7 @@ def run(stage,guard,fmt,base,ci,update):
         if stage=='seal-published-ci-worker':return ci.PUBLISHED.seal(guard,fmt,base,ci,ci.RECOVERY,update)
         if stage=='recover-published-ci-runtime':return ci.PUBLISHED.run(guard,fmt,base,ci,ci.RECOVERY,update)
         if stage=='prepare-ci-worker':return prepare(guard,fmt,base,ci,update)
+        if stage=='recover-unstarted-ci-runtime':return ci.UNSTARTED.run(guard,fmt,base,ci,update)
         a=guard.a;identity=a['identity'];original=base.ROOT/'upgrades'/identity['source'];base.root_protected(original)
         recovery=a.get('recovery');selected=a['preparedWorker']
         proof,directory,manifest=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE,baseline_publication=a.get(ci.BASELINE_PUBLICATION_KEY))

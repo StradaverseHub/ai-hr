@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'),'fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 
@@ -222,7 +222,8 @@ def verify_baseline_publication(base,approval,*,paired=False,last_ok=None):
     # Preunit recovery completes the same two-audit/ten-fence receipt graph.
     base.check(type(saved)is dict and (saved.get('mode'),saved.get('policy'))in(
                ('recover-ci-runtime',RECOVERY.POLICY),
-               ('recover-prepared-preunit-ci-runtime','aihr-worker-prepared-preunit-recovery/v1')),
+               ('recover-prepared-preunit-ci-runtime','aihr-worker-prepared-preunit-recovery/v1'),
+               ('recover-unstarted-ci-runtime','aihr-worker-unstarted-recovery/v1')),
                'exact recovered worker baseline receipt mode/policy pair required')
     expected={'source':p['source'],'webBuildId':p['buildId'],'authorizationSha256':p['workerAuthorizationSha256'],
               'workerRecoveryOnly':True,'serviceStable':True,
@@ -504,9 +505,11 @@ class RuntimeObservation:
         a = self.auth = json.loads(self.bytes)
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
         published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
+        unstarted=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-unstarted-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
-        fields=baseline_publication_fields(fields,a,allow=recovery is None and not published)
-        kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
+        if unstarted:fields=UNSTARTED.LIVE_FIELDS
+        fields=baseline_publication_fields(fields,a,allow=unstarted or recovery is None and not published)
+        kind=UNSTARTED.KINDS[ACTIVE_OPERATION_GUARD.stage]if unstarted else PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
@@ -1095,7 +1098,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime') and self.fence_count==4 else 20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime') and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -1179,7 +1182,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {'mode':'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
