@@ -54,6 +54,7 @@ it('projects the same complete filter facts for a bounded candidate set across s
       try {
         const rows = await withTenant(actor, tx => tx.execute<{ value: Record<string, unknown> }>(readers[variant]), { readOnlySnapshot: true });
         const values = rows.map(row => row.value);
+        if (label === 'group-all') expect(values).toHaveLength(candidates.length);
         expect(values.every(row => typeof row.filterRevision === 'string')).toBe(true);
         return { values };
       } catch (error) {
