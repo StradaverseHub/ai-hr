@@ -10,7 +10,7 @@ it('preserves managed drain, production first activation, production update and 
 it('admits only the root-pinned live CI runtime and monotonic native finish, with unchanged quarantine',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-ci-runtime-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 36 tests');
+ expect(result.stderr).toContain('Ran 46 tests');
  // Gate 44354971179 timed out at 136.205 s; allow about 3x headroom while retaining native runtime controls.
 },420000);
 
