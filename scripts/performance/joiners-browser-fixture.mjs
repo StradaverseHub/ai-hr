@@ -17,16 +17,19 @@ const [group,company]=fixture.users;
 assert(fixture.users.length===500&&fixture.tenants.length===2&&group.tenant===0&&company.tenant===0);
 assert(group.role==='groupHR'&&company.role==='companyHR'&&group.companyId===company.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
-const {closeAll,entitledCtx}=await source('test/harness.ts');
-env.AUDIT_HASH_CHAIN_ENABLED='true';
+const [{client,createDb},{resolveEntitlementsTx}]=await Promise.all([
+ source('db/client.ts'),source('core/entitlements.ts'),
+]);
+const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
 try{
  const {onboardingContext,onboardingList,onboardingSaveConfig,v9Setup}=await source('packs/lifecycle/service.ts');
  const {saveEmployeeDraft}=await source('core/employee-draft.ts');
- const ctx=await entitledCtx({tenantId:group.tenantId,adminUserId:group.userId},['employee','hr_admin','payroll_partner','performance_comp_partner']);
- Object.assign(ctx,{personId:group.personId,grants:[
+ const grants=[
   {role:'employee',companyId:group.companyId},{role:'hr_admin',companyId:null},
   {role:'payroll_partner',companyId:null},{role:'performance_comp_partner',companyId:null},
- ]});
+ ];
+ const ctx={tenantId:group.tenantId,userId:group.userId,personId:group.personId,grants,
+  roles:grants.map(grant=>grant.role),entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId))};
  await v9Setup(ctx);
  const {config,revision}=await onboardingContext(ctx);
  config.access.onboarding=[...new Set([...config.access.onboarding,group.userId,company.userId])];
@@ -45,4 +48,4 @@ try{
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
-}finally{await closeAll();}
+}finally{await Promise.all([owner.client.end(),client.end()]);}
