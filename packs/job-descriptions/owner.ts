@@ -113,8 +113,16 @@ async function scope(tx: Tx, ctx: SessionContext, companyId: string, operation: 
     throw new JobDocumentError('Job record not available'); }
 type JobListFilters = Pick<Masters, 'companies' | 'businessUnit' | 'department' | 'grade' | 'family'>;
 
+function readJobCompanyOptions(tx: Tx, ctx: SessionContext) {
+    return tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
+}
+
+export async function getJobCompanyOptions(ctx: SessionContext) {
+    return jobPresentation(ctx, readJobCompanyOptions);
+}
+
 async function readJobFilterOptions(tx: Tx, ctx: SessionContext): Promise<{ filters: JobListFilters; positions: Masters['position'] }> {
-    const companies = await tx.select({ value: company.id, label: company.legalName }).from(company).where(and(eq(company.tenantId, ctx.tenantId), isNull(company.archivedAt), sql `app.access_workforce_company(${company.id},'workforce.view')`)).orderBy(asc(company.legalName), asc(company.id));
+    const companies = await readJobCompanyOptions(tx, ctx);
     if (!companies.length) return { filters: { companies, businessUnit: [], department: [], grade: [], family: [] }, positions: [] };
     const ids = companies.map(v => v.value);
     const bus = await tx.select({ id: businessUnit.id, name: businessUnit.name, label: businessUnit.label, code: businessUnit.code, companyIds: labelCompanyIdsSql(businessUnit, 'business_unit'), isGlobal: businessUnit.isGlobal }).from(businessUnit).where(and(eq(businessUnit.tenantId, ctx.tenantId), isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name), asc(businessUnit.id));
@@ -139,19 +147,27 @@ export async function getJobListFilters(ctx: SessionContext): Promise<JobListFil
     return jobPresentation(ctx, async (tx, scoped) => (await readJobFilterOptions(tx, scoped)).filters);
 }
 
-export async function getJobMasters(ctx: SessionContext): Promise<Masters> {
+export async function getJobMasters(ctx: SessionContext, reviewerCompanyId?: string): Promise<Masters> {
+    if (reviewerCompanyId !== undefined) uuid(reviewerCompanyId);
     return jobPresentation(ctx, async (tx, ctx) => {
         const { filters, positions } = await readJobFilterOptions(tx, ctx);
         if (!filters.companies.length) return { ...filters, position: [], location: [], section: [], team: [], employmentType: [], people: [] };
         const locations = await tx.select({ id: location.id, name: location.name, companyId: location.companyId }).from(location).where(and(eq(location.tenantId, ctx.tenantId), isNull(location.archivedAt), sql `app.access_workforce_company(${location.companyId},'workforce.view')`)).orderBy(asc(location.name), asc(location.id));
         const profiles = await tx.select().from(profileOption).where(and(eq(profileOption.tenantId, ctx.tenantId), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.id));
         const people = await rows<{value:string;label:string;companyIds:string[];isGlobal:boolean}>(tx,sql`
-          select u.id::text as value,coalesce(p.full_name,u.id::text) as label,false as "isGlobal",
-           array(select c.id::text from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id) order by c.id) as "companyIds"
-          from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
-          where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
-           and exists(select 1 from company c where c.tenant_id=u.tenant_id and app.access_workforce_company(c.id,'workforce.view') and app.job_document_reviewer_eligible(c.id,u.id))
-          order by label,u.id`);
+          with reviewer_companies as materialized (
+           select c.id from company c where c.tenant_id=${ctx.tenantId}::uuid
+            and app.access_workforce_company(c.id,'workforce.view')
+            ${reviewerCompanyId ? sql`and c.id=${reviewerCompanyId}::uuid` : sql``}
+          ), candidates as materialized (
+           select u.id::text as value,coalesce(p.full_name,u.id::text) as label,
+            array(select c.id::text from reviewer_companies c
+             where app.job_document_reviewer_eligible(c.id,u.id) order by c.id) as "companyIds"
+           from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
+           where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
+          )
+          select value,label,false as "isGlobal","companyIds" from candidates
+          where cardinality("companyIds")>0 order by label,value`);
         return {
             ...filters, position: positions,
             location: locations.map(option => ({ value: option.id, label: option.name, companyIds: [option.companyId] })),
