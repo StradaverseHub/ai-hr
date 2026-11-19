@@ -1,3 +1,4 @@
+import {readMovementHistoryPayTx} from './movement-history-pay';
 import {movementGradeEvidence} from '../lib/movement-grade-evidence';
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
 import {resolveOrganisationProjectionAssignmentTx} from './organisation-projection-lineage';
@@ -2216,6 +2217,21 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     if(before)before.informationEvidence=movementInformationEvidence(events,beforeDate,beforeBound,false);
     if (row.history && before?.informationEvidence) {
       const revision=await latestHistoryMovementRevisionTx(tx,employmentId,row.id);
+      if(revision&&(revision.payload as {hasPayEvidence?:boolean})?.hasPayEvidence){
+        const historicalPay=await readMovementHistoryPayTx(tx,employmentId,revision.id);
+        if(historicalPay?.basicSalary){
+          before.salaryAmount=historicalPay.basicSalary.before;
+          before.salary=before.currency ? before.currency+' '+before.salaryAmount : before.salaryAmount;
+          if(historicalPay.basicSalary.after!==undefined){
+            after.salaryAmount=historicalPay.basicSalary.after;
+            after.salary=after.currency ? after.currency+' '+after.salaryAmount : after.salaryAmount;
+          }
+        }
+        if(historicalPay?.paymentMethod){
+          before.paymentMethod=historicalPay.paymentMethod.before;
+          if(historicalPay.paymentMethod.after!==undefined)after.paymentMethod=historicalPay.paymentMethod.after;
+        }
+      }
       const dateFacts=(revision?.payload as {dates?: HistoryDateFacts}|undefined)?.dates??{};
       for(const [key,fact] of Object.entries(dateFacts)){
         if(!isMovementHistoryDateField(key))continue;
@@ -4973,10 +4989,10 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   let input: CreateMovementInput | null = null;
   if (row.history) {
     const revision=await latestHistoryMovementRevisionTx(tx,employmentId,row.id);
-    const p=(revision?.payload??{}) as {before?:Record<string,string|null>;after?:Record<string,string|null>;dates?:HistoryDateFacts};
+    const p=(revision?.payload??{}) as {before?:Record<string,string|null>;after?:Record<string,string|null>;dates?:HistoryDateFacts;hasPayEvidence?:boolean};
     return {id:row.id,kind:recordedKind,displayKind:row.kind,behaviour,effectiveDate:row.effectiveDate,status,
       reversed:!!row.reversed,scheduled:row.scheduled,input,recorded:plain,
-      history:{ before:p.before??{},after:p.after??{},dates:p.dates,revisionId:revision?.id??row.id }};
+      history:{ before:p.before??{},after:p.after??{},dates:p.dates,hasPayEvidence:p.hasPayEvidence,revisionId:revision?.id??row.id }};
   }
   if (behaviour && row.kind !== 'hired' && !row.reversed && status !== 'superseded') {
     // A pending movement wrote nothing: its values are the saved intent, read exactly as the Edit retains them.

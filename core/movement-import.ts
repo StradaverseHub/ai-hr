@@ -31,6 +31,8 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
 import {recordImportItemTx} from './import-history';
 import {isMovementHistoryDateField} from '../lib/movement-form-contract';
+import {isMovementHistoryPayField, type HistoryPayFacts} from '../lib/movement-history-pay';
+import {readMovementHistoryPayTx} from './movement-history-pay';
 import type {HistoryDateFacts} from './movement-history';
 import {editEntityHistoryMovementTx} from './movement-history-command';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
@@ -432,13 +434,21 @@ async function historyValuesTx(tx:Tx,ctx:SessionContext,record:MovementImportRec
   if(!before||!after)throw new MovementHistoryError('movement_history_before_required');
   dates[field]={before,after};
  }
+ const pay:HistoryPayFacts={};
+ for(const field of submittedFields){
+  if(!record.requestedHistory||!isMovementHistoryPayField(field))continue;
+  const before=record.before?.[field];
+  const after=record.cells[field];
+  if(!before||!after)throw new MovementHistoryError('movement_history_before_required');
+  pay[field]={before,after};
+ }
  const fields=submittedFields.filter(field=>(HISTORY_FIELDS as readonly string[]).includes(field)) as HistoryField[];
- if(submittedFields.length!==fields.length+Object.keys(dates).length)throw new MovementHistoryError('movement_history_fields');
+ if(submittedFields.length!==fields.length+Object.keys(dates).length+Object.keys(pay).length)throw new MovementHistoryError('movement_history_fields');
  const after=await inputTx(tx,ctx,record,id,at(day),false,reads,undefined,record.requestedHistory);
  const beforeRecord:MovementImportRecord={...record,cells:{kind:record.cells.kind,effectiveDate:record.cells.effectiveDate,...Object.fromEntries(fields.map(field=>[field,record.before![field]]))}};
  const before=await inputTx(tx,ctx,beforeRecord,id,at(dayBefore(day)),false,reads,undefined,record.requestedHistory);
  const pickIds=(input:CreateMovementInput)=>Object.fromEntries(fields.map(field=>[field,(input[field as keyof CreateMovementInput] as string|null|undefined)??null])) as HistoryValues;
- return{effectiveDate:day,fields,dates,after:pickIds(after.input),before:pickIds(before.input),behaviour:after.behaviour,typeCode:after.input.kind,catalog:after.catalog,source:after.source};
+ return{effectiveDate:day,fields,dates,pay,after:pickIds(after.input),before:pickIds(before.input),behaviour:after.behaviour,typeCode:after.input.kind,catalog:after.catalog,source:after.source};
 }
 /** Marks this employee's history rows (newest first against the live versions); every other row is unchanged. */
 async function classifyHistoryTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string):Promise<MovementImportRecord[]>{
@@ -525,7 +535,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
 /** Board 154511c4 — one history row: the Before values fill the period before its date (core/movement-history.ts). */
 async function applyHistoryRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,reads?:MovementChunkReads):Promise<RehearsedRow>{
  const v=await historyValuesTx(tx,ctx,record,id,await historyVersionsTx(tx,id),reads);
- const result=await recordHistoryMovementTx(tx,ctx,{employmentId:id,kind:v.behaviour,typeCode:v.typeCode,effectiveDate:v.effectiveDate,after:v.after,before:v.before,dates:v.dates,remarks:record.cells.remarks??null});
+ const result=await recordHistoryMovementTx(tx,ctx,{employmentId:id,kind:v.behaviour,typeCode:v.typeCode,effectiveDate:v.effectiveDate,after:v.after,before:v.before,dates:v.dates,pay:v.pay,remarks:record.cells.remarks??null});
  const labels={...v.source,companies:v.source.companies,fields:{...v.source.fields,...Object.fromEntries(Object.entries(v.catalog.fields).map(([key,options])=>[key,[...(v.source.fields[key as MovementFormField]??[]),...(options??[])]]))}} as MovementImportCatalog;
  const view:MovementImportRow={...rowView(record),eventType:v.typeCode,effectiveDate:v.effectiveDate,status:'valid',errors:[],
   warnings:result.closedPayrollPeriods.length&&!v.fields.includes('companyId')?['history_closed_payroll:'+result.closedPayrollPeriods.join(', ')]:[],
@@ -598,7 +608,17 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
     if(!beforeDate||next&&!afterDate)throw new MovementHistoryError('movement_history_fields');
     dates[field]={before:beforeDate,...(afterDate?{after:afterDate}:{})};
    }
-   if(submitted.some(field=>!fields.includes(field)&&!isMovementHistoryDateField(field)))throw new MovementHistoryError('movement_history_fields');
+   const storedPay=base.history.hasPayEvidence?await readMovementHistoryPayTx(tx,employmentId,base.history.revisionId):undefined;
+   if(base.history.hasPayEvidence&&!storedPay)throw new MovementHistoryError('movement_history_pay_scope');
+   const pay:HistoryPayFacts={...storedPay};
+   for(const field of [...new Set([...submitted,...Object.keys(record.before??{})])]){
+    if(!isMovementHistoryPayField(field))continue;
+    const prior=record.before?.[field] || pay[field]?.before;
+    const next=record.cells[field] || pay[field]?.after;
+    if(!prior)throw new MovementHistoryError('movement_history_before_required');
+    pay[field]={before:prior,...(next?{after:next}:{})};
+   }
+   if(submitted.some(field=>!fields.includes(field)&&!isMovementHistoryDateField(field)&&!isMovementHistoryPayField(field)))throw new MovementHistoryError('movement_history_fields');
    const code=record.cells.kind??base.kind;
    const resolve=async(cells:Record<string,string>,company:string)=>{if(!Object.keys(cells).length)return{};const prepared=await inputTx(tx,ctx,{...record,cells:{kind:code,effectiveDate:day,...cells}},employmentId,company,false,undefined,undefined,true);return Object.fromEntries(Object.keys(cells).map(field=>[field,(prepared.input[field as keyof CreateMovementInput] as string|null|undefined)??null]));};
    const afterCells=Object.fromEntries(fields.map(field=>[field,record.cells[field as MovementFormField]!]));
@@ -609,11 +629,11 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
    if(base.behaviour==='entityTransfer'){
     if(code!==base.kind)throw new Error('event_mismatch:kind');
     await editEntityHistoryMovementTx(tx,ctx,{employmentId,movementId,revisionId:base.history.revisionId,
-     effectiveDate:day,before:was,dates,expectedAfter:after,remarks:base.recorded.remarks,reason});
+     effectiveDate:day,before:was,dates,pay,expectedAfter:after,remarks:base.recorded.remarks,reason});
     editedHistoryInPlace=true;
    }else{
     await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
-    await recordHistoryMovementTx(tx,ctx,{employmentId,kind:base.behaviour??'transfer',typeCode:code,effectiveDate:day,after,before:was,dates,remarks:reason});
+    await recordHistoryMovementTx(tx,ctx,{employmentId,kind:base.behaviour??'transfer',typeCode:code,effectiveDate:day,after,before:was,dates,pay,remarks:reason});
    }
    kind=code;effectiveDate=day;
   }else{

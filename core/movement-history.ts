@@ -26,6 +26,8 @@
  * Deleting a history movement is allowed only while every row it inserted is still live; it supersedes them
  * and re-inserts copies of the originals, recording `replacement -> copy` in the same shape.
  */
+import {canWriteMovementHistoryPayTx,normaliseMovementHistoryPay,storeMovementHistoryPayTx} from './movement-history-pay';
+import type {HistoryPayFacts,HistoryPayField} from '../lib/movement-history-pay';
 import {and,asc,eq,inArray,isNull,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {appendEvent,actorOf} from '../db/events';
@@ -107,18 +109,22 @@ export type HistoryMovementFacts={
 };
 export type RecordHistoryInput=HistoryMovementFacts & {
   employmentId:string;
+  pay?:HistoryPayFacts;
   kind:string;
   typeCode?:string|null;
   correction?:{movementId:string;reason:string;previous:HistoryMovementFacts};
 };
-export type RecordHistoryResult={eventId:string;spanFrom:string;spanTo:string;fields:(HistoryField|MovementHistoryDateField)[];closedPayrollPeriods:string[]};
+export type RecordHistoryResult={eventId:string;spanFrom:string;spanTo:string;fields:(HistoryField|MovementHistoryDateField|HistoryPayField)[];closedPayrollPeriods:string[]};
 
 /** Writes one history movement. The caller has already classified it (classifyHistoryRows); every rule is checked again here. */
 export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordHistoryInput):Promise<RecordHistoryResult>{
  const roles=ctx.roles??[];if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new Error('Only an admin can record a movement.');
  const fields=Object.keys(p.after);
  const dates=Object.entries(p.dates??{});
- if((!fields.length&&!dates.length)||!fields.every(isHistoryField)||
+ const pay=normaliseMovementHistoryPay(p.pay??{});
+ if(!pay)throw new MovementHistoryError('movement_history_fields');
+ const payFields=Object.keys(pay) as HistoryPayField[];
+ if((!fields.length&&!dates.length&&!payFields.length)||!fields.every(isHistoryField)||
   dates.some(([field,dates])=>!isMovementHistoryDateField(field)||!movementHistoryDateFields(p.kind).includes(field)||!isCalendarDate(dates.before)||
    dates.after!=null&&!isCalendarDate(dates.after)))throw new MovementHistoryError('movement_history_fields');
  if(!fields.every(f=>f in p.before))throw new MovementHistoryError('movement_history_before_required');
@@ -141,7 +147,7 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
   // The field must be uniform over [start, D): a change inside it belongs to an earlier record.
   for(let i=1;i<span.length;i++)if(span[i][f]!==span[i-1][f])throw new MovementHistoryError('movement_history_earlier_change:'+span[i].validFrom);
  }
- if(!dates.some(([,fact])=>fact.before!==fact.after)&&!(fields as HistoryField[]).some(f=>valueAt(versions,prior,f)!==p.before[f]))throw new MovementHistoryError('movement_history_no_change');
+ if(!dates.some(([,fact])=>fact.before!==fact.after)&&!Object.values(pay).some(fact=>fact.before!==fact.after)&&!(fields as HistoryField[]).some(f=>valueAt(versions,prior,f)!==p.before[f]))throw new MovementHistoryError('movement_history_no_change');
  const spanning=span.find(v=>covers(v,d));
  if(spanning&&fields.length){
   const [created]=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,p.employmentId),eq(domainEvent.aggregateId,spanning.id),inArray(domainEvent.eventType,['employment.assignment.changed','assignment.transferred']),sql`${domainEvent.payload}->'movement' is not null`)).limit(1);
@@ -172,6 +178,7 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
   if(site){const [loc]=await tx.select({companyId:location.companyId}).from(location).where(eq(location.id,site)).limit(1);if(!loc||loc.companyId!==company)throw new MovementHistoryError('movement_label_other_company:locationId');}
  }
  for(const company of companies)await assertWorkforceCompanyTx(tx,ctx,company,'maintain');
+ if(payFields.length&&!await canWriteMovementHistoryPayTx(tx,p.employmentId,[...companies]))throw new MovementHistoryError('movement_history_pay_scope');
  const now=new Date(),replaced:{supersededId:string;replacementId:string}[]=[],inserted:string[]=[];
  if(fields.length)await tx.update(assignment).set({supersededAt:now}).where(inArray(assignment.id,span.map(v=>v.id)));
  for(const v of fields.length ? span : []){
@@ -190,9 +197,15 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  const event=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:p.correction?MOVEMENT_HISTORY_EDITED_EVENT:MOVEMENT_HISTORY_EVENT,actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
   payload:{employmentId:p.employmentId,type:p.typeCode??p.kind,kind:p.kind,effectiveDate:d,spanFrom,fields,before,after,remarks:p.remarks?.trim()||null,
    ...(dates.length?{dates:p.dates}:{}),
+   ...(payFields.length?{hasPayEvidence:true}:{}),
    ...(p.correction?{movementId:p.correction.movementId,reason:p.correction.reason,previous:p.correction.previous}:{}),
    assignment:replaced,inserted,closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]}},{returnId:true});
- return{eventId:typeof event==='string'?event:'',spanFrom,spanTo:prior,fields:[...fields as HistoryField[],...dates.map(([field])=>field as MovementHistoryDateField)],closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]};
+ if(payFields.length&&typeof event==='string'){
+  const [subject]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
+  if(!subject)throw new MovementHistoryError('movement_history_pay_scope');
+  await storeMovementHistoryPayTx(tx,p.employmentId,event,[...new Set([...companies,subject.companyId])],pay);
+ }
+ return{eventId:typeof event==='string'?event:'',spanFrom,spanTo:prior,fields:[...fields as HistoryField[],...dates.map(([field])=>field as MovementHistoryDateField),...payFields],closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]};
 }
 
 /** Rolls a history movement back: refused once a later write replaced any row it inserted. */
