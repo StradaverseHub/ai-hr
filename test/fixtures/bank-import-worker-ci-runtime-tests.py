@@ -278,7 +278,7 @@ class Fixture(old.UpgradeFlowFixture):
                 if self.pending_publication:os.close(self.pending_publication[0]);self.pending_publication=None
 
 
-def qualify_legacy_baseline_fixture(f,*,before_launch=False):
+def qualify_legacy_baseline_fixture(f,*,before_launch=False,preunit=False):
     """Fictional existing producer fields, real record/receipt bytes and OS metadata.
     Run the actual paired validator before replacing only current with the new launch.
     No record/receipt is exported or manufactured outside the private fixture tree.
@@ -295,7 +295,8 @@ def qualify_legacy_baseline_fixture(f,*,before_launch=False):
     f.prior={**f.current,'result':'failed'};f.write_records()
     receipt=f.old_release/'worker-install-v2.json'
     recovered={**f.old_receipt,'source':f.previous_worker,'webBuildId':f.old_build,'authorizationSha256':'6'*64,
-               'mode':'recover-ci-runtime','policy':ci.RECOVERY.POLICY,'workerRecoveryOnly':True,
+               'mode':'recover-prepared-preunit-ci-runtime'if preunit else'recover-ci-runtime',
+               'policy':'aihr-worker-prepared-preunit-recovery/v1'if preunit else ci.RECOVERY.POLICY,'workerRecoveryOnly':True,
                'nativeRuntimeVerified':True,'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,
                'completeMetadataFences':10,'journeyVerified':False,'installationAuthorizationSha256':'5'*64,
                'firstStageApprovalSha256':'4'*64,'installId':'63333333-3333-4333-8333-333333333333'}
@@ -850,9 +851,9 @@ class ConditionalRuntimeTests(unittest.TestCase):
 
 
 class QualifiedLegacyBaselineTests(unittest.TestCase):
-    def fixture(self,*,before_launch=False):
+    def fixture(self,*,before_launch=False,preunit=False):
         t=tempfile.TemporaryDirectory();self.addCleanup(t.cleanup);f=Fixture(Path(t.name))
-        selection=qualify_legacy_baseline_fixture(f,before_launch=before_launch);return f,selection
+        selection=qualify_legacy_baseline_fixture(f,before_launch=before_launch,preunit=preunit);return f,selection
 
     def resave_pair_pins(self,f):
         p=f.auth[ci.BASELINE_PUBLICATION_KEY]
@@ -864,6 +865,36 @@ class QualifiedLegacyBaselineTests(unittest.TestCase):
         before=[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths]
         with f.ports():self.assertEqual(ci.verify_baseline_publication(f.base,f.auth,paired=True),p)
         self.assertEqual(before,[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths])
+
+    def test_actual_preunit_receipt_pair_is_read_only_and_supports_normal_r0_graph(self):
+        f,p=self.fixture(before_launch=True,preunit=True)
+        paths=[f.state/'current',f.state/'last-ok',f.old_release/'worker-install-v2.json']
+        before=[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths]
+        with f.ports():self.assertEqual(ci.verify_baseline_publication(f.base,f.auth,paired=True),p)
+        self.assertEqual(before,[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths])
+        other,_=self.fixture(preunit=True);old_last=(other.state/'last-ok').read_bytes()
+        receipt=(other.old_release/'worker-install-v2.json').read_bytes()
+        other.conditional();result=json.loads((other.operation/'activated.json').read_bytes())
+        self.assertEqual(set(result['transitionStages']),{'R0'})
+        self.assertEqual((result['fullNativeAudits'],result['completeMetadataFences']),(2,10))
+        self.assertEqual((other.state/'last-ok').read_bytes(),old_last)
+        self.assertEqual((other.old_release/'worker-install-v2.json').read_bytes(),receipt)
+        self.assertFalse(result['journeyVerified'])
+
+    def test_receipt_mode_and_policy_are_closed_pairs_even_with_rebound_pins(self):
+        for mode,policy in [('recover-ci-runtime','aihr-worker-prepared-preunit-recovery/v1'),
+                            ('recover-prepared-preunit-ci-runtime','aihr-worker-prepared-handoff/v1'),
+                            ('unknown-recovery','aihr-worker-prepared-handoff/v1'),
+                            ('unknown-recovery','aihr-worker-prepared-preunit-recovery/v1')]:
+            with self.subTest(mode=mode,policy=policy):
+                f,_=self.fixture(before_launch=True);path=f.old_release/'worker-install-v2.json'
+                saved=json.loads(path.read_bytes());saved.update(mode=mode,policy=policy)
+                path.chmod(0o644);path.write_bytes(encoded(saved));path.chmod(0o444)
+                proof=f.auth[ci.BASELINE_PUBLICATION_KEY]
+                proof['workerReceiptSha256']=ci.sha(path.read_bytes())
+                proof['workerReceiptIdentity']=ci.baseline_file_identity(f.base,path)
+                with f.ports(),self.assertRaisesRegex(ValueError,'receipt mode/policy pair'):
+                    ci.verify_baseline_publication(f.base,f.auth,paired=True)
 
     def test_full_normal_r0_graph_uses_captured_pair_after_new_begin_replaces_current(self):
         f,p=self.fixture();old_last=(f.state/'last-ok').read_bytes();receipt=(f.old_release/'worker-install-v2.json').read_bytes()
@@ -916,14 +947,15 @@ class QualifiedLegacyBaselineTests(unittest.TestCase):
                 with f.ports(),self.assertRaises(ValueError):ci.verify_baseline_publication(f.base,f.auth,paired=True)
 
     def test_receipt_must_be_actual_recovery_shape_even_when_caller_rebinds_its_hash(self):
-        for defect in ['source','webBuildId','authorizationSha256','mode','policy','workerRecoveryOnly','serviceStable','nativeRuntimeVerified','fullSourceContentInventoryVerified','fullNativeAudits','completeMetadataFences','journeyVerified','installationAuthorizationSha256','firstStageApprovalSha256','installId']:
-            with self.subTest(defect=defect):
-                f,_=self.fixture(before_launch=True);path=f.old_release/'worker-install-v2.json';saved=json.loads(path.read_bytes())
-                original=saved[defect];saved[defect]=not original if type(original)is bool else 1 if type(original)is int else 'wrong'
-                self.assertNotEqual(saved[defect],original)
-                path.chmod(0o644);path.write_bytes(encoded(saved));path.chmod(0o444)
-                proof=f.auth[ci.BASELINE_PUBLICATION_KEY];proof['workerReceiptSha256']=ci.sha(path.read_bytes());proof['workerReceiptIdentity']=ci.baseline_file_identity(f.base,path)
-                with f.ports(),self.assertRaisesRegex(ValueError,'recovered.*receipt'):ci.verify_baseline_publication(f.base,f.auth,paired=True)
+        for preunit in (False,True):
+            for defect in ['source','webBuildId','authorizationSha256','mode','policy','workerRecoveryOnly','serviceStable','nativeRuntimeVerified','fullSourceContentInventoryVerified','fullNativeAudits','completeMetadataFences','journeyVerified','installationAuthorizationSha256','firstStageApprovalSha256','installId']:
+                with self.subTest(preunit=preunit,defect=defect):
+                    f,_=self.fixture(before_launch=True,preunit=preunit);path=f.old_release/'worker-install-v2.json';saved=json.loads(path.read_bytes())
+                    original=saved[defect];saved[defect]=not original if type(original)is bool else 1 if type(original)is int else 'wrong'
+                    self.assertNotEqual(saved[defect],original)
+                    path.chmod(0o644);path.write_bytes(encoded(saved));path.chmod(0o444)
+                    proof=f.auth[ci.BASELINE_PUBLICATION_KEY];proof['workerReceiptSha256']=ci.sha(path.read_bytes());proof['workerReceiptIdentity']=ci.baseline_file_identity(f.base,path)
+                    with f.ports(),self.assertRaisesRegex(ValueError,'recovered.*receipt'):ci.verify_baseline_publication(f.base,f.auth,paired=True)
 
     def test_record_and_receipt_metadata_bytes_and_selection_are_revalidated_after_launch(self):
         for defect in ['last-ok-content','last-ok-inode','receipt-content','receipt-inode','receipt-mode','receipt-hardlink','receipt-symlink','unknown-proof','wrong-version','wrong-policy','foreign-proof','missing-proof','auth-lastok']:

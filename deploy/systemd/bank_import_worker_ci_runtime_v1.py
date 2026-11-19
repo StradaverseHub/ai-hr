@@ -218,9 +218,14 @@ def verify_baseline_publication(base,approval,*,paired=False,last_ok=None):
     base.root_protected(receipt,regular=True)
     raw=baseline_file_bytes(base,receipt,p['workerReceiptIdentity'],p['workerReceiptSha256']);saved=json.loads(raw)
     base.check(stat.S_IMODE(int(p['workerReceiptIdentity']['mode']))==0o444,'immutable native recovered receipt mode required')
-    # These fields are emitted by the existing actual recovered worker receipt producer.
+    # Closed pairs emitted by the two qualified recovered worker receipt producers.
+    # Preunit recovery completes the same two-audit/ten-fence receipt graph.
+    base.check(type(saved)is dict and (saved.get('mode'),saved.get('policy'))in(
+               ('recover-ci-runtime',RECOVERY.POLICY),
+               ('recover-prepared-preunit-ci-runtime','aihr-worker-prepared-preunit-recovery/v1')),
+               'exact recovered worker baseline receipt mode/policy pair required')
     expected={'source':p['source'],'webBuildId':p['buildId'],'authorizationSha256':p['workerAuthorizationSha256'],
-              'mode':'recover-ci-runtime','policy':RECOVERY.POLICY,'workerRecoveryOnly':True,'serviceStable':True,
+              'workerRecoveryOnly':True,'serviceStable':True,
               'nativeRuntimeVerified':True,'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,
               'completeMetadataFences':10,'journeyVerified':False}
     base.check(type(saved)is dict and all(type(saved.get(k))is type(v)and saved[k]==v for k,v in expected.items()),
