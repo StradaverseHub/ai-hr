@@ -4,22 +4,36 @@
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {measureClaimQueue,seedClaimQueueScaleFixture} from './performance/claims-approval-queue-scale-fixture';
+import {seedClaimQueueScaleFixture} from './performance/claims-approval-queue-scale-fixture';
 import {closeAll,migrateTestDb} from './harness';
+import {listPendingClaimsPage} from '../packs/claims/service';
+import {explainStatements,isIdentityStatement,observeStatements} from './helpers/statement-observer';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 
 it('pages 1,000,000 pending claims for group HR and a manager',async()=>{
- const report:Record<string,unknown>={kind:'CLAIMS_APPROVAL_QUEUE_SCALE_V1',employees:100000,claimsPerEmployee:10,managerReports:1000,complete:false};
- const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'claims-approval-queue-1m.json'),JSON.stringify(report,null,2));};
+ const report:Record<string,unknown>={kind:'CLAIMS_APPROVAL_QUEUE_PLAN_V1',employees:100000,claimsPerEmployee:10,managerReports:1000,complete:false};
+ const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'claims-approval-queue-plan.json'),JSON.stringify(report,null,2));};
  const fixture=await seedClaimQueueScaleFixture({employees:100000,claimsPerEmployee:10,managerReports:1000},report,save);
  expect(fixture.counts).toEqual({claims:1000010,managerClaims:10010});
- const progress:Record<string,Record<string,unknown>>={groupHr:{},manager:{}};report.progress=progress;
- const record=(actor:'groupHr'|'manager')=>(name:string,timing:unknown)=>{progress[actor][name]=timing;save();};
- report.after={
-  groupHr:await measureClaimQueue(fixture.groupHr,1000010,fixture.ownClaims,20000,2,record('groupHr')),
-  manager:await measureClaimQueue(fixture.lineManager,10010,fixture.ownClaims,200,2,record('manager')),
- };
+ const results:Record<string,unknown>={};
+ report.results=results;
+ for(const [label,context,total] of [
+  ['groupHr',fixture.groupHr,1000010],
+  ['manager',fixture.lineManager,10010],
+ ] as const){
+  const captured=await observeStatements(()=>listPendingClaimsPage(context));
+  expect(captured.result.page.total).toBe(total);
+  expect(captured.result.rows).toHaveLength(25);
+  expect(captured.transactions).toBe(1);
+  const identity=captured.statements.filter(entry=>isIdentityStatement(entry.sql));
+  const queue=captured.statements.filter(entry=>/^with queue_request as materialized/i.test(entry.sql.trim()));
+  expect(queue).toHaveLength(1);
+  const [plan]=await explainStatements([...identity,...queue]);
+  expect(plan.executionMs).toBeGreaterThan(0);
+  results[label]={pageMs:Math.round(captured.ms),queueMs:plan.executionMs,planningMs:plan.planningMs,
+   hotspots:plan.hotspots.map(({node,relation,subplan,rows,loops,totalMs,removed})=>({node,relation,subplan,rows,loops,totalMs,removed}))};
+  save();
+ }
  report.complete=true;report.phase='complete';save();
- console.log('[claims-approval-queue-scale-1m] '+JSON.stringify({after:report.after}));
 },900000);
