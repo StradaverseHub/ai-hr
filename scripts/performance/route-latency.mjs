@@ -12,7 +12,7 @@ function writeRouteTemplate(route,action) {
  return route;
 }
 
-export function routeLatency({samples,pageInteractions,routePools,homeTemplates,steadyStart,steadyUntil}) {
+export function routeLatency({samples,pageInteractions,routePools,homeTemplates,plannedWrites=[],steadyStart,steadyUntil}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
  const inside=row=>row.startedMs>=steadyStart&&row.startedMs<steadyUntil;
  const buckets=new Map();
@@ -24,6 +24,7 @@ export function routeLatency({samples,pageInteractions,routePools,homeTemplates,
  };
  for(const [role,routes] of Object.entries(routePools))for(const route of routes){add('read',role,route);add('navigation',role,route);}
  for(const {role,requests} of homeTemplates)for(const {path} of requests)add('read',role,path);
+ for(const {role,route,action} of plannedWrites)add('write',role,writeRouteTemplate(route,action),action);
  for(const row of samples){
   const bucket=row.method==='POST'
    ?add('write',row.role,writeRouteTemplate(row.route,row.action),row.action)
