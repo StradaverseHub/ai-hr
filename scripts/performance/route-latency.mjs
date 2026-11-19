@@ -1,4 +1,6 @@
 /** Observed steady-window latency by actual role and route; no cross-route pooling. */
+const minimumSteadySamples=20;
+
 export function routeLatency({samples,pageInteractions,routePools,homeTemplates,steadyStart,steadyUntil}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
  const inside=row=>row.startedMs>=steadyStart&&row.startedMs<steadyUntil;
@@ -25,10 +27,12 @@ export function routeLatency({samples,pageInteractions,routePools,homeTemplates,
   if(values.some(value=>!Number.isFinite(value)||value<0))throw new RangeError('Invalid route duration');
   const percentile=fraction=>values[Math.ceil(values.length*fraction)-1]??null;
   const p95Ms=percentile(.95),targetMs=bucket.kind==='write'?500:1000;
+  const sparseSample=values.length<minimumSteadySamples;
   return {...bucket,samples:values.length,p50Ms:percentile(.5),p95Ms,p99Ms:percentile(.99),maxMs:values.at(-1)??null,targetMs,
-   targetMet:values.length>0&&p95Ms<targetMs,sparseSample:values.length<20};
+   targetMet:!sparseSample&&p95Ms<targetMs,sparseSample};
  });
- return {rows,targetMet:rows.length>0&&rows.every(row=>row.targetMet),
-  missing:rows.filter(row=>row.samples===0),slow:rows.filter(row=>row.samples>0&&!row.targetMet),
-  sparse:rows.filter(row=>row.samples>0&&row.sparseSample),sampleCaveat:'Observed nearest-rank percentiles; fewer than20 samples are explicitly sparse and do not establish a precise population percentile.'};
+ return {rows,minimumSteadySamples,targetMet:rows.length>0&&rows.every(row=>row.targetMet),
+  missing:rows.filter(row=>row.samples===0),slow:rows.filter(row=>row.samples>0&&row.p95Ms>=row.targetMs),
+  sparse:rows.filter(row=>row.samples>0&&row.sparseSample),
+  sampleCaveat:'Observed nearest-rank percentiles. Each bucket needs at least 20 steady-window samples to qualify for the target.'};
 }
