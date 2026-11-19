@@ -3703,6 +3703,7 @@ export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContex
 function leaveInquiryMembershipTypesTx(tx:Tx){
  return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
 }
+export const LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE=2000;
 /** The catalogue is private to this physical transaction/read invocation. It is
  * neither caller-provided eligibility nor a cross-request authorization cache. */
 export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
@@ -3710,7 +3711,7 @@ export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx
  const types=await leaveInquiryMembershipTypesTx(tx);
  return (employmentIds:readonly string[])=>{
   const ids=employmentIds.slice();
-  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  if(ids.length>LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE)throw new RangeError('Inquiry membership batch exceeds 2,000 employments');
   return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
  };
 }
@@ -5575,6 +5576,7 @@ export function leaveEntitlementBreakdowns(
   locale?: string,
   existingTx?: Tx,
   inputs?: OwnLeaveInputs,
+  opts: {derivation?:boolean} = {},
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
   const read = async (tx: Tx) => {
@@ -5603,7 +5605,7 @@ export function leaveEntitlementBreakdowns(
     }
     return Promise.all(
       items.map((i) =>
-        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, {}, {
+        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, opts, {
           type: typeById.get(i.leaveTypeId),
           emp,
           templates: resolverByAsOf.get(i.asOf)!,

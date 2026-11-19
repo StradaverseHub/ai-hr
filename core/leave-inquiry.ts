@@ -8,7 +8,7 @@ import type {EmployeeChoice,EmployeeChoiceInput,EmployeeChoicePage} from '../lib
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { InquiryQueryError, type InquiryQuery } from '../lib/leave-inquiry-query';
-import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, listLeaveRequestsPageTx, type LeaveInquiryEmployee, listLeaveInquiryPickerIdentitiesTx,leaveInquiryPickerFacetsTx,leaveInquiryPickerDisplayRowsTx } from './read';
+import { adminCompanies, adminCompaniesTx, listLeaveInquiryEmployeesTx, createLeaveInquiryMembershipReaderTx, LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE, listLeaveRequestsPageTx, type LeaveInquiryEmployee, listLeaveInquiryPickerIdentitiesTx,leaveInquiryPickerFacetsTx,leaveInquiryPickerDisplayRowsTx } from './read';
 import {isAiPresentationPrincipalCurrentTx,isAiPrincipalCurrentTx} from './ai-principal';
 import {boundPersonnelStatementTx} from './personnel-read-bounds';
 
@@ -119,8 +119,8 @@ export async function leaveInquiryBalancePairsTx(tx: Tx, ctx: SessionContext, sc
   let total = 0;
   const needle = query.q?.toLocaleLowerCase(locale);
   const membershipRead=employees.length?await createLeaveInquiryMembershipReaderTx(verified!.session,tx,query.asOf,locale):null;
-  for (let start = 0; start < employees.length; start += 100) {
-    const chunk = employees.slice(start, start + 100);
+  for (let start = 0; start < employees.length; start += LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE) {
+    const chunk = employees.slice(start, start + LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE);
     const membership = await membershipRead!(chunk.map(e => e.employmentId));
     const byId = new Map(chunk.map(e => [e.employmentId, e]));
     for (const pair of membership) {
