@@ -42,7 +42,7 @@ export default async function FixedTransactionImportDetail({ params }: { params:
         {active && <progress className="mt-2 w-full" value={bulkJobPercent(job)} max={100} aria-label={t('progress')} />}
         {job.error && (
           <p className="text-sm text-destructive">
-            {txn.has(`fileError.${job.error}` as never) ? txn(`fileError.${job.error}` as never) : t('importFailed')}
+            {txn.has(`fileError.${job.error}` as never) ? txn(`fileError.${job.error}` as never) : job.error === 'noValidRows' ? t('noValidRows') : t('importFailed')}
           </p>
         )}
       </Card>

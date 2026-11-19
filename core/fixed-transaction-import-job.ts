@@ -39,7 +39,7 @@ async function assertScope(tx: Tx, ctx: SessionContext, ids: string[]) {
 }
 
 export async function queueFixedTransactionImport(ctx: SessionContext, p: {
-  csv: string; fileName: string; operationKey: string; companyIds: string[];
+  csv: string; fileName: string; operationKey: string; companyIds: string[]; validationOnly?: boolean;
 }) {
   const companyIds = [...new Set(p.companyIds)];
   const content = Buffer.from(p.csv, 'utf8');
@@ -52,9 +52,12 @@ export async function queueFixedTransactionImport(ctx: SessionContext, p: {
       operationKey: p.operationKey,
       companyIds,
       source: { name: p.fileName, content },
+      input: { validationOnly: p.validationOnly === true },
     });
     if (existing && (row.source_hash !== createHash('sha256').update(content).digest('hex') ||
-      row.source_name !== p.fileName || row.company_ids.length !== companyIds.length ||
+      row.source_name !== p.fileName ||
+      (row.input != null && ((row.input as {validationOnly?:boolean}).validationOnly === true) !== (p.validationOnly === true)) ||
+      row.company_ids.length !== companyIds.length ||
       !row.company_ids.every((id) => companyIds.includes(id)))) throw new BulkJobError('operationChanged', 409);
     return row.id;
   });
@@ -140,6 +143,9 @@ export const fixedTransactionImportJobHandler: BulkJobHandler<Step> = {
       rowNum: row.rowNum, employeeId: row.employeeId, payItemCode: row.payItemCode,
       ...(row.ok ? {} : { reason: row.reason, detail: safeDetail(row.reason, row.detail) }),
     })) };
+    if ((job.input as {validationOnly?:boolean}|null)?.validationOnly) {
+      return { refused:'noValidRows', plan, counters:{total:preview.total,invalid:preview.invalid} };
+    }
     const steps = preview.rows.flatMap((row) => {
       const target = resolved.get(row.rowNum);
       return target ? [{ kind: 'row', rowNum: row.rowNum, payload: { resolved: target, employeeId: row.employeeId } }] : [];

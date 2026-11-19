@@ -137,7 +137,15 @@ export function TxnImportButtons({
       if (queueFixedAction) operationKey.current = crypto.randomUUID();
       startTransition(async () => {
         try {
-          setPreview(await validateTxnImportAction(text, kind));
+          const checked = await validateTxnImportAction(text, kind);
+          setPreview(checked);
+          if (queueFixedAction && operationKey.current && (checked.fileError || checked.valid === 0)) {
+            const id = await queueFixedAction({
+              csv: text, fileName: file.name, operationKey: operationKey.current, validationOnly: true,
+            });
+            setOpen(false);
+            router.push(`${FIXED_TXN_IMPORT_LOG}/${id}`);
+          }
         } catch {
           setError(t('fileReadError'));
         }
