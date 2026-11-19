@@ -168,7 +168,7 @@ class GuardedInvocation:
         held=self.native_lease()
         if 'baselinePublication' in a:
             self.ci.verify_baseline_publication(b,a,paired=self.stage in('drain','prepare-ci-worker'))
-        overall=(self.stage=='activate-prepared-ci-runtime' and self.ci.normal_overall_selected(a,self.stage)) or (a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage))
+        overall=(self.stage in ('activate-prepared-ci-runtime','recover-unstarted-ci-runtime') and self.ci.normal_overall_budget(a,self.stage) is not None) or (a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage))
         if overall and self.observer is not None and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
             self.observer.fresh_native_identity()  # Fresh owner proof AFTER expensive guards, immediately before action.
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
@@ -198,16 +198,17 @@ def preparation_initial_seconds(base,ci,path,pinned):
 
 
 def normal_overall_approval(base,ci,path,pinned,stage):
-    if stage!='activate-prepared-ci-runtime':return None
+    if stage not in ('activate-prepared-ci-runtime','recover-unstarted-ci-runtime'):return None
     path=Path(path)
     ci.protected_private(base,path)
     raw=base.read_bounded(path,65536)
     base.check(ci.sha(raw)==pinned,'normal timing approval hash differs')
     approval=json.loads(raw)
-    if not ci.normal_overall_selected(approval,stage):return None
+    seconds=ci.normal_overall_budget(approval,stage)
+    if seconds is None:return None
     now=time.time();issued=ci.epoch(approval['issuedAt']);expires=ci.epoch(approval['expiresAt'])
-    base.check(issued<=now<expires<=issued+ci.NORMAL_EXECUTION_SECONDS,'normal timing approval expired or exceeds its fixed ceiling')
-    return raw
+    base.check(issued<=now<expires<=issued+seconds,'normal timing approval expired or exceeds its fixed ceiling')
+    return raw,seconds
 
 
 def launch(argv,fmt,base,ci,update):
@@ -225,10 +226,10 @@ def launch(argv,fmt,base,ci,update):
     published_overall=stage=='recover-published-ci-runtime' and ci.PUBLISHED.initial_overall_selection(base,ci,args.approval,args.approval_sha256,stage)
     overall=normal_approval is not None or published_overall
     if overall:
-        selection_bytes=normal_approval if normal_approval is not None else base.read_bounded(Path(args.approval),65536)
+        selection_bytes=normal_approval[0] if normal_approval is not None else base.read_bounded(Path(args.approval),65536)
         base.check(ci.sha(selection_bytes)==args.approval_sha256,'overall selection changed before admission')
         authority_end=time.monotonic()+(ci.epoch(json.loads(selection_bytes)['expiresAt'])-time.time())
-        budget=ci.NORMAL_EXECUTION_SECONDS if normal_approval is not None else ci.PUBLISHED.OVERALL_SECONDS
+        budget=normal_approval[1] if normal_approval is not None else ci.PUBLISHED.OVERALL_SECONDS
         end=min([execution_started+budget,authority_end,*[v for v in (previous_deadline,previous_slot,previous_overall,previous_execution)if v is not None]])
         ci.OVERALL_EXECUTION_DEADLINE=end;ci.FAILURE_CLEANUP_ONLY=False;base.OVERALL_EXECUTION_DEADLINE=end;base.OVERALL_EXECUTION_FAILURE_ONLY=False
         base.RECOVERY_OVERALL_DEADLINE=end

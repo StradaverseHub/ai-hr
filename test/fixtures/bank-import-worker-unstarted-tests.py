@@ -41,6 +41,44 @@ class UnstartedTests(unittest.TestCase):
   self.assertTrue(r['serviceStable']);self.assertEqual((r['fullNativeAudits'],r['completeMetadataFences']),(2,10));self.assertEqual(r['mode'],unstarted.LIVE_STAGE);self.assertEqual(r['policy'],unstarted.POLICY)
   self.assertEqual(r['transitionStages'],['F']*10);self.assertEqual((f.state/'current').read_bytes(),failed);self.assertEqual(proof.read_bytes(),oldproof);self.assertEqual(f.firstfile.read_bytes(),first);self.assertEqual((f.directory/'authorization.json').read_bytes(),grant)
   self.assertFalse((f.operation/'ci-runtime-started.json').exists());self.assertFalse(Path(p['preparation']['directory']).exists());self.assertTrue((f.app/'releases'/f.source).is_dir());self.assertIn('read-only-expired-fast',f.original_probe_modes)
+ def rejected_fixture(self):
+  tmp=tempfile.TemporaryDirectory();self.addCleanup(tmp.cleanup);f=prior.Fixture(Path(tmp.name))
+  p=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);proof=f.invoke_preparation(p)
+  old=f.live_record(p,proof);old.update(executionPolicy=ci.NORMAL_EXECUTION_POLICY,expiresAt=f.iso(1200))
+  def refuse(_observer):raise ValueError('insufficient estimated global fork reservation; no mutation')
+  with patch.object(ci.RuntimeObservation,'admit_mutation',refuse),self.assertRaisesRegex(ValueError,'fork reservation'):
+   f.invoke_live(old)
+  archived=f.root/'live-prepared-activation.json';self.no_mutation(f)
+  members={name:ci.sha((f.operation/name).read_bytes())for name in unstarted.REJECTED_MEMBERS}
+  for name in members:
+   path=f.operation/name;os.utime(path,(f.clock,f.clock));f.additional_root_private_files.add(path)
+  f.helper.write_text('new exact rejected-prestart qualification helper')
+  f.clock=ci.epoch(f.grant['expiresAt'])+1
+  f.current.update(result='failed',exit_code='1',finished_at=str(int(f.clock)))
+  f.write_records();shutil.rmtree(f.proc/f.current['pid'])
+  log=Path(f.current['log']);log.write_text('actual fixed-port final worker check failed after native build activation\n')
+  a=f.live_record(p,proof);a.update(kind=unstarted.KINDS[unstarted.LIVE_STAGE],executionPolicy=unstarted.REJECTED_EXECUTION,expiresAt=f.iso(1500))
+  a['recovery']={'policy':unstarted.REJECTED_POLICY,'id':'b0000000-0000-4000-8000-000000000009','originalOperation':str(f.operation),'failureCurrentSha256':ci.sha((f.state/'current').read_bytes()),'failureLastOkSha256':ci.sha((f.state/'last-ok').read_bytes()),'failureLog':str(log),'failureLogSha256':ci.sha(log.read_bytes()),'failureFinishedAt':f.current['finished_at'],
+   'rejectedNormal':{'approval':str(archived),'approvalSha256':ci.sha(archived.read_bytes()),'members':members}}
+  return f,a
+
+ def test_rejected_normal_actual_prestart_records_recover_through_the_entire_graph(self):
+  f,a=self.rejected_fixture(); original={name:(f.operation/name).read_bytes() for name in unstarted.REJECTED_MEMBERS}
+  r=self.invoke(f,a)
+  self.assertEqual((r['policy'],r['executionPolicy'],r['completeMetadataFences'],r['fullNativeAudits']),
+                   (unstarted.REJECTED_POLICY,unstarted.REJECTED_EXECUTION,10,2))
+  self.assertTrue(r['serviceStable']);self.assertEqual(r['transitionStages'],['F']*10)
+  self.assertEqual({name:(f.operation/name).read_bytes() for name in original},original)
+
+ def test_rejected_normal_refuses_rebound_or_additional_start_records(self):
+  for damage in ('digest','start-request'):
+   with self.subTest(damage=damage):
+    f,a=self.rejected_fixture()
+    if damage=='digest':a['recovery']['rejectedNormal']['members']['ci-runtime-fence-02.json']='0'*64
+    else:(f.operation/'ci-worker-start-request.json').write_text('{}')
+    with self.assertRaisesRegex(ValueError,'rejected proof bytes|prior activation marker'):self.invoke(f,a)
+    self.no_mutation(f)
+
  def test_qualified_legacy_baseline_and_normal_preparation_lineage_survive_entire_graph(self):
   f,p,proof,a=self.fixture(legacy=True,expired=True);last=(f.state/'last-ok').read_bytes();receipt=(f.old_release/'worker-install-v2.json').read_bytes()
   self.assertTrue(self.invoke(f,a)['serviceStable']);self.assertEqual((f.state/'last-ok').read_bytes(),last);self.assertEqual((f.old_release/'worker-install-v2.json').read_bytes(),receipt)

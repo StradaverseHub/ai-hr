@@ -86,8 +86,15 @@ def normal_overall_selected(approval, stage):
     return stage == 'activate-prepared-ci-runtime' and approval.get('executionPolicy') == NORMAL_EXECUTION_POLICY
 
 
+def normal_overall_budget(approval, stage):
+    if normal_overall_selected(approval,stage):return NORMAL_EXECUTION_SECONDS
+    if stage=='recover-unstarted-ci-runtime' and approval.get('executionPolicy')==UNSTARTED.REJECTED_EXECUTION and approval.get('recovery',{}).get('policy')==UNSTARTED.REJECTED_POLICY:
+        return UNSTARTED.REJECTED_SECONDS
+    return None
+
+
 def normal_overall_fields(fields, approval, stage):
-    return fields | {'executionPolicy'} if normal_overall_selected(approval, stage) else fields
+    return fields | {'executionPolicy'} if normal_overall_budget(approval, stage) is not None else fields
 
 
 def execution_timeout(legacy):
@@ -632,7 +639,8 @@ class RuntimeObservation:
         b.root_protected(self.drain_operation/'drained.json',regular=True)
         b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
         ceiling=2100 if a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.guard.stage=='recover-published-ci-runtime' and getattr(self.guard.ci,'PUBLISHED',None) is not None and PUBLISHED.overall_selected(self.guard.ci,a,self.guard.stage) else 900
-        if normal_overall_selected(a,self.guard.stage):ceiling=NORMAL_EXECUTION_SECONDS
+        selected_budget=normal_overall_budget(a,self.guard.stage)
+        if selected_budget is not None:ceiling=selected_budget
         b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + ceiling,
                 'finite administrator operation authority expired or not yet valid')
         private_install(b,self.directory.parent,self.owner.pw_uid,True)
@@ -1232,7 +1240,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {**({key:self.auth[key]for key in ('recoveryBudgetProfile','sealFreshnessPolicy','executionPolicy')if key in self.auth}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {**({key:self.auth[key]for key in ('recoveryBudgetProfile','sealFreshnessPolicy','executionPolicy')if key in self.auth}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':self.recovery['policy'] if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],

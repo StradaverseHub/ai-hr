@@ -10,13 +10,18 @@ import re
 from types import SimpleNamespace
 
 POLICY='aihr-worker-unstarted-recovery/v1'
+REJECTED_POLICY='aihr-worker-rejected-normal-recovery/v1'
+REJECTED_EXECUTION='aihr-worker-rejected-normal-overall/v1'
+REJECTED_SECONDS=1500
+REJECTED_MEMBERS={'ci-runtime-started.json','ci-runtime-full-audit-0.json',*(f'ci-runtime-fence-{i:02}.json' for i in range(3))}
 LIVE_STAGE='recover-unstarted-ci-runtime'
 KINDS={LIVE_STAGE:'ADMIN_AUTHORIZED_UNSTARTED_CI_WORKER_RECOVERY'}
 FAILURE_FIELDS={'policy','id','originalOperation','failureCurrentSha256','failureLastOkSha256','failureLog','failureLogSha256','failureFinishedAt'}
 
 
 def closed_failure(base,ci,f,identity):
-    base.check(set(f)==FAILURE_FIELDS and f['policy']==POLICY and
+    rejected=f.get('policy')==REJECTED_POLICY
+    base.check(set(f)==(FAILURE_FIELDS|{'rejectedNormal'} if rejected else FAILURE_FIELDS) and f['policy'] in (POLICY,REJECTED_POLICY) and
                re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',f['id']) and
                f['originalOperation']==str(base.ROOT/'upgrades'/identity['source']),
                'closed unstarted recovery failure identity required')
@@ -44,11 +49,50 @@ def failure_snapshot(base,ci,f,identity,launch):
     return 'F',raw
 
 
-def absence(base,ci,identity,*,operation=None,authorization_sha=None,initial=False):
+def rejected_normal(base,ci,a,original):
+    base.check(a.get('executionPolicy')==REJECTED_EXECUTION,'exact rejected normal recovery execution policy required')
+    selected=a['recovery']['rejectedNormal']
+    base.check(set(selected)=={'approval','approvalSha256','members'} and set(selected['members'])==REJECTED_MEMBERS,
+               'exact rejected normal pre-mutation record inventory required')
+    approval=Path(selected['approval']);ci.protected_private(base,approval)
+    approval_bytes=base.read_bounded(approval,65536);old=json.loads(approval_bytes)
+    base.check(ci.sha(approval_bytes)==selected['approvalSha256'] and
+               set(old)==ci.normal_overall_fields(ci.RECOVERY.NORMAL_FIELDS,old,'activate-prepared-ci-runtime') and
+               old['format']==1 and old['kind']==ci.RECOVERY.KINDS['activate-prepared-ci-runtime'] and
+               old['policy']==ci.POLICY and old['target']=='alpha-staging' and old['releaseAuthorized'] is False and
+               old['executionPolicy']==ci.NORMAL_EXECUTION_POLICY and old['helperSha256']!=a['helperSha256'],
+               'exact earlier approved normal worker attempt required')
+    shared=ci.RECOVERY.NORMAL_FIELDS-{'kind','issuedAt','expiresAt','helperSha256'}
+    base.check(all(old[key]==a[key] for key in shared),'rejected normal and recovery immutable pins differ')
+    leaves={}
+    for name,expected in selected['members'].items():
+        path=original/name;ci.protected_private(base,path)
+        raw=base.read_bounded(path,1024**2)
+        base.check(ci.sha(raw)==expected and ci.epoch(old['issuedAt'])<=path.stat().st_mtime<=ci.epoch(old['expiresAt']),
+                   'original rejected proof bytes or authority time changed')
+        leaves[name]=json.loads(raw)
+    base.check(leaves['ci-runtime-started.json']=={'authorizationSha256':selected['approvalSha256'],'journeyVerified':False},
+               'original normal activation marker differs')
+    for index in range(3):
+        fence=leaves[f'ci-runtime-fence-{index:02}.json']; native=fence.get('freshNativeIdentity',{})
+        base.check(fence.get('policy')==ci.POLICY and fence.get('stage')=='R0' and fence.get('slot')=='F'+str(index) and
+                   fence.get('leasePhase')=='installing' and fence.get('lastOkSha256')==old['priorLastOkSha256'] and
+                   fence.get('releaseAuthorized') is False and native.get('build')==a['identity']['build_id'] and
+                   native.get('pid')==a['webPid'],'original pre-mutation fence identity differs')
+    audit=leaves['ci-runtime-full-audit-0.json'];runtime=audit.get('runtime',{})
+    base.check(audit.get('authorizationSha256')==a['grantSha256'] and audit.get('releaseAuthorized') is False and
+               runtime.get('source')==a['identity']['source'] and runtime.get('installId')==a['install']['id'] and
+               runtime.get('nextBuildId')==a['identity']['build_id'] and runtime.get('fullMigrationLedgerVerified') is True,
+               'original pre-mutation native audit differs')
+    return REJECTED_MEMBERS
+
+
+def absence(base,ci,identity,*,operation=None,authorization_sha=None,initial=False,approval=None):
     """No historical activation is invented. Only this new attempt may subsequently exist."""
     original=base.ROOT/'upgrades'/identity['source'];base.root_protected(original)
+    allowed=rejected_normal(base,ci,approval,original) if approval is not None and approval['recovery']['policy']==REJECTED_POLICY else set()
     for path in original.iterdir():
-        base.check(not (path.name.startswith(('ci-runtime-','ci-worker-','activation-'))),'prior activation marker exists')
+        base.check(path.name in allowed or not path.name.startswith(('ci-runtime-','ci-worker-','activation-')),'prior activation marker exists')
         if path.name.startswith(('recovery-','published-recovery-','unstarted-recovery-')):
             base.check(not initial and operation is not None and path==operation,'prior recovery attempt exists')
             base.root_protected(path)
@@ -95,14 +139,15 @@ def check_history(o):
     b.check(o.recovery['failureLastOkSha256']==a['priorLastOkSha256'],'failure and original prior last-ok pins differ')
     b.check(o.operation==b.ROOT/'upgrades'/a['identity']['source']/('unstarted-recovery-'+o.recovery['id']),'fixed exclusive unstarted operation required')
     historical_preparation(b,c,c.RECOVERY,a)
-    absence(b,c,a['identity'],operation=o.operation,authorization_sha=c.sha(o.bytes))
+    absence(b,c,a['identity'],operation=o.operation,authorization_sha=c.sha(o.bytes),approval=a)
     failure_snapshot(b,c,o.recovery,a['identity'],a['launch'])
 
 
 def run(guard,fmt,base,ci,update):
     # prepared.run already holds/binds the existing root install EX and queue SH.
-    a=guard.a;identity=a['identity'];original=absence(base,ci,identity,initial=True)
-    closed_failure(base,ci,a['recovery'],identity);historical_preparation(base,ci,ci.RECOVERY,a)
+    a=guard.a;identity=a['identity'];closed_failure(base,ci,a['recovery'],identity)
+    original=absence(base,ci,identity,initial=True,approval=a)
+    historical_preparation(base,ci,ci.RECOVERY,a)
     failure_snapshot(base,ci,a['recovery'],identity,a['launch'])
     proof,directory,manifest=ci.RECOVERY.prepared_proof(base,ci,fmt,a['preparedWorker'],identity,deadline=ci.SLOT_DEADLINE,baseline_publication=a.get(ci.BASELINE_PUBLICATION_KEY))
     base.check(proof['preparation']['mode']=='normal' and ci.epoch(proof['preparedAt'])<=ci.epoch(a['issuedAt']),'actual previously sealed normal preparation required')
@@ -121,7 +166,7 @@ def run(guard,fmt,base,ci,update):
         fresh,root,_=ci.RECOVERY.prepared_proof(base,ci,fmt,a['preparedWorker'],identity,deadline=ci.SLOT_DEADLINE,baseline_publication=a.get(ci.BASELINE_PUBLICATION_KEY))
         base.check(fresh==proof and root==directory and not release.exists(),'normal prepared publication changed')
         guard.file_mutation();os.rename(directory,release);return release
-    return update.replace_and_start(base,fmt,args,operation,release,None,identity['unit_sha256'],{'manifestSha256':proof['manifestSha256'],'preparedProofSha256':a['preparedWorker']['sha256'],'previousWebSource':identity['previous_web_source'],'previousWebBuildId':identity['previous_web_build'],'previousWorkerSource':identity['previous_worker_source'],'originalInstallationGrantExpiresAt':observer.grant['expiresAt'],'workerRecoveryOnly':True,'unstartedRecoveryPolicy':POLICY},observer,prepare_release=publish_prepared)
+    return update.replace_and_start(base,fmt,args,operation,release,None,identity['unit_sha256'],{'manifestSha256':proof['manifestSha256'],'preparedProofSha256':a['preparedWorker']['sha256'],'previousWebSource':identity['previous_web_source'],'previousWebBuildId':identity['previous_web_build'],'previousWorkerSource':identity['previous_worker_source'],'originalInstallationGrantExpiresAt':observer.grant['expiresAt'],'workerRecoveryOnly':True,'unstartedRecoveryPolicy':a['recovery']['policy']},observer,prepare_release=publish_prepared)
 
 
 def configure(ci,prepared):
