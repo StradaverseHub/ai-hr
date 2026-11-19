@@ -9,7 +9,7 @@ import {wholeSystemOrgRoster} from './fixture-workload.mjs';
 
 const orgOrigin='https://localhost:3443';
 
-export async function exerciseOrgExplorer({page,user,fixture,report,save,phase}){
+export async function exerciseOrgExplorer({page,user,fixture,report,save,phase,evidenceDirectory=process.env.PERF_EVIDENCE_DIR}){
  assert.equal(user.role,'groupHR','Org explorer journey needs the fixture group HR actor');
  assert(['baseline','loaded','preflight'].includes(phase));
  const cohort=wholeSystemOrgRoster(fixture,user.tenant);
@@ -173,7 +173,7 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase})
   page.off('request',observeScopePost);
   stage='language-switch';await switchLocale('zh');await switchLocale('en');
   stage='translated-search-usable';await allPeople();
-  await page.screenshot({path:join(process.env.PERF_EVIDENCE_DIR,`org-explorer-${phase}-${user.index}.png`),fullPage:false});
+  await page.screenshot({path:join(evidenceDirectory,`org-explorer-${phase}-${user.index}.png`),fullPage:false});
   entry.status='passed';entry.coverage={readOnly:true,freshNativeAuthorization:true,boundedDom:true,search:true,paging:true,focus:true,connections:true,scope:true,locale:true};save();
  }catch(error){entry.status='failed';entry.failure={stage,error:String(error.message).slice(0,200)};save();throw error;}
  finally{page.off('request',observeScopePost);}

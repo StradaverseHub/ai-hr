@@ -297,10 +297,14 @@ async function measureActions(fixture){
    const retain=()=>{row.timings=action.timings(result)??[];save();};
    try{
     const page=await context.newPage();
-    await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db});
+    await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
-   }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
+   }catch(error){
+    row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+    const step=result.orgExplorerJourneys?.[0]?.failure?.stage;
+    if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
+   }
    finally{retain();await context.close();}
   }
  }finally{await db.end({timeout:5});}
