@@ -15,6 +15,7 @@ import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
+import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -111,6 +112,28 @@ async function signedInContext(actor){
   return context;
  }catch(error){await context.close();throw error;}
 }
+async function readyContent(page,actor,path,timeout) {
+ const main=page.locator('main:visible').first();
+ await main.getByRole('heading',{level:1}).first().waitFor({state:'visible',timeout:timeout()});
+ await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
+ if(path===payrollHistoryPath){
+  await main.locator('tbody button[data-table-disclosure]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(['/claims','/admin/personnel','/payroll'].includes(path)){
+  await main.locator('tbody tr:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/analytics'){
+  await main.locator('[data-analytics-metric] [data-analytics-value]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/roster'){
+  await main.locator('[data-roster-grid] tbody tr[data-roster-employment-id]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ return 'heading';
+}
 async function visit(page,actor,route,pass) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
  const started=performance.now(),deadline=started+15000;
@@ -118,24 +141,48 @@ async function visit(page,actor,route,pass) {
  try{
   const response=await page.goto(origin+route.requested,{waitUntil:'domcontentloaded',timeout:timeout()});
   assert(response?.status()===200&&page.url()===origin+route.final,'Unexpected rendered route');
-  const main=page.locator('main:visible').first();
-  await main.getByRole('heading',{level:1}).first().waitFor({state:'visible',timeout:timeout()});
-  await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
-  observation.readiness='heading';
-  if(route.requested===payrollHistoryPath){
-   await main.locator('tbody button[data-table-disclosure]:visible').first().waitFor({state:'visible',timeout:timeout()});
-   observation.readiness='usable-content';
-  }else if(['/claims','/admin/personnel','/payroll'].includes(route.requested)){
-   await main.locator('tbody tr:visible').first().waitFor({state:'visible',timeout:timeout()});
-   observation.readiness='usable-content';
-  }
-  assert.equal(await main.locator('[data-personnel-busy], [data-page-busy], [data-read-unavailable]').count(),0);
+  observation.readiness=await readyContent(page,actor,route.requested,timeout);
+  await assertContentAvailable(page);
   observation.status='observed';
  }catch(error){observation.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
  finally{
   observation.elapsedMs=Math.round(performance.now()-started);
   report.observations.push(observation);save();
  }
+}
+async function assertContentAvailable(page){
+ assert.equal(await page.locator('main [data-personnel-busy],main [data-page-busy],main [data-read-unavailable]').count(),0);
+}
+
+async function measureShellLinks(fixture){
+ const actor=fixture.users[0],context=await signedInContext(actor);
+ try{
+  const page=await context.newPage();
+  for(const path of ['/admin/personnel','/payroll','/analytics','/roster']){
+   const row={journey:'shell-navigation',role:actor.role,route:path,status:'incomplete'};
+   report.journeys.push(row);
+   let clickStart,documentRequests=0;
+   const observe=request=>{if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;};
+   try{
+    await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:15000});
+    page.on('request',observe);
+    const deadline=performance.now()+30000;
+    const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+    await clickNativeShellDestination(page,path,remaining,()=>{
+     clickStart=performance.now();
+     documentRequests=0;
+    });
+    await page.waitForURL(origin+path,{timeout:remaining()});
+    assert.equal(await readyContent(page,actor,path,remaining),'usable-content');
+    await assertContentAvailable(page);
+    assert.equal(documentRequests,0,'Shell link triggered a full document reload');
+    assert(Number.isFinite(clickStart),'Shell click time was not observed');
+    row.elapsedMs=performance.now()-clickStart;
+    row.status='observed';
+   }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
+   finally{page.off('request',observe);row.documentRequests=documentRequests;save();}
+  }
+ }finally{await context.close();}
 }
 async function measureRoutes(fixture){
  const plan=[...nativePreflightRoutePlan()];
@@ -214,6 +261,7 @@ try{
  await waitForApp();
  await proxy();
  await measureRoutes(fixture);
+ await measureShellLinks(fixture);
  await measureActions(fixture);
  const routesObserved=report.observations.length===2*report.plannedRoleRoutes
   &&report.observations.every(row=>row.status==='observed');

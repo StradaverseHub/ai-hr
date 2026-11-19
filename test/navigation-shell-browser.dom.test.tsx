@@ -35,13 +35,13 @@ function fixture({duplicate=false,denied=false}={}){
  return clicks;
 }
 it('clicks the actual rendered workspace, module, nested disclosure and destination in order',async()=>{
- const clicks=fixture();await clickNativeShellDestination(page(),'/analytics',()=>90000);
- expect(clicks).toEqual(['workspace','nav-flyout-insights','nested','destination']);
+ const clicks=fixture();await clickNativeShellDestination(page(),'/analytics',()=>90000,()=>clicks.push('timing-start'));
+ expect(clicks).toEqual(['workspace','nav-flyout-insights','nested','timing-start','destination']);
  expect(document.querySelector('main button')!.getAttribute('aria-expanded')).toBe('false');
 });
 it('refuses duplicate and absent destinations without clicking any substitute route',async()=>{
  const clicks=fixture({duplicate:true});await expect(clickNativeShellDestination(page(),'/analytics',()=>90000)).rejects.toThrow('ambiguous');expect(clicks).not.toContain('destination');
- const denied=fixture({denied:true});await expect(clickNativeShellDestination(page(),'/analytics',()=>90000)).rejects.toThrow('absent');expect(denied).not.toContain('destination');
+ const denied=fixture({denied:true});await expect(clickNativeShellDestination(page(),'/analytics',()=>90000,()=>denied.push('timing-start'))).rejects.toThrow('absent');expect(denied).not.toContain('destination');expect(denied).not.toContain('timing-start');
 });
 it('refuses invalid addresses and obeys the caller deadline before traversing disclosures',async()=>{
  const clicks=fixture();await expect(clickNativeShellDestination(page(),'https://outside.invalid',()=>90000)).rejects.toThrow('reviewed static');
