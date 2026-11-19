@@ -919,7 +919,8 @@ class QualifiedLegacyBaselineTests(unittest.TestCase):
         for defect in ['source','webBuildId','authorizationSha256','mode','policy','workerRecoveryOnly','serviceStable','nativeRuntimeVerified','fullSourceContentInventoryVerified','fullNativeAudits','completeMetadataFences','journeyVerified','installationAuthorizationSha256','firstStageApprovalSha256','installId']:
             with self.subTest(defect=defect):
                 f,_=self.fixture(before_launch=True);path=f.old_release/'worker-install-v2.json';saved=json.loads(path.read_bytes())
-                saved[defect]=False if type(saved[defect])is bool else 1 if type(saved[defect])is int else 'wrong'
+                original=saved[defect];saved[defect]=not original if type(original)is bool else 1 if type(original)is int else 'wrong'
+                self.assertNotEqual(saved[defect],original)
                 path.chmod(0o644);path.write_bytes(encoded(saved));path.chmod(0o444)
                 proof=f.auth[ci.BASELINE_PUBLICATION_KEY];proof['workerReceiptSha256']=ci.sha(path.read_bytes());proof['workerReceiptIdentity']=ci.baseline_file_identity(f.base,path)
                 with f.ports(),self.assertRaisesRegex(ValueError,'recovered.*receipt'):ci.verify_baseline_publication(f.base,f.auth,paired=True)
