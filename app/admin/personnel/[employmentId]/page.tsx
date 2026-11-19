@@ -173,6 +173,7 @@ import { addQualificationAction, editQualificationAction, archiveQualificationAc
 import { EMERGENCY_CONTACT_PRIORITIES, listEmergencyContacts, type EmergencyContactRow } from '@/core/emergency-contacts';
 import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyContactAction } from './emergency-contact-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
+import { FamilyIdentityDates } from '@/components/family-identity-dates';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
 import { listAssignablePolicies } from '@/core/payroll-policy';
 // r393 (685d2380 step 2) — Payment Method and Payroll Policy are shared field groups now, rendered here in
@@ -1794,19 +1795,18 @@ export default async function EmployeePage({
         </select>
       </PersonnelField>
     );
-    const dobField = (
-      <PersonnelField fieldId="family.family_and_dependents.dateofbirth" mode="edit">
-        <DateField {...personnelControl('family.family_and_dependents.dateofbirth','edit')} defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.dateofbirth')} />
-      </PersonnelField>
+    const identityDates = (
+      <FamilyIdentityDates
+        child={section === 'child'}
+        initialIc={d?.icOrPassport ?? ''}
+        initialDob={d?.dateOfBirth ?? ''}
+        dobLabel={personnelLabel('family.family_and_dependents.dateofbirth')}
+        asOf={familyAsOf}
+      />
     );
     const phoneField = (
       <PersonnelField fieldId="family.family_and_dependents.phone" mode="edit">
         <input {...personnelInput('family.family_and_dependents.phone','edit')} defaultValue={d?.phone ?? ''} className={inputCls} />
-      </PersonnelField>
-    );
-    const icField = (
-      <PersonnelField fieldId={section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport'}>
-        <input {...personnelInput(section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport')} defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
       </PersonnelField>
     );
     const remarksField = (
@@ -1823,9 +1823,8 @@ export default async function EmployeePage({
             <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
               {nameField}
               {genderField}
-              {dobField}
+              {identityDates}
               {phoneField}
-              {icField}
               {remarksField}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
                 {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
@@ -1857,9 +1856,8 @@ export default async function EmployeePage({
             </div>
           </fieldset>
           {/* Item 6c635212 → R46 47146ea3 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief
-              category, claim flag and 100|50 share. Age is derived read-only from DOB to guide the category
-              choice (the FamilyFormDialog island refreshes it live while a DOB is typed; the note is static
-              guidance and the category is NEVER auto-filled from an age-based guess). Since R46 removed the
+              category, claim flag and 100|50 share. Age in the Personal section informs the category choice.
+              Since R46 removed the
               "Use {count}" approval button, when employee_statutory_my.child_relief_mode === 'auto' the
               derived eligible-child head count DOES flow straight into num_children on save (see
               syncChildReliefFromFamily in core/dependents.ts and its four rails); on 'manual' the tax figure
@@ -1897,15 +1895,6 @@ export default async function EmployeePage({
                   <option value="50">{t('family.childReliefPct_50')}</option>
                 </select>
               </PersonnelField>
-              <PersonnelField fieldId="family.family_and_dependents.age" mode="edit">
-                <input {...personnelDisplay("family.family_and_dependents.age")}
-                  readOnly
-                  disabled
-                  data-child-age=""
-                  value={childAgeYears(d?.dateOfBirth) ?? '—'}
-                  className={`${inputCls} bg-muted/50`}
-                />
-              </PersonnelField>
               <div className="flex items-end pb-1">
                 {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
               </div>
@@ -1921,9 +1910,8 @@ export default async function EmployeePage({
       <>
         {nameField}
         {genderField}
-        {dobField}
+        {identityDates}
         {phoneField}
-        {icField}
         <PersonnelField fieldId="family.family_and_dependents.passportnumber" mode="edit">
           <input {...personnelInput('family.family_and_dependents.passportnumber','edit')} defaultValue={d?.passportNumber ?? ''} className={inputCls} />
         </PersonnelField>
