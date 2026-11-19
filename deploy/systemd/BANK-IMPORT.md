@@ -754,6 +754,28 @@ lease may advance installing→arrived only under strict O. Failed/foreign/pendi
 The helper never publishes native finish or arrival. Final helper PASS is required before acceptance and
 handback, and need not precede the normal operator's genuine arrival while both branches run concurrently.
 
+A reviewed normal handoff may explicitly select the closed optional `baselinePublication`
+proof under `aihr-worker-qualified-legacy-finish-header/v1`. This addresses only an older
+native publisher's successful exit0 record pair whose current verdict is `ok` while its
+otherwise identical last-ok verdict is `failed`. Under the freshly held lease and native
+operation lock, before drain or new native begin, qualification pins both complete raw
+record hashes and file identities, the exact previous source/build, and the actual
+immutable recovered worker receipt's hash, identity, original authority and publication
+chronology. The same selection must survive first-stage approval, normal preparation
+(v1 or v2), sealed preparation proof and activation unchanged. For example, protected
+approval/proof paths remain local paths such as `/protected/operation/approval.json`;
+raw native records and recovered receipt contents are never exported.
+
+After begin replaces current, this proof admits only R0's exact pinned old last-ok;
+it revalidates that old publication and recovered receipt without seeking the replaced
+old current. Ordinary approvals retain their original exact schemas and refusals.
+Failed-preunit and published recovery cannot select this proof. R1 and final O keep
+all original strict success requirements, including the new blank last-ok verdict.
+Qualification never rewrites old native records, renews recovery authority, publishes
+native finish or substitutes for release acceptance. Hosted qualification must retain
+ordinary cases and additionally exercise the complete actual archive through both
+normal prepared policies and R0→R1→O, with both full audits and all ten metadata fences.
+
 Each helper slot has one absolute deadline shared across all subprocesses, without reset per child:
 preparation30s, each complete fence20s, each source content pass60s, each native audit180s, reload45s,
 start45s, receipt15s. Each stability sleep plus following fence shares one24s absolute slot, so scheduler
