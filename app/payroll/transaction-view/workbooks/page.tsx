@@ -5,24 +5,24 @@ import { scopedAdmin } from '@/lib/scope';
 import { bulkJobActive } from '@/lib/bulk-job';
 import { listBulkJobsTx } from '@/core/bulk-job';
 import { TRANSACTION_EXPORT_KIND } from '@/core/payroll-transaction-export';
-import { withTenant } from '@/db/client';
+import { withPayrollTenant } from '@/core/module-gate';
 import { RefreshWorkbookList } from './refresh';
 
 export default async function TransactionWorkbookList({
   searchParams,
-}: { searchParams: Promise<{ job?: string; unavailable?: string }> }) {
+}: { searchParams: Promise<{ job?: string; unavailable?: string; tab?: string }> }) {
   const { s, scopeIds } = await scopedAdmin();
-  const { job, unavailable } = await searchParams;
+  const { job, unavailable, tab } = await searchParams;
   const t = await getTranslations('payroll.transactions.view.workbooks');
   const format = await getFormatter();
-  const jobs = (await withTenant(s, (tx) => listBulkJobsTx(tx, s, TRANSACTION_EXPORT_KIND, 25)))
+  const jobs = (await withPayrollTenant(s, (tx) => listBulkJobsTx(tx, s, TRANSACTION_EXPORT_KIND, 25)))
     .filter((item) => item.company_ids.length > 0 && item.company_ids.every((id) => scopeIds.includes(id)));
   const active = jobs.some((item) => bulkJobActive(item.state));
 
   return (
     <main className="mx-auto max-w-4xl space-y-4 px-4 py-6">
       <PageHeader title={t('title')} />
-      <Link href="/payroll/transaction-view" className={buttonVariants({ variant: 'outline', size: 'sm' })}>{t('back')}</Link>
+      <Link href={tab === 'fixed' || tab === 'individual' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view'} className={buttonVariants({ variant: 'outline', size: 'sm' })}>{t('back')}</Link>
       {(unavailable || (job && !jobs.some((item) => item.id === job))) && (
         <p role="alert" className="text-sm text-destructive">{t('unavailable')}</p>
       )}
