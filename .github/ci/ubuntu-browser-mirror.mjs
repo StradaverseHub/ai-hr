@@ -37,7 +37,12 @@ export function ubuntuMirrorSource(text,variant,mirrorList){
  if(usesMirrorList){
   assert(typeof mirrorList==='string'&&mirrorList.length<=4096,'Bounded actual runner mirror list required');
   const rows=mirrorList.trim().split('\n').map(line=>line.trim().split(/\s+/));
-  assert.deepEqual(rows,[['http://azure.archive.ubuntu.com/ubuntu/','priority:1'],['https://archive.ubuntu.com/ubuntu/','priority:2'],['https://security.ubuntu.com/ubuntu/','priority:3']],'Unexpected runner mirror order or endpoint');
+  // Standard hosted runners use Azure or an official regional EC2 Ubuntu mirror.
+  // This accepts only the observed priority-one boundary; acquisition is still
+  // rewritten to canonical signed HTTPS, never to a caller-selected endpoint.
+  assert(rows.length===3&&rows[0].length===2&&rows[0][1]==='priority:1'
+   &&/^http:\/\/(?:azure\.archive\.ubuntu\.com|[a-z]{2}(?:-[a-z]+)+-[0-9]+\.ec2\.archive\.ubuntu\.com)\/ubuntu\/$/.test(rows[0][0]),'Unexpected official runner priority-one mirror');
+  assert.deepEqual(rows.slice(1),[['https://archive.ubuntu.com/ubuntu/','priority:2'],['https://security.ubuntu.com/ubuntu/','priority:3']],'Unexpected runner mirror order or endpoint');
  }
  const after=variant==='runner'?text:text.replace(/^(URIs:[ \t]*)(?:https?:\/\/azure\.archive\.ubuntu\.com\/ubuntu\/?|mirror\+file:\/etc\/apt\/apt-mirrors\.txt)[ \t]*$/gm,'$1https://archive.ubuntu.com/ubuntu/');
  assert(variant==='runner'||after!==text,'No archive transport was changed');
