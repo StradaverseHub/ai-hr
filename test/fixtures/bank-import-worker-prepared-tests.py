@@ -126,6 +126,33 @@ class PreparedFlowTests(unittest.TestCase):
   t=tempfile.TemporaryDirectory();self.addCleanup(t.cleanup);return Fixture(Path(t.name))
  def assert_no_unit_mutation(self,f):
   self.assertFalse(any(isinstance(x,(list,tuple))and len(x)>1 and x[0]=='/usr/bin/systemctl'and x[1]in('start','daemon-reload','stop','disable','enable')for x in f.events));self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertFalse((f.app/'releases'/f.source).exists())
+ def test_qualified_legacy_baseline_survives_actual_normal_v1_and_v2_preparation_and_live_graph(self):
+  for policy in (prepared.POLICY,prepared.NORMAL_V2_POLICY):
+   with self.subTest(policy=policy):
+    f=self.fixture();selection=core.qualify_legacy_baseline_fixture(f,before_launch=True);f.original_auth=copy.deepcopy(f.auth)
+    old_last=(f.state/'last-ok').read_bytes();receipt=(f.old_release/'worker-install-v2.json').read_bytes()
+    a=f.prepare_record(policy=policy);self.assertEqual(a[ci.BASELINE_PUBLICATION_KEY],selection)
+    proof=f.invoke_preparation(a);self.assert_no_unit_mutation(f)
+    f.write_records() # Genuine new begin changes current only; last-ok remains the captured native publication.
+    live=f.live_record(a,proof);self.assertEqual(live[ci.BASELINE_PUBLICATION_KEY],selection)
+    r=f.invoke_live(live);self.assertTrue(r['serviceStable']);self.assertEqual((r['fullNativeAudits'],r['completeMetadataFences']),(2,10))
+    self.assertEqual((f.state/'last-ok').read_bytes(),old_last);self.assertEqual((f.old_release/'worker-install-v2.json').read_bytes(),receipt)
+
+ def test_actual_prepared_attestation_requires_exact_activation_selection_on_each_read(self):
+  f=self.fixture();selection=core.qualify_legacy_baseline_fixture(f,before_launch=True);f.original_auth=copy.deepcopy(f.auth)
+  a=f.prepare_record();proof=f.invoke_preparation(a);selected={'path':str(proof),'sha256':ci.sha(proof.read_bytes())}
+  with f.prepared_ports():
+   prepared.prepared_proof(f.base,ci,f.fmt,selected,a['identity'],deadline=time.monotonic()+30,baseline_publication=selection)
+   with self.assertRaises(ValueError):prepared.prepared_proof(f.base,ci,f.fmt,selected,a['identity'],deadline=time.monotonic()+30)
+   changed=copy.deepcopy(selection);changed['currentSha256']='0'*64
+   with self.assertRaisesRegex(ValueError,'preparation and activation'):prepared.prepared_proof(f.base,ci,f.fmt,selected,a['identity'],deadline=time.monotonic()+30,baseline_publication=changed)
+
+ def test_preparation_cannot_drop_original_qualified_legacy_baseline_selection(self):
+  f=self.fixture();core.qualify_legacy_baseline_fixture(f,before_launch=True);f.original_auth=copy.deepcopy(f.auth)
+  a=f.prepare_record();a.pop(ci.BASELINE_PUBLICATION_KEY)
+  with self.assertRaisesRegex(ValueError,'legacy baseline'):f.invoke_preparation(a)
+  self.assert_no_unit_mutation(f)
+
  def test_no_mutation_oracle_detects_actual_list_event(self):
   f=self.fixture();f.events.append(['/usr/bin/systemctl','start','aihr-bank-import.service']);self.assertRaises(AssertionError,self.assert_no_unit_mutation,f)
  def test_full_fence_retains_exact_root_commitments_without_entry_arrays(self):
@@ -490,6 +517,38 @@ class PreparedFlowTests(unittest.TestCase):
 
 
 class ActualArchiveCapacityTests(unittest.TestCase):
+ def test_actual_full_archive_qualified_legacy_baseline_prepared_v1_v2_r0_r1_o(self):
+  for policy in (prepared.POLICY,prepared.NORMAL_V2_POLICY):
+   with self.subTest(policy=policy),tempfile.TemporaryDirectory()as tmp:
+    f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)
+    selection=core.qualify_legacy_baseline_fixture(f,before_launch=True);f.original_auth=copy.deepcopy(f.auth)
+    originals={name:(f.state/name).read_bytes()for name in('current','last-ok')}
+    receipt=f.old_release/'worker-install-v2.json';receipt_bytes=receipt.read_bytes()
+    receipt_identity=ci.baseline_file_identity(f.base,receipt)
+    a=f.prepare_record(policy=policy);proof=f.invoke_preparation(a)
+    self.assertEqual({name:(f.state/name).read_bytes()for name in originals},originals)
+    self.assertFalse((f.app/'releases'/f.source).exists())
+    f.write_records() # Native begin replaces current only, after paired proof was sealed.
+    self.assertEqual((f.state/'last-ok').read_bytes(),originals['last-ok'])
+    boundary=f.boundary
+    def progress(kind,count):
+     boundary(kind,count)
+     if kind=='fast'and count==2:f.finish('R1')
+     if kind=='fast'and count==3:f.finish()
+    f.boundary=progress;live=f.live_record(a,proof)
+    self.assertEqual(live[ci.BASELINE_PUBLICATION_KEY],selection)
+    r=f.invoke_live(live)
+    self.assertEqual(r['transitionStages'][:3],['R0','R1','O']);self.assertEqual(r['transitionStages'][-1],'O')
+    self.assertEqual((r['fullNativeAudits'],r['completeMetadataFences']),(2,10))
+    self.assertTrue(r['serviceStable']);self.assertFalse(r['journeyVerified'])
+    self.assertEqual(f.current['result'],'ok');self.assertEqual(f.prior['result'],'')
+    self.assertEqual(receipt.read_bytes(),receipt_bytes);self.assertEqual(ci.baseline_file_identity(f.base,receipt),receipt_identity)
+    print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_QUALIFIED_LEGACY_BASELINE_PREPARED_GRAPH',
+     'source':f.source,'archiveBytes':PACKAGE.stat().st_size,'entries':len(f.manifest['entries']),
+     'offlinePreparationPolicy':policy,'baselinePublicationPolicy':selection['policy'],
+     'transitionStages':r['transitionStages'],'fullNativeAudits':2,'completeMetadataFences':10,
+     'oldRecordsUnchangedUntilNativeBegin':True,'recoveredReceiptUnchanged':True,
+     'nativeProofPorts':'deterministic; actual archive bytes/hash/locks/metadata/elapsed'}))
  def test_actual_full_archive_normal_prepared_f4_startup_window(self):
   with tempfile.TemporaryDirectory()as tmp:
    f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)

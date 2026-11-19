@@ -149,6 +149,117 @@ def record(raw):
     return dict(pairs)
 
 
+
+BASELINE_PUBLICATION_KEY='baselinePublication'
+BASELINE_PUBLICATION_POLICY='aihr-worker-qualified-legacy-finish-header/v1'
+BASELINE_IDENTITY_FIELDS={'device','inode','uid','gid','mode','links','size','mtimeNs','ctimeNs'}
+BASELINE_PUBLICATION_FIELDS={'format','policy','source','buildId','currentSha256','lastOkSha256','workerReceiptSha256','workerAuthorizationSha256','currentIdentity','lastOkIdentity','workerReceiptIdentity'}
+
+
+def baseline_publication_fields(fields,approval,*,allow=False):
+    # An absent opt-in retains the original exact closed schema. Recovery/published modes
+    # never gain this normal-baseline compatibility authority.
+    if BASELINE_PUBLICATION_KEY not in approval:return fields
+    SimpleCheck.check(allow,'qualified legacy baseline is unavailable in this operation')
+    return fields|{BASELINE_PUBLICATION_KEY}
+
+
+def baseline_publication_selection(base,approval):
+    if BASELINE_PUBLICATION_KEY not in approval:return None
+    p=approval[BASELINE_PUBLICATION_KEY];identity=approval.get('identity')
+    base.check(type(identity)is dict and all(k in identity for k in('previous_web_source','previous_worker_source','previous_web_build')),'qualified legacy baseline operation identity required')
+    base.check(type(p)is dict and set(p)==BASELINE_PUBLICATION_FIELDS and type(p['format'])is int and p['format']==1 and
+               p['policy']==BASELINE_PUBLICATION_POLICY,'closed versioned legacy baseline selection required')
+    base.check(type(p['source'])is str and p['source']==identity['previous_web_source']==identity['previous_worker_source'] and
+               p['buildId']==identity['previous_web_build'] and re.fullmatch('[a-f0-9]{40}',p['source']) and
+               isinstance(p['buildId'],str)and bool(p['buildId']),'legacy baseline identity differs')
+    for key in ('currentSha256','lastOkSha256','workerReceiptSha256','workerAuthorizationSha256'):
+        base.check(isinstance(p[key],str)and re.fullmatch('[a-f0-9]{64}',p[key]),'independent legacy baseline hashes required')
+    for key in ('currentIdentity','lastOkIdentity','workerReceiptIdentity'):
+        value=p[key]
+        base.check(type(value)is dict and set(value)==BASELINE_IDENTITY_FIELDS and
+                   all(type(v)is str and re.fullmatch('[0-9]+',v)for v in value.values()),'closed legacy baseline file identity required')
+    return p
+
+
+def require_same_baseline_publication(base,first,later):
+    base.check(first.get(BASELINE_PUBLICATION_KEY)==later.get(BASELINE_PUBLICATION_KEY),
+               'pre-drain and later qualified legacy baseline selections differ')
+
+
+def baseline_file_identity(base,path):
+    path=Path(path);s=path.lstat()
+    base.check(stat.S_ISREG(s.st_mode)and s.st_nlink==1 and not s.st_mode&0o022 and path.resolve()==path,
+               'canonical non-linked legacy baseline file required')
+    return dict(zip(('device','inode','uid','gid','mode','links','size','mtimeNs','ctimeNs'),
+                    map(str,(s.st_dev,s.st_ino,s.st_uid,s.st_gid,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns))))
+
+
+def baseline_file_bytes(base,path,identity,digest):
+    base.check(baseline_file_identity(base,path)==identity,'qualified legacy baseline file metadata changed')
+    raw=base.read_bounded(path,65536)
+    base.check(sha(raw)==digest and baseline_file_identity(base,path)==identity,'qualified legacy baseline bytes/identity changed')
+    return raw
+
+
+
+def baseline_receipt_precedes_finish(base,selection,native):
+    base.check(type(native.get('finished_at'))is str and re.fullmatch('[1-9][0-9]*',native['finished_at'])and
+               max(int(selection['workerReceiptIdentity'][k])//1000000000 for k in('mtimeNs','ctimeNs'))<=int(native['finished_at']),
+               'recovered receipt was published after native successful finish')
+
+
+def verify_baseline_publication(base,approval,*,paired=False,last_ok=None):
+    p=baseline_publication_selection(base,approval)
+    if p is None:
+        base.check(not paired and last_ok is None,'explicit qualified legacy baseline selection required')
+        return None
+    receipt=base.ROOT/'releases'/p['source']/'worker-install-v2.json'
+    base.root_protected(receipt,regular=True)
+    raw=baseline_file_bytes(base,receipt,p['workerReceiptIdentity'],p['workerReceiptSha256']);saved=json.loads(raw)
+    base.check(stat.S_IMODE(int(p['workerReceiptIdentity']['mode']))==0o444,'immutable native recovered receipt mode required')
+    # These fields are emitted by the existing actual recovered worker receipt producer.
+    expected={'source':p['source'],'webBuildId':p['buildId'],'authorizationSha256':p['workerAuthorizationSha256'],
+              'mode':'recover-ci-runtime','policy':RECOVERY.POLICY,'workerRecoveryOnly':True,'serviceStable':True,
+              'nativeRuntimeVerified':True,'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,
+              'completeMetadataFences':10,'journeyVerified':False}
+    base.check(type(saved)is dict and all(type(saved.get(k))is type(v)and saved[k]==v for k,v in expected.items()),
+               'exact recovered worker baseline receipt required')
+    # receipt() emits these original authority identities; the independently pinned full receipt
+    # binds them without granting or renewing the old installation's authority.
+    base.check(all(type(saved.get(k))is str and re.fullmatch('[a-f0-9]{64}',saved[k])for k in
+                   ('installationAuthorizationSha256','firstStageApprovalSha256'))and
+               type(saved.get('installId'))is str and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',saved['installId']),
+               'original recovered receipt installation/first-stage identities required')
+    if paired:
+        base.check(not(STATE/'pending').exists()and not(STATE/'pending').is_symlink(),'legacy baseline deployment pending')
+        current=baseline_file_bytes(base,STATE/'current',p['currentIdentity'],p['currentSha256'])
+        prior=baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256'])
+        c,o=record(current),record(prior)
+        fields={'ref','pid','log','started_at','phase','result','exit_code','build_id','built_at','finished_at'}
+        base.check(set(c)==set(o)==fields and c['result']=='ok'and o['result']=='failed'and
+                   c['exit_code']==o['exit_code']=='0'and c['ref']==p['source']and c['build_id']==p['buildId']and
+                   c['phase']=='ci-build-health'and re.fullmatch('[1-9][0-9]*',c['finished_at'])and
+                   {k:v for k,v in c.items()if k!='result'}=={k:v for k,v in o.items()if k!='result'},
+                   'exact paired native legacy success publication required')
+        # There is no receipt createdAt/publishedAt JSON claim. Its native owner publishes this
+        # root-protected 0444 file with O_EXCL/NOFOLLOW and flush/fsync before returning; finish
+        # subsequently stamps finished_at using date+%s. Bind actual OS publication/change times,
+        # allowing the same second, not a caller-supplied timestamp or a guessed historical field.
+        baseline_receipt_precedes_finish(base,p,c)
+        base.check(current==baseline_file_bytes(base,STATE/'current',p['currentIdentity'],p['currentSha256'])and
+                   prior==baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256']),
+                   'legacy baseline pair changed during qualification')
+    if last_ok is not None:
+        base.check(sha(last_ok)==p['lastOkSha256']==approval['priorLastOkSha256'] and
+                   last_ok==baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256']),
+                   'original qualified legacy last-ok changed after launch')
+        baseline_receipt_precedes_finish(base,p,record(last_ok))
+    base.check(raw==baseline_file_bytes(base,receipt,p['workerReceiptIdentity'],p['workerReceiptSha256']),
+               'recovered worker baseline receipt changed during qualification')
+    return p
+
+
 def excluded(path, filters):
     # Same closed glob grammar as canonicalSourceExclusions; directory exclusions prune the whole subtree.
     return any(re.fullmatch(re.escape(p.strip('/')).replace(r'\*', '[^/]*'), path if p.startswith('/') else path.rsplit('/', 1)[-1]) is not None for p in filters)
@@ -389,6 +500,7 @@ class RuntimeObservation:
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
         published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
+        fields=baseline_publication_fields(fields,a,allow=recovery is None and not published)
         kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
@@ -495,7 +607,9 @@ class RuntimeObservation:
         self.grant = g = json.loads(b.read_bounded(self.directory/'authorization.json',32768))
         b.check(protected_private(b,self.first_path)==self.first_identity and b.read_bounded(self.first_path,65536)==self.first_bytes,'pre-drain administrator approval identity/content changed')
         first=json.loads(self.first_bytes)
-        first_fields=FIRST_APPROVAL_FIELDS
+        first_fields=baseline_publication_fields(FIRST_APPROVAL_FIELDS,first,allow=BASELINE_PUBLICATION_KEY in a)
+        require_same_baseline_publication(b,first,a)
+        if BASELINE_PUBLICATION_KEY in a:verify_baseline_publication(b,a)
         gate_fields={'source','controller','runId','build','artifact','witnessFingerprint','policyVersion'}
         b.check(set(first)==first_fields and first['format']==1 and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
         b.check(all(first[k]==a[k] for k in ('identity',*(() if self.recovery is not None else ('helperSha256',)),'nodeSha256','python','nodeOptions','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
@@ -809,7 +923,9 @@ class RuntimeObservation:
             if not live:
                 time.sleep(.05);continue
             if current.get('exit_code','')=='' and not current.get('finished_at') and sha(raw[1])==a['priorLastOkSha256']:
-                b.check(prior.get('result')=='' or prior.get('result')=='ok','prior last-ok is invalid')
+                if prior.get('result')not in('','ok'):
+                    b.check(prior.get('result')=='failed'and BASELINE_PUBLICATION_KEY in a,'prior last-ok is invalid')
+                    verify_baseline_publication(b,a,last_ok=raw[1])
                 b.check(prior.get('ref')==self.args.previous_web_source and prior.get('build_id')==self.args.previous_web_build,'old last-ok baseline differs')
                 return 'R0',raw
             if current.get('exit_code')=='0' and current.get('finished_at') and current==prior:

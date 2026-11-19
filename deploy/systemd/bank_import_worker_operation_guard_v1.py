@@ -78,6 +78,10 @@ class GuardedInvocation:
         self.a=json.loads(self.bytes)
         fields=ci.FIRST_APPROVAL_FIELDS if stage=='drain' else ci.ACTIVATION_FIELDS if stage=='activate-ci-runtime' else ci.RECOVERY.PREP_FIELDS if stage=='prepare-ci-worker' else ci.RECOVERY.NORMAL_FIELDS if stage=='activate-prepared-ci-runtime' else ci.RECOVERY.FIELDS
         if stage in published_kinds(ci):fields=ci.PUBLISHED.SEAL_FIELDS if stage==ci.PUBLISHED.SEAL_STAGE else ci.PUBLISHED.LIVE_FIELDS
+        baseline_allowed=stage in('drain','activate-ci-runtime','activate-prepared-ci-runtime')
+        if stage=='prepare-ci-worker'and 'baselinePublication'in self.a:
+            p=self.a.get('preparation');baseline_allowed=type(p)is dict and p.get('mode')=='normal'
+        fields=ci.baseline_publication_fields(fields,self.a,allow=baseline_allowed)
         kind=published_kinds(ci)[stage]if stage in published_kinds(ci) else 'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' if stage=='drain' else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if stage=='activate-ci-runtime' else ci.RECOVERY.KINDS[stage]
         base.check(set(self.a)==fields and self.a['kind']==kind and self.a['policy']==ci.POLICY and self.a['format']==1 and
                    self.a['target']=='alpha-staging' and self.a['releaseAuthorized'] is False,'fixed root invocation approval differs')
@@ -157,6 +161,8 @@ class GuardedInvocation:
             observed=self.ci.child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',DRAIN_ENVIRONMENT_PROBE],self.owner,self.environment,timeout=30,operation_fd=self.lock.fd,node_options=a['nodeOptions'])
             b.check(observed=={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':a['environmentSha256'],'readiness':a['readiness']},'actual native drain environment/readiness differs')
         held=self.native_lease()
+        if 'baselinePublication' in a:
+            self.ci.verify_baseline_publication(b,a,paired=self.stage in('drain','prepare-ci-worker'))
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
         return held
 

@@ -129,13 +129,16 @@ def admit_mutation(o):
     return {'recoveryOnly':True,'originalReadinessWindowRevived':False,'expiredGrantWriteAuthority':False}
 
 
-def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,published_root=None):
+def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,published_root=None,baseline_publication=None):
     base.check(set(selected)=={'path','sha256'},'closed prepared proof selection required');path=Path(selected['path']);ci.protected_private(base,path)
     raw=base.read_bounded(path,65536);base.check(ci.sha(raw)==selected['sha256'],'sealed prepared proof differs');proof=json.loads(raw)
     base.check(set(proof)=={'format','kind','policy','preparationApproval','preparationApprovalSha256','preparedAt','identity','archiveSha256','manifestSha256','directory','tree','preparation','releaseAuthorized'} and proof['format']==1 and proof['kind']=='ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION' and proof['policy']in(POLICY,NORMAL_V2_POLICY) and proof['identity']==identity and proof['releaseAuthorized']is False,'closed prepared byte attestation required')
     approval=Path(proof['preparationApproval']);ci.protected_private(base,approval);araw=base.read_bounded(approval,65536)
     base.check(ci.sha(araw)==proof['preparationApprovalSha256'],'preparation authority differs');a=json.loads(araw)
-    base.check(set(a)==PREP_FIELDS and a['kind']==KINDS['prepare-ci-worker'] and a['policy']==ci.POLICY and a['format']==1 and a['target']=='alpha-staging' and a['releaseAuthorized']is False and a['identity']==identity and a['preparation']==proof['preparation'],'original closed preparation required')
+    preparation=a.get('preparation')
+    fields=ci.baseline_publication_fields(PREP_FIELDS,a,allow=baseline_publication is not None and type(preparation)is dict and preparation.get('mode')=='normal'and published_root is None)
+    base.check(a.get(ci.BASELINE_PUBLICATION_KEY)==baseline_publication,'preparation and activation qualified legacy baseline selections differ')
+    base.check(set(a)==fields and a['kind']==KINDS['prepare-ci-worker'] and a['policy']==ci.POLICY and a['format']==1 and a['target']=='alpha-staging' and a['releaseAuthorized']is False and a['identity']==identity and a['preparation']==proof['preparation'],'original closed preparation required')
     p,operation=closed_preparation(base,ci,a)
     base.check(proof['policy']==p['policy'],'prepared proof/approval policy version differs')
     base.check(str(path)==p['proof'] and proof['directory']==p['directory'],'fixed prepared proof/root selection differs')
@@ -164,7 +167,9 @@ def prepare(guard,fmt,base,ci,update):
     base.check(ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+seconds,'finite preparation authority exceeds'+str(seconds)+'s')
     first_path=Path(p['firstStageApproval']);ci.protected_private(base,first_path);first_raw=base.read_bounded(first_path,65536)
     base.check(ci.sha(first_raw)==p['firstStageApprovalSha256'],'original drain approval differs');first=json.loads(first_raw)
-    base.check(set(first)==ci.FIRST_APPROVAL_FIELDS and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','closed original drain approval required')
+    fields=ci.baseline_publication_fields(ci.FIRST_APPROVAL_FIELDS,first,allow=p['mode']=='normal'and ci.BASELINE_PUBLICATION_KEY in a)
+    base.check(set(first)==fields and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','closed original drain approval required')
+    ci.require_same_baseline_publication(base,first,a)
     base.check(all(first[k]==a[k]for k in ci.FIRST_APPROVAL_FIELDS-{'kind','issuedAt','expiresAt','helperSha256'}),'prepared source/gate/environment/lease pins differ')
     raw=base.read_bounded(operation/'drained.json',65536);drain=json.loads(raw)
     base.check(ci.sha(raw)==p['drainSha256'] and drain['identity']==a['identity'] and drain['drain']['state']=='drained','actual original managed drain required')
@@ -215,7 +220,7 @@ def run(stage,guard,fmt,base,ci,update):
         if stage=='prepare-ci-worker':return prepare(guard,fmt,base,ci,update)
         a=guard.a;identity=a['identity'];original=base.ROOT/'upgrades'/identity['source'];base.root_protected(original)
         recovery=a.get('recovery');selected=a['preparedWorker']
-        proof,directory,manifest=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE)
+        proof,directory,manifest=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE,baseline_publication=a.get(ci.BASELINE_PUBLICATION_KEY))
         base.check(ci.epoch(proof['preparedAt'])<=ci.epoch(a['issuedAt']),'live approval predates sealed preparation')
         base.check(proof['preparation']['mode']==('failed-preunit'if recovery is not None else'normal'),'prepared state does not match activation mode')
         base.check(proof['preparation']['firstStageApproval']==a['firstStageApproval'] and proof['preparation']['firstStageApprovalSha256']==a['firstStageApprovalSha256'] and proof['preparation']['drainSha256']==a['drainSha256'],'preparation and live historical drain pins differ')
@@ -238,7 +243,7 @@ def run(stage,guard,fmt,base,ci,update):
         release=base.ROOT/'releases'/identity['source']
         def publish_prepared():
             # Same M0/45 slot covers this full metadata fence, atomic rename, unit replace and reload.
-            guard.file_mutation();clean_prior(base,update,identity);fresh,root,_=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE)
+            guard.file_mutation();clean_prior(base,update,identity);fresh,root,_=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE,baseline_publication=a.get(ci.BASELINE_PUBLICATION_KEY))
             base.check(fresh==proof and root==directory and not release.exists(),'prepared publication changed')
             guard.file_mutation();os.rename(directory,release);return release
         return update.replace_and_start(base,fmt,args,operation,release,None,identity['unit_sha256'],{'manifestSha256':proof['manifestSha256'],'preparedProofSha256':selected['sha256'],'previousWebSource':identity['previous_web_source'],'previousWebBuildId':identity['previous_web_build'],'previousWorkerSource':identity['previous_worker_source'],'originalInstallationGrantExpiresAt':observer.grant['expiresAt'],'workerRecoveryOnly':recovery is not None},observer,prepare_release=publish_prepared)

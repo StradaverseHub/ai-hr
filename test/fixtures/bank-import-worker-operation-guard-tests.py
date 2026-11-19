@@ -186,6 +186,22 @@ class BoundaryTests(unittest.TestCase):
         result['environmentSha256']='changed-service-config'
         with patch.object(guard.time,'time',return_value=10):
             with self.assertRaisesRegex(ValueError,'environment/readiness differs'):o.file_mutation()
+    def test_explicit_legacy_pair_is_checked_after_fresh_lease_before_any_drain_mutation(self):
+        o=self.obj();o.stage='drain';o.base.NODE=Path('/node');o.lock=SimpleNamespace(fd=4)
+        o.a.update(environmentSha256='canonical',readiness={'required':'1','waitSeconds':None},baselinePublication={'policy':'fixture-selection'})
+        o.ci.child=lambda *a,**k:{'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':'canonical','readiness':o.a['readiness']}
+        o.ci.verify_baseline_publication=lambda b,a,**k:o.events.append(('baseline',k['paired']))
+        with patch.object(guard.time,'time',return_value=10):o.file_mutation()
+        self.assertEqual(o.events,['EX','SH','EX','native-lease',('baseline',True)])
+        o.ci.verify_baseline_publication=lambda *a,**k:(_ for _ in()).throw(ValueError('paired baseline refused'))
+        with patch.object(guard.time,'time',return_value=10),self.assertRaisesRegex(ValueError,'paired baseline refused'):o.file_mutation()
+
+    def test_later_activation_checks_receipt_but_does_not_look_for_overwritten_old_current(self):
+        o=self.obj();o.a['baselinePublication']={'policy':'fixture-selection'}
+        o.ci.verify_baseline_publication=lambda b,a,**k:o.events.append(('baseline',k['paired']))
+        with patch.object(guard.time,'time',return_value=10):o.file_mutation()
+        self.assertEqual(o.events,['EX','SH','EX','native-lease',('baseline',False)])
+
     def test_failure_only_requires_owned_start_without_fresh_lease_pass(self):
         o=self.obj();o.observer=SimpleNamespace(quarantine_fence=lambda:o.events.append('own-start'))
         o.native_lease=lambda:(_ for _ in()).throw(AssertionError('must not claim failed lease PASS'))
