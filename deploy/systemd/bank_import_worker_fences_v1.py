@@ -35,6 +35,25 @@ def metadata(info):
     return dict(zip(METADATA_NAMES,(str(getattr(info,key))for key in METADATA_FIELDS)))
 
 
+
+def native_metadata(info):
+    # Preserve every native integer; serialization is deferred until BOTH walks agree.
+    return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+
+
+def materialize_rows(rows,deadline):
+    # Only the accepted first walk needs decimal strings and dictionaries. The
+    # discarded independent second walk still observes and compares ALL fields.
+    def convert(value):return dict(zip(METADATA_NAMES,map(str,value)))
+    for row in rows:
+        clock(deadline);row['metadata']=convert(row['metadata'])
+        if row['kind']=='link':
+            target=row['resolvedTarget'];target['metadata']=convert(target['metadata'])
+            for edge in target['resolution']:
+                clock(deadline);edge['metadata']=convert(edge['metadata'])
+    return rows
+
+
 def same(left,right):
     # Compare exact native integers; decimal serialization belongs only to emitted rows.
     return (left.st_dev,left.st_ino,left.st_mode,left.st_uid,left.st_gid,left.st_nlink,left.st_size,left.st_mtime_ns,left.st_ctime_ns)==(right.st_dev,right.st_ino,right.st_mode,right.st_uid,right.st_gid,right.st_nlink,right.st_size,right.st_mtime_ns,right.st_ctime_ns)
@@ -58,7 +77,7 @@ def canonical_directory(value,deadline):
     except BaseException:os.close(fd);raise
 
 
-def target_identity(parent,literal,approved,deadline):
+def target_identity(parent,literal,approved,deadline,encode=metadata):
     """Resolve at most64 link edges without enumerating any target directory or reading file bytes."""
     literal=bounded_path(literal)
     combined=literal if literal.startswith('/')else str(parent)+'/'+literal
@@ -81,7 +100,7 @@ def target_identity(parent,literal,approved,deadline):
                     text=bounded_path(os.readlink(name,dir_fd=directory))
                     require(same(before,os.fstat(link_fd)) and same(before,os.stat(name,dir_fd=directory,follow_symlinks=False)),'link changed during target resolution')
                 finally:os.close(link_fd)
-                resolution.append({'path':'/'+'/'.join([*parts,name]),'metadata':metadata(before),'linkTarget':text})
+                resolution.append({'path':'/'+'/'.join([*parts,name]),'metadata':encode(before),'linkTarget':text})
                 if text.startswith('/'):
                     while len(stack)>1:os.close(stack.pop())
                     parts=[]
@@ -108,17 +127,17 @@ def target_identity(parent,literal,approved,deadline):
             try:require(same(info,os.stat(canonical.name,dir_fd=check_parent,follow_symlinks=False)),'resolved target named identity changed')
             finally:os.close(check_parent)
         clock(deadline)
-        return {'path':str(canonical),'metadata':metadata(info),'resolution':resolution}
+        return {'path':str(canonical),'metadata':encode(info),'resolution':resolution}
     finally:
         for fd in reversed(stack):os.close(fd)
 
 
-def enumerate_tree(root,excluded,approved,deadline):
-    rows=[];links=0
+def enumerate_tree(root,excluded,approved,deadline,compact=False):
+    rows=[];links=0;encode=native_metadata if compact else metadata
     canonical,root_fd=canonical_directory(root,deadline)
     def add(relative,kind,info,**extra):
         require(len(rows)<MAX_NODES,'tree exceeds node bound')
-        rows.append({'path':relative,'kind':kind,'metadata':metadata(info),**extra})
+        rows.append({'path':relative,'kind':kind,'metadata':encode(info),**extra})
     def walk(fd,relative):
         nonlocal links
         clock(deadline);before=os.fstat(fd)
@@ -148,7 +167,7 @@ def enumerate_tree(root,excluded,approved,deadline):
                 try:
                     require(same(original,os.fstat(opened)),'link named/descriptor identity differs')
                     text=bounded_path(os.readlink(name,dir_fd=fd))
-                    resolved=target_identity(canonical/Path(child).parent,text,approved,deadline)
+                    resolved=target_identity(canonical/Path(child).parent,text,approved,deadline,encode)
                     require(same(original,os.fstat(opened)) and same(original,os.stat(name,dir_fd=fd,follow_symlinks=False)),'link changed during enumeration')
                     add(child,'link',original,linkTarget=text,resolvedTarget=resolved);links+=1
                 finally:os.close(opened)
@@ -177,9 +196,11 @@ def capture_tree(root,excluded,approved_link_roots,deadline):
         try:approved.append(path);root_pins.append((path,metadata(os.fstat(fd))))
         finally:os.close(fd)
     require(len(set(approved))==len(approved),'duplicate approved roots')
-    first,links,info=enumerate_tree(root,excluded,approved,deadline)
-    second,second_links,second_info=enumerate_tree(root,excluded,approved,deadline)
+    first,links,info=enumerate_tree(root,excluded,approved,deadline,True)
+    second,second_links,second_info=enumerate_tree(root,excluded,approved,deadline,True)
     require(first==second and links==second_links and same(info,second_info),'complete enumerations differ')
+    del second
+    materialize_rows(first,deadline)
     for path,pinned in root_pins:
         _,fd=canonical_directory(path,deadline)
         try:require(metadata(os.fstat(fd))==pinned,'approved target root changed during capture')
