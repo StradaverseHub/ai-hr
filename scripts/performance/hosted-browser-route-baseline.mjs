@@ -17,6 +17,7 @@ import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
+import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 
 const origin='https://localhost:3443';
@@ -266,6 +267,18 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   const types=main.locator('[data-tour="claims-types"]');
   await types.locator('summary:visible').first().waitFor({state:'visible',timeout:timeout()});
   await types.getByText('Performance claim',{exact:true}).waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/assistant'){
+  const ask=main.locator('[data-ai-centre="ask"] [data-ask-conversation]');
+  await ask.locator('textarea[name="question"]:enabled').waitFor({state:'visible',timeout:timeout()});
+  const history=fixture.assistantHistory?.[actor.index];
+  if(history){
+   const saved=main.locator('nav[data-ai-saved-chats-ready="true"]:visible');
+   await saved.getByRole('link',{name:history.rootTitles[0],exact:true}).waitFor({state:'visible',timeout:timeout()});
+   assert.equal(await saved.locator('a[href^="/assistant?e="]').count(),history.threads);
+  }
+  assert.equal(await main.locator('[role="alert"]').count(),0);
   return 'usable-content';
  }
  if(path==='/org'){
@@ -638,11 +651,33 @@ async function measureApprovalSummaryReadiness({page,user,report,save}){
  report.approvalReadiness.push({step:'document-content-loaded',elapsedMs:Math.round(performance.now()-started)});
 }
 
+async function measureSavedAssistantHistory({page,user,fixture,report,save}){
+ const history=fixture.assistantHistory?.[user.index];
+ assert(history?.rowsVerified,'The authorized actor needs their seeded Assistant history');
+ report.historySteps=[];
+ await verifyAssistantHistoryBrowser({page,history,timeout:15000,
+  visitAsk:async()=>{
+   const response=await page.goto(origin+'/assistant',{waitUntil:'commit',timeout:15000});
+   assert.equal(response?.status(),200);
+   await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+    .waitFor({state:'visible',timeout:15000});
+  },
+  onMeasurement:row=>{
+   report.historySteps.push({step:row.step,elapsedMs:Math.round(row.navigationToUsableMs??row.clickToUsableMs),
+    promptsSubmitted:row.promptsSubmitted});
+   save();
+  },
+ });
+}
+
 async function measureActions(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[4,1].map(actorIndex=>({name:'assistant-saved-history',actorIndex,run:measureSavedAssistantHistory,
+   timings:result=>result.historySteps})),
+
   ...[2,1,0].map(actorIndex=>({name:'approvals-summary-readiness',actorIndex,run:measureApprovalSummaryReadiness,
    timings:result=>result.approvalReadiness})),
   ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,

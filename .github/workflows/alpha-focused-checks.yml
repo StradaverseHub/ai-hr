@@ -201,6 +201,8 @@ jobs:
         run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
         env:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          AUTH_PROVIDER: internal
+          AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
