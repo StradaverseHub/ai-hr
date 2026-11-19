@@ -7871,6 +7871,13 @@
       "breakpoints": true
     },
     {
+      "idx": 10410,
+      "version": "7",
+      "when": 1795028007010,
+      "tag": "7010_payroll_history_point_read_plan",
+      "breakpoints": true
+    },
+    {
       "idx": 10420,
       "version": "7",
       "when": 1795028007020,

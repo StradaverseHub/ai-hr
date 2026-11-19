@@ -1,5 +1,9 @@
 # Payroll retained document page — 20 November 2026 (provisional development allocation)
 
+The combined verification branch includes the existing `7010_payroll_history_point_read_plan`
+from `46711c2f0` before 7020 and 7030. Migration 7010 keeps index `10410`, timestamp
+`1795028007010` and SQL SHA-256 `aab79f0fad212e57e740e38f1667c2b811889287a409fb2a95adc69676e4eebc`.
+
 Reserve `7030_payroll_retained_document_page`, idx `10430`, when `1795028007030`.
 The SQL SHA-256 is `7ba058a8a7467086d3fc00a828aa581369b664979733f0532addad53a3773164`.
 The existing visibility predicates and document order determine the page. The query assembles
