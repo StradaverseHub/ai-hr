@@ -26,7 +26,7 @@ def owner_path(path,uid):
     path=Path(path).absolute()
     require(path.resolve()==path,'Symlinked release path')
     for p in [path,*path.parents]:
-        s=p.lstat();require(stat.S_ISDIR(s.st_mode) and s.st_uid==uid and not s.st_mode & 0o022,'Unprotected release ancestor')
+        s=p.lstat();require(stat.S_ISDIR(s.st_mode) and s.st_uid==uid and not s.st_mode & 0o022,'Unprotected release ancestor: '+str(p)+' uid='+str(s.st_uid)+' mode='+oct(stat.S_IMODE(s.st_mode)))
     return path
 
 def inspect_tree(root,uid):

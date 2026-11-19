@@ -4,6 +4,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {verifyCi,revalidateCi,cleanHead,controllerRoot} from './release-ci.mjs';
+import {verifyDeliveryCi,revalidateDeliveryCi} from '../../scripts/delivery/release.mjs';
 import {STAGING,bindStaging,stagingTransport,strictPendingCommand} from './staging-transport.mjs';
 import {stagingInstallerCommand,transferAndLaunchCiBuild,installationGrantFromVerifiedFiles,validateInstalledArrival,validatePrelaunchState,validateFinalCleanup} from './staging-ci-promotion.mjs';
 import {expectedMigrationLedger,expectedBaselineMigrationLedger,validateMigrationLedgerRows,stagingLedgerProbeCommand,LEDGER_QUERY,verifyBaselineMigrationPreflight} from './staging-migration-ledger.mjs';
@@ -34,8 +35,10 @@ export function requireSuccessfulBuild(official,status,sha){
  return status;
 }
 export async function operatorRelease(options){try{return await leasedOperatorRelease(options);}catch(error){throw redactLeaseError(error);}}
-async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null}){
+async function leasedOperatorRelease({candidatePath,runId,execute=false,recoveryRunIds=[],repair=null,browserRecovery=null,delivery=null}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
+ if(delivery&&(repair||browserRecovery||recoveryRunIds.length))throw Error('Choose one versioned delivery or legacy evidence route');
+ if(delivery&&Number(runId)!==delivery.build.runId)throw Error('Canonical build run differs from delivery reference');
  if(browserRecovery&&(repair||recoveryRunIds.length))throw Error('Choose one explicitly versioned browser recovery route');
  if(browserRecovery)requireReviewedBrowserController({execute,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_BROWSER_REVIEWED_CONTROLLER});
  if(execute&&repair)requireReviewedRepairController({execute,repair,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_REPAIR_REVIEWED_CONTROLLER});
@@ -57,12 +60,12 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const recovering=recoveryRunIds.length>0;
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
- const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
+ const evidence=delivery?await verifyDeliveryCi({candidatePath,reference:delivery,baseline}):browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
  const frozen=()=>{if(cleanHead(candidatePath)!==evidence.sha||cleanHead(controllerRoot)!==(evidence.verificationController??evidence.controller))throw Error('Verified source changed');};
- const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
+ const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,baseline,announced,ssh});await (delivery?revalidateDeliveryCi(evidence):browserRecovery?revalidateBrowserRecoveredCi(evidence):repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));validatePrelaunchState(current(),{baseline,baselineBuildId:initial.built_build_id,candidate:evidence.sha,announced});
   if(!announced){const actual=JSON.parse(ssh(stagingLedgerProbeCommand(),{input:LEDGER_QUERY,timeout:20000,maxBuffer:4*1024**2}));const fresh=validateMigrationLedgerRows(expectedBaseline,actual);if(fresh.actualSha256!==baselineLedger.actualSha256)throw Error('Applied migration history changed before source transfer');}
  };
  frozen();await revalidate();
@@ -153,7 +156,10 @@ async function leasedResumeArrival({candidatePath,runId,execute=false}){
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,candidatePath,runId,focused]=process.argv.slice(2),recovering=['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode);
  const done=promise=>promise.then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
- if(['verify-resume-arrival','resume-arrival'].includes(mode)){
+ if(['verify-delivery','deploy-delivery'].includes(mode)){
+  if(!candidatePath||!/^\d+$/.test(runId??'')||!focused)throw Error('Usage: operator-release.mjs <verify-delivery|deploy-delivery> <candidate> <build-run> <private-reference-json-file>');
+  done(operatorRelease({candidatePath,runId,execute:mode==='deploy-delivery',delivery:JSON.parse(readFileSync(resolve(focused)))}));
+ }else if(['verify-resume-arrival','resume-arrival'].includes(mode)){
   if(!candidatePath||!/^\d+$/.test(runId??'')||focused!==undefined)throw Error('Usage: node --import tsx operator-release.mjs <verify-resume-arrival|resume-arrival> <candidate-worktree> <original-run-id>');
   done(resumeArrivalRelease({candidatePath,runId,execute:mode==='resume-arrival'}));
  }else{

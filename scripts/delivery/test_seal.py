@@ -10,7 +10,7 @@ spec=importlib.util.spec_from_file_location('seal',Path(__file__).with_name('sea
 class SealTests(unittest.TestCase):
     def setUp(self):
         self.assertEqual(os.getuid(),0,'Hosted privilege-boundary controls must run through sudo')
-        self.base=Path('/opt')/('aihr-delivery-qualification-'+str(uuid.uuid4()));self.base.mkdir(mode=0o755);self.root=self.base/'release';self.root.mkdir(mode=0o755);(self.root/'server.js').write_text('fixture; no server or provider request\n');os.chmod(self.root/'server.js',0o644)
+        self.base=Path('/var/lib')/('aihr-delivery-qualification-'+str(uuid.uuid4()));self.base.mkdir(mode=0o755);self.root=self.base/'release';self.root.mkdir(mode=0o755);(self.root/'server.js').write_text('fixture; no server or provider request\n');os.chmod(self.root/'server.js',0o644)
     def tearDown(self):shutil.rmtree(self.base)
     def expected(self):return hashlib.sha256(m.canonical(m.inspect_tree(self.root,0))).hexdigest()
     def test_sealed_tree_verifies_without_walking_or_hashing_again(self):

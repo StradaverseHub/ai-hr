@@ -44,5 +44,5 @@ export function verifyReport(check,report){
 export function verifyCoverage(plan,observations){
  verifyPlan(plan);assert(Array.isArray(observations)&&observations.length===plan.checks.length,'Complete non-overlapping evidence required');const seen=new Set();
  for(const o of observations){const c=plan.checks.find(c=>c.id===o.report.check);assert(c&&!seen.has(c.id));seen.add(c.id);verifyReport(c,o.report);if(c.reuse==='never')assert(o.report.candidate===plan.candidate,'Volatile/opaque check cannot inherit a different source');assert(o.report.policyDigest===plan.policyDigest,'Foreign policy inputs');}
- return {policy:POLICY,candidate:plan.candidate,controller:plan.controller,plan:plan.fingerprint,evidence:observations.map(o=>hash(o)).sort(),result:'passed'};
+ return {policy:POLICY,candidate:plan.candidate,controller:plan.controller,plan:plan.fingerprint,evidence:observations.map(o=>hash({report:o.report,producer:o.producer})).sort(),result:'passed'};
 }

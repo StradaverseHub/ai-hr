@@ -3,6 +3,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {CI_POLICY} from './policy-version.mjs';
+import {POLICY as DELIVERY_POLICY} from '../../scripts/delivery/protocol.mjs';
+import {DELIVERY_INSTALL_KIND,validateDeliveryGrantProof} from '../../scripts/delivery/install-proof.mjs';
 import {BUILD_ARTIFACT,BUILD_ARCHIVE_MAX} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME,assertBuildCapacityProfile} from './build-production.mjs';
 import {validateBrowserRecoveryGrantEvidence,BROWSER_RECOVERY_POLICY} from './browser-recovery-policy.mjs';
@@ -21,9 +23,10 @@ const id=value=>Number.isSafeInteger(value)&&value>0;
 const buildId=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,512}$/.test(value);
 export const INSTALL_BUILD_FIELDS=['format','capacityProfile','nextBuildId','buildRecordId','buildSourcePath','runtime','provenanceSha256','archiveSha256','archiveBytes','manifestSha256','preparedSha256','successfulObservationSha256','lockSha256','packageSha256'];
 export function validateInstallGrant(g,{now=Date.now(),allowExpired=false}={}){
- const keys=['format','kind','policyVersion','target','installId','source','controller','controllerBranch','baseline','baselineBuildId','environmentSha256','runId','runAttempt','runCreatedAt','issuedAt','expiresAt','producerStartedAt','producerCompletedAt','witnessFingerprint','artifact','build'];
+ const delivery=g?.kind===DELIVERY_INSTALL_KIND;
+ const keys=['format','kind','policyVersion','target','installId','source','controller','controllerBranch','baseline','baselineBuildId','environmentSha256','runId','runAttempt','runCreatedAt','issuedAt','expiresAt','producerStartedAt','producerCompletedAt','witnessFingerprint','artifact','build',...(delivery?['delivery']:[])];
  assert(g&&isDeepStrictEqual(Object.keys(g).sort(),keys.sort()),'Exact staging grant shape required');
- assert(g.format===2&&g.kind==='OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL'&&g.policyVersion===CI_POLICY&&g.target==='alpha-staging'
+ assert(g.format===2&&(delivery?g.kind===DELIVERY_INSTALL_KIND&&g.policyVersion===DELIVERY_POLICY&&g.controllerBranch==='main':g.kind==='OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL'&&g.policyVersion===CI_POLICY)&&g.target==='alpha-staging'
   &&uuid(g.installId)&&sha(g.source)&&sha(g.controller)&&sha(g.baseline)&&['main','alpha'].includes(g.controllerBranch)
   &&buildId(g.baselineBuildId)&&digest(g.environmentSha256)&&id(g.runId)&&g.runAttempt===1&&digest(g.witnessFingerprint),'Authenticated staging installation identity required');
  assert(isDeepStrictEqual(Object.keys(g.artifact??{}).sort(),['digest','id'])&&id(g.artifact.id)&&/^sha256:[a-f0-9]{64}$/.test(g.artifact.digest),'Exact original build artifact required');
@@ -37,22 +40,24 @@ export function validateInstallGrant(g,{now=Date.now(),allowExpired=false}={}){
  assert([created,issued,expires,started,completed,now].every(Number.isFinite)&&created<=started&&started<=completed&&completed<=issued
   &&issued<=now+60000&&expires>issued&&expires<=issued+30*60000&&expires<=created+86400000,'Bounded original CI/job/grant times required');
  if(!allowExpired)assert(expires>now&&now-created<=86400000,'Staging grant expired; independently revalidate original CI before a new attempt');
+ if(delivery)validateDeliveryGrantProof(g.delivery,g);
  return g;
 }
 export function createInstallGrant({evidence,run,producer,baselineBuildId,environmentSha256,now=Date.now()}){
- assert(evidence.policyVersion===CI_POLICY&&evidence.result==='PASS'&&evidence.tier==='ci'&&evidence.build?.canonicalCandidateInputsVerified===true
+ const delivery=evidence.delivery!==undefined;
+ assert(evidence.policyVersion===(delivery?DELIVERY_POLICY:CI_POLICY)&&evidence.result==='PASS'&&evidence.tier==='ci'&&evidence.build?.canonicalCandidateInputsVerified===true
   &&evidence.build.source===evidence.sha&&evidence.build.controller===evidence.controller&&evidence.build.runId===evidence.runId,'Complete authenticated current CI evidence required');
- const recovered=evidence.recovery!==undefined;
+ const recovered=evidence.recovery!==undefined;assert(!delivery||!recovered,'Delivery and legacy recovery are distinct policies');
  const repaired=evidence.recovery?.recoveryPolicy===REPAIR_RECOVERY_POLICY;
  if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
  assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired?'failure':'success')&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
  const artifacts=evidence.artifacts.filter(a=>a.name===BUILD_ARTIFACT);assert(artifacts.length===1,'Unique authenticated build artifact required');
- const grant={format:2,kind:'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL',policyVersion:CI_POLICY,target:'alpha-staging',installId:randomUUID(),
+ const grant={format:2,kind:delivery?DELIVERY_INSTALL_KIND:'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL',policyVersion:delivery?DELIVERY_POLICY:CI_POLICY,target:'alpha-staging',installId:randomUUID(),
   source:evidence.sha,controller:evidence.controller,controllerBranch:evidence.controllerBranch,baseline:evidence.baseline,baselineBuildId,environmentSha256,
   runId:evidence.runId,runAttempt:1,runCreatedAt:run.created_at,issuedAt:new Date(now).toISOString(),expiresAt:new Date(Math.min(now+30*60000,Date.parse(run.created_at)+86400000)).toISOString(),
   producerStartedAt:producer.started_at,producerCompletedAt:producer.completed_at,witnessFingerprint:evidence.fingerprint,artifact:{id:artifacts[0].id,digest:artifacts[0].digest},
-  build:Object.fromEntries(INSTALL_BUILD_FIELDS.map(key=>[key,evidence.build[key]]))};
+  build:Object.fromEntries(INSTALL_BUILD_FIELDS.map(key=>[key,evidence.build[key]])),...(delivery?{delivery:evidence.delivery}:{})};
  return validateInstallGrant(grant,{now});
 }
