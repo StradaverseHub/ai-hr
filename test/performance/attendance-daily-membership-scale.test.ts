@@ -54,7 +54,7 @@ it('preserves Daily Attendance pages through the previous assignment join at gro
    return {total:count.total,ids:Array.from(rows,row=>row.id)};
   },{readOnlySnapshot:true});
   expect(previous.total).toBe(total);
-  const page=await attendanceForDatePage(ctx,'2026-08-10',scope,{limit,offset,departmentId,q:'Fictional attendance employee'});
+  const page=await attendanceForDatePage(ctx,'2026-08-10',[...scope],{limit,offset,departmentId,q:'Fictional attendance employee'});
   expect({total:page.total,ids:page.rows.map(row=>row.employmentId)}).toEqual(previous);
  }
 },90000);
