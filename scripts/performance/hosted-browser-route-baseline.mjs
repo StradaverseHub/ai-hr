@@ -10,6 +10,8 @@ import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {nativePreflightRoutePlan} from './system-route-manifest.mjs';
+import {performanceFixtureCalendar} from './fixture-workload.mjs';
+import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
@@ -133,6 +135,15 @@ async function waitForApp(){
 }
 
 const payrollHistoryPath='/payroll/transaction-view';
+const nativeContentWitnesses=new Set([
+ 'own-released-payslip','own-annual-leave-controls','own-individual-attendance-picker',
+ 'ai-runs-group-history-controls','ai-runs-company-scope','own-profile-identity',
+]);
+const expectedHomeCards={
+ personal:['calendar','celebrations','notices','summary','tasks','team','timeOff','today'],
+ hr:['attendanceOverview','companies','headcount','headcountByCompany','latestPayroll',
+  'latestPayrollRun','noticeBoard','pendingLeave','recentActivity','recentlyJoined','upcomingEvents'],
+};
 async function signedInContext(actor){
  assert(typeof actor?.token==='string'&&actor.token.length>0,'Expected a fictional fixture session');
  const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
@@ -146,6 +157,31 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
  await main.getByRole('heading',{level:1}).first().waitFor({state:'visible',timeout:timeout()});
  await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
  onHeading();
+ if(path==='/'){
+  const personal=['employee','manager'].includes(actor.role);
+  const attribute=personal?'data-home-card':'data-dashboard-card';
+  const cards=main.locator(`[${attribute}]`);
+  await main.locator('[data-today-section]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  await page.waitForFunction(()=>{
+   const main=document.querySelector('main');
+   return main&&!main.querySelector('[aria-busy="true"]');
+  },null,{timeout:timeout()});
+  const cardIds=await cards.evaluateAll((cards,attribute)=>
+   cards.map(card=>card.getAttribute(attribute)).sort(),attribute);
+  assert.deepEqual(cardIds,expectedHomeCards[personal?'personal':'hr']);
+  assert.equal(await main.locator('[role="alert"],[data-today-unavailable]').count(),0);
+  return 'usable-content';
+ }
+ if(path==='/admin/job-descriptions'){
+  const filter=main.locator('form input[name="q"]');
+  const create=main.locator('a[href="/admin/job-descriptions/new"]');
+  await filter.waitFor({state:'visible',timeout:timeout()});
+  await create.waitFor({state:'visible',timeout:timeout()});
+  assert(await filter.isEnabled({timeout:timeout()})&&await create.isEnabled({timeout:timeout()}));
+  assert(await main.locator('table thead th:visible').count()>=7);
+  assert.equal(await main.locator('[role="alert"]').count(),0);
+  return 'usable-content';
+ }
  if(path===payrollHistoryPath){
   await main.locator('tbody button[data-table-disclosure]:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
@@ -183,7 +219,7 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
  }
  return 'heading';
 }
-async function visit(page,actor,route,pass) {
+async function visit(page,actor,route,pass,fixture) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
@@ -193,10 +229,29 @@ async function visit(page,actor,route,pass) {
   observation.destination=page.url()===origin+route.final?'expected':
    new URL(page.url()).pathname==='/login'?'sign-in':'other-route';
   assert(observation.httpStatus===200&&observation.destination==='expected','Unexpected rendered route');
-  observation.readiness=await readyContent(page,actor,route.requested,timeout,()=>{
-   observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
-  });
+  if(nativeContentWitnesses.has(route.witness)){
+   observation.expectedWitness=route.witness;
+   await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first()
+    .waitFor({state:'visible',timeout:timeout()});
+   requireNativePreflightFixtureDay(route.witness,fixture.today);
+   observation.witness=await verifyNativePreflightContent(page,route.witness,{
+    actorIndex:actor.index,actorName:actor.name,seedToday:fixture.today,
+    historicalPayrollMonth:performanceFixtureCalendar(fixture.today).historicalMonth,
+    peerName:fixture.users[5]?.name,foreignName:fixture.users[254]?.name,
+    companyIds:fixture.tenants[0]?.companies.map(company=>company.companyId),
+   },timeout);
+   observation.readiness=route.witness==='ai-runs-company-scope'?'scope-denial':'usable-content';
+  }else{
+   observation.readiness=await readyContent(page,actor,route.requested,timeout,()=>{
+    observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
+   });
+   if(route.witness){
+    if(observation.readiness==='usable-content')observation.witness=route.witness;
+    else observation.unverifiedWitness=route.witness;
+   }
+  }
   await assertContentAvailable(page);
+  if(performance.now()>deadline)throw Object.assign(new Error('Readiness deadline exceeded'),{name:'TimeoutError'});
   observation.status='observed';
  }catch(error){observation.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
  finally{
@@ -264,7 +319,7 @@ async function measureRoutes(fixture){
   const context=await signedInContext(actor);
   try{
    const page=await context.newPage();
-   for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass);
+   for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass,fixture);
   }finally{await context.close();}
  }));
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
@@ -342,7 +397,9 @@ try{
   const routesObserved=report.observations.length===2*report.plannedRoleRoutes
    &&report.observations.every(row=>row.status==='observed');
   const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
-  report.complete=routesObserved&&journeysObserved;
+  report.contentObserved=report.observations.filter(row=>row.status==='observed'&&
+   ['usable-content','scope-denial'].includes(row.readiness)).length;
+  report.complete=routesObserved&&journeysObserved&&report.contentObserved===report.observations.length;
   assert(routesObserved,'Browser baseline had missing or failed visits');
   assert(journeysObserved,'Browser baseline had missing or failed actions');
  }
