@@ -1214,56 +1214,65 @@ export function listProcessedPayslipsAcross(
   const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
   return withTenant(ctx, async (tx) => {
-    const q = tx
-      .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
-        employeeName: person.fullName,
-        employeeCode: employment.employeeCode,
-        companyId: payrollBatch.companyId,
-        company: company.legalName,
-        // ADR-0077 slice 6 (D-9). The `company` join is already here — one column, no new join.
-        currency: company.currency,
-        // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
-        batchId: payslip.batchId,
-        payrollCycleId: payrollBatch.payrollCycleId,
-        payPeriod: payrollBatch.payPeriod,
-        runType: payrollBatch.runType,
-        runSeq: payrollBatch.runSeq,
-        batchStatus: payrollBatch.status,
-        // b240c0ff — what the run is CALLED when it is imported history (see `payrollRunLabel`).
-        historyImportAttemptId: payrollBatch.historyImportAttemptId,
-        historyImportCycleName: payrollBatch.historyImportCycleName,
-        // 3c88d593 (r206) — the coverage window (0446), so Transaction View can show a transferred
-        // employee's month as the two employer segments it was actually paid on instead of one summed
-        // cell. Two columns off a table already joined; nothing about any FIGURE changes.
-        coverageFrom: payslip.coverageFrom,
-        coverageTo: payslip.coverageTo,
-        // 169e3c24 — publication state + revision count, resolved on screen through payrollPublicationState.
-        releasedAt: payrollBatch.releasedAt,
-        version: payslip.version,
-        basic: payslip.basicSalary,
-        allowance: payslip.allowance,
-        overtime: payslip.overtimePay,
-        bonus: payslip.bonus,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        // 970e4143 — see the field docs. The two Transaction History surfaces could not reconcile without it.
-        otherDeductions: payslip.otherDeductions,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-      })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(processedPayslipFilters(p))
-      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
-      .$dynamic();
-    // An absent cap does not call .limit() at all, so every existing caller — including the CSV
-    // export, which must never be clipped — issues exactly the query it issued before.
-    const rows=await (limit ? q.limit(limit) : q);
+    const batchFields = {
+      companyId: payrollBatch.companyId,
+      company: company.legalName,
+      currency: company.currency,
+      batchId: payrollBatch.id,
+      payrollCycleId: payrollBatch.payrollCycleId,
+      payPeriod: payrollBatch.payPeriod,
+      runType: payrollBatch.runType,
+      runSeq: payrollBatch.runSeq,
+      batchStatus: payrollBatch.status,
+      historyImportAttemptId: payrollBatch.historyImportAttemptId,
+      historyImportCycleName: payrollBatch.historyImportCycleName,
+      releasedAt: payrollBatch.releasedAt,
+    };
+    const slipFields = {
+      id: payslip.id,
+      employmentId: payslip.employmentId,
+      employeeName: person.fullName,
+      employeeCode: employment.employeeCode,
+      // The coverage window lets History retain both segments of a transfer in the same period.
+      coverageFrom: payslip.coverageFrom,
+      coverageTo: payslip.coverageTo,
+      version: payslip.version,
+      basic: payslip.basicSalary,
+      allowance: payslip.allowance,
+      overtime: payslip.overtimePay,
+      bonus: payslip.bonus,
+      gross: payslip.grossPay,
+      statutory: payslip.statutory,
+      otherDeductions: payslip.otherDeductions,
+      totalDeductions: payslip.totalDeductions,
+      net: payslip.netPay,
+    };
+    let rows: ProcessedPayslipViewRow[];
+    if (limit && p.year != null && p.month != null) {
+      // Seek by batch within the selected month. All joins still run under the reader's row policies.
+      // A row beyond the cap within its own batch cannot enter the globally capped ordered page.
+      const batches = tx.select(batchFields).from(payrollBatch)
+        .innerJoin(company, eq(company.id, payrollBatch.companyId))
+        .where(processedBatchFilters(p)).offset(0).as('visible_payroll_batches');
+      const slips = tx.select(slipFields).from(payslip)
+        .innerJoin(employment, eq(employment.id, payslip.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(and(eq(payslip.batchId, batches.batchId), p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined))
+        .orderBy(asc(person.fullName)).limit(limit).as('visible_payroll_slips');
+      const page = await tx.select().from(batches).innerJoinLateral(slips, sql`true`)
+        .orderBy(desc(batches.payPeriod), asc(batches.runSeq), asc(slips.employeeName)).limit(limit);
+      rows = page.map(row => ({ ...row.visible_payroll_batches, ...row.visible_payroll_slips }));
+    } else {
+      const query = tx.select({ ...batchFields, ...slipFields }).from(payslip)
+        .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+        .innerJoin(company, eq(company.id, payrollBatch.companyId))
+        .innerJoin(employment, eq(employment.id, payslip.employmentId))
+        .innerJoin(person, eq(person.id, employment.personId))
+        .where(processedPayslipFilters(p))
+        .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
+        .$dynamic();
+      rows = await (limit ? query.limit(limit) : query);
+    }
     // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
     const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
     const seen=new Set(rows.map(row=>row.id));

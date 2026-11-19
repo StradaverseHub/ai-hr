@@ -261,29 +261,20 @@ it('profiles the complete capped Transaction View table read after the period is
         }
         const batches=sql`array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
         const probeStarted=performance.now();
-        const batchFirst=await withTenant(ctx,tx=>tx.execute<{id:string;employeeName:string;net:string}>(sql`
-          with visible_batches as materialized (
-            select b.id,b.pay_period,b.run_seq
-            from payroll_batch b join company c on c.id=b.company_id
-            where b.company_id=any(${batches}) and b.pay_period='2026-03'
-          )
-          select candidate.id,candidate.name as "employeeName",candidate.net
-          from visible_batches b
-          join lateral(
-            select p.id,person.full_name as name,p.net_pay::text as net
-            from payslip p
-            join employment e on e.id=p.employment_id
-            join person on person.id=e.person_id
-            where p.batch_id=b.id
-            order by person.full_name
-            limit 201
-          ) candidate on true
-          order by b.pay_period desc,b.run_seq,candidate.name
+        const previous=await withTenant(ctx,tx=>tx.execute<{id:string;employeeName:string;net:string}>(sql`
+          select p.id,person.full_name as "employeeName",p.net_pay::text as net
+          from payslip p
+          join payroll_batch b on b.id=p.batch_id
+          join company c on c.id=b.company_id
+          join employment e on e.id=p.employment_id
+          join person on person.id=e.person_id
+          where b.company_id=any(${batches}) and b.pay_period='2026-03'
+          order by b.pay_period desc,b.run_seq,person.full_name
           limit 201
         `));
-        const batchFirstMs=Math.round(performance.now()-probeStarted);
-        expect(batchFirst,label).toEqual(rows.map(({id,employeeName,net})=>({id,employeeName,net})));
-        evidence.push({...liveEvidence,batchFirstMs});
+        const previousLiveMs=Math.round(performance.now()-probeStarted);
+        expect(rows.map(({id,employeeName,net})=>({id,employeeName,net})),label).toEqual(previous);
+        evidence.push({...liveEvidence,previousLiveMs});
       }finally{client.options.debug=originalDebug;}
     }
   }
