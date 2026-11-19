@@ -8711,6 +8711,7 @@
       "filterYear": "Năm",
       "noPayslip": "Chưa có kỳ lương nào được tính cho nhân viên này trong kỳ và chu kỳ đã chọn.",
       "cycleRun": "{cycle} — lần chạy {n}",
+      "matchingRuns": "Các đợt tính lương phù hợp",
       "payDateLine": "Ngày thanh toán: {date}",
       "payPeriodLine": "Kỳ lương: {period}",
       "segmentPeriodLine": "Làm việc tại công ty này từ {from} đến {to}",

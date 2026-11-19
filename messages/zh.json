@@ -8711,6 +8711,7 @@
       "filterYear": "年份",
       "noPayslip": "所选期间和周期内尚未为该员工计算薪资。",
       "cycleRun": "{cycle}（第 {n} 次批次）",
+      "matchingRuns": "匹配的工资批次",
       "payDateLine": "发放日期：{date}",
       "payPeriodLine": "薪资期间：{period}",
       "segmentPeriodLine": "在本公司任职 {from} 至 {to}",

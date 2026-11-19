@@ -8711,6 +8711,7 @@
       "filterYear": "Tahun",
       "noPayslip": "Tiada gaji dikira untuk pekerja ini bagi tempoh dan kitaran yang dipilih.",
       "cycleRun": "Larian {n} — {cycle}",
+      "matchingRuns": "Proses gaji yang sepadan",
       "payDateLine": "Tarikh bayaran: {date}",
       "payPeriodLine": "Tempoh gaji: {period}",
       "segmentPeriodLine": "Bekerja dengan syarikat ini {from} hingga {to}",
