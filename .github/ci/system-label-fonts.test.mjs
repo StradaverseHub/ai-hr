@@ -62,9 +62,12 @@ test('full fonts use the trusted current unit output before headroom admission a
  assert(selector.includes('id: system-label-fonts'));
  assert(selector.includes('run: node ../automation/.github/ci/system-label-fonts.mjs "$UNIT"'));
  assert(selector.includes("env: {UNIT: '${{ matrix.unit }}'}"));
- assert(install.includes("if: ${{ steps.system-label-fonts.outputs.required == 'true' }}"));
+ assert(install.includes("if: ${{ steps.system-label-fonts.outputs.required == 'true' && inputs.missing_unit == '' }}"));
  assert(install.includes(bootstrap+' "$RUNNER_TEMP/aihr-ci/noto-font-setup.json"'));assert(!install.includes('apt-get'));assert(!/continue-on-error|always\(\)/.test(install));
- assert.equal((text.match(/fixed-noto-bootstrap\.mjs/g)??[]).length,1);
+ const recoveryStart=text.indexOf('      - name: Source-bound fixed HTTPS fonts for missing whole unit',start),pull=text.indexOf('      - name: Bounded source-owned native PostgreSQL image transport',start);
+ assert(pull>start&&recoveryStart>pull&&recoveryStart<fonts);
+ const recovery=text.slice(recoveryStart,fonts);assert(recovery.includes("if: ${{ inputs.missing_unit != '' }}"));assert(recovery.includes(bootstrap+' "$RUNNER_TEMP/aihr-ci/noto-font-setup.json"'));assert(!/continue-on-error|always\(\)|apt-get/.test(recovery));
+ assert.equal((text.match(/fixed-noto-bootstrap\.mjs/g)??[]).length,2);
 });
 test('both actual resolver control lists execute these prerequisite controls',()=>{
  for(const name of ['alpha-focused-checks.yml','alpha-staging.yml']){

@@ -5,9 +5,9 @@ import {MISSING_UNIT_FILE} from './repair-missing-unit-policy.mjs';
 const clone=x=>structuredClone(x);
 export function missingUnitFixture({clock=now}={}){
  const time=minutes=>new Date(clock-minutes*60000).toISOString();
- const b=baseFixture(),body={...b.expectedPlan,suite:[MISSING_UNIT_FILE,'test/plain.test.ts']};delete body.fingerprint;
+ const b=clone(baseFixture()),body={...b.expectedPlan,suite:[MISSING_UNIT_FILE,'test/plain.test.ts']};delete body.fingerprint;
  body.units=buildUnits(body.suite,{db:[MISSING_UNIT_FILE],nodb:['test/plain.test.ts']},['test/ui.browser.test.tsx']);const sourcePlan={...body,fingerprint:hash(body)},unit=body.units.find(u=>u.kind==='db');
- const replan=(sha,controller)=>{const body={...sourcePlan,sha,controller};delete body.fingerprint;return {...body,fingerprint:hash(body)};};
+ const replan=(sha,controller)=>{const body={...clone(sourcePlan),sha,controller};delete body.fingerprint;return {...body,fingerprint:hash(body)};};
  const plan=replan('d'.repeat(40),sourcePlan.controller),freshPlan=replan(plan.sha,'e'.repeat(40)),priorPlan=replan('f'.repeat(40),sourcePlan.controller);
  const run={...b.run,created_at:time(20),updated_at:time(5),conclusion:'cancelled'},jobs=[{id:1,name:`test (${unit.id})`,run_id:run.id,head_sha:run.head_sha,head_branch:run.head_branch,run_attempt:1,status:'completed',conclusion:'cancelled',steps:[{name:'Run ./.github/actions/setup-alpha',conclusion:'success'},{name:'Provision System Labels multilingual fonts before tests',conclusion:'success'},{name:'Run node ../automation/.github/ci/run-unit.mjs',status:'in_progress',conclusion:null,started_at:time(8)}]}];
  const target=jobs[0];jobs.splice(0,jobs.length,...['resolve','typecheck','migrations','controller-tests','plan','runner-diagnostics','build',...sourcePlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`)].map((name,i)=>name===target.name?{...target,id:100+i}:{...target,id:100+i,name,conclusion:'success',steps:[]}));

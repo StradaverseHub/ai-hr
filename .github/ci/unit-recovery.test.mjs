@@ -3,13 +3,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {missingUnitFixture} from './repair-missing-unit-test-fixture.mjs';
-import {hash} from './manifest.mjs';
+import {hash,CI_EXECUTION} from './manifest.mjs';
 import {UNIT_RECOVERY as c,UNIT_RECOVERY_BINDING,UNIT_RECOVERY_POLICY,UNIT_RECOVERY_CONTROLLER_BRANCH,validateDedicatedUnitControllerRequest,validateInterruptedSource,validateUnitRecoveryRequest,verifyUnitRecovery,validateUnitRecoveryGrantEvidence} from './unit-recovery-policy.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {createInstallGrant,validateInstallGrant} from './ci-install-grant.mjs';
 import {NATIVE_POSTGRES_IMAGE} from './unit-postgres-prepull.mjs';
 import {validateUnitHistory,validateUnitControllerDelta,CONTROLLER_PATHS} from './unit-recovery.mjs';
-const clone=x=>structuredClone(x),seal=p=>{const {fingerprint,...b}=p;return {...b,fingerprint:hash(b)};};
+const clone=x=>structuredClone(x),seal=p=>{const {fingerprint,...b}=structuredClone(p);return {...b,fingerprint:hash(b)};};
 function fixture(){
  const f=missingUnitFixture({clock:Date.now()}),q=f.proof,controller=q.freshPlan.controller;
  const plan=seal({...f.sourcePlan,sha:c.source,controller:c.controller,migrationBase:c.baseline}),freshPlan=seal({...plan,controller}),priorPlan=seal({...plan,sha:c.expectationSource,controller:c.expectationController});
@@ -55,4 +55,11 @@ test('dedicated controller admits only exact controller qualification or exact 8
  for(const patch of [{missing_unit:''},{missing_original_run:''},{expected_sha:c.expectationSource},{build_only:'true'},{diagnostics_only:'true'},{candidate_ref:'main'},{unknown_mode:'true'},{test_parallelism:'4'}])assert.throws(()=>validateDedicatedUnitControllerRequest(env,{...producer,inputs:{...producer.inputs,...patch}}));
  const full=clone(producer);Object.assign(full.inputs,{missing_unit:'',missing_original_run:''});assert.throws(()=>validateDedicatedUnitControllerRequest(env,full));assert.throws(()=>validateDedicatedUnitControllerRequest({...env,GITHUB_EVENT_NAME:'push'},event));assert.throws(()=>validateDedicatedUnitControllerRequest({...env,GITHUB_REF:'refs/heads/main'},event));
  const workflow=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');assert(workflow.indexOf('validateDedicatedUnitControllerRequest(process.env')<workflow.indexOf('CI integrity regression checks'));
+});
+
+test('negative execution fixtures cannot mutate canonical topology or another source/prior/fresh plan',()=>{
+ const before=clone(CI_EXECUTION),model=missingUnitFixture({clock:Date.now()});model.proof.freshPlan.execution.workers=1;
+ assert.equal(model.sourcePlan.execution.workers,2);assert.equal(model.plan.execution.workers,2);assert.equal(model.proof.expectation.plan.execution.workers,2);assert.deepEqual(CI_EXECUTION,before);
+ const f=fixture();f.freshPlan.execution.workers=1;assert.equal(f.plan.execution.workers,2);assert.equal(f.missingProof.proof.expectation.plan.execution.workers,2);assert.deepEqual(CI_EXECUTION,before);assert.throws(()=>verifyUnitRecovery(f));
+ const independent=fixture();assert.equal(independent.plan.execution.workers,2);assert.equal(independent.freshPlan.execution.workers,2);assert.equal(verifyUnitRecovery(independent).originalConclusion,'cancelled');assert.deepEqual(CI_EXECUTION,before);
 });
