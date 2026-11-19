@@ -4250,46 +4250,50 @@ export async function updateLeaveType(
       (p.yearCycleOverride ?? null) === A2C_OVERRIDE && (before?.yearCycleOverride ?? null) !== A2C_OVERRIDE
         ? (await enqueueLeaveA2cJobTx(tx, ctx, { leaveTypeId: p.id, asOf: p.asOf ?? todayInKualaLumpur(), trigger: 'year_cycle_override', yearCycleOverride: A2C_OVERRIDE })).id
         : null;
-    await tx
-      .update(leaveType)
-      .set({
-        name,
-        // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
-        // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
-        ...codeSet,
-        ...(touchEligibility ? { eligibility: nextEligibility } : {}),
-        ...probationSet,
-        ...(touchDurations ? { durations: nextDurations } : {}),
-        ...docSet,
-        ...requestRuleSet,
-        ...partialSet,
-        ...descriptionSet,
-        ...visualSet,
-        ...(touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}),
-        ...paidSet,
-        ...duplicatePolicySet,
-        ...negativeBalanceSet,
-        ...(touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}),
-        ...allowUplSet,
-        ...(touchCustomMessages ? { customMessages: nextCustomMessages } : {}),
-        ...(touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}),
-        ...(touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}),
-        ...dayTypeInclusionSet,
-        ...overrideRulesSet,
-        ...leaveUnitSet,
-        ...(deferredA2cJobId ? { pendingYearCycleJobId: deferredA2cJobId } : touchYearCycle ? { ...yearCycleSet, pendingYearCycleJobId: null } : {}),
-        ...visibleToEmployeeSet,
-        ...employeeCanApplySet,
-        // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
-        // drives (Hidden ⇒ flag false). Spread AFTER visibleToEmployeeSet so, in the (mutually-exclusive by
-        // marker) case both were somehow forwarded, the placement decision is authoritative.
-        ...placementColSet,
-        ...placementVisibilitySet,
-        // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
-        ...roleSet,
-        // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
-        ...cancelApprovedSet,
-      })
+    const leaveTypeUpdate = tx.update(leaveType);
+    type LeaveTypeUpdateValues = Parameters<typeof leaveTypeUpdate.set>[0];
+    const leaveTypeUpdateValues: LeaveTypeUpdateValues = { name };
+    // Check each patch against the native writer without inferring their exponential spread union.
+    const mergeLeaveTypeUpdateValues = (patch: LeaveTypeUpdateValues): void => {
+      Object.assign(leaveTypeUpdateValues, patch);
+    };
+    // Edit Leave Type Code (a7194511): the validated new code (only present when it actually changed for a
+    // non-locked type). All downstream relations key on leave_type_id, so nothing detaches.
+    mergeLeaveTypeUpdateValues(codeSet);
+    mergeLeaveTypeUpdateValues((touchEligibility ? { eligibility: nextEligibility } : {}));
+    mergeLeaveTypeUpdateValues(probationSet);
+    mergeLeaveTypeUpdateValues((touchDurations ? { durations: nextDurations } : {}));
+    mergeLeaveTypeUpdateValues(docSet);
+    mergeLeaveTypeUpdateValues(requestRuleSet);
+    mergeLeaveTypeUpdateValues(partialSet);
+    mergeLeaveTypeUpdateValues(descriptionSet);
+    mergeLeaveTypeUpdateValues(visualSet);
+    mergeLeaveTypeUpdateValues((touchPayroll ? { sendToPayroll: p.sendToPayroll } : {}));
+    mergeLeaveTypeUpdateValues(paidSet);
+    mergeLeaveTypeUpdateValues(duplicatePolicySet);
+    mergeLeaveTypeUpdateValues(negativeBalanceSet);
+    mergeLeaveTypeUpdateValues((touchBalanceSource ? { balanceSourceTypeId: p.balanceSourceTypeId ?? null } : {}));
+    mergeLeaveTypeUpdateValues(allowUplSet);
+    mergeLeaveTypeUpdateValues((touchCustomMessages ? { customMessages: nextCustomMessages } : {}));
+    mergeLeaveTypeUpdateValues((touchEssViewConfig ? { essViewConfig: nextEssViewConfig } : {}));
+    mergeLeaveTypeUpdateValues((touchFormulaExplanations ? { formulaExplanations: nextFormulaExplanations } : {}));
+    mergeLeaveTypeUpdateValues(dayTypeInclusionSet);
+    mergeLeaveTypeUpdateValues(overrideRulesSet);
+    mergeLeaveTypeUpdateValues(leaveUnitSet);
+    mergeLeaveTypeUpdateValues((deferredA2cJobId ? { pendingYearCycleJobId: deferredA2cJobId } : touchYearCycle ? { ...yearCycleSet, pendingYearCycleJobId: null } : {}));
+    mergeLeaveTypeUpdateValues(visibleToEmployeeSet);
+    mergeLeaveTypeUpdateValues(employeeCanApplySet);
+    // Leave grouping visibility (b653ac1b): the stored placement column + the shared visibility flag it
+    // drives (Hidden ⇒ flag false). Spread AFTER visibleToEmployeeSet so, in the (mutually-exclusive by
+    // marker) case both were somehow forwarded, the placement decision is authoritative.
+    mergeLeaveTypeUpdateValues(placementColSet);
+    mergeLeaveTypeUpdateValues(placementVisibilitySet);
+    // r299 (3de1453a): the Annual Leave switch's patch — empty unless the role actually moves.
+    mergeLeaveTypeUpdateValues(roleSet);
+    // r301 (83511d3b): the Cancel Approved Leave card — empty unless that card saved.
+    mergeLeaveTypeUpdateValues(cancelApprovedSet);
+    await leaveTypeUpdate
+      .set(leaveTypeUpdateValues)
       .where(eq(leaveType.id, p.id))
       // Edit Leave Type Code (a7194511): DB backstop — the migration 0031 partial unique index on
       // (tenant_id, lower(code)) WHERE archived_at IS NULL is the last line of defence against a duplicate code

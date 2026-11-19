@@ -1,6 +1,7 @@
 // Lane K2 (migration 5764): the shared routings are the one owner of a case's PBP and Head of Department. Converted
-// V9 bpRules resolve to the same person, a routing edit re-resolves unsigned holders as today, no matching row goes to
+// Native shared Business Partner rules resolve to the same person, a routing edit re-resolves unsigned holders, no matching row goes to
 // the fallback group, and a group row makes each member a holder. Fictional people and companies only.
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -13,6 +14,22 @@ import {probationFormCaseFixture} from './helpers/probation-form-case-fixture';
 
 const BP='a0700000-0000-4000-8000-000000001001',HOD='a0700000-0000-4000-8000-000000001002';
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
+ // The fixture's existing privileged account needs a genuine Person, not an identity exemption.
+ const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ if(!account)throw Error('The actual fixture administrator account is missing.');
+ let personId=account.person_id;
+ if(!personId){
+  const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional BP configuration administrator',${randomUUID()+'@business-partner-fixture.test'}) returning id`);
+  personId=person.id;
+  await owner.db.execute(sql`update app_user set person_id=${personId}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ }
+ admin={...admin,personId};
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);});
 
@@ -35,7 +52,7 @@ async function employee(name:string,companyId:string,departmentId:string){
  return hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@routing.example.test'},companyId,departmentId,employmentType:'full_time',hiredOn:'2026-01-01'});
 }
 
-describe('the BP routing replaces the bpRules resolver',()=>{
+describe('the designated BP routing takes precedence over shared business responsibilities',()=>{
  it('resolves converted bpRules to the same person, re-resolves after an edit and falls back to the fallback group',async()=>{
   const other=await createCompany(admin,{legalName:'Fictional Routing Elsewhere Sdn Bhd',country:'MY',currency:'MYR'});
   const[otherDept]=await owner.db.execute<{id:string}>(sql`insert into department(tenant_id,company_id,name) values(${b.tenantId}::uuid,${other.id}::uuid,'Fictional Elsewhere Ops') returning id`);
@@ -49,7 +66,8 @@ describe('the BP routing replaces the bpRules resolver',()=>{
    {rules:{company:[b.companyId],department:[b.deptB]},userId:p2.userId},
    {rules:{businessGroup:[unit.id]},userId:p3.userId},
   ];
-  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:[{id:'probation-people',name:'Fictional People Ops',members:[ops.userId],limit:10}],bpRules})}::jsonb)`);
+  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:[{id:'probation-people',name:'Fictional People Ops',members:[ops.userId],limit:10}]})}::jsonb)`);
+  await saveBusinessPartners(bpRules);
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) select ${b.tenantId}::uuid,u,c,'pbp','2026-01-01','Fictional PBP opt-in' from unnest(array[${p1.userId}::uuid,${p2.userId}::uuid,${p3.userId}::uuid]) u cross join unnest(array[${b.companyId}::uuid,${other.id}::uuid]) c`);
   const ids=[e1,e2,e3,e4].map(e=>e.employmentId);
   const before=await holders(ids);
@@ -75,14 +93,15 @@ describe('the BP routing replaces the bpRules resolver',()=>{
   const edited=await holders(ids);
   expect(edited.get(e1.employmentId)!.pbp).toBe(p4.userId);expect(edited.get(e2.employmentId)!.pbp).toBe(p2.userId);
   expect(await probationRole(p4.ctx,e1.employmentId,'pbp')).toBe(true);expect(await probationRole(p1.ctx,e1.employmentId,'pbp')).toBe(false);
-  // A retired routing hands back to its adapter (today's bpRules).
+  // A retired routing hands back to the native shared business owner; its legacy source marker stays 'bpRules'.
   await withTenant(admin,tx=>tx.execute(sql`select app.automation_routing_save(${BP}::uuid,${routing.name},${JSON.stringify(routing.rows)}::jsonb,true,2,'Retire')`));
   expect((await holders(ids)).get(e1.employmentId)).toMatchObject({pbp:p1.userId,pbp_source:'bpRules'});
  });
 
  it('keeps today\'s bpRules rule until the routing has rows: an installed empty routing changes nothing',async()=>{
   const e1=await employee('Fictional Unrouted',b.companyId,b.deptA),p1=await login('Fictional Partner');
-  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:[],bpRules:[{rules:{company:[b.companyId]},userId:p1.userId}]})}::jsonb)`);
+  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:[]})}::jsonb)`);
+  await saveBusinessPartners([{rules:{company:[b.companyId]},userId:p1.userId}]);
   // Without the PBP opt-in the adapter answers nobody, exactly as before.
   expect((await holders([e1.employmentId])).get(e1.employmentId)!.pbp).toBeNull();
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${p1.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Fictional PBP opt-in')`);

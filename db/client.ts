@@ -307,15 +307,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     const readDeadline = currentDatabaseReadDeadline();
     // Fail fast with a clear, diagnosable error rather than a cryptic "reading 'grants'/'tenantId'"
     // TypeError if a caller ever passes an unresolved session (e.g. a swallowed getSession failure).
-    if (!ctx || !ctx.tenantId) {
-      throw new Error('withTenant was called without a valid session context (missing tenantId).');
-    }
-    if (ctx.agent && (ctx.userId || ctx.personId || (ctx.grants?.length ?? 0) > 0 || (ctx.roles?.length ?? 0) > 0)) {
-      throw new Error('An agent context cannot also carry a login or a grant.');
-    }
-    // Backward-compat: a context with only `roles` becomes group-wide grants (companyId null).
-    const grants = ctx.grants ?? (ctx.roles ?? []).map((role) => ({ role, companyId: null as string | null }));
-    const roleNames = ctx.roles ?? Array.from(new Set(grants.map((g) => g.role)));
+    const {grants,roleNames}=tenantSessionIdentity(ctx);
     readSignal?.throwIfAborted();
     const attempt = async (): Promise<T> => {
     const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
@@ -356,98 +348,6 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     return ownTransaction();
   }
 
-  /** The identity bootstrap every tenant transaction runs before its first read (r394: one statement), shared by
-   * withTenant and the shared read snapshot so both establish exactly the same transaction-local identity. */
-  async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[], extra?: SQL): Promise<Record<string, unknown> | undefined> {
-      // The existing sticky fact only moves from unknown to on. An already known chain can
-      // share the identity bootstrap statement; first activation still decides after this await.
-      const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
-      const auditBootstrap = auditAlreadyArmed ? sql`, set_config('app.audit_hash_chain', 'on', true)` : sql``;
-      // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
-      // r394: ONE round trip, not four. Every withTenant transaction paid four sequential statements
-      // before its first real query (measured: 145 of 366 statements on one employee navigation to
-      // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
-      // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
-      // `extra` (a shared carrier's request preamble only, decision 12) adds columns after every setting; the
-      // statement is otherwise unchanged.
-      // JIT is off for every tenant transaction, in this same statement (no extra round trip), transaction-local like
-      // the identity: cleared at COMMIT or ROLLBACK, so a pooled server connection (PgBouncer transaction mode) never
-      // carries it to the next client. Row-level security makes the planner's cost estimates large, and JIT then
-      // compiled hundreds of functions per statement: on staging (11 Nov 2026) one Audit loop read took 1,270 ms with
-      // JIT and 11 ms without, the Approvals leave list about 700 ms against 22-34 ms, and a Home manager task read
-      // 18.8 s against 101 ms. Owners that set `jit` themselves still do, and a read that is faster compiled may set
-      // it back on for its own transaction (test/with-tenant-jit-off.test.ts).
-      const columns = extra ?? sql``;
-      const [identityRow] = (await tx.execute(
-        sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`,
-      )) as unknown as Record<string, unknown>[];
-      // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
-      // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
-      //
-      // `=== 'true'`, NOT a truthiness test, and this was a live defect until ADR-0077 slice 3.
-      // `.env.example` shipped `AUDIT_HASH_CHAIN_ENABLED=false` as an ACTIVE line, and the string
-      // 'false' is truthy — so every deployment that copied the template ARMED the chain while both the
-      // template's own comment and packs/catalog.ts's parity note recorded it as OFF. It is the one gate
-      // slice 3 defers rather than migrates (DEFERRED_ENV_GATES), so slice 8 would have inherited a
-      // parity value that was simply wrong and disarmed a chain it believed had never run. Every other
-      // gate in this migration uses `=== 'true'`; this one now does too, and the drift test asserts the
-      // FORM as well as the presence so the next deferred entry cannot repeat it.
-      //
-      // ADR-0077 SLICE 8. The env gate is no longer the decision — `audit.hash_chain_enabled` on the
-      // tenant's own snapshot is, and `chainArmingDecision` resolves the two against this tenant's
-      // HISTORY. The env value survives only as the fallback for an unresolvable setting, so a
-      // deployment mid-migration cannot silently lose a chain it already had.
-      //
-      // THE REFUSAL THIS ADDS. Disarming a chain that already has chained events appends events OUTSIDE
-      // the chain — not a broken link, absent from it — and `verifyTenantChain()` keeps answering
-      // `valid: true` because it only inspects `chain_seq IS NOT NULL`. Re-arming later links straight
-      // across the hole. No backfill exists to heal it, so a tenant WITH history stays armed whatever
-      // the setting says, and the override is logged once per tenant per process.
-      //
-      // INERT ON EVERY EXISTING DEPLOYMENT, verified on production before shipping: 5707 events, ZERO
-      // chained, no tenant with a chain, `AUDIT_HASH_CHAIN_ENABLED` unset. `hasChainedHistory` is false
-      // everywhere, so the decision returns exactly what the env gate returned — off.
-      const chainDecision = chainArmingDecision({
-        settingEnabled: readChainSetting(ctx),
-        hasChainedHistory: tenantHasChainedHistory(ctx.tenantId),
-        envArmed: auditHashChainArmed(),
-      });
-      if (chainDecision.refusedDisarm) warnChainDisarmRefused(ctx.tenantId, chainDecision.reason);
-      if (chainDecision.armed) {
-        if (!auditAlreadyArmed) await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
-        // Remembered the moment we arm: the next transaction for this tenant must see that history now
-        // exists, or a settings flip between the two could still open a one-transaction hole.
-        markTenantChained(ctx.tenantId);
-      }
-      // ADR-0077 slice 9 — SUSPENSION IS A MECHANISM, NOT A DISCIPLINE.
-      //
-      // A tenant out of good standing gets a READ-ONLY transaction, and Postgres refuses every write
-      // for us. Doing it per action would mean auditing several hundred call sites and re-auditing
-      // every new one forever; one line here binds all of them, including code written next year.
-      //
-      // WHY THIS WAS NOT ALREADY TRUE. `isModuleEnabled` returns false for a non-good-standing tenant,
-      // so BILLABLE modules already refused — but CORE modules (leave, ESS, employees, org) answer true
-      // from the catalog without consulting the snapshot. A suspended tenant could still file leave and
-      // edit employees. core/entitlements.ts said so against itself: "Until slice 9 lands, a closed
-      // tenant retains write access to core."
-      //
-      // READS ARE UNTOUCHED, on purpose. ADR-0077 open decision 5: read-only + export, never a hard
-      // lock-out on a payroll system. A customer in a billing dispute must still be able to see and
-      // export their own payroll history.
-      //
-      // A context with NO snapshot is not affected: `tenantStatus` is undefined, not "bad". Suspension
-      // must never be inferred from missing data — that would turn any resolver outage into a
-      // tenant-wide outage. Unresolved is handled by the entitlement gates, which fail closed there.
-      const tenantStatus = ctx.entitlements?.tenantStatus;
-      if (tenantStatus != null && !TENANT_STATUS_GOOD_STANDING.has(tenantStatus) && !ctx.statutoryOverride) {
-        // Verified to enforce, not merely to be accepted: reads still succeed, writes raise
-        // "cannot execute ... in a read-only transaction". Issued AFTER the set_configs because those
-        // are SELECTs, which do not close the window for SET TRANSACTION.
-        await tx.execute(sql`SET TRANSACTION READ ONLY`);
-      }
-      return identityRow;
-  }
-
   /** A carrier's request preamble as columns of its identity statement (db/shared-read.ts, decision 12). The
    * preamble's owner statements are evaluated only inside a sub-select whose one-time filter requires every identity
    * setting this statement sets to hold already: if PostgreSQL ever evaluated it before the settings, the column is
@@ -455,7 +355,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
   function preambleColumns(preamble: SharedReadPreambleRead, ctx: SessionContext, grants: Grant[], roleNames: string[]) {
     const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
       and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
-      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1'`;
+      and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1' and current_setting('app.payroll_import_tax_basis_reader',true)='1'`;
     return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
@@ -585,6 +485,107 @@ export function createDb(connectionString: string, options?: { max?: number; adm
 
 export type Db = ReturnType<typeof createDb>['db'];
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+
+/** Canonical context-shape validation and legacy role/grant derivation, shared by fixed native owners. */
+export function tenantSessionIdentity(ctx:SessionContext):{grants:Grant[];roleNames:string[]}{
+ if(!ctx||!ctx.tenantId)throw new Error('withTenant was called without a valid session context (missing tenantId).');
+ if(ctx.agent&&(ctx.userId||ctx.personId||(ctx.grants?.length??0)>0||(ctx.roles?.length??0)>0))throw new Error('An agent context cannot also carry a login or a grant.');
+ const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null as string|null}));
+ return {grants,roleNames:ctx.roles??Array.from(new Set(grants.map(grant=>grant.role)))};
+}
+
+/** The identity bootstrap every tenant transaction runs before its first read (r394: one statement), shared by
+ * withTenant and the shared read snapshot so both establish exactly the same transaction-local identity. */
+export async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Grant[], roleNames: string[], extra?: SQL): Promise<Record<string, unknown> | undefined> {
+    // The existing sticky fact only moves from unknown to on. An already known chain can
+    // share the identity bootstrap statement; first activation still decides after this await.
+    const auditAlreadyArmed = tenantHasChainedHistory(ctx.tenantId);
+    const auditBootstrap = auditAlreadyArmed ? sql`, set_config('app.audit_hash_chain', 'on', true)` : sql``;
+    // set_config(name, value, is_local=true) === SET LOCAL — cleared at COMMIT.
+    // r394: ONE round trip, not four. Every withTenant transaction paid four sequential statements
+    // before its first real query (measured: 145 of 366 statements on one employee navigation to
+    // My Leave). The four are independent and all evaluated in this one row, so the outcome is the
+    // same; test/r394-with-tenant-one-round-trip.test.ts pins both the values and the single statement.
+    // `extra` (a shared carrier's request preamble only, decision 12) adds columns after every setting; the
+    // statement is otherwise unchanged.
+    // JIT is off for every tenant transaction, in this same statement (no extra round trip), transaction-local like
+    // the identity: cleared at COMMIT or ROLLBACK, so a pooled server connection (PgBouncer transaction mode) never
+    // carries it to the next client. Row-level security makes the planner's cost estimates large, and JIT then
+    // compiled hundreds of functions per statement: on staging (11 Nov 2026) one Audit loop read took 1,270 ms with
+    // JIT and 11 ms without, the Approvals leave list about 700 ms against 22-34 ms, and a Home manager task read
+    // 18.8 s against 101 ms. Owners that set `jit` themselves still do, and a read that is faster compiled may set
+    // it back on for its own transaction (test/with-tenant-jit-off.test.ts).
+    const columns = extra ?? sql``;
+    const [identityRow] = (await tx.execute(
+      sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('app.payroll_import_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`,
+    )) as unknown as Record<string, unknown>[];
+    // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
+    // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
+    //
+    // `=== 'true'`, NOT a truthiness test, and this was a live defect until ADR-0077 slice 3.
+    // `.env.example` shipped `AUDIT_HASH_CHAIN_ENABLED=false` as an ACTIVE line, and the string
+    // 'false' is truthy — so every deployment that copied the template ARMED the chain while both the
+    // template's own comment and packs/catalog.ts's parity note recorded it as OFF. It is the one gate
+    // slice 3 defers rather than migrates (DEFERRED_ENV_GATES), so slice 8 would have inherited a
+    // parity value that was simply wrong and disarmed a chain it believed had never run. Every other
+    // gate in this migration uses `=== 'true'`; this one now does too, and the drift test asserts the
+    // FORM as well as the presence so the next deferred entry cannot repeat it.
+    //
+    // ADR-0077 SLICE 8. The env gate is no longer the decision — `audit.hash_chain_enabled` on the
+    // tenant's own snapshot is, and `chainArmingDecision` resolves the two against this tenant's
+    // HISTORY. The env value survives only as the fallback for an unresolvable setting, so a
+    // deployment mid-migration cannot silently lose a chain it already had.
+    //
+    // THE REFUSAL THIS ADDS. Disarming a chain that already has chained events appends events OUTSIDE
+    // the chain — not a broken link, absent from it — and `verifyTenantChain()` keeps answering
+    // `valid: true` because it only inspects `chain_seq IS NOT NULL`. Re-arming later links straight
+    // across the hole. No backfill exists to heal it, so a tenant WITH history stays armed whatever
+    // the setting says, and the override is logged once per tenant per process.
+    //
+    // INERT ON EVERY EXISTING DEPLOYMENT, verified on production before shipping: 5707 events, ZERO
+    // chained, no tenant with a chain, `AUDIT_HASH_CHAIN_ENABLED` unset. `hasChainedHistory` is false
+    // everywhere, so the decision returns exactly what the env gate returned — off.
+    const chainDecision = chainArmingDecision({
+      settingEnabled: readChainSetting(ctx),
+      hasChainedHistory: tenantHasChainedHistory(ctx.tenantId),
+      envArmed: auditHashChainArmed(),
+    });
+    if (chainDecision.refusedDisarm) warnChainDisarmRefused(ctx.tenantId, chainDecision.reason);
+    if (chainDecision.armed) {
+      if (!auditAlreadyArmed) await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
+      // Remembered the moment we arm: the next transaction for this tenant must see that history now
+      // exists, or a settings flip between the two could still open a one-transaction hole.
+      markTenantChained(ctx.tenantId);
+    }
+    // ADR-0077 slice 9 — SUSPENSION IS A MECHANISM, NOT A DISCIPLINE.
+    //
+    // A tenant out of good standing gets a READ-ONLY transaction, and Postgres refuses every write
+    // for us. Doing it per action would mean auditing several hundred call sites and re-auditing
+    // every new one forever; one line here binds all of them, including code written next year.
+    //
+    // WHY THIS WAS NOT ALREADY TRUE. `isModuleEnabled` returns false for a non-good-standing tenant,
+    // so BILLABLE modules already refused — but CORE modules (leave, ESS, employees, org) answer true
+    // from the catalog without consulting the snapshot. A suspended tenant could still file leave and
+    // edit employees. core/entitlements.ts said so against itself: "Until slice 9 lands, a closed
+    // tenant retains write access to core."
+    //
+    // READS ARE UNTOUCHED, on purpose. ADR-0077 open decision 5: read-only + export, never a hard
+    // lock-out on a payroll system. A customer in a billing dispute must still be able to see and
+    // export their own payroll history.
+    //
+    // A context with NO snapshot is not affected: `tenantStatus` is undefined, not "bad". Suspension
+    // must never be inferred from missing data — that would turn any resolver outage into a
+    // tenant-wide outage. Unresolved is handled by the entitlement gates, which fail closed there.
+    const tenantStatus = ctx.entitlements?.tenantStatus;
+    if (tenantStatus != null && !TENANT_STATUS_GOOD_STANDING.has(tenantStatus) && !ctx.statutoryOverride) {
+      // Verified to enforce, not merely to be accepted: reads still succeed, writes raise
+      // "cannot execute ... in a read-only transaction". Issued AFTER the set_configs because those
+      // are SELECTs, which do not close the window for SET TRANSACTION.
+      await tx.execute(sql`SET TRANSACTION READ ONLY`);
+    }
+    return identityRow;
+}
+
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');

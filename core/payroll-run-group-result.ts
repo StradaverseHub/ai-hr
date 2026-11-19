@@ -4,6 +4,7 @@
  * run to its reason) and the run-group record can share them without importing the orchestrator. Unchanged in
  * behaviour; core/payroll-run-group.ts re-exports every name.
  */
+import { PayItemFormulaRepriceError } from '../lib/pay-item-reprice-error';
 import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 /** Machine-stable failure reasons the result page renders as friendly, localized text. */
 export type RunGroupReasonCode =
@@ -27,6 +28,7 @@ export type RunGroupReasonCode =
   | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
   | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
   | 'NON_CASH_CONFIGURATION_INVALID'
+  | 'TRANSACTION_AFTER_LEAVING'
   | 'SYSTEM_VALIDATION_ERROR'
   | 'EMPTY_SELECTION'
   | 'INVALID_SELECTION'
@@ -34,6 +36,14 @@ export type RunGroupReasonCode =
 
 /** The four fixed behavioural run types a cycle maps to (mirrors payrollRunTypeEnum / PayrollCycleRunType). */
 export type IntendedRunType = 'regular' | 'off_cycle' | 'bonus' | 'adjustment';
+
+/** Safe, structured context from a known domain refusal; never raw exception/SQL text. */
+export type PayrollTransactionFailure = {employeeName:string;employeeCode:string;itemName:string;itemCode:string;dates:string;lastDay:string};
+export function transactionFailureForPayrollError(error:unknown):PayrollTransactionFailure|undefined {
+  if (!(error instanceof PayItemFormulaRepriceError) || error.reason !== 'after_leaving_date' || !error.leftOn || !error.employee) return undefined;
+  return {employeeName:error.employee.name,employeeCode:error.employee.code??'—',itemName:error.itemName,itemCode:error.code,
+    dates:[...new Set(error.dates)].join(', '),lastDay:error.leftOn};
+}
 
 /** The outcome of processing ONE company within the run. */
 export type CompanyOutcome = {
@@ -70,6 +80,7 @@ export type CompanyOutcome = {
   employeesSkipped?: number;
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
+  transactionFailure?: PayrollTransactionFailure;
   /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
    *  this company, so the result page can name the company AND the missing cycle type (not a bare "no cycle"). */
   missingCycleRunType?: IntendedRunType;
@@ -107,6 +118,7 @@ export function reasonForError(message: string): RunGroupReasonCode {
 
 /** Typed calculation refusals retain actionable reasons without exposing engine text. */
 export function reasonForPayrollError(error: unknown): RunGroupReasonCode {
+  if (transactionFailureForPayrollError(error)) return 'TRANSACTION_AFTER_LEAVING';
   if (error instanceof Error && error.name === 'TaxSelectionError' && 'code' in error) {
     const codes = {confirmation_required:'TAX_SELECTION_CONFIRMATION_REQUIRED',invalid_scheme:'TAX_SELECTION_INVALID_SCHEME',citizenship_unknown:'TAX_SELECTION_CITIZENSHIP_UNKNOWN',not_resident:'TAX_SELECTION_NOT_RESIDENT'} as const;
     if (typeof error.code === 'string' && Object.hasOwn(codes, error.code)) return codes[error.code as keyof typeof codes];

@@ -13,14 +13,22 @@
  * Step settings (`params`) belong to the module that executes them (lib/automation/workflow.ts). These checks are the
  * Probation builder's: they never relax the shared envelope's problems and only add to them. Pure, dependency-free.
  */
+import {createEmailBodyDocSchema,type EmailBodyDoc} from '../email-body/doc';
+import {legacyBodyToDoc,docToLegacyText} from '../email-body/legacy';
+import {renderEmailBody} from '../email-body/render';
+import {automationEmailAttachmentSettingsSchema,type AutomationEmailAsset,type AutomationEmailSlot} from '../automation-email-assets';
+import {AUTOMATION_CATALOGUES,automationCatalogue} from './catalogues';
 import type {AutomationModule,AutomationModuleCatalogue} from './catalogue';
 import type {AutomationRecipient,AutomationReferences,AutomationWorkflow} from './workflow';
 
 export type AutomationEmailTemplate = {
   id: string; module: AutomationModule; name: string; active: boolean;
-  subject: string; body: string;
+  subject: string; body: string; bodyDoc?: EmailBodyDoc;
   /** Always copied, in addition to the step's own CC list. */
   cc: AutomationRecipient[];
+  assets?:AutomationEmailAsset[];slots?:AutomationEmailSlot[];documentIds?:string[];
+  /** Additive rich editor content; the canonical template and revision remain unchanged. */
+  definition?: import('./probation-email-definition').ProbationEmailDefinition;
 };
 export const MAX_EMAIL_NAME = 200;
 export const MAX_EMAIL_SUBJECT = 500;
@@ -56,6 +64,12 @@ export function automationEmailTemplateProblems(template: AutomationEmailTemplat
   if (!template.subject.trim()) problems.push('Write a subject.');
   if (template.subject.length > MAX_EMAIL_SUBJECT) problems.push(`Use a subject of at most ${MAX_EMAIL_SUBJECT} characters.`);
   if (template.body.length > MAX_EMAIL_BODY) problems.push(`Use a message of at most ${MAX_EMAIL_BODY} characters.`);
+  const settings=automationEmailAttachmentSettingsSchema.safeParse({assets:template.assets??[],slots:template.slots??[],documentIds:template.documentIds??[]});
+  if(!settings.success)problems.push(...settings.error.issues.map(issue=>issue.message));
+  if(template.bodyDoc){
+    const result=createEmailBodyDocSchema({fieldAllowed:key=>catalogue.mergeFields.some(field=>field.key===key),imageIds:(template.assets??[]).filter(a=>a.kind==='image').map(a=>a.id),documentIds:template.documentIds??[]}).safeParse(template.bodyDoc);
+    if(!result.success)problems.push('The rich email body contains invalid content or unavailable fields.');
+  }
   problems.push(...recipientListProblems('CC', template.cc, catalogue, refs));
   return problems;
 }
@@ -68,7 +82,7 @@ export function automationEmailMergeWarnings(template: Pick<AutomationEmailTempl
 
 /** Fills merge tokens for a preview. Unknown or empty values stay visible as the token. */
 export function fillAutomationMergeFields(text: string, values: Readonly<Record<string, string | null | undefined>>): string {
-  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = values[key]; return value ? value : token; });
+  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = Object.hasOwn(values,key)?values[key]:undefined; return typeof value==='string'&&value?value:token; });
 }
 
 /** Personnel Management event types a Probation "Create posting" step can log (handoff A4, decision 4). */
@@ -120,4 +134,34 @@ export function probationStepParamWarnings(workflow: AutomationWorkflow, refs: P
     if (template && !template.retired && !template.active) warnings.push(`Step ${i + 1}: the email template “${template.name}” is turned off, so this step is skipped and noted on the case.`);
   });
   return warnings;
+}
+
+/** Shared text uses double-braced fields; V9 rich nodes carry the bare canonical key. */
+export function automationEmailBodyDoc(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>&Partial<Pick<AutomationEmailTemplate,'module'>>):EmailBodyDoc {
+ if(template.bodyDoc)return template.bodyDoc;
+ const catalogue=template.module?automationCatalogue(template.module):null;
+ const known=new Set((catalogue?[catalogue]:Object.values(AUTOMATION_CATALOGUES)).flatMap(item=>item?.mergeFields.map(field=>field.key)??[]));
+ // Only shared double-braced, known keys become rich atoms. Unknown tokens and literal braces remain exact text.
+ let prefix='\uE000';while(template.body.includes(prefix))prefix+='\uE000';
+ const retained:string[]=[];
+ const protectedBody=template.body.replace(/\{\{\s*([^{}\s]+)\s*\}\}|(?<!\{)\{([^{}]+)\}(?!\})/g,(token,key:string|undefined)=>{
+  if(key&&known.has(key))return `{${key}}`;
+  retained.push(token);return prefix+(retained.length-1)+'\uE001';
+ });
+ const placeholder=new RegExp(prefix+'(\\d+)\uE001','g');
+ const restore=(node:unknown):unknown=>Array.isArray(node)?node.map(restore):node&&typeof node==='object'?Object.fromEntries(Object.entries(node).map(([key,value])=>[key,key==='text'&&typeof value==='string'?value.replace(placeholder,(token,index:string)=>retained[Number(index)]??token):restore(value)])):node;
+ return restore(legacyBodyToDoc(protectedBody)) as EmailBodyDoc;
+}
+export function automationEmailBodyText(doc:EmailBodyDoc):string {
+ const fields=(node:unknown):unknown=>{
+  if(Array.isArray(node))return node.map(fields);
+  if(!node||typeof node!=='object')return node;
+  const value=node as Record<string,unknown>;
+  if(value.type==='field')return {type:'text',text:`{{${(value.attrs as {key:string}).key}}}`,...(value.marks?{marks:value.marks}:{})};
+  return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,fields(item)]));
+ };
+ return docToLegacyText(fields(doc) as EmailBodyDoc);
+}
+export function renderAutomationEmailBody(template:Pick<AutomationEmailTemplate,'body'|'bodyDoc'>,values:Readonly<Record<string,string|undefined>>) {
+ return template.bodyDoc?renderEmailBody(template.bodyDoc,{values}):{text:fillAutomationMergeFields(template.body,values),html:undefined};
 }

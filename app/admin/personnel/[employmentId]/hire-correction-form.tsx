@@ -51,14 +51,6 @@ export type HireCorrectionFormField = {
 
 export type HireInformationControl={field:HireEmploymentInformationField;label:string;value:string|null;display:string;type:'date'|'select'|'number'|'text';required?:boolean;fieldId?:string;options?:HireCorrectionOption[]};
 
-export type HireCorrectionReadOnlyRow = {
-  key: string;
-  label: string;
-  value: string;
-  pointer: string;
-  note?: string | null;
-};
-
 const selectCls =
   'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 const btnPrimary =
@@ -75,7 +67,6 @@ export function HireCorrectionForm({
   contextFields=[],
   paymentMethodAtHire,
   endDate:savedEndDate,
-  readOnly,
   cancelHref,
   pageContext,
 }: {
@@ -89,7 +80,6 @@ export function HireCorrectionForm({
   paymentMethodAtHire?:PaymentMethod|null;
   /** 2260a06b — the current Employee Type's end date (Contract End Date / Internship End Date). */
   endDate?: { field: 'contractEndDate' | 'internshipEndDate'; value: string | null };
-  readOnly: HireCorrectionReadOnlyRow[];
   cancelHref: string;
   pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
 }) {
@@ -172,11 +162,14 @@ export function HireCorrectionForm({
           const field=information.find(item=>item.field===key);if(!field)return null;
           const fieldId=HIRE_INFORMATION_FORM_IDS[key];
           const choice=personnelFormWidget(fieldId)==='choice',date=personnelFormField(fieldId).type==='date';
+          const caption = key === 'hiredOn'
+            ? `${tRoot('people.informationCorrection.effectiveDate')} (${field.label})`
+            : personnelFormLabel(fieldId,(label,fallback)=>tRoot.has(label)?tRoot(label):fallback);
           // Controlled values carry no form name. Only the changed hidden facts above are submitted.
           return <div key={key} className={EMPLOYMENT_INFORMATION_ROW}>
-            <label htmlFor={'hire-information-'+key} className="text-sm text-muted-foreground">{personnelFormLabel(fieldId,(label,fallback)=>tRoot.has(label)?tRoot(label):fallback)}</label>
+            <label htmlFor={'hire-information-'+key} className="text-sm text-muted-foreground">{caption}</label>
             <div className="text-sm">{field.display}</div>
-            {date?<DateField {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} label={field.label} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:!choice?<input {...personnelWorkflowInput(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:
+            {date?<DateField {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} label={caption} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:!choice?<input {...personnelWorkflowInput(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}/>:
             <select {...personnelWorkflowControl(fieldId,'hireInformation','draft')} id={'hire-information-'+key} value={informationValues[key]??''} onChange={event=>setInformationValues(previous=>({...previous,[key]:event.target.value}))} className={selectCls}>
               {!field.required&&<option value="">{t('none')}</option>}
               {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
@@ -224,30 +217,6 @@ export function HireCorrectionForm({
             </div>
           );
         })}
-      </div>
-
-      <div className="border-t border-border bg-muted/50 px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {t('notCorrectedHere')}
-      </div>
-      <div className="divide-y divide-border">
-        {readOnly.map((r) => (
-          <div
-            key={r.key}
-            className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-start sm:gap-4"
-          >
-            <div className="text-muted-foreground">{r.label}</div>
-            <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span>{r.value}</span>
-              <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
-                {t('readOnly')}
-              </span>
-            </div>
-            <div>
-              <p className="text-foreground">{r.pointer}</p>
-              {r.note ? <p className="mt-0.5 text-xs text-muted-foreground">{r.note}</p> : null}
-            </div>
-          </div>
-        ))}
       </div>
 
       {changed.length > 0 && (

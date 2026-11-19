@@ -46,12 +46,20 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  toil_expiry:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  toil_year_close:{messages:'toilSweep',linkPath:'/admin/leave-config/leave-credit'},
  payroll_history:{messages:'payrollHistory',linkPath:'/payroll/history-import/logs'},
+ fixed_transaction_import:{messages:'fixedTransactionImport',linkPath:'/payroll/transactions/fixed/imports'},
  payroll_reprocess:{messages:'payrollReprocess',linkPath:'/payroll'},
  movement_import:{messages:'movementImport',linkPath:'/admin/personnel/import/history?kind=movement'},
  movement_check:{messages:'movementCheck',linkPath:'/admin/personnel/import/history?kind=movement'},
  movement_import_revert:{messages:'movementImportRevert',linkPath:'/admin/personnel/import/history?kind=movement'},
  recruitment_candidate_import:{messages:'recruitmentImport',linkPath:'/recruitment/candidates/import'},
+ lifecycle_manager_recovery:{messages:'lifecycleManagerRecovery',linkPath:'/lifecycle/v9'},
+ lifecycle_personnel_completion_preview:{messages:'personnelCompletionPreview',linkPath:'/lifecycle/v9'},
+ lifecycle_personnel_completion_recovery:{messages:'personnelCompletionRecovery',linkPath:'/lifecycle/v9'},
  reward_person_history:{messages:'rewardPersonHistory',linkPath:'/rewards/history-upload'},
+ contract_preview:{messages:'contractPreview',linkPath:'/lifecycle/contracts'},
+ contract_automation:{messages:'contractAutomation',linkPath:'/lifecycle/contracts'},
+ contract_setup:{messages:'contractSetup',linkPath:'/lifecycle/contracts/settings'},
+ contract_posting_apply:{messages:'contractPosting',linkPath:'/lifecycle/contracts/postings'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){
  const notice=BULK_JOB_NOTICES[kind];

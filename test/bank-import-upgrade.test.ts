@@ -55,8 +55,8 @@ it('adds durable bank imports without changing retained statutory facts, princip
   })));
   const before=await facts(),beforeVisibility=await visibility();expect(before.statutory).toHaveLength(2);
   // Later additive nullable columns: bank payee residency, the staged-import marker (5010) on employment and person,
-  // and the Rehired period link (5695, board 511aa74a) on employment.
-  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null})),employment:before.employment.map(row=>({...row,import_pending_attempt_id:null,rehired_from_employment_id:null})),people:before.people.map(row=>({...row,import_pending_attempt_id:null}))};
+  // the Rehired period link (5695, board 511aa74a), and the nullable Contract number on employment.
+  const expectedRetained={...before,statutory:before.statutory.map(row=>({...row,bank_payee_residency:null})),employment:before.employment.map(row=>({...row,import_pending_attempt_id:null,rehired_from_employment_id:null,contract_number:null})),people:before.people.map(row=>({...row,import_pending_attempt_id:null}))};
   const ledger=()=>storage.client`select id,hash,created_at::text as created_at from drizzle.__drizzle_migrations order by created_at,id`;
   const prior=await ledger();expect(prior).toHaveLength(boundary);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});

@@ -108,9 +108,16 @@ describe('§1 r80 removal: the leave decide path exists ONLY under Approval Item
     // admits admin OR manager and lets the SERVICES decide — so no role lost a route to a decision.
     expect(approvalsPage).toContain("const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');");
     // Rewards unit membership can assign an employee a review without a global manager role.
-    // Existing HR/manager admission remains; an ordinary employee needs a pending scoped reward or (5751) a Probation
-    // Approve step routed to them. Admission only widens: nobody who reached a decision before loses the route.
-    expect(approvalsPage).toContain("if(!focus&&!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');");
+    // Existing HR/manager admission remains. Other readers need a proved exact focus or an actual scoped
+    // assignment, now including managed resignation decisions/FYI. No assignment promotes their role.
+    const admission = approvalsPage.match(/if\(([^;\n]+)\)redirect\('\/'\);/);
+    expect(admission, 'the unassigned-reader redirect guard exists').not.toBeNull();
+    expect(admission![1].replace(/\s+/g, '').split('&&')).toEqual([
+      '!focus', '!admin', '!manager', '!resignationWork.total','!contractWork.total', '!rewardReviews.length',
+      '!probationApprovals.items.length', '!assignedAttendance', '!assignedTasks.length',
+    ]);
+    expect(approvalsPage).toContain("!focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset})");
+        expect(approvalsPage).toContain("!focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset})");
     expect(approvalsPage).toContain("isModuleEnabledOrFalse(s,'rewards')");
   });
 });

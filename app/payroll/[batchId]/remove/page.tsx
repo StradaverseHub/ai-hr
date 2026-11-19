@@ -6,7 +6,7 @@ import {
   batchSummary,
   batchEditImpact,
   listBatches,
-  listRemovableEmployees,
+  payrollEmployeeSelectionPage,
   listRemovalHistory,
   removeEligibility,
 } from '@/core/payroll';
@@ -14,6 +14,7 @@ import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlem
 import { Card, EmployeeCode, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
 import { payrollListReturnTo } from '@/lib/return-to';
+import {parsePageQuery} from '@/lib/pagination';
 import { RemoveForm, type RemoveCandidate } from './remove-form';
 
 /**
@@ -49,7 +50,7 @@ export default async function RemoveEmployeePayrollPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; removed?: string; from?: string }>;
+  searchParams: Promise<{ error?: string; removed?: string; from?: string;page?:string;size?:string;q?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -147,7 +148,8 @@ export default async function RemoveEmployeePayrollPage({
     );
   }
 
-  const candidates: RemoveCandidate[] = (await listRemovableEmployees(s, { batchId })).map((r) => ({
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'remove',page:parsePageQuery(sp),search:sp.q});
+  const candidates: RemoveCandidate[] = selection.rows.map((r) => ({
     employmentId: r.employmentId,
     employeeCode: r.employeeCode,
     name: r.name,
@@ -209,7 +211,7 @@ export default async function RemoveEmployeePayrollPage({
           <p className="mb-3 text-xs text-muted-foreground">
             {t('removeHint')} {t('removeNotPersonnel')}
           </p>
-          <RemoveForm batchId={batchId} employees={candidates} currency={currency} from={from} />
+          <RemoveForm batchId={batchId} employees={candidates} currency={currency} from={from} paging={{state:selection.state,runTotal:selection.runTotal,search:sp.q??''}} />
         </div>
       </Card>
 

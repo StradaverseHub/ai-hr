@@ -4,14 +4,15 @@ import {expect,it} from 'vitest';
 it('preserves managed drain, production first activation, production update and rollback, immutable bytes and privileged refusal boundaries',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-upgrade-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 84 tests');
+ expect(result.stderr).toContain('Ran 90 tests');
 });
 
 it('admits only the root-pinned live CI runtime and monotonic native finish, with unchanged quarantine',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-ci-runtime-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 36 tests');
-},120000);
+ expect(result.stderr).toContain('Ran 46 tests');
+ // Gate 44354971179 timed out at 136.205 s; allow about 3x headroom while retaining native runtime controls.
+},420000);
 
 it('keeps the real all-kind heartbeat predicate and bounds only selected CI to the reviewed 600 seconds',async()=>{
  const {readFileSync,mkdtempSync,mkdirSync,writeFileSync,rmSync}=await import('node:fs');

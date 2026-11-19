@@ -61,6 +61,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
+import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
@@ -236,15 +237,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation]=await Promise.all([
+  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
     lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
     lifecycleModuleNavigation(session),
+    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
+  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -279,11 +282,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount,
+    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&approvalSummary.approvalCount>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
@@ -339,10 +342,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleTaskCount}
+              taskCount={lifecycleMyTasksCount}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
+              offboardingPostingsAccess={offboardingPostingsAccess}
               onboardingV9Access={onboardingNav.v9}
               onboardingV9Navigation={onboardingNav.v9Navigation}
               onboardingJoinerCount={onboardingNav.joiners}
@@ -493,6 +497,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
                       tasks={lifecycleTasks}
+                      taskQueueLinks={lifecycleInbox.queueLinks}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
                       taskCount={lifecycleTaskCount}
                       canApprove={canApprove}

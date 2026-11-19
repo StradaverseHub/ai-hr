@@ -1298,6 +1298,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/payroll/history-import',
       '/payroll/history-import/logs',
       '/payroll/history-import/logs/[attemptId]',
+      '/payroll/history-import/records',
+      '/payroll/history-import/records/[recordId]',
       // 169e3c24: the pre-release Individual Payslip viewer. Registered on the SAME scopedAdmin key as
       // the rest of the hub, because it is the admin's review of a payslip before it is released — it
       // reads through `payslipForReview`, never the ESS gate, so it must be admin-scoped exactly like
@@ -1495,6 +1497,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
       '/payroll/transaction-view',
+      '/payroll/transaction-view/workbooks',
       '/payroll/transactions',
       // 7076f8af: the two functions that came OFF the run screen. `adjustments` renders the draft run's
       // consolidation bridges + input grid (its primary home is the run flow's Review step, which is not a
@@ -1510,6 +1513,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // test/function-access.test.ts fails the build for a guarded page.tsx with no column, which is how
       // a new screen is stopped from being invisible on the access grid.)
       '/payroll/transactions/fixed/[id]',
+      '/payroll/transactions/fixed/imports',
+      '/payroll/transactions/fixed/imports/[id]',
       '/payroll/transactions/individual',
       '/payroll/transactions/individual/imports',
       '/payroll/transactions/individual/imports/[attemptId]',

@@ -34,7 +34,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch }
 import { randomUUID } from 'node:crypto';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
-import { and, asc, desc, eq, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { type SessionContext, type Tx } from '../db/client';
 import { pricesChildReliefFromGrid } from './dependents';
@@ -58,6 +58,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payslipLessEligiblePage,
   payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
@@ -207,6 +208,7 @@ export type FixedTransactionViewRow = {
   runType: RunType | null;
   /** 4fffe638 — the linked configured Payroll Cycle's name; null when the row is not linked. */
   payrollCycleName: string | null;
+  payrollCycleCode?: string | null;
   remarks: string | null;
 };
 
@@ -264,11 +266,11 @@ function individualInquiryOrder(sort:IndividualInquirySort){
   return sql`${field} ${sort.direction==='asc'?sql`asc`:sql`desc`},"id" asc`;
 }
 
-export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery):Promise<{rows:FixedTransactionViewRow[];total:number}>{
+export function listFixedTransactionsPage(ctx:SessionContext,p:FixedTransactionFilter,page:PageQuery,asOf=todayIso()):Promise<{rows:FixedTransactionViewRow[];total:number}>{
   if(!p.companyIds.length)return Promise.resolve({rows:[],total:0});
   return withTenant(ctx,async tx=>{
     await tx.execute(sql`set transaction read only`);
-    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,todayIso()),sql`"employeeName","code","validFrom","id"`,page);
+    return inquiryPage<FixedTransactionViewRow>(tx,fixedTransactionQuery(tx,p,asOf),sql`"employeeName","code","validFrom","id"`,page);
   });
 }
 export async function listIndividualTxnsPage(ctx:SessionContext,p:IndividualTxnFilter,page:PageQuery,sort:IndividualInquirySort=parseIndividualInquirySort()):Promise<{rows:IndividualTxnViewRow[];total:number}>{
@@ -290,7 +292,7 @@ export function listFixedTransactionsAcross(
   return withTenant(ctx,tx=>fixedTransactionQuery(tx,p,todayIso()).orderBy(asc(person.fullName),asc(payComponent.code),asc(employmentPayComponent.validFrom),asc(employmentPayComponent.id)));
 }
 
-function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
+function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string,afterId?:string){
   return tx
       .select(inquiryColumns<FixedTransactionViewRow>({
         id: employmentPayComponent.id,
@@ -309,6 +311,7 @@ function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
         runType: employmentPayComponent.runType,
         // 4fffe638 — LEFT JOIN on a single FK: an unlinked row keeps its run-type label, nothing multiplies.
         payrollCycleName: payrollCycle.name,
+        payrollCycleCode: payrollCycle.code,
         remarks: employmentPayComponent.remarks,
       }))
       .from(employmentPayComponent)
@@ -320,6 +323,7 @@ function fixedTransactionQuery(tx:Tx,p:FixedTransactionFilter,today:string){
       .where(
         and(
           inArray(employment.companyId, p.companyIds),
+          afterId ? gt(employmentPayComponent.id, afterId) : undefined,
           isNull(employmentPayComponent.supersededAt),
           p.employmentId ? eq(employmentPayComponent.employmentId, p.employmentId) : undefined,
           p.componentId ? eq(employmentPayComponent.componentId, p.componentId) : undefined,
@@ -349,8 +353,10 @@ export type IndividualTxnViewRow = {
    *  never permission to choose another cycle of the same type. Archived names remain readable. */
   batchCycleId: string | null;
   batchCycleName: string | null;
+  batchCycleCode?: string | null;
   intendedCycleId: string | null;
   intendedCycleName: string | null;
+  intendedCycleCode?: string | null;
   batchStatus: string | null;
   kind: PayrollTxnKind;
   /** 4e403268 — THE PAY ITEM, on the listing row at last. Until this round the projection deliberately
@@ -414,7 +420,7 @@ export type IndividualTxnFilter = {
  * and LEFT-joined to the row's 'created' DomainEvent → app_user → person for the Created By / Created Date
  * dimensions. Read-only (pure SELECT — no event appended here).
  */
-function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
+function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter,afterId?:string){
   const kind = cleanTxnKind(p.kind);
   const batchStatus = cleanBatchStatus(p.batchStatus);
   const createdFrom = cleanDate(p.createdFrom);
@@ -436,8 +442,10 @@ function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
       runSeq: payrollBatch.runSeq,
       batchCycleId: payrollBatch.payrollCycleId,
       batchCycleName: individualBatchCycle.name,
+      batchCycleCode: individualBatchCycle.code,
       intendedCycleId: payrollIndividualTxn.intendedCycleId,
       intendedCycleName: individualIntendedCycle.name,
+      intendedCycleCode: individualIntendedCycle.code,
       batchStatus: payrollBatch.status,
       kind: payrollIndividualTxn.kind,
       componentId: payrollIndividualTxn.componentId,
@@ -506,6 +514,7 @@ function individualTransactionQuery(tx:Tx,p:IndividualTxnFilter){
     .where(
       and(
         inArray(payrollIndividualTxn.companyId, p.companyIds),
+        afterId ? gt(payrollIndividualTxn.id, afterId) : undefined,
         periodFilter(p.year, p.month, payrollIndividualTxn.payPeriod),
         p.employmentId ? eq(payrollIndividualTxn.employmentId, p.employmentId) : undefined,
         kind ? eq(payrollIndividualTxn.kind, kind) : undefined,
@@ -556,6 +565,41 @@ async function queryIndividualTxns(tx:Tx,p:IndividualTxnFilter):Promise<Individu
 export function listIndividualTxnsAcross(ctx: SessionContext, p: IndividualTxnFilter): Promise<IndividualTxnViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
   return withTenant(ctx, (tx) => queryIndividualTxns(tx, p));
+}
+
+export type TransactionExportQuery =
+  | { kind: 'fixed'; filters: FixedTransactionFilter; asOf: string }
+  | { kind: 'individual'; filters: IndividualTxnFilter };
+
+/** Page through the screen's exact predicates under one read snapshot, independent of its visible page. */
+export async function readTransactionExport<T>(
+  ctx: SessionContext,
+  query: TransactionExportQuery,
+  consume: (total: number, rows: AsyncIterable<FixedTransactionViewRow | IndividualTxnViewRow>) => Promise<T>,
+): Promise<T> {
+  const pageSize = 500;
+  return withTenant(ctx, async (tx) => {
+    const source = query.kind === 'fixed'
+      ? fixedTransactionQuery(tx, query.filters, query.asOf)
+      : individualTransactionQuery(tx, query.filters);
+    const [count] = await tx.execute<{total: string}>(sql`select count(*)::text as total from (${source}) as filtered_export`);
+    const total = Number(count?.total);
+    if (!Number.isSafeInteger(total) || total < 0) throw new Error('The payroll export count is unavailable.');
+    async function* rows() {
+      let afterId: string | undefined;
+      for (let remaining = total; remaining > 0;) {
+        const page: (FixedTransactionViewRow | IndividualTxnViewRow)[] = query.kind === 'fixed'
+          ? await fixedTransactionQuery(tx, query.filters, query.asOf, afterId).orderBy(asc(employmentPayComponent.id)).limit(pageSize)
+          : (await individualTransactionQuery(tx, query.filters, afterId).orderBy(asc(payrollIndividualTxn.id)).limit(pageSize))
+            .map((row) => ({ ...row, reprocessRequired: individualTxnReprocessRequired(row) }));
+        if (!page.length) break;
+        for (const row of page) yield row;
+        remaining -= page.length;
+        afterId = page.at(-1)?.id;
+      }
+    }
+    return consume(total, rows());
+  }, { readOnlySnapshot: true });
 }
 
 /**
@@ -1026,6 +1070,7 @@ export type ProcessedPayslipViewRow = {
    * to showing no provenance block rather than fail to compile.
    */
   batchId?: string;
+  payrollCycleId?: string | null;
   payPeriod: string;
   runType: RunType;
   runSeq: number;
@@ -1086,14 +1131,50 @@ export type ProcessedPayslipViewRow = {
  * add a status predicate. Optional `cycle` = payroll run type (the Payroll-Cycle filter);
  * unknown values are ignored rather than cast to the pg enum (which would throw).
  */
+type ProcessedPayslipFilters = {
+  companyIds: string[];
+  year?: number;
+  month?: number;
+  employmentId?: string;
+  cycle?: string;
+  payrollCycleId?: string;
+};
+
+function processedPayslipFilters(p: ProcessedPayslipFilters) {
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
+  return and(
+    inArray(payrollBatch.companyId, p.companyIds),
+    periodFilter(p.year, p.month),
+    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
+    p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
+    cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
+  );
+}
+
+/** Resolve the latest visible period before reading payslip rows for the History landing page. */
+export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
+  if (!p.companyIds.length) return null;
+  return withTenant(ctx, async (tx) => {
+    const [live] = await tx.select({ payPeriod: payrollBatch.payPeriod })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(processedPayslipFilters(p))
+      .orderBy(desc(payrollBatch.payPeriod))
+      .limit(1);
+    const retained = await informationPayslipDocuments(tx, {
+      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
+    });
+    const periods = [live?.payPeriod, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
+    return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
+  });
+}
+
 export function listProcessedPayslipsAcross(
   ctx: SessionContext,
-  p: {
-    companyIds: string[];
-    year?: number;
-    month?: number;
-    employmentId?: string;
-    cycle?: string;
+  p: ProcessedPayslipFilters & {
     /**
      * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
      * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
@@ -1113,7 +1194,7 @@ export function listProcessedPayslipsAcross(
   },
 ): Promise<ProcessedPayslipViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  const cycle = cleanRunType(p.cycle);
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
   return withTenant(ctx, async (tx) => {
     const q = tx
@@ -1128,6 +1209,7 @@ export function listProcessedPayslipsAcross(
         currency: company.currency,
         // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
         batchId: payslip.batchId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1159,15 +1241,7 @@ export function listProcessedPayslipsAcross(
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
-          p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
-          // b240c0ff — imported history filters under its real Pay Cycle (see `filterRunTypeSql`).
-          cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
-        ),
-      )
+      .where(processedPayslipFilters(p))
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
       .$dynamic();
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
@@ -1177,7 +1251,7 @@ export function listProcessedPayslipsAcross(
     const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
     const seen=new Set(rows.map(row=>row.id));
     for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
     }
     if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return limit?rows.slice(0,limit):rows;
@@ -1225,6 +1299,7 @@ export type PayslipRunRow = {
   /** THIS employee's payslip in that run. */
   payslipId: string;
   companyId: string;
+  payrollCycleId?: string | null;
   /** 'YYYY-MM'. */
   payPeriod: string;
   runType: RunType;
@@ -1246,6 +1321,7 @@ export function listPayslipRunsFor(
       .select({
         payslipId: payslip.id,
         companyId: payrollBatch.companyId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1259,7 +1335,7 @@ export function listPayslipRunsFor(
     const seen=new Set(rows.map(r=>r.payslipId));
     for(const document of await informationPayslipDocuments(tx,p)){
       const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({payslipId:r.id,companyId:r.companyId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
+      rows.push({payslipId:r.id,companyId:r.companyId,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
     }
     return rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.companyId.localeCompare(b.companyId));
   });
@@ -2665,7 +2741,7 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * Read-only: no DomainEvent (CLAUDE.md substrate rule — events follow state-changing writes, and there
  * are none here).
  */
-export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
 }
 
@@ -2674,13 +2750,15 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
  * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
  * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
  */
-export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
   return (async () => {
     let inertRows = 0;
+    const selected=p.employmentIds?new Set(p.employmentIds):null;
+    const selectedOnly=(column:SQLWrapper)=>p.employmentIds?inArray(column,[...p.employmentIds]):undefined;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
       .select({
@@ -2697,7 +2775,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) return empty;
+    if (!batch || selected?.size===0) return empty;
 
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
@@ -2725,11 +2803,11 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
     let formulaOvertimeReview: PendingOvertimeReview;
     try {
       const cash = await readPayrollOvertimePatternCashTx(tx, ctx, p);
-      const ids = [...cash.byEmployment.keys()];
+      const ids = [...cash.byEmployment.keys()].filter(id=>!selected||selected.has(id));
       const people = ids.length ? await tx.select({employmentId: employment.id, employeeName: person.fullName, employeeCode: employment.employeeCode})
         .from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, ids)) : [];
       const byId = new Map(people.map(row => [row.employmentId, row]));
-      const formulaLines: PendingMoneyLine[] = cash.lines.map(line => {
+      const formulaLines: PendingMoneyLine[] = cash.lines.filter(line=>!selected||selected.has(line.employmentId)).map(line => {
         const who = byId.get(line.employmentId);
         if (!who) throw new OvertimePayrollError('unavailable');
         return {...who, door: 'overtime', itemName: line.earningItemName, amount: Number(line.amountMinorUnits) / 100,
@@ -2763,7 +2841,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollInput)
       .innerJoin(employment, eq(employment.id, payrollInput.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollInput.batchId, p.batchId));
+      .where(and(eq(payrollInput.batchId, p.batchId),selectedOnly(payrollInput.employmentId)));
     for (const r of inputs) {
       const who = { employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode };
       push(who, 'overtime', Number(r.overtime), null, r.otSource);
@@ -2791,7 +2869,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
       .innerJoin(employment, eq(employment.id, payrollBatchComponent.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollBatchComponent.batchId, p.batchId));
+      .where(and(eq(payrollBatchComponent.batchId, p.batchId),selectedOnly(payrollBatchComponent.employmentId)));
     for (const r of batchComps) {
       if (!(Math.abs(Number(r.amount)) > 0)) continue;
       if (!typedComponents) {
@@ -2833,7 +2911,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
       .where(
-        attachesUnattached
+        and(selectedOnly(payrollIndividualTxn.employmentId),attachesUnattached
           ? or(
               eq(payrollIndividualTxn.batchId, p.batchId),
               and(
@@ -2843,7 +2921,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
                 intentFilter,
               ),
             )
-          : eq(payrollIndividualTxn.batchId, p.batchId),
+          : eq(payrollIndividualTxn.batchId, p.batchId)),
       );
     for (const r of txnRows) {
       // 'leave' is RECORD-ONLY in v1 (the kernel does not fold it into pay — see generatePayslips), so it
@@ -2894,6 +2972,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
           // excluded for the same reason basic salary is (see the section docstring).
           sql`${payComponent.code} <> 'BASIC'`,
           scopeFilter,
+          selectedOnly(employmentPayComponent.employmentId),
         ),
       );
     for (const r of fixed) {
@@ -3022,6 +3101,16 @@ export async function listPayslipLessEligibleWithSkip(
     r.blockers.length === 0 && !r.outsideScope && r.warnings.includes('nothingPayable');
   const pending = rows.some(could) ? await pendingBatchMoney(ctx, p) : null;
   return rows.map((r) => ({ ...r, skip: pending && could(r) ? nothingPayableSkipKind(r.employmentId, pending) : null }));
+}
+
+/** SQL-bounded new-employee page; financial readiness only examines its members. Global formula-overtime
+ * availability stays with its existing native owner: an unrelated failed proof must not become a definite skip. */
+export async function payslipLessEligibleWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+ const result=await payslipLessEligiblePage(ctx,p);
+ const could=(r:PayslipLessEligibleRow)=>r.blockers.length===0&&!r.outsideScope&&r.warnings.includes('nothingPayable');
+ const ids=result.rows.filter(could).map(r=>r.employmentId);
+ const pending=ids.length?await pendingBatchMoney(ctx,{batchId:p.batchId,employmentIds:ids}):null;
+ return {...result,rows:result.rows.map(r=>({...r,skip:pending&&could(r)?nothingPayableSkipKind(r.employmentId,pending):null}))};
 }
 
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────

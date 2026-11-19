@@ -9,7 +9,9 @@ import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,employmentOrganisationTagsTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
+import {assignmentProjectionImage} from '../lib/assignment-projection-image';
 import {probationDateAuthorityTx} from './probation-effect-authority';
+import {contractPostingInfoAuthorityTx,contractPostingAssignmentAuthorityTx} from './contract-posting-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
 import {setCompensation} from './comp';
 import {setEmploymentPayComponent,endEmploymentPayComponent,tryLockPayrollHistoryReadTx} from '../packs/payroll/service';
@@ -19,6 +21,7 @@ import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockAccessAdministratorSetTx,lockAccessConfigurationTx,lockProfileValueWritesTx} from './access-configuration-lock';
 import {joinWorkforceBarrierTx,lockEmploymentLeaveDependenciesTx,lockOrgReportingTx,lockPersonValueWritesTx} from './workforce-lock-mode';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
+import {assertContractPostingHistoryWriteTx} from './contract-posting-history-source';
 import {setWorkforceEmployeeCode} from './workforce-code';
 import {personnelField} from '../lib/personnel-field-registry';
 import {personnelScalarIssue} from '../lib/personnel-import-contract';
@@ -1377,10 +1380,11 @@ export async function editDelegation(
 }
 
 type NativeReportingLineInput=Parameters<typeof setReportingLine>[1];
-async function reportingLinePreflightTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,noWait=false){
+async function reportingLinePreflightTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,noWait=false,contractHistory=false){
     // Delegation retains its independent relationship/decision owner. Structural edges do not.
     if(p.lineType!=='delegate'){
-      await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+      if(contractHistory)await assertContractPostingHistoryWriteTx(tx,p.subordinateEmploymentId);
+      else await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
       await lockPayrollInputsTx(tx,{employmentIds:[p.subordinateEmploymentId]});
     }
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
@@ -1458,7 +1462,13 @@ async function writeStructuralReportingLineTx(tx:Tx,ctx:SessionContext,p:NativeR
     return { reportingLineId: row.id,setEventId };
 }
 
-export async function setReportingLine(
+export function setReportingLine(ctx:SessionContext,p:Parameters<typeof setReportingLineBody>[1],outerTx?:Tx){return setReportingLineBody(ctx,p,outerTx);}
+export async function replayContractPostingReportingLineTx(ctx:SessionContext,p:Parameters<typeof setReportingLineBody>[1],tx:Tx){
+ if(p.lineType==='delegate')throw Error('A Contract history replay cannot create a delegation.');
+ await assertContractPostingHistoryWriteTx(tx,p.subordinateEmploymentId);
+ return setReportingLineBody(ctx,p,tx,true);
+}
+async function setReportingLineBody(
   ctx: SessionContext,
   p: {
     subordinateEmploymentId: string;
@@ -1482,6 +1492,7 @@ export async function setReportingLine(
   /** 08913328 — optional caller transaction, so a Direct Superior change submitted as one leg of a
    *  movement commits atomically with the assignment / grade / pay legs. */
   outerTx?: Tx,
+  contractHistory=false,
 ):Promise<{reportingLineId:string}> {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
@@ -1500,7 +1511,7 @@ export async function setReportingLine(
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.subordinateEmploymentId], { configuration: true });
       await lockOrgReportingTx(tx, ctx.tenantId);
     }
-    await reportingLinePreflightTx(tx,ctx,p);
+    await reportingLinePreflightTx(tx,ctx,p,false,contractHistory);
     if (p.lineType === 'delegate') {
       return insertDelegateLineTx(tx, ctx, {
         subordinateEmploymentId: p.subordinateEmploymentId,
@@ -2183,7 +2194,14 @@ export async function setEmploymentGrade(
  * A no-op (nothing actually changed) returns `{ changed: false }` WITHOUT creating a spurious dated row or
  * event — so a Save that only touched Job Grade doesn't fragment the assignment history.
  */
-export async function setEmploymentAssignment(
+export function setEmploymentAssignment(ctx:SessionContext,p:Parameters<typeof setEmploymentAssignmentBody>[1],outerTx?:Tx){
+ return setEmploymentAssignmentBody(ctx,p,outerTx);
+}
+export async function replayContractPostingAssignmentTx(ctx:SessionContext,p:Parameters<typeof setEmploymentAssignmentBody>[1],tx:Tx){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return setEmploymentAssignmentBody(ctx,p,tx,true);
+}
+async function setEmploymentAssignmentBody(
   ctx: SessionContext,
   p: {
     employmentId: string;
@@ -2235,13 +2253,15 @@ export async function setEmploymentAssignment(
   /** 78853b97 — optional caller transaction (run(outerTx) pattern, as in core/comp.ts setCompensation)
    *  so a Promotion/Demotion can pair this with setEmploymentGrade atomically. */
   outerTx?: Tx,
+  contractHistory=false,
 ) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const run = async (tx: Tx) => {
     if (p.companyId !== undefined) {
       // Naming a company makes this an entity move between companies: it stays exclusive with its transfer owners.
-      await tx.execute(sql`select app.access_configuration_write_lock()`);
+      if(contractHistory)await lockAccessConfigurationTx(tx,ctx.tenantId);
+      else await tx.execute(sql`select app.access_configuration_write_lock()`);
       await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     } else {
       // Department, position, type or status of one employment: shared Access, then this employment's leave
@@ -2250,8 +2270,10 @@ export async function setEmploymentAssignment(
       await lockAccessConfigurationTx(tx, ctx.tenantId);
       await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
     }
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-    if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    if(!contractHistory){
+     if(!contractPostingAssignmentAuthorityTx(tx,p as unknown as Record<string,unknown>))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    }else await assertContractPostingHistoryWriteTx(tx,p.employmentId);
     await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.companyId?[p.companyId]:[]});
     const [cur] = await tx
       .select()
@@ -2295,8 +2317,13 @@ export async function setEmploymentAssignment(
       null;
 
     if(!nextCompanyId)throw new Error('The dated assignment company is unavailable.');
-    const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:nextCompanyId,asOf:p.effectiveDate});
-    nextBusinessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),nextBusinessUnitId,p.companyId!==undefined&&p.companyId!==cur.companyId?null:cur.businessUnitId);
+    // A Contract conversion carries every existing assignment dimension unchanged; its exact native
+    // posting witness permits only the Full-time type. Organisation changes keep their own movement.
+    const contractPostingAssignment=contractPostingAssignmentAuthorityTx(tx,p as unknown as Record<string,unknown>);
+    if(!contractPostingAssignment){
+      const organisation=await deriveCompanyOrganisationTx(tx,ctx,{companyId:nextCompanyId,asOf:p.effectiveDate});
+      nextBusinessUnitId=organisationBusinessUnit(organisation,await organisationManagedTx(tx),nextBusinessUnitId,p.companyId!==undefined&&p.companyId!==cur.companyId?null:cur.businessUnitId);
+    }
     // 1001ff61 / 570e3311 — referential integrity + company scope for a newly-selected BU / Department /
     // Position: it must exist, be un-archived, and be a label this employment's company MAY use under the
     // Shared System Labels resolver (origin ∪ shared-in ∪ global, flag-gated — labelUsableByCompany; with
@@ -2457,7 +2484,7 @@ export async function setEmploymentAssignment(
         ...(p.movement ? { movement: p.movement } : {}),
       },
     });
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
+    if(!contractPostingAssignment)await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
     await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.effectiveDate});
     return { assignmentId: next.id, changed: true as const };
   };
@@ -2695,7 +2722,12 @@ export async function changeEmploymentCompany(
  * moves through setEmploymentInfo like every other movement-owned date (core/movement.ts's info leg), so
  * that column keeps exactly one writer. This function must not acquire a second one.
  */
-export async function transferEmploymentCompanyTx(
+export function transferEmploymentCompanyTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof transferEmploymentCompanyBodyTx>[2]){return transferEmploymentCompanyBodyTx(tx,ctx,p);}
+export async function replayContractPostingCompanyTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof transferEmploymentCompanyBodyTx>[2]){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return transferEmploymentCompanyBodyTx(tx,ctx,p,true);
+}
+async function transferEmploymentCompanyBodyTx(
   tx: Tx,
   ctx: SessionContext,
   p: {
@@ -2728,13 +2760,18 @@ export async function transferEmploymentCompanyTx(
     employmentType?: EmploymentTypeValue;
     movement: MovementTag;
   },
+  contractHistory=false,
 ) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-    await tx.execute(sql`select app.access_configuration_write_lock()`);
+    if(contractHistory)await lockAccessConfigurationTx(tx,ctx.tenantId);
+    else await tx.execute(sql`select app.access_configuration_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-  await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+  if(contractHistory)await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+  else{
+   await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+   await assertWorkforceCompanyTx(tx,ctx,p.newCompanyId,'maintain');
+  }
   await lockLabelCriteriaTx(tx,ctx.tenantId);
   await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
   const [emp] = await tx
@@ -2758,8 +2795,8 @@ export async function transferEmploymentCompanyTx(
   // Authz, up front and explicit — exactly as changeEmploymentCompany does it. Flipping company_id trips
   // employment_rls WITH CHECK is_admin_for(NEW); asking first turns an opaque row-level failure into a
   // sentence that says what to do about it.
-  const adminRes = await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
-  if (!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
+  const adminRes = contractHistory?null:await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
+  if (!contractHistory&&!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
 
   // ── Cross-company coherence, checked BEFORE the flip so a refusal leaves nothing half-done ──
   // The state the movement starts from: the OPEN assignment version and the OPEN administrative reporting
@@ -2926,7 +2963,7 @@ export async function transferEmploymentCompanyTx(
    * It runs AFTER the flip so the delegate's own cross-company guards resolve against the DESTINATION —
    * the same ordering, and the same reason, as the note on the flip above.
    */
-  await setEmploymentAssignment(
+  await (contractHistory?replayContractPostingAssignmentTx:setEmploymentAssignment)(
     ctx,
     {
       employmentId: p.employmentId,
@@ -3016,6 +3053,7 @@ export type EmploymentInfoInput = {
    *  deliberate (one date, one home: the employment review keeps watching what HR maintains).
    *  undefined = untouched, ''/null = clear, exactly like every other field on this input. */
   contractStartDate?: string | null;
+  contractNumber?: number | string | null;
   contractEndDate?: string | null;
   contractRemark?: string | null;
   /** 2260a06b — the internship end date (pre-existing 0110 review column). Shown and maintained for an Intern
@@ -3229,7 +3267,12 @@ export async function withEndDateRestoreTx<T>(tx: Tx, run: () => Promise<T>): Pr
   }
 }
 
-export async function setEmploymentInfo(
+export function setEmploymentInfo(ctx:SessionContext,p:EmploymentInfoInput,outerTx?:Tx){return setEmploymentInfoBody(ctx,p,outerTx);}
+export async function replayContractPostingInfoTx(ctx:SessionContext,p:EmploymentInfoInput,tx:Tx){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return setEmploymentInfoBody(ctx,p,tx,true);
+}
+async function setEmploymentInfoBody(
   ctx: SessionContext,
   p: EmploymentInfoInput,
   /** c5ac75fa — optional caller transaction (the same run(outerTx) pattern setEmploymentGrade and
@@ -3238,11 +3281,12 @@ export async function setEmploymentInfo(
    *  all three must commit or roll back together — a half-save would leave the dated assignment history and
    *  the flat columns disagreeing with each other. */
   outerTx?: Tx,
+  contractHistory=false,
 ) {
   p=structuredClone(p);
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(outerTx,p)) {
+  if (!contractHistory&&!(roles.includes('super_admin') || roles.includes('hr_admin'))&&!probationDateAuthorityTx(outerTx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(outerTx,p)&&!contractPostingInfoAuthorityTx(outerTx,p as unknown as Record<string,unknown>)) {
     throw new Error('Only an admin can edit employment information.');
   }
 
@@ -3342,6 +3386,12 @@ export async function setEmploymentInfo(
     set[f] = v || null;
   }
 
+  if(p.contractNumber!==undefined){
+    const value=p.contractNumber;
+    if(value==null||value==='')set.contractNumber=null;
+    else {const number=Number(value);if(!Number.isSafeInteger(number)||number<1||number>100000)throw new Error('Contract number must be a whole number between 1 and 100,000.');set.contractNumber=number;}
+  }
+
   if (Object.keys(set).length === 0) throw new Error('Nothing to change.');
 
   const run = async (tx: Tx) => {
@@ -3352,7 +3402,8 @@ export async function setEmploymentInfo(
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     if ('resignationDate' in set || 'lastWorkingDate' in set) await lockAccessAdministratorSetTx(tx, ctx.tenantId);
     await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
-    if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(contractHistory)await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+    else if(!probationDateAuthorityTx(tx,p as unknown as Record<string,unknown>)&&!contractDateAuthorityTx(tx,p)&&!contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>))await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
     // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
     // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
@@ -3391,6 +3442,7 @@ export async function setEmploymentInfo(
         // 8590615a — the contract group, in the before projection so the change-history diff carries all
         // three (the payload's `before`/`after` are built from exactly this select).
         contractStartDate: employment.contractStartDate,
+        contractNumber: employment.contractNumber,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
         internshipEndDate: employment.internshipEndDate,
@@ -3409,6 +3461,11 @@ export async function setEmploymentInfo(
       .where(eq(employment.id, p.employmentId))
       .limit(1);
     if (!before) throw new Error('Employment not found');
+    if('contractNumber' in set&&set.contractNumber!==before.contractNumber&&!contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>)){
+      const [lock]=await tx.execute<{locked:boolean}>(sql`select app.contract_shared_number_locked(${p.employmentId}::uuid) as locked`);
+      if(lock?.locked)throw new Error('A contract decision is in progress. Update the contract number through its approved Personnel posting.');
+    }
+
 
     const [labelEmployment]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1);
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
@@ -3513,7 +3570,7 @@ export async function setEmploymentInfo(
       const contractDatesMove =
         ('contractStartDate' in set && (set.contractStartDate ?? null) !== (before.contractStartDate ?? null)) ||
         ('contractEndDate' in set && (set.contractEndDate ?? null) !== (before.contractEndDate ?? null));
-      if (contractDatesMove && !contractDateAuthorityTx(tx, p)) {
+      if (contractDatesMove && !contractDateAuthorityTx(tx, p) && !contractPostingInfoAuthorityTx(tx,p as unknown as Record<string,unknown>)) {
         const [open] = await tx.execute<{ open: boolean }>(
           sql`select app.contract_renewal_open(${p.employmentId}::uuid) as open`,
         );
@@ -3783,13 +3840,19 @@ export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,
  * NOTE what this function deliberately does NOT touch: Pay Mode (payroll_policy.policy_type) and Payment Term
  * (PayrollPolicyConfig.frequency). Those belong to the assigned policy and stay there — see ADR-0064.
  */
-export async function setEmploymentPaymentMethod(
+export function setEmploymentPaymentMethod(ctx:SessionContext,p:Parameters<typeof setEmploymentPaymentMethodBody>[1],outerTx?:Tx){return setEmploymentPaymentMethodBody(ctx,p,outerTx);}
+export async function replayContractPostingPaymentMethodTx(ctx:SessionContext,p:Parameters<typeof setEmploymentPaymentMethodBody>[1],tx:Tx){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return setEmploymentPaymentMethodBody(ctx,p,tx,true);
+}
+async function setEmploymentPaymentMethodBody(
   ctx: SessionContext,
   p: { employmentId: string; paymentMethod: PaymentMethod | null; effectiveDate?:string; movement?:MovementTag; reason?:string|null },
   outerTx?:Tx,
+  contractHistory=false,
 ) {
   const roles = ctx.roles ?? [];
-  if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
+  if (!contractHistory&&!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
     throw new Error('Only an admin can change the payment method.');
   }
   const next = p.paymentMethod;
@@ -3797,7 +3860,8 @@ export async function setEmploymentPaymentMethod(
     throw new Error('Payment method is invalid.');
   }
   const run=async(tx:Tx)=>{
-    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    if(contractHistory)await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+    else await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
     await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
@@ -3845,9 +3909,15 @@ export async function setEmploymentPaymentMethod(
 /** Canonical compensating deletion of a Movement method decision. Removing its live revision allows
  * the actual dated predecessor (including a corrected hire method) to govern again. Writing a new
  * same-date copy of the old value would invent a boundary and block subsequent inherited corrections. */
-export async function reverseEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;revisionId:string;previousRevisionId:string|null;eventId:string;reason:string|null}){
+export function reverseEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof reverseEmploymentPaymentMethodBodyTx>[2]){return reverseEmploymentPaymentMethodBodyTx(tx,ctx,p);}
+export async function reverseContractPostingPaymentMethodTx(tx:Tx,ctx:SessionContext,p:Parameters<typeof reverseEmploymentPaymentMethodBodyTx>[2]){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return reverseEmploymentPaymentMethodBodyTx(tx,ctx,p,true);
+}
+async function reverseEmploymentPaymentMethodBodyTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;revisionId:string;previousRevisionId:string|null;eventId:string;reason:string|null},contractHistory=false){
  if(!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId))throw new Error('Payment-method reversal requires the Movement correction owner.');
- await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+ if(contractHistory)await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ else await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
  await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
  await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
@@ -3979,12 +4049,22 @@ export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:Sessio
     if(row.validFrom<from)parts.push({validFrom:row.validFrom,validTo:from,businessUnitId:row.businessUnitId});
     parts.push({validFrom:from,validTo:to,businessUnitId:tags.businessUnitId});
     if(to&&(!row.validTo||to<row.validTo))parts.push({validFrom:to,validTo:row.validTo,businessUnitId:row.businessUnitId});
+    const replacements:ReturnType<typeof assignmentProjectionImage>[]=[];
     for(const part of parts){
-      const [next]=await tx.insert(assignment).values({tenantId:row.tenantId,employmentId:row.employmentId,departmentId:row.departmentId,positionId:row.positionId,costCenterId:row.costCenterId,locationId:row.locationId,companyId:row.companyId,employmentType:row.employmentType,...part}).returning({id:assignment.id});
+      const [next]=await tx.insert(assignment).values({tenantId:row.tenantId,employmentId:row.employmentId,departmentId:row.departmentId,positionId:row.positionId,costCenterId:row.costCenterId,locationId:row.locationId,companyId:row.companyId,employmentType:row.employmentType,...part}).returning();
       assignmentIds.push(next.id);
+      replacements.push(assignmentProjectionImage(next));
     }
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId,asOf:from,trigger:p.trigger});
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assignment',aggregateId:row.id,eventType:'employment.organisation.projected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{sourceAssignmentId:row.id,effectiveOn:from,validTo:to,beforeBusinessUnitId:row.businessUnitId,businessUnitId:tags.businessUnitId,mappingVersionId:tags.mappingVersionId,trigger:p.trigger}});
+    const recordedTags=await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId,asOf:from,trigger:p.trigger});
+    // Passive provenance only. A missing/ambiguous older receipt never changes publication authority;
+    // that projection simply cannot later authorize automatic movement replay.
+    const mappingReceipts=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(
+     eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,p.employmentId),eq(domainEvent.aggregateId,p.employmentId),eq(domainEvent.eventType,'employment.organisation-tagged'),
+     sql`${domainEvent.payload}->>'companyId'=${companyId} and ${domainEvent.payload}->>'effectiveOn'=${from}
+      and ${domainEvent.payload}->>'mappingVersionId'=${recordedTags.mappingVersionId}
+      and ${domainEvent.payload}->'after'=${JSON.stringify(recordedTags)}::text::jsonb`)).limit(2);
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assignment',aggregateId:row.id,eventType:'employment.organisation.projected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{sourceAssignmentId:row.id,effectiveOn:from,validTo:to,beforeBusinessUnitId:row.businessUnitId,businessUnitId:tags.businessUnitId,mappingVersionId:tags.mappingVersionId,trigger:p.trigger,
+     projection:{version:1,companyId,source:assignmentProjectionImage(row),replacements,mappingTags:recordedTags,mappingReceiptId:mappingReceipts.length===1?mappingReceipts[0].id:null}}});
     changed++;
   }
   return {changed,assignmentIds};

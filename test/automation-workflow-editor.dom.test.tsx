@@ -3,6 +3,7 @@ import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {PROBATION_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/probation';
+import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import type {AutomationWorkflow} from '../lib/automation/workflow';
 import {WorkflowEditor,type WorkflowEditorReferences} from '../app/automation/workflows/workflow-editor';
 import {WorkflowsWorkspace} from '../app/automation/workflows/workflows-workspace';
@@ -10,7 +11,7 @@ import {WorkflowsWorkspace} from '../app/automation/workflows/workflows-workspac
 /** The shared HR Automation workflow editor (prototype WorkflowsPage; handoff A1). Server actions are mocked; the store and
  * its database refusals are covered by test/automation-store-db.test.ts and test/automation-email-store-db.test.ts. */
 const m=vi.hoisted(()=>({save:vi.fn(),dryRun:vi.fn(),cases:vi.fn(),people:vi.fn(),install:vi.fn(),refresh:vi.fn()}));
-vi.mock('../app/automation/actions',()=>({saveWorkflowAction:m.save,dryRunWorkflowAction:m.dryRun,searchProbationCasesAction:m.cases,searchPeopleAction:m.people,installProbationDefaultsAction:m.install}));
+vi.mock('../app/automation/actions',()=>({saveWorkflowAction:m.save,dryRunWorkflowAction:m.dryRun,searchProbationCasesAction:m.cases,dryRunContractWorkflowAction:m.dryRun,searchContractCasesAction:m.cases,searchPeopleAction:m.people,installProbationDefaultsAction:m.install}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:m.refresh,push:vi.fn()})}));
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch:_prefetch,...props}:Record<string,unknown>)=>React.createElement('a',props,props.children as React.ReactNode)};});
 
@@ -31,6 +32,44 @@ const options=(select:HTMLElement)=>within(select).getAllByRole('option').map(op
 beforeEach(()=>{vi.clearAllMocks();m.save.mockResolvedValue({ok:true,result:{revision:2,problems:[],warnings:[]}});});
 
 describe('shared workflow editor',()=>{
+ it('uses the Contract reminder bound and blocks going live above365 days',()=>{
+  const initial=workflow({module:'contract_staff',required:false,trigger:{event:'beforeContractEnd',days:365,workdays:false,repeat:false},conditions:[],steps:[{id:'notice',type:'notify',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{subject:'Contract reminder',body:'Review the current period.'}}]});
+  render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor catalogue={CONTRACT_AUTOMATION_CATALOGUE} initial={initial} revision={1} refs={refs} onClose={vi.fn()}/></NextIntlClientProvider>);
+  const days=screen.getByRole('spinbutton',{name:'Days before the contract end date'});expect(days).toHaveAttribute('max','365');
+  expect(screen.getByRole('button',{name:'Make it live'})).toBeEnabled();
+  fireEvent.change(days,{target:{value:'366'}});
+  expect(within(screen.getByRole('region',{name:'Problems'})).getByText('Enter between 0 and 365 days.')).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:'Make it live'})).toBeDisabled();
+ });
+ it('includes the returned Contract warning in the go-live confirmation and retains the warning panel',async()=>{
+  const warning='This decision workflow never reaches Personnel Management or Offboarding.';
+  m.save.mockResolvedValue({ok:true,result:{revision:2,problems:[],warnings:[warning]}});
+  const initial=workflow({module:'contract_staff',name:'Contract follow-up',required:false,trigger:{event:'decisionSubmitted',days:0,workdays:false,repeat:false},conditions:[],steps:[{id:'notice',type:'notify',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{subject:'Decision received',body:'Review the current case.'}}]});
+  render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor catalogue={CONTRACT_AUTOMATION_CATALOGUE} initial={initial} revision={1} refs={refs} onClose={vi.fn()}/></NextIntlClientProvider>);
+  expect(within(screen.getByRole('region',{name:'Notes'})).getByText(warning)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Make it live'}));
+  expect(await screen.findByText('“Contract follow-up” is live. Notes: '+warning)).toHaveAttribute('role','status');
+  expect(within(screen.getByRole('region',{name:'Notes'})).getByText(warning)).toBeInTheDocument();
+  expect(m.save.mock.calls[0][0]).toMatchObject({workflow:{status:'live'}});
+ });
+ it('serializes autosave and retains a later edit made while the first request is in flight',async()=>{
+  let resolve!:(value:unknown)=>void;m.save.mockImplementationOnce(()=>new Promise(done=>{resolve=done;})).mockResolvedValue({ok:true,result:{revision:3,problems:[],warnings:[]}});
+  show(workflow());const input=screen.getByRole('textbox',{name:'Workflow name'});
+  fireEvent.change(input,{target:{value:'First edit'}});await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1),{timeout:2000});
+  fireEvent.change(input,{target:{value:'Later edit'}});expect(input).toHaveValue('Later edit');expect(m.save).toHaveBeenCalledTimes(1);
+  resolve({ok:true,result:{revision:2,problems:[],warnings:[]}});
+  await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(2),{timeout:2500});expect(m.save.mock.calls[1][0]).toMatchObject({expectedRevision:2,workflow:{name:'Later edit'}});
+ });
+ it('retains unsaved entries after a refused autosave and offers explicit retry without repeated requests',async()=>{
+  m.save.mockResolvedValueOnce({ok:false,code:'conflict',detail:'Reload before saving.'});show(workflow());
+  fireEvent.change(screen.getByRole('textbox',{name:'Workflow name'}),{target:{value:'Retained edit'}});
+  expect(await screen.findByRole('alert',{}, {timeout:2000})).toHaveTextContent('Reload before saving.');expect(screen.getByRole('textbox',{name:'Workflow name'})).toHaveValue('Retained edit');
+  expect(m.save).toHaveBeenCalledTimes(1);fireEvent.click(screen.getByRole('button',{name:'Retry saving'}));await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(2));
+ });
+ it('deletes immediately through the retained-version owner without asking for a replacement',async()=>{
+  const confirm=vi.spyOn(window,'confirm');show(workflow());fireEvent.click(screen.getByRole('button',{name:'Delete workflow'}));await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,workflow:{status:'retired'}});expect(confirm).not.toHaveBeenCalled();confirm.mockRestore();
+ });
+
  it('offers only the condition fields the chosen trigger can supply',()=>{
   show(workflow({trigger:{event:'caseOpened',days:0,workdays:false,repeat:false},conditions:[]}));
   fireEvent.click(screen.getByRole('button',{name:'Add condition'}));
@@ -45,6 +84,7 @@ describe('shared workflow editor',()=>{
   fireEvent.change(screen.getByRole('combobox',{name:'What starts it'}),{target:{value:'dueBeforeReview'}});
   expect(screen.getByRole('checkbox',{name:'Count working days (Mon–Fri)'})).toBeInTheDocument();
   expect(screen.getByRole('spinbutton',{name:'Days before a review due date'})).toHaveValue(1);
+  expect(screen.getByRole('spinbutton',{name:'Days before a review due date'})).toHaveAttribute('max','3660');
  });
 
  it('keeps a condition the new trigger cannot supply visible and reports it as a problem',()=>{
@@ -64,9 +104,8 @@ describe('shared workflow editor',()=>{
   fireEvent.click(screen.getByRole('checkbox',{name:'Extend'}));
   fireEvent.click(screen.getByRole('button',{name:'Done'}));
   expect(screen.getByRole('button',{name:'Condition value for Outcome'})).toHaveTextContent('Confirm, Extend, Non-confirmation');
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
-  expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Edited in the workflow builder',workflow:{status:'paused',conditions:[{field:'outcome',op:'is',values:['Confirm','Extend','Non-confirmation']}]}});
+  expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Automatically saved workflow changes',workflow:{status:'paused',conditions:[{field:'outcome',op:'is',values:['Confirm','Extend','Non-confirmation']}]}});
  });
 
  it('stores business group, company and department conditions as ids and shows their names; a value saved as a name becomes its id',async()=>{
@@ -76,7 +115,6 @@ describe('shared workflow editor',()=>{
   const fields=screen.getAllByRole('combobox',{name:'Condition field'});
   fireEvent.change(fields[fields.length-1],{target:{value:'department'}});
   expect(screen.getByRole('button',{name:'Condition value for Department'})).toHaveTextContent('Finance');
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
   expect(m.save.mock.calls[0][0].workflow.conditions).toEqual([
    {field:'outcome',op:'is',values:['Confirm']},

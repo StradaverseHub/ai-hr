@@ -17,6 +17,9 @@ import {AUTOMATION_MODULES,type AutomationModule} from '../lib/automation/catalo
 import {automationMergeWarnings,automationWorkflowProblems,type AutomationReferences,type AutomationWorkflow} from '../lib/automation/workflow';
 import {routingProblems,type Routing,type RoutingRow} from '../lib/automation/routing';
 import {probationStepParamProblems} from '../lib/automation/email';
+import {offboardingAdditionalRecipients,offboardingSettings,offboardingStepParamProblems} from '../lib/automation/offboarding';
+import type {Config} from '../lib/lifecycle-v9-model';
+import {contractStepParamProblems,contractWorkflowRecipients,contractWorkflowWarnings} from '../lib/contract-automation';
 
 export class AutomationError extends Error {
   constructor(public readonly code: 'forbidden' | 'invalid' | 'conflict' | 'not_found', message: string, public readonly problems: readonly string[] = []) { super(message); this.name = 'AutomationError'; }
@@ -80,12 +83,14 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
   const { workflow } = input, catalogue = automationCatalogue(workflow.module);
   if (!catalogue) throw new AutomationError('invalid', 'This module does not use the shared builders yet.');
   if (!UUID.test(workflow.id)) throw new AutomationError('invalid', 'Unknown workflow.');
-  const people = [...new Set([...workflow.steps.flatMap(s => [...s.to, ...s.cc])].flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
+  const allRecipients = workflow.module === 'contract_staff' ? contractWorkflowRecipients(workflow) : [...workflow.steps.flatMap(s => [...s.to, ...s.cc]),...offboardingAdditionalRecipients(workflow)];
+  const people = [...new Set(allRecipients.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${workflow.module}) as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage(${workflow.module},'workflows') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
-    const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, await references(tx, people));
+    const refs = await references(tx, people);
+    const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, refs);
     // Module step settings (which email template, letter, posting event) are checked here too, in the same
     // transaction, so every caller is held to "no Live with problems", not only the builder screen.
     if (workflow.module === 'probation' && workflow.status !== 'retired') {
@@ -94,11 +99,30 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
         where tenant_id = app.current_tenant_id() and module = 'probation' order by template_id, revision desc limit 500`);
       problems.push(...probationStepParamProblems(workflow, { emailTemplates: templates, letterTemplateIds: null }));
     }
+    if(workflow.module==='off'&&workflow.status!=='retired'){
+      const [row]=await tx.execute<{data:Config}>(sql`select data from lc_v9_config where tenant_id=app.current_tenant_id()`);
+      const config=row?.data;
+      const templates=config?.templates.filter(t=>t.module==='off')??[];
+      const emails=config?.emails.filter(t=>t.module==='off')??[];
+      const live=await tx.execute<{definition:AutomationWorkflow}>(sql`select definition from (select distinct on(workflow_id) definition,status from automation_workflow_version where tenant_id=app.current_tenant_id() and module='off' and workflow_id<>${workflow.id}::uuid order by workflow_id,revision desc) latest where status='live' limit 500`);
+      const generators=[...live.map(w=>w.definition),...(workflow.status==='live'?[workflow]:[])];
+      const generatedLetterIds=generators.flatMap(w=>w.steps.filter(step=>step.type==='generateDocument').flatMap(step=>typeof step.params.letterTemplateId==='string'?[step.params.letterTemplateId]:[]));
+      problems.push(...offboardingStepParamProblems(workflow,{
+        emailTemplates:emails.map(email=>({id:email.id,name:email.name,active:email.active,retired:false,attachments:email.attachments})),
+        letterTemplateIds:templates.map(t=>t.id),
+        letterTemplates:templates.map(t=>{const version=t.versions.find(v=>v.version===t.currentVersion&&v.state==='published')??t.versions.filter(v=>v.state==='published').sort((a,b)=>b.version-a.version)[0];return {id:t.id,retired:t.retired,published:!!version,routing:version?.routing};}),
+        postingApproverGroupId:config?offboardingSettings(config).postingApproverGroupId:null,references:refs,generatedLetterIds,
+      }));
+    }
+    if (workflow.module === 'contract_staff' && workflow.status !== 'retired') {
+      const [choices]=await tx.execute<{value:{emails:{id:string;active:boolean;retired:boolean}[];documents:{id:string}[]}}>(sql`select app.automation_template_choices('contract_staff') as value`);
+      problems.push(...contractStepParamProblems(workflow,{emailTemplates:choices.value.emails,letterTemplateIds:choices.value.documents.map(d=>d.id)},refs));
+    }
     if (workflow.status === 'live' && problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
     const { status, required, ...definition } = workflow;
     try {
       const [row] = await tx.execute<{ revision: number }>(sql`select app.automation_workflow_save(${workflow.id}::uuid, ${workflow.module}, ${status}, ${required}, ${JSON.stringify(definition)}::jsonb, ${input.expectedRevision}, ${input.reason}) as revision`);
-      return { revision: row.revision, problems, warnings: automationMergeWarnings(workflow, catalogue) };
+      return { revision: row.revision, problems, warnings: [...automationMergeWarnings(workflow, catalogue),...contractWorkflowWarnings(workflow)] };
     } catch (e) { mapDatabaseError(e); }
   });
 }
@@ -117,7 +141,7 @@ export async function listAutomationRoutings(ctx: SessionContext): Promise<Store
 export async function saveAutomationRouting(ctx: SessionContext, input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }): Promise<{ revision: number }> {
   if (!UUID.test(input.routing.id)) throw new AutomationError('invalid', 'Unknown routing.');
   return withScopedLifecycleTenant(ctx, async tx => {
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure_any() as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage_any('groups') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     if (!input.retired) {
       const groups = new Set((await tx.execute<{ id: string }>(sql`select group_id as id from app.automation_assignment_groups()`)).map(r => r.id));

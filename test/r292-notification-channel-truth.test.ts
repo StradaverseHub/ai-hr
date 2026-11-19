@@ -17,6 +17,7 @@ describe('r292 — transport and product copy describe the same conditional deli
    'lib/demo-smtp-probe.ts: nodemailer/lib/smtp-connection',
    'lib/internal-auth/smtp.ts: nodemailer',
    'test/demo-smtp-probe.test.ts: nodemailer/lib/smtp-connection',
+   'test/lifecycle-v9-image-mime.test.ts: nodemailer',
    'test/mail-recipient-parser-security.test.ts: nodemailer',
    'test/mail-recipient-parser-security.test.ts: nodemailer/lib/addressparser',
   ]);
@@ -27,6 +28,15 @@ describe('r292 — transport and product copy describe the same conditional deli
   expect(transports.length).toBeGreaterThan(0);
   expect(transports).toHaveLength([...parserTest.matchAll(/nodemailer\.createTransport\(/g)].length);
   for(const transport of transports)expect(transport[1].trim()).toBe('{ jsonTransport: true }');
+  // The image regression uses the real MIME serializer in stream mode, never a relay.
+  // Pin its only real factory call instead of excluding a test from the closed transport inventory.
+  const imageTest=read('test/lifecycle-v9-image-mime.test.ts');
+  expect(imageTest).toMatch(/import type \{SendMailOptions\} from ['"]nodemailer['"]/);
+  expect(imageTest).toContain("vi.mock('nodemailer',async original=>");
+  const imageTransports=[...imageTest.matchAll(/actual\.default\.createTransport\(([^;]+)\);/g)];
+  expect(imageTransports).toHaveLength(1);
+  expect(imageTransports).toHaveLength([...imageTest.matchAll(/\.createTransport\(/g)].length);
+  expect(imageTransports[0][1].trim()).toBe("{streamTransport:true,buffer:true,newline:'unix'}");
   expect(read('test/demo-smtp-probe.test.ts')).toMatch(/import type SMTPConnection from ['"]nodemailer\/lib\/smtp-connection['"]/);
   for(const f of ['lib/demo-smtp-connection.ts','lib/demo-smtp-probe.ts']){
    const src=read(f);expect(src).toContain("import 'server-only'");

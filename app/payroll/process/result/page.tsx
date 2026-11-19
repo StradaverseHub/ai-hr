@@ -76,7 +76,9 @@ export default async function PayrollProcessResultPage({
   // Organization Module (361e3b15) — an INVALID_CYCLE row names the company AND the missing cycle type (not a
   // bare "no cycle"), reusing the same friendly run-type labels the wizard uses. Other reasons stay as-is.
   const reasonDetail = (c: (typeof result.perCompany)[number]): string =>
-    c.reason === 'INVALID_CYCLE' && c.missingCycleRunType
+    c.reason === 'TRANSACTION_AFTER_LEAVING' && c.transactionFailure
+      ? t('transactionAfterLeaving', c.transactionFailure)
+      : c.reason === 'INVALID_CYCLE' && c.missingCycleRunType
       ? t('payrollCycleMissingForCompanyType', { company: c.companyName, runType: t(`runType.${c.missingCycleRunType}`) })
       : t(`reason.${c.reason as RunGroupReasonCode}`);
 

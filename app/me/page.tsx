@@ -1,3 +1,5 @@
+import {resignationEmployeeView} from '@/packs/lifecycle/service';
+import {EmployeeResignation} from '@/components/resignation/employee';
 import {profileVisibilityFingerprint} from '@/lib/profile-policy-fingerprint';
 import {profileHiddenTabs,isProfileVisibilityPolicyValue,profileSectionPolicyKey} from '@/lib/profile-edit-policy-value';
 import {ownPhotoSubmissionAllowed} from '@/core/person-photo';
@@ -91,13 +93,14 @@ export default async function MePage({
   const taxReliefEmploymentIds = payrollOn ? await myTaxReliefEmploymentIds(s) : [];
   const noTaxRelief: TaxReliefResult = { year: Number(todayInKualaLumpur().slice(0, 4)), rows: [], ytd: 0 };
 
-  const [payslips, taxRelief, profileRequests, resignation, myLoans] = await Promise.all([
+  const [payslips, taxRelief, profileRequests, resignation, myLoans, resignationJourney] = await Promise.all([
     payrollOn ? myPayslips(s, employments.map((e) => e.employmentId)) : [],
     payrollOn ? myTaxRelief(s, taxReliefEmploymentIds) : noTaxRelief,
     myProfileChangeRequests(s,50,presentation),
     tabVisible('Documents')?myResignation(s, employmentId):null,
 
     payrollOn ? listLoansForEmployment(s, employmentId) : [],
+    tabVisible('Documents')&&(isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length)?resignationEmployeeView(s,employmentId):null,
   ]);
 
   const taxReliefByCompany = taxRelief.rows.reduce<Record<string, typeof taxRelief.rows>>((acc, r) => {
@@ -434,7 +437,7 @@ export default async function MePage({
       <MeReviewCard s={s} employmentId={employmentId} />
 
       {/* Resignation (ADR-0042, #29) — employee-initiated, HR-approved. */}
-      <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
+      {resignationJourney&&(!resignation||resignationJourney.cases.length>0||resignation.status==='rejected'||resignation.status==='withdrawn') ? <EmployeeResignation employmentId={employmentId} initial={resignationJourney}/> : <Card className={`p-5 ${MONO_FLUSH} monolith:p-0`}>
         <SectionHeader title={t('resignationTitle')} className={MONO_ME_SECTION_HEAD} />
         <p className="px-1 pt-2 text-xs text-muted-foreground">{t('resignationDescription')}</p>
         {resignation?.status === 'pending' ? (
@@ -484,7 +487,7 @@ export default async function MePage({
             </Button>
           </form>
         )}
-      </Card>
+      </Card>}
     </>
   );
 

@@ -6,7 +6,7 @@
  * catalogue (`./catalogue`); step-specific settings (`params`) are checked by the module that executes them. Pure and
  * dependency-free: storage, authorization and execution stay with their owners.
  */
-import {automationConditionProblems,evaluateAutomationConditions,type AutomationCondition,type AutomationConditionResult,type AutomationFactValue} from './conditions';
+import {automationConditionProblems,evaluateAutomationConditions,type AutomationCondition,type AutomationConditionResult,type AutomationFactValue,type AutomationFactAliases} from './conditions';
 import {conditionFieldsForTrigger,mergeFieldsForTrigger,type AutomationModule,type AutomationModuleCatalogue} from './catalogue';
 
 export type AutomationRecipient =
@@ -31,6 +31,8 @@ export const MAX_WORKFLOW_STEPS = 40;
 export const MAX_WORKFLOW_CONDITIONS = 20;
 export const MAX_STEP_RECIPIENTS = 20;
 export const MAX_TRIGGER_DAYS = 3660;
+/** Contract's authored reminder window; other modules retain the shared engine's established range. */
+export function automationTriggerDayLimit(module:AutomationModule):number{return module==='contract_staff'?365:MAX_TRIGGER_DAYS;}
 const MERGE_TOKEN = /\{\{\s*([^{}\s]+)\s*\}\}/g;
 
 function recipientProblems(where: string, list: readonly AutomationRecipient[], catalogue: AutomationModuleCatalogue, refs: AutomationReferences): string[] {
@@ -70,7 +72,7 @@ export function automationWorkflowProblems(workflow: AutomationWorkflow, catalog
   if (workflow.name.length > 200) problems.push('Use a name of at most 200 characters.');
   const trigger = catalogue.triggers.find(t => t.id === workflow.trigger.event);
   if (!trigger) problems.push('Choose what starts this workflow.');
-  else if (trigger.dated) { if (!Number.isInteger(workflow.trigger.days) || workflow.trigger.days < 0 || workflow.trigger.days > MAX_TRIGGER_DAYS) problems.push(`Enter between 0 and ${MAX_TRIGGER_DAYS} days.`); }
+  else if (trigger.dated) { const limit=automationTriggerDayLimit(workflow.module);if (!Number.isInteger(workflow.trigger.days) || workflow.trigger.days < 0 || workflow.trigger.days > limit) problems.push(`Enter between 0 and ${limit} days.`); }
   else if (workflow.trigger.days !== 0 || workflow.trigger.workdays || workflow.trigger.repeat) problems.push('Days, working days and repeat apply only to date-based triggers.');
   if (!catalogue.skipWhen.some(s => s.id === workflow.skipWhen)) problems.push('Choose when to skip.');
   problems.push(...conditionListProblems('Condition', workflow.conditions, workflow.trigger.event, catalogue));
@@ -131,6 +133,8 @@ export type AutomationDryRun = {
 export type AutomationDryRunContext = {
   /** Case facts for the test case, already narrowed to what the viewer may see. */
   read: (field: string) => AutomationFactValue;
+  /** Module-owned alternate fact identities; absent keeps existing scalar behavior. */
+  aliases?:AutomationFactAliases;
   /** The anchor date a dated trigger counts from (start date, review due date…), or null when the case has none. */
   anchor: (anchor: string) => string | null;
   /** The skip-when option that applies to this case right now, or null when none applies. */
@@ -148,13 +152,13 @@ export function dryRunAutomationWorkflow(workflow: AutomationWorkflow, catalogue
     const anchor = context.anchor(trigger.dated.anchor);
     if (anchor) runDate = addAutomationDays(anchor, trigger.dated.direction === 'after' ? workflow.trigger.days : -workflow.trigger.days, workflow.trigger.workdays);
   }
-  const top = evaluateAutomationConditions(workflow.conditions, context.read);
+  const top = evaluateAutomationConditions(workflow.conditions, context.read,context.aliases);
   const skip = context.skipReason(workflow.skipWhen);
   const reason = !trigger ? 'No trigger is chosen.' : trigger.dated && !runDate ? 'This case has no date to count from.' : skip ? `Skipped: ${skip}` : !top.ok ? 'The conditions do not match this case.' : workflow.status !== 'live' ? 'It would match, but the workflow is not live.' : 'It would run for this case.';
   const wouldRun = !!trigger && !(trigger.dated && !runDate) && !skip && top.ok && workflow.status === 'live';
   const names = (list: readonly AutomationRecipient[]) => { const out: string[] = [], missing: string[] = []; for (const r of list) { const x = context.resolve(r); out.push(...x.names); if (x.missing) missing.push(x.missing); } return { out: [...new Set(out)], missing }; };
   const steps = workflow.steps.map((step, index) => {
-    const own = evaluateAutomationConditions(step.conditions, context.read), to = names(step.to), cc = names(step.cc);
+    const own = evaluateAutomationConditions(step.conditions, context.read,context.aliases), to = names(step.to), cc = names(step.cc);
     return { index: index + 1, id: step.id, type: step.type, runs: own.ok, conditions: own.results, to: to.out, cc: cc.out, missing: [...to.missing, ...cc.missing] };
   });
   return { wouldRun, reason, runDate, repeats, conditions: top.results, steps, sends: false };

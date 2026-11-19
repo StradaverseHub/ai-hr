@@ -13,6 +13,7 @@ import { markAllNotificationsReadAction, markNotificationReadAction } from '@/ap
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
+export type NotificationTaskQueueLink={href:string;label:string;count:number};
 export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding'|'probation'|'contract_staff'|'lifecycle_email';createdAt?:undefined;actionLabel?:string});
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
@@ -63,6 +64,7 @@ export function NotificationCenter({
   items,
   tasks:baseTasks = [],
   taskNotifications = [],
+  taskQueueLinks = [],
   taskCount:baseTaskCount = 0,
   claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
@@ -77,6 +79,8 @@ export function NotificationCenter({
   tasks?: NotificationTaskItem[];
   /** Unread severity-'action' notifications — "complete this" items outside the approvals queue. */
   taskNotifications?: NotificationRow[];
+  /** Full native owner queues, with exact counts independent of their bounded bell previews. */
+  taskQueueLinks?:NotificationTaskQueueLink[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
   /** Exact claim total when the shell supplies a bounded preview. */
@@ -407,6 +411,8 @@ export function NotificationCenter({
                   {taskEntries.map((e) => (e.type === 'queue' ? taskQueueRow(e.item) : notifRow(e.item)))}
                 </ul>
               ))}
+
+            {tab==='tasks'&&taskQueueLinks.length>0&&<nav aria-label={t('ownerQueues')} className="border-t border-border px-4 py-3 space-y-2">{taskQueueLinks.map(queue=><Link key={queue.href} href={queue.href} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 text-xs font-medium text-primary hover:underline"><span>{queue.label}</span><span className="tabular-nums">{queue.count}</span></Link>)}</nav>}
 
             {tab==='tasks'&&tasksKnown&&availableClaimCount>shownClaimCount&&(
               <div className="border-t border-border px-4 py-2.5 text-center">

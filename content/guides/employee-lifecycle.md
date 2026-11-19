@@ -16,6 +16,29 @@ After equipment handover, the device acknowledgement becomes available only when
 
 IT and People staff have separate assignments for approval and fulfillment. Your ordinary supervisor may not be the designated approver.
 
-## Leaving or changing role
+## Submit and track a resignation
 
-Follow HR's offboarding instructions and return equipment through the recorded process. A completed checklist does not itself end employment or change your login access. Ask HR/IT to verify those steps separately.
+When Lifecycle is enabled for your company and your profile permits it, open [My Profile](/me), select **Documents**, and find **Resignation**.
+
+1. Review the notice period and earliest last working day shown.
+2. Enter your proposed last working day, an optional reason and any supporting documents.
+3. Submit and retain the case reference.
+4. Return to the same panel to track the decision, letters and next steps.
+
+A workflow setup warning does not discard your submission: the case remains recorded and flags HR repair. Follow the recorded case rather than submitting again. An existing open request prevents a duplicate submission.
+
+A retention letter stays private until it reaches you. Open its current version before signing, declining or sending it back. **Sign and accept offer** accepts the retention offer. **Send back** requires a reason and returns it for correction; you may need to act again after it is resent. Check any changed-value notice before signing again.
+
+Withdrawal is available only while the case permits it, in Decision or Retention. Once the offer reaches you, use the offered letter actions.
+
+## Complete your leaving steps
+
+Follow HR's offboarding instructions and return equipment through the recorded process. A completed equipment checklist alone does not end employment or revoke login access. Managed resignation termination requires completed clearance and approval of its Termination posting.
+
+If an older resignation panel shows an existing request, continue with that request and ask HR if its route is unclear.
+
+## Review or sign your assigned documents
+
+Open [My document reviews and signatures](/me/document-signing) with your own account and select a document listed for you. The saved route determines who reviews, approves, signs or acknowledges each stage. The native owner checks your current account, real Person link and assigned participation; being a participant does not give Full case view or unrelated Personnel answers.
+
+Read the document and use only the action currently offered. Enter answers only where your stage permits them. A signature or acknowledgement is your explicit decision on that document. If it is sent back, review the updated content before acting again. Ask HR to resolve an absent account/Person link or changed assignment; never use another person’s account. Chat guidance cannot sign, approve, acknowledge or supply Personnel answers.

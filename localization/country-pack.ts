@@ -392,6 +392,9 @@ export interface CountryPack {
   eaReporting?: readonly {code: string; section: string; destination: string; label: string; order: number; active: boolean; aliases?: readonly string[]}[];
   /** ISO alpha-2 country code (uppercase) — the registry key, matching `company.country`. */
   country: string;
+  /** Finite native document merge read port; private SQL dispatch follows this same country registry. */
+  documentMerge?: {keys:readonly string[]};
+
 
   /**
    * Rung 5b (D4) — the pack's client-safe vocabulary slice (see `CountryPackClient`). The SAME
@@ -853,3 +856,5 @@ export interface CountryPack {
     p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
   ) => Promise<Pcb2iiForm | null>;
 }
+
+export type {TaxBasisItemSetting} from './my/tax-basis-replay';

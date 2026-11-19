@@ -20,7 +20,7 @@ export const NAVIGATION_MODULES: readonly {id:NavigationModule;workspace:Navigat
   // ADR-0080 D10 — Recruitment sits with People operations: it hands a hire to Onboarding. One entry.
   {id:'recruitment',workspace:'ops',labelKey:'recruitment'},
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders (Workflows, Templates, Assignment groups)
-  // have their own section. The On/Off Boarding builder views are placed here too; their screens are unchanged.
+  // have one Configuration section. Legacy builder URLs and On/Off Boarding settings belong to that section.
   {id:'automation',workspace:'ops',labelKey:'moduleHrAutomation'},
   // D-P1-32 PT-X5 (APR-025 D4): Performance & Talent and Performance admin, one entry each. The former Talent and
   // Development modules held the journey's ?module= entry points, which retired into the area's tabs.
@@ -53,7 +53,7 @@ const attendanceMine = new Set(['/attendance/clock','/attendance/my-records','/a
 export function navigationPlacement(href:string):NavigationPlacement | undefined {
   const [path,query]=href.split('?'),params=new URLSearchParams(query);
   if(path==='/lifecycle/v9'&&['tasks','records'].includes(params.get('view')??''))return {area:'shared'};
-  if(path==='/lifecycle/v9'&&['templates','workflows','groups'].includes(params.get('view')??''))return modulePlacement('automation','config');
+  if(path==='/lifecycle/v9'&&['templates','workflows','groups','settings'].includes(params.get('view')??''))return modulePlacement('automation','config');
   if(path==='/automation'||path.startsWith('/automation/'))return modulePlacement('automation','config');
   if(path==='/me'&&params.get('tab')==='payroll'||path==='/me/tax-relief'||path.startsWith('/me/payslip')||path==='/me/ea'||path==='/me/tp3')return modulePlacement('payroll','mine');
   if(shared.has(path)||path==='/reports'&&!params.has('cat'))return {area:'shared'};
@@ -72,6 +72,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
+  if(path.startsWith('/lifecycle/offboarding/postings'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
   if(path==='/lifecycle')return modulePlacement('onboarding','mine');

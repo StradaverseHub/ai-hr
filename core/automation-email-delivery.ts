@@ -11,22 +11,40 @@
  * and receipt commits on its own and the SMTP call happens outside every transaction, under no business lock. A message
  * whose send started and whose receipt was lost becomes `uncertain` and is never re-sent automatically.
  */
+import type {AutomationRichEmailBody} from '../lib/automation-email-content';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
+import type {SqlExecutor} from '../db/sql-executor';
 import type {NotificationSweepConnection} from './notice-projection';
 import {isModuleEnabled} from './entitlements';
-import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult} from '../lib/automation-email-ipc';
+import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult,type AutomationEmailContent} from '../lib/automation-email-ipc';
+import {validateAutomationEmailContent} from '../lib/automation-email-content-policy';
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string}): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'|'off'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody;content?:AutomationEmailContent;rich?:{templateId:string;templateRevision:number;sourceProof:{payload:string;signature:string};html:string;documents?:import('../lib/automation-email-ipc').AutomationEmailDocumentRef[];caseFiles?:import('../lib/automation-email-ipc').AutomationEmailCaseFileRef[];assets:{id:string;kind:'file'|'image';contentHash:string}[]}},ctx?:SessionContext): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
-  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)}) as data`);
+  if(input.rich&&(input.module!=='probation'||input.richBody||input.content))throw new Error('Email content protocols cannot be combined.');
+  if(input.rich){
+    const [row]=await tx.execute<{data:AutomationEmailQueued}>(sql`select app.automation_rich_email_queue(${input.module},${input.subjectId}::uuid,${input.key},${array(input.to)}::uuid[],${array(input.cc)}::uuid[],${input.subject.slice(0,500)},${input.body.slice(0,20000)},${input.rich.templateId}::uuid,${JSON.stringify({version:2,html:input.rich.html,assets:input.rich.assets,documents:input.rich.documents??[],caseFiles:input.rich.caseFiles??[],templateRevision:input.rich.templateRevision,sourceProof:input.rich.sourceProof})}::jsonb) as data`);return row.data;
+  }
+  if (input.module === 'off') {
+    if(input.richBody)throw new Error('Resignation email uses its frozen native content.');
+    if (!ctx) throw new Error('Resignation email requires the authorized command context.');
+    if (input.content) validateAutomationEmailContent(input.content);
+    const {prepareResignationEmailTx}=await import('../packs/lifecycle/service');
+    // The off branch is called inside the real authorized command transaction; native custody is rechecked.
+    await prepareResignationEmailTx(tx as Tx,ctx,{caseId:input.subjectId,key:input.key,to:input.to,cc:input.cc,subject:input.subject,body:input.body,content:input.content});
+    const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.resignation_email_queue(${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject}, ${input.body}, ${JSON.stringify(input.content ?? null)}::jsonb) as data`);
+    return row.data;
+  }
+  if(input.content)throw new Error('Shared email uses its canonical document metadata.');
+  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::text::jsonb) as data`);
   return row.data;
 }
 
-type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null};
+type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null; purpose?:string | null};
 /** Durable transport worker for shared workflow email. Requires the owner connection (no signed-in user). */
 export async function deliverAutomationEmails(ctx: SessionContext, connection: NotificationSweepConnection, send: (request: AutomationDeliveryRequest) => Promise<AutomationDeliveryResult> = automationEmailIpc) {
   if (ctx.userId) throw new Error('Workflow email delivery requires the storage owner.');
@@ -41,10 +59,12 @@ export async function deliverAutomationEmails(ctx: SessionContext, connection: N
   for (const {id} of due) {
     try {
       const claim = await connection.withTenant(ctx, async tx => {
-        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,c.company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
+        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,d.payload->>'purpose' as purpose,coalesce(c.company_id,contract.company_id,j.company_id) as company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id left join contract_case contract on d.module='contract_staff' and contract.id=d.subject_id and contract.tenant_id=d.tenant_id left join resignation_journey j on d.module='off' and j.id=d.subject_id and j.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
         if (!job) return null;
-        // The module must still be in use for the case's company; otherwise the message is cancelled, never sent.
-        if (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id)) {
+        // A saved-template self-test has no employment case/company. Its native private target rechecks
+        // current module entitlement, template authority and actual sole author before start; purpose is
+        // only a dispatch distinction, never authorization to send. Case mail retains company admission.
+        if (job.purpose !== 'templateTest' && (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id))) {
           await tx.execute(sql`update automation_email_delivery set status='cancelled',error_code='notEligible',updated_at=now() where id=${id}::uuid`);
           return 'cancelled' as const;
         }

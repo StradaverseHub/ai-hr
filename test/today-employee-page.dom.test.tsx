@@ -13,7 +13,7 @@ import {resolveServerTree} from './helpers/server-tree';
 
 const fx=vi.hoisted(()=>{
  class FixtureHomeAccessError extends Error{constructor(readonly code:string){super(code);this.name='HomeAccessError';}}
- return {FixtureHomeAccessError,state:{} as {own:unknown;ownError:unknown;moduleError:unknown;waiting:{items:unknown[];total:number};waitingCalls:number;throwPanel:string|null;notices:unknown}};
+ return {FixtureHomeAccessError,contractRead:vi.fn(),state:{} as {contractTotal:number;contractError:unknown;own:unknown;ownError:unknown;moduleError:unknown;waiting:{items:unknown[];total:number};waitingCalls:number;throwPanel:string|null;notices:unknown}};
 });
 const S=fx.state;
 
@@ -28,6 +28,14 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw Error('not-found');},useRout
 vi.mock('@/db/client',async importOriginal=>({...await importOriginal<Record<string,unknown>>(),withBackgroundReadWork:async(_tenant:string,run:()=>unknown)=>run(),withSharedReadSnapshot:async(_s:unknown,work:()=>unknown)=>work()}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError}));
 vi.mock('@/components/today/today-page',()=>({GreetingWithName:async()=>'Good morning, Aisyah'}));
+// Resolve the actual server slot for react-dom, keeping its native owner read and card intact.
+vi.mock('@/components/today/contract-slot',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../components/today/contract-slot')>();
+ const {resolveServerTree:resolve}=await import('./helpers/server-tree');
+ return {...actual,TodayContracts:async(props:Parameters<typeof actual.TodayContracts>[0])=>resolve(actual.TodayContracts(props))};
+});
+vi.mock('@/packs/contracts/service',()=>({contractSharedWorkPage:fx.contractRead}));
+vi.mock('@/core/entitlements',()=>({isModuleEnabled:()=>true}));
 vi.mock('@/components/performance-home/performance-home',()=>({PerformanceHomeSlot:async()=><section data-performance-home>Performance</section>}));
 vi.mock('@/components/today/employee/reads',()=>({
  moduleState:()=>{if(S.moduleError)throw S.moduleError;return 'on';},
@@ -57,7 +65,11 @@ const text=(el:Element|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' '
 const UNAVAILABLE="We couldn't load your page just now. Please try again in a moment.";
 
 beforeEach(()=>{
- Object.assign(S,{own:{identity:{selectedEmploymentId:'emp-own',role:'employee',employmentState:'selected',employments:[]},companyId:'co-a'},
+ fx.contractRead.mockReset().mockImplementation(async()=>{
+  if(S.contractError)throw S.contractError;
+  return {items:S.contractTotal?[{id:'letter-own',subjectName:'Fictional assigned letter',linkPath:'/lifecycle/contracts/letters/letter-own',action:'sign'}]:[],taskTotal:S.contractTotal};
+ });
+ Object.assign(S,{contractTotal:0,contractError:null,own:{identity:{selectedEmploymentId:'emp-own',role:'employee',employmentState:'selected',employments:[]},companyId:'co-a'},
   ownError:null,moduleError:null,waiting:{items:[],total:0},waitingCalls:0,throwPanel:null,
   notices:{version:1,employmentId:'emp-own',total:0,unread:0,acknowledgementRequired:0,items:[]}});
 });
@@ -66,6 +78,7 @@ afterEach(cleanup);
 async function show(){
  const tree=await resolveServerTree(await EmployeeTodayPage({session:SESSION,scopeIds:['co-a'],now:NOW}));
  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{tree}</NextIntlClientProvider>);
+ expect(view.container.querySelectorAll('[data-today-contract]')).toHaveLength(S.contractTotal>0&&!S.contractError?1:0);
  return {...view,panel:(id:string)=>view.container.querySelector(`[data-today-panel="${id}"]`)};
 }
 
@@ -156,5 +169,32 @@ describe('Employee Today: failure isolation',()=>{
    expect(view.panel('today-coming-up')).not.toBeNull();
    expect(view.panel('today-calendar')).not.toBeNull();
   }finally{spy.mockRestore();}
+ });
+});
+
+describe('Employee Today: one Contract owner result for global work claims',()=>{
+ it('includes the exact Contract total in the heading and never shows all-clear beside pending Contract work',async()=>{
+  S.contractTotal=127;
+  const view=await show();
+  expect(fx.contractRead).toHaveBeenCalledExactlyOnceWith(SESSION,{category:'tasks',limit:5,offset:0});
+  expect(view.container.querySelector('[data-today-step-count]')).toHaveAttribute('data-today-step-count','127');
+  expect(view.container.querySelector('[data-today-contract]')).toHaveAttribute('data-contract-total','127');
+  expect(view.container.querySelector('[data-today-all-clear]')).toBeNull();
+  expect(within(view.container).getByRole('link',{name:'View all 127'})).toHaveAttribute('href','/tasks');
+ });
+ it('keeps all-clear only when the actual Contract owner also reports zero work',async()=>{
+  const view=await show();
+  expect(fx.contractRead).toHaveBeenCalledTimes(1);
+  expect(view.container.querySelector('[data-today-step-count]')).toHaveAttribute('data-today-step-count','0');
+  expect(view.container.querySelector('[data-today-all-clear]')).not.toBeNull();
+ });
+ it('does not convert a failed Contract read into zero or an all-clear claim',async()=>{
+  S.contractError=new Error('Fictional Contract owner unavailable');
+  const view=await show();
+  expect(fx.contractRead).toHaveBeenCalledTimes(1);
+  expect(view.container.querySelector('[data-today-step-count]')).toBeNull();
+  expect(view.container.querySelector('[data-today-all-clear]')).toBeNull();
+  expect(within(view.container).getByText(/Contract letters could not be loaded/)).toBeInTheDocument();
+  expect(within(view.container).getByRole('link',{name:'Open Tasks'})).toHaveAttribute('href','/tasks');
  });
 });

@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime'),'fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 
@@ -82,6 +82,30 @@ def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False).encode()
 
 
+def bounded_file_sha256(base,path,limit):
+    """Fresh complete bytes on EVERY call, with bounded memory and stable no-follow identity.
+
+    Runtime verification must not allocate two copies of the 120MB executable at
+    each nested guard boundary. This is not a cache or a metadata-only byte proof.
+    """
+    identity=lambda s:tuple(getattr(s,k)for k in('st_dev','st_ino','st_mode','st_uid','st_gid','st_nlink','st_size','st_mtime_ns','st_ctime_ns'))
+    fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC)
+    try:
+        before=os.fstat(fd)
+        base.check(stat.S_ISREG(before.st_mode)and before.st_nlink==1 and before.st_size<=limit,'bounded non-linked runtime input required')
+        base.check(identity(before)==identity(Path(path).lstat()),'runtime named/opened identity differs')
+        digest=hashlib.sha256();total=0
+        while True:
+            base.check(SLOT_DEADLINE is None or time.monotonic()<SLOT_DEADLINE,'aggregate proof slot expired')
+            block=os.read(fd,1024**2)
+            if not block:break
+            total+=len(block);base.check(total<=limit,'runtime input exceeds bound');digest.update(block)
+        base.check(total==before.st_size and identity(before)==identity(os.fstat(fd))==identity(Path(path).lstat()),'runtime bytes or named identity changed during fresh hash')
+        base.check(SLOT_DEADLINE is None or time.monotonic()<SLOT_DEADLINE,'aggregate proof slot expired')
+        return digest.hexdigest()
+    finally:os.close(fd)
+
+
 def epoch(value):
     return datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp()
 
@@ -125,9 +149,129 @@ def record(raw):
     return dict(pairs)
 
 
+
+BASELINE_PUBLICATION_KEY='baselinePublication'
+BASELINE_PUBLICATION_POLICY='aihr-worker-qualified-legacy-finish-header/v1'
+BASELINE_IDENTITY_FIELDS={'device','inode','uid','gid','mode','links','size','mtimeNs','ctimeNs'}
+BASELINE_PUBLICATION_FIELDS={'format','policy','source','buildId','currentSha256','lastOkSha256','workerReceiptSha256','workerAuthorizationSha256','currentIdentity','lastOkIdentity','workerReceiptIdentity'}
+
+
+def baseline_publication_fields(fields,approval,*,allow=False):
+    # An absent opt-in retains the original exact closed schema. Recovery/published modes
+    # never gain this normal-baseline compatibility authority.
+    if BASELINE_PUBLICATION_KEY not in approval:return fields
+    SimpleCheck.check(allow,'qualified legacy baseline is unavailable in this operation')
+    return fields|{BASELINE_PUBLICATION_KEY}
+
+
+def baseline_publication_selection(base,approval):
+    if BASELINE_PUBLICATION_KEY not in approval:return None
+    p=approval[BASELINE_PUBLICATION_KEY];identity=approval.get('identity')
+    base.check(type(identity)is dict and all(k in identity for k in('previous_web_source','previous_worker_source','previous_web_build')),'qualified legacy baseline operation identity required')
+    base.check(type(p)is dict and set(p)==BASELINE_PUBLICATION_FIELDS and type(p['format'])is int and p['format']==1 and
+               p['policy']==BASELINE_PUBLICATION_POLICY,'closed versioned legacy baseline selection required')
+    base.check(type(p['source'])is str and p['source']==identity['previous_web_source']==identity['previous_worker_source'] and
+               p['buildId']==identity['previous_web_build'] and re.fullmatch('[a-f0-9]{40}',p['source']) and
+               isinstance(p['buildId'],str)and bool(p['buildId']),'legacy baseline identity differs')
+    for key in ('currentSha256','lastOkSha256','workerReceiptSha256','workerAuthorizationSha256'):
+        base.check(isinstance(p[key],str)and re.fullmatch('[a-f0-9]{64}',p[key]),'independent legacy baseline hashes required')
+    for key in ('currentIdentity','lastOkIdentity','workerReceiptIdentity'):
+        value=p[key]
+        base.check(type(value)is dict and set(value)==BASELINE_IDENTITY_FIELDS and
+                   all(type(v)is str and re.fullmatch('[0-9]+',v)for v in value.values()),'closed legacy baseline file identity required')
+    return p
+
+
+def require_same_baseline_publication(base,first,later):
+    base.check(first.get(BASELINE_PUBLICATION_KEY)==later.get(BASELINE_PUBLICATION_KEY),
+               'pre-drain and later qualified legacy baseline selections differ')
+
+
+def baseline_file_identity(base,path):
+    path=Path(path);s=path.lstat()
+    base.check(stat.S_ISREG(s.st_mode)and s.st_nlink==1 and not s.st_mode&0o022 and path.resolve()==path,
+               'canonical non-linked legacy baseline file required')
+    return dict(zip(('device','inode','uid','gid','mode','links','size','mtimeNs','ctimeNs'),
+                    map(str,(s.st_dev,s.st_ino,s.st_uid,s.st_gid,s.st_mode,s.st_nlink,s.st_size,s.st_mtime_ns,s.st_ctime_ns))))
+
+
+def baseline_file_bytes(base,path,identity,digest):
+    base.check(baseline_file_identity(base,path)==identity,'qualified legacy baseline file metadata changed')
+    raw=base.read_bounded(path,65536)
+    base.check(sha(raw)==digest and baseline_file_identity(base,path)==identity,'qualified legacy baseline bytes/identity changed')
+    return raw
+
+
+
+def baseline_receipt_precedes_finish(base,selection,native):
+    base.check(type(native.get('finished_at'))is str and re.fullmatch('[1-9][0-9]*',native['finished_at'])and
+               max(int(selection['workerReceiptIdentity'][k])//1000000000 for k in('mtimeNs','ctimeNs'))<=int(native['finished_at']),
+               'recovered receipt was published after native successful finish')
+
+
+def verify_baseline_publication(base,approval,*,paired=False,last_ok=None):
+    p=baseline_publication_selection(base,approval)
+    if p is None:
+        base.check(not paired and last_ok is None,'explicit qualified legacy baseline selection required')
+        return None
+    receipt=base.ROOT/'releases'/p['source']/'worker-install-v2.json'
+    base.root_protected(receipt,regular=True)
+    raw=baseline_file_bytes(base,receipt,p['workerReceiptIdentity'],p['workerReceiptSha256']);saved=json.loads(raw)
+    base.check(stat.S_IMODE(int(p['workerReceiptIdentity']['mode']))==0o444,'immutable native recovered receipt mode required')
+    # These fields are emitted by the existing actual recovered worker receipt producer.
+    expected={'source':p['source'],'webBuildId':p['buildId'],'authorizationSha256':p['workerAuthorizationSha256'],
+              'mode':'recover-ci-runtime','policy':RECOVERY.POLICY,'workerRecoveryOnly':True,'serviceStable':True,
+              'nativeRuntimeVerified':True,'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,
+              'completeMetadataFences':10,'journeyVerified':False}
+    base.check(type(saved)is dict and all(type(saved.get(k))is type(v)and saved[k]==v for k,v in expected.items()),
+               'exact recovered worker baseline receipt required')
+    # receipt() emits these original authority identities; the independently pinned full receipt
+    # binds them without granting or renewing the old installation's authority.
+    base.check(all(type(saved.get(k))is str and re.fullmatch('[a-f0-9]{64}',saved[k])for k in
+                   ('installationAuthorizationSha256','firstStageApprovalSha256'))and
+               type(saved.get('installId'))is str and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}',saved['installId']),
+               'original recovered receipt installation/first-stage identities required')
+    if paired:
+        base.check(not(STATE/'pending').exists()and not(STATE/'pending').is_symlink(),'legacy baseline deployment pending')
+        current=baseline_file_bytes(base,STATE/'current',p['currentIdentity'],p['currentSha256'])
+        prior=baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256'])
+        c,o=record(current),record(prior)
+        fields={'ref','pid','log','started_at','phase','result','exit_code','build_id','built_at','finished_at'}
+        base.check(set(c)==set(o)==fields and c['result']=='ok'and o['result']=='failed'and
+                   c['exit_code']==o['exit_code']=='0'and c['ref']==p['source']and c['build_id']==p['buildId']and
+                   c['phase']=='ci-build-health'and re.fullmatch('[1-9][0-9]*',c['finished_at'])and
+                   {k:v for k,v in c.items()if k!='result'}=={k:v for k,v in o.items()if k!='result'},
+                   'exact paired native legacy success publication required')
+        # There is no receipt createdAt/publishedAt JSON claim. Its native owner publishes this
+        # root-protected 0444 file with O_EXCL/NOFOLLOW and flush/fsync before returning; finish
+        # subsequently stamps finished_at using date+%s. Bind actual OS publication/change times,
+        # allowing the same second, not a caller-supplied timestamp or a guessed historical field.
+        baseline_receipt_precedes_finish(base,p,c)
+        base.check(current==baseline_file_bytes(base,STATE/'current',p['currentIdentity'],p['currentSha256'])and
+                   prior==baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256']),
+                   'legacy baseline pair changed during qualification')
+    if last_ok is not None:
+        base.check(sha(last_ok)==p['lastOkSha256']==approval['priorLastOkSha256'] and
+                   last_ok==baseline_file_bytes(base,STATE/'last-ok',p['lastOkIdentity'],p['lastOkSha256']),
+                   'original qualified legacy last-ok changed after launch')
+        baseline_receipt_precedes_finish(base,p,record(last_ok))
+    base.check(raw==baseline_file_bytes(base,receipt,p['workerReceiptIdentity'],p['workerReceiptSha256']),
+               'recovered worker baseline receipt changed during qualification')
+    return p
+
+
 def excluded(path, filters):
     # Same closed glob grammar as canonicalSourceExclusions; directory exclusions prune the whole subtree.
     return any(re.fullmatch(re.escape(p.strip('/')).replace(r'\*', '[^/]*'), path if p.startswith('/') else path.rsplit('/', 1)[-1]) is not None for p in filters)
+
+
+def source_excluder(filters):
+    """Compile the same closed canonical grammar once per complete observation."""
+    patterns=tuple((p.startswith('/'),re.compile(re.escape(p.strip('/')).replace(r'\*','[^/]*')))for p in filters)
+    def matches(path):
+        basename=path.rsplit('/',1)[-1]
+        return any(pattern.fullmatch(path if anchored else basename)is not None for anchored,pattern in patterns)
+    return matches
 
 
 def canonical_filters(base,root):
@@ -149,6 +293,7 @@ def source_inventory(base, root, filters, deadline=None):
     base.check(filters and '.next' in filters and 'node_modules' in filters, 'canonical source filters required')
     for pattern in filters:
         base.check(isinstance(pattern,str) and not any(x in pattern for x in ('**','?','[')),'unsupported canonical source filter')
+    exclude_source=source_excluder(filters)
     root=Path(root);base.check(root.resolve(strict=True)==root,'canonical source root required')
     rows=[]
     def clock():base.check(deadline is None or time.time()<deadline,'source inventory operation deadline exceeded')
@@ -160,7 +305,7 @@ def source_inventory(base, root, filters, deadline=None):
         for name in names:
             clock();base.check(len(rows)<200000,'source inventory exceeds bound')
             child=relative+'/'+name if relative else name
-            if excluded(child,filters):continue
+            if exclude_source(child):continue
             initial=os.stat(name,dir_fd=fd,follow_symlinks=False);mode=stat.S_IMODE(initial.st_mode)
             if stat.S_ISDIR(initial.st_mode):
                 opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
@@ -211,6 +356,13 @@ MAX_NATIVE_STDOUT = 32 * 1024**2
 MAX_NATIVE_STDERR = 64 * 1024
 
 
+class NativeProofFailure(ValueError):
+    """Only fixed categories and numeric process metadata may leave the protected runner."""
+    def __init__(self,details):
+        self.details=details
+        super().__init__('CI runtime cutover refused: bounded native owner proof failed; safe details '+json.dumps(details,sort_keys=True,separators=(',',':')))
+
+
 def bounded_process(argv, **options):
     """Hard streaming bounds and one finite deadline, including silent children. Kill only this new child session.
     Do not reap/poll before failure cleanup: the unreaped child retains its PID, preventing process-group ID reuse.
@@ -242,7 +394,17 @@ def bounded_process(argv, **options):
         result=process.wait(timeout=max(.001,deadline-time.monotonic()));reaped=True
         if result:raise ValueError('native proof command failed')
         return b''.join(output['out'])
-    except BaseException:
+    except BaseException as error:
+        # Preserve the actual failure branch before cleanup, without publishing
+        # argv, environment, input, stdout, stderr, or arbitrary exception text.
+        message=error.args[0]if type(error)is ValueError and error.args and type(error.args[0])is str else None
+        reason={'native proof deadline exceeded':'DEADLINE','native proof command failed':'CHILD_EXIT'}.get(message,'OTHER')
+        if message=='native proof output exceeds hard bound':reason='STDOUT_BOUND'if sizes.get('out',0)>MAX_NATIVE_STDOUT else'STDERR_BOUND'
+        if isinstance(error,subprocess.TimeoutExpired):reason='WAIT_TIMEOUT'
+        if isinstance(error,(KeyboardInterrupt,SystemExit)):reason='INTERRUPTED'
+        before_cleanup=process.returncode
+        elapsed_ms=round((time.monotonic()-(deadline-timeout))*1000)
+        remaining_ms=round((deadline-time.monotonic())*1000)
         # No shell, no foreign service/unit/PID, and only our unreaped new session is targeted.
         if not reaped:
             try:os.killpg(process.pid,signal.SIGTERM)
@@ -252,7 +414,10 @@ def bounded_process(argv, **options):
                 try:os.killpg(process.pid,signal.SIGKILL)
                 except ProcessLookupError:pass
                 process.wait(timeout=5)
-        raise ValueError('CI runtime cutover refused: bounded native owner proof failed (private diagnostics withheld)') from None
+        details={'reason':reason,'returnCodeBeforeCleanup':before_cleanup,'returnCodeAfterCleanup':process.returncode,
+                 'elapsedMs':elapsed_ms,'remainingMs':remaining_ms,'budgetMs':round(timeout*1000),
+                 'stdoutBytes':sizes.get('out',0),'stderrBytes':sizes.get('err',0)}
+        raise NativeProofFailure(details) from None
     finally:
         streams.close()
         for pipe in (process.stdout,process.stderr):
@@ -333,7 +498,10 @@ class RuntimeObservation:
         base.check(sha(self.bytes) == args.ci_runtime_authorization_sha256, 'root CI cutover authorization hash differs')
         a = self.auth = json.loads(self.bytes)
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
-        kind='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
+        published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
+        if published:fields=PUBLISHED.LIVE_FIELDS
+        fields=baseline_publication_fields(fields,a,allow=recovery is None and not published)
+        kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
@@ -351,7 +519,7 @@ class RuntimeObservation:
         base.check(a['identity']['source'] == args.source and a['identity']['build_id'] == args.build_id, 'authorization candidate differs')
         base.root_protected(Path(sys.argv[0]), regular=True)
         base.check(sha(base.read_bounded(Path(sys.argv[0]), 16*1024**2)) == a['helperSha256'] and
-                   sha(base.read_bounded(base.NODE, 128*1024**2)) == a['nodeSha256'], 'root-pinned helper/runtime differs')
+                   bounded_file_sha256(base,base.NODE,128*1024**2) == a['nodeSha256'], 'root-pinned helper/runtime differs')
         i = a['install']
         base.check(set(i) == {'id','buildRecordId','runId','controller','directory','uid','gid','device','inode'} and
                    isinstance(i['uid'], int) and i['uid'] > 0, 'exact native installation owner and selection required')
@@ -395,6 +563,26 @@ class RuntimeObservation:
         SLOT_DEADLINE=time.monotonic()+seconds
         self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
+    def failure_summary(self,error):
+        """Snapshot before failure-only clocks change; never serialize arbitrary exception data."""
+        stages={'M0','M1','S0','S1','A0','A1','receipt',*[f'F{i}'for i in range(10)],*[f'W/F{i}'for i in range(1,4)]}
+        result={'slot':self.slot_name if self.slot_name in stages else 'OTHER','category':'OTHER',
+                'stageRemainingMs':None if SLOT_DEADLINE is None else round((SLOT_DEADLINE-time.monotonic())*1000)}
+        if type(error)is NativeProofFailure:
+            details=error.details
+            reasons={'DEADLINE','CHILD_EXIT','STDOUT_BOUND','STDERR_BOUND','WAIT_TIMEOUT','INTERRUPTED','OTHER'}
+            numbers={'returnCodeBeforeCleanup','returnCodeAfterCleanup','elapsedMs','remainingMs','budgetMs','stdoutBytes','stderrBytes'}
+            if (type(details)is dict and set(details)==numbers|{'reason'} and details['reason']in reasons and
+                    all(details[k]is None or type(details[k])is int for k in numbers)):
+                result.update(category='NATIVE_PROOF',native=dict(details))
+        elif type(error)is ValueError and error.args==('Worker installation refused: aggregate cutover stage deadline exceeded',):
+            result['category']='STAGE_DEADLINE'
+        elif type(error)is ValueError and error.args==('Complete metadata fence refused: absolute monotonic deadline exceeded',):
+            result['category']='METADATA_DEADLINE'
+        elif type(error)is ValueError and error.args==('Worker installation refused: aggregate proof slot expired',):
+            result['category']='HASH_DEADLINE'
+        return result
+
     def check_authority(self):
         b, a = self.base, self.auth
         self.guard.verify_install()
@@ -402,7 +590,7 @@ class RuntimeObservation:
         b.check(protected_private(b,Path(a['leaseFile']))==self.lease_identity and sha(b.read_bounded(Path(a['leaseFile']),4096))==a['leaseFileSha256'],'held lease credential identity/content changed')
         b.check(b.read_bounded(self.path,65536) == self.bytes, 'CI cutover authority changed')
         b.root_protected(Path(sys.argv[0]),regular=True);b.root_protected(b.NODE,regular=True)
-        b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'root-pinned helper/runtime changed')
+        b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and bounded_file_sha256(b,b.NODE,128*1024**2)==a['nodeSha256'],'root-pinned helper/runtime changed')
         b.root_protected(self.drain_operation/'drained.json',regular=True)
         b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
         b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + 900,
@@ -419,7 +607,9 @@ class RuntimeObservation:
         self.grant = g = json.loads(b.read_bounded(self.directory/'authorization.json',32768))
         b.check(protected_private(b,self.first_path)==self.first_identity and b.read_bounded(self.first_path,65536)==self.first_bytes,'pre-drain administrator approval identity/content changed')
         first=json.loads(self.first_bytes)
-        first_fields=FIRST_APPROVAL_FIELDS
+        first_fields=baseline_publication_fields(FIRST_APPROVAL_FIELDS,first,allow=BASELINE_PUBLICATION_KEY in a)
+        require_same_baseline_publication(b,first,a)
+        if BASELINE_PUBLICATION_KEY in a:verify_baseline_publication(b,a)
         gate_fields={'source','controller','runId','build','artifact','witnessFingerprint','policyVersion'}
         b.check(set(first)==first_fields and first['format']==1 and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
         b.check(all(first[k]==a[k] for k in ('identity',*(() if self.recovery is not None else ('helperSha256',)),'nodeSha256','python','nodeOptions','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
@@ -733,7 +923,9 @@ class RuntimeObservation:
             if not live:
                 time.sleep(.05);continue
             if current.get('exit_code','')=='' and not current.get('finished_at') and sha(raw[1])==a['priorLastOkSha256']:
-                b.check(prior.get('result')=='' or prior.get('result')=='ok','prior last-ok is invalid')
+                if prior.get('result')not in('','ok'):
+                    b.check(prior.get('result')=='failed'and BASELINE_PUBLICATION_KEY in a,'prior last-ok is invalid')
+                    verify_baseline_publication(b,a,last_ok=raw[1])
                 b.check(prior.get('ref')==self.args.previous_web_source and prior.get('build_id')==self.args.previous_web_build,'old last-ok baseline differs')
                 return 'R0',raw
             if current.get('exit_code')=='0' and current.get('finished_at') and current==prior:
@@ -768,7 +960,7 @@ class RuntimeObservation:
     def assert_owned_worker(self,report):
         self.base.check(self.started_identity is not None and worker_identity(self.base,report,self.args.source)==self.started_identity,'started worker PID/source/UID/cgroup identity changed')
 
-    def quarantine_fence(self):
+    def quarantine_evidence(self,observe=None):
         # Failure-only authority: no fresh lease PASS is inferred. Continuous SH+install EX and exact OWN process are mandatory.
         self.guard.verify_install()
         self.base.check(self.started_identity is not None and (self.started_sha is not None or self.start_capture_pending and self.guard.start_sent),'no protected owned-start evidence; do not touch an uncertain process')
@@ -780,10 +972,38 @@ class RuntimeObservation:
         candidate=self.base.service_unit(self.args.source)
         quarantine=candidate.replace('Restart=on-failure\n','Restart=no\nSendSIGKILL=no\n')
         self.base.check(sha(self.base.read_bounded(self.base.UNIT,65536))in(sha(candidate.encode()),sha(quarantine.encode())),'foreign unit; no quarantine permission')
-        report=self.base.service_properties()
+        report=self.base.service_properties()if observe is None else observe(self.base)
         self.base.validate_service(report,self.base.ROOT/'releases'/self.args.source)
-        self.base.check(worker_identity(self.base,report,self.args.source)==self.started_identity,'foreign/reused/restarted worker; no quarantine permission')
         self.base.check(sha(self.base.read_bounded(BOOT_ID,4096))==self.start_intent['bootIdSha256'],'boot changed; no quarantine permission')
+        return report
+
+    def quarantine_fence(self):
+        report=self.quarantine_evidence()
+        self.base.check(worker_identity(self.base,report,self.args.source)==self.started_identity,'foreign/reused/restarted worker; no quarantine permission')
+
+    def publish_stopped_failure_observation(self,result,observe):
+        """Only an immutable failure observation, never unit mutation or acceptance authority."""
+        b=self.base
+        b.check(self.guard.quarantine and self.started_sha is not None and
+                getattr(self,'quarantine_authority_sha',None)is not None,'owned quarantine authority required')
+        report=self.quarantine_evidence(observe=observe)
+        authority=self.operation/'ci-worker-quarantine-authority.json'
+        b.root_protected(authority,regular=True)
+        b.check(sha(b.read_bounded(authority,65536))==self.quarantine_authority_sha,'protected quarantine authority changed')
+        quarantine=b.service_unit(self.args.source).replace('Restart=on-failure\n','Restart=no\nSendSIGKILL=no\n').encode()
+        b.check(sha(b.read_bounded(b.UNIT,65536))==sha(quarantine),'exact quarantine unit required for stopped observation')
+        b.check(report.get('MainPID')=='0' and report.get('ActiveState')in('inactive','failed') and
+                report.get('SubState')in('dead','failed') and
+                report.get('NRestarts')=='0' and report.get('NeedDaemonReload')=='no' and
+                report.get('Restart')=='no' and report.get('SendSIGKILL')=='no' and report.get('UnitFileState')=='disabled',
+                'exact stopped disabled quarantine required for failure observation')
+        b.check(sha(b.read_bounded(b.ENV,1024**2))==self.args.worker_env_sha256,'worker environment changed before failure observation')
+        b.check(not (PROCESS_ROOT/str(self.started_identity['pid'])).exists(),'owned process still exists or PID was reused')
+        b.check(result.get('source')==self.args.source and result.get('accepted')is False and
+                result.get('stopped')is True and result.get('disabled')is True and result.get('forcedKill')is False,
+                'stopped failure observation cannot authorize success')
+        # The active-process fence intentionally remains mandatory for every other failure-only write/command.
+        b.write_new(self.operation/'activation-failure-observation.json',self.fmt.canonical(result),0o400)
 
     def authorize_quarantine(self):
         self.quarantine_fence()
@@ -792,7 +1012,9 @@ class RuntimeObservation:
         except Exception:lease_failed=True
         self.quarantine_fence()
         self.guard.file_mutation(failure_only=True)
-        self.base.write_new(self.operation/'ci-worker-quarantine-authority.json',self.fmt.canonical({'ownedStartedProcess':self.started_identity,'freshLeaseAssertFailed':lease_failed,'failureOnly':True,'successAuthorized':False,'journeyVerified':False}),0o400)
+        raw=self.fmt.canonical({'ownedStartedProcess':self.started_identity,'freshLeaseAssertFailed':lease_failed,'failureOnly':True,'successAuthorized':False,'journeyVerified':False})
+        self.base.write_new(self.operation/'ci-worker-quarantine-authority.json',raw,0o400)
+        self.quarantine_authority_sha=sha(raw)
         self.guard.quarantine=True
 
     def validate_cleanup_proof(self,proof):
@@ -868,7 +1090,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime') and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -878,6 +1100,7 @@ class RuntimeObservation:
                 b.check(stage=='O' and attempt<15,'bounded native metadata publication did not complete under strict O')
                 time.sleep(.02)
         filters=canonical_filters(b,SOURCE)
+        exclude_source=source_excluder(filters)
         roots=[SOURCE,SOURCE/'.next',SOURCE/'node_modules',RUNTIME_ROOT]
         metadata={}
         cache=SOURCE/'.next/cache'
@@ -886,16 +1109,32 @@ class RuntimeObservation:
             st=cache.lstat()
             b.check(stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode) and not st.st_mode&0o022 and st.st_uid==self.owner.pw_uid,'unsafe compiled runtime cache')
             cache_state['metadata']={k:v for k,v in FENCES.metadata(st).items()if k in {'device','inode','mode','uid','gid'}}
-        for name,root,exclude in [('source',roots[0],lambda rel:excluded(rel,filters)),('compiled',roots[1],lambda rel:rel=='cache'),('dependencies',roots[2],lambda rel:False),('runtime',roots[3],lambda rel:False)]:
+        for name,root,exclude in [('source',roots[0],exclude_source),('compiled',roots[1],lambda rel:rel=='cache'),('dependencies',roots[2],lambda rel:False),('runtime',roots[3],lambda rel:False)]:
             metadata[name]=FENCES.capture_tree(str(root),exclude,[str(x)for x in roots],SLOT_DEADLINE)
-        covered={str(root/row['path'])for name,root in zip(('source','compiled','dependencies','runtime'),roots)for row in metadata[name]['entries']}
+        covered={str(root)+('/'+row['path']if row['path']else'')for name,root in zip(('source','compiled','dependencies','runtime'),roots)for row in metadata[name]['entries']}
         for name in ('source','compiled','dependencies','runtime'):
             for row in metadata[name]['entries']:
                 if row['kind']=='link':b.check(row['resolvedTarget']['path']in covered,'link target is inside an excluded/unobserved subtree')
         # Cache contents alone are excluded by the native policy. Membership and the
         # cache directory identity/mode stay pinned; compiled ROOT metadata is never waived.
         metadata['cache']=cache_state
-        b.check(self.metadata is None or metadata==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
+        # Every entry and resolved target has already been covered by TWO complete
+        # native walks and its canonical per-root digest. Retain those exact root
+        # commitments across A0/A1, rather than keeping 100k entry objects resident
+        # while the independent Node byte verifier needs the same server memory.
+        # Keep the original complete receipt hash unchanged; no observation drops.
+        metadata_sha256=sha(canonical(metadata))
+        commitments={}
+        for name in ('source','compiled','dependencies','runtime'):
+            tree=metadata[name]
+            b.check(set(tree)=={'format','root','nodes','links','metadataSha256','entries'} and tree['format']==1 and
+                    set(tree['root'])=={'canonicalpath','device','inode'} and tree['nodes']==len(tree['entries']) and
+                    re.fullmatch('[a-f0-9]{64}',tree['metadataSha256']),'closed complete root metadata commitment required')
+            commitments[name]={key:value for key,value in tree.items()if key!='entries'}
+        commitments['cache']=cache_state
+        b.check(self.metadata is None or commitments==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
+        metadata=commitments
+        del covered,tree
         if self.recovery is not None:b.check(FAST_PROBE.count('validateInstallGrant(grant);')==1,'closed read-only grant probe owner changed')
         observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE if self.recovery is None else FAST_PROBE.replace('validateInstallGrant(grant);','validateInstallGrant(grant,{allowExpired:true});',1),str(self.directory)],self.owner,self.environment,timeout=20)
         fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
@@ -906,7 +1145,7 @@ class RuntimeObservation:
         self.check_authority();stage,raw=self.snapshot()
         b.check(self.stage_ranks()[stage]>=self.stage_ranks()[before] and (self.last is None or self.stage_ranks()[stage]>=self.stage_ranks()[self.last]),'native finish publication backslid')
         self.check_slot();self.metadata=metadata;self.last=stage
-        observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':sha(canonical(metadata)),'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
+        observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':metadata_sha256,'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
         self.guard.file_mutation();self.check_slot()
         b.write_new(self.operation/('ci-runtime-fence-%02d.json'%self.fence_count),self.fmt.canonical(observation),0o400)
         self.transitions.append(observation);self.fence_count+=1
@@ -921,14 +1160,16 @@ class RuntimeObservation:
         original=json.loads(b.read_bounded(self.directory/'runtime.json',1024**2))
         c=epoch(original['verifiedAt'])+600
         remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-now
+        extra=40 if self.guard.stage=='activate-prepared-ci-runtime'else 0
+        required_post=497+extra;required_helper=527+extra;required_readiness=155+extra
         b.check(self.fence_count==3 and len(self.audits)==1 and len(self.content_proofs)==1,'pre-mutation proof graph incomplete')
-        b.check(self.overall_deadline is None or self.overall_deadline-time.monotonic()>=497,'insufficient fixed live global opportunity before first mutation')
-        b.check(remaining>=527 and c-now>=155,'insufficient mandatory helper/readiness opportunity before first mutation')
+        b.check(self.overall_deadline is None or self.overall_deadline-time.monotonic()>=required_post,'insufficient fixed live global opportunity before first mutation')
+        b.check(remaining>=required_helper and c-now>=required_readiness,'insufficient mandatory helper/readiness opportunity before first mutation')
         # The unchanged normal operator has its own larger per-command timeouts.
         # 830s is explicitly a planning reservation, NOT an enforced branch cap.
         estimated_normal=830
-        b.check(epoch(self.grant['expiresAt'])-now>=max(497,max(0,c+15-now)+estimated_normal)+30,'insufficient estimated global fork reservation; no mutation')
-        return {'helperRemainingRequiredSeconds':527,'readinessOpportunitySeconds':155,'estimatedNormalBranchSeconds':estimated_normal,'normalBranchHardCap':False}
+        b.check(epoch(self.grant['expiresAt'])-now>=max(required_post,max(0,c+15-now)+estimated_normal)+30,'insufficient estimated global fork reservation; no mutation')
+        return {'helperRemainingRequiredSeconds':required_helper,'readinessOpportunitySeconds':required_readiness,'estimatedNormalBranchSeconds':estimated_normal,'normalBranchHardCap':False}
 
     def receipt(self):
         self.check_slot();self.check_authority()

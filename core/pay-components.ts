@@ -1967,6 +1967,26 @@ export function setEmploymentPayComponent(
     today?: string;
   },
   outerTx?: Tx,
+): Promise<{ id: string }> {
+  return writeEmploymentPayComponent(ctx, p, outerTx);
+}
+
+/** Fixed Transaction entry point for adding an item with its actual start date. */
+export function addFixedTransaction(
+  ctx: SessionContext,
+  p: Pick<Parameters<typeof setEmploymentPayComponent>[1],
+    'employmentId' | 'componentId' | 'amount' | 'effectiveFrom' | 'effectiveTo' | 'remarks' | 'runType' | 'payrollCycleId'> &
+    { rejectOverlap?: boolean },
+  outerTx?: Tx,
+) {
+  return writeEmploymentPayComponent(ctx, p, outerTx, { maintainStartDate: true, rejectOverlap: p.rejectOverlap });
+}
+
+function writeEmploymentPayComponent(
+  ctx: SessionContext,
+  p: Parameters<typeof setEmploymentPayComponent>[1],
+  outerTx?: Tx,
+  { maintainStartDate = false, rejectOverlap = false } = {},
 ) {
   // start<=end validation (before any write). effectiveTo is an inclusive end-date on the same axis as
   // effectiveFrom; ISO 'YYYY-MM-DD' strings compare chronologically.
@@ -1979,7 +1999,9 @@ export function setEmploymentPayComponent(
     // Validate inside the returned promise (not at call time) so the function ALWAYS returns a promise — a
     // bad value rejects rather than throwing synchronously, giving callers (and `.rejects` in tests) a single
     // uniform contract. Both checks still run before any write.
-    if (effectiveTo != null && effectiveTo < p.effectiveFrom) throw new FixedTransactionDateError();
+    if ((maintainStartDate && (!isTransactionEffectiveDate(p.effectiveFrom) ||
+      (effectiveTo != null && !isTransactionEffectiveDate(effectiveTo)))) ||
+      (effectiveTo != null && effectiveTo < p.effectiveFrom)) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
     await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
@@ -2003,14 +2025,13 @@ export function setEmploymentPayComponent(
     }
     // 2aed39d4 — a change whose window touches a month a CLOSED run already paid is refused. Removal
     // uses the identical test (archiveEmploymentPayComponent); PROCESSED-but-open is deliberately fine.
-    if (!p.allowClosedPeriod) {
-      await assertNoClosedRunCovers(tx, {
-        employmentId: p.employmentId,
-        componentId: p.componentId,
-        validFrom: p.effectiveFrom,
-        validTo: effectiveTo,
-      });
-    }
+    const checkClosedPeriod = () => assertNoClosedRunCovers(tx, {
+      employmentId: p.employmentId,
+      componentId: p.componentId,
+      validFrom: p.effectiveFrom,
+      validTo: effectiveTo,
+    });
+    if (!p.allowClosedPeriod && !maintainStartDate) await checkClosedPeriod();
     // 2aed39d4 — EVERY live row of this employment+component whose INCLUSIVE window touches the new one,
     // not just the open row. The old lookup required `validTo IS NULL`, so a live END-DATED row was
     // invisible to the writer and a second set inserted a duplicate over the top of it. See the long
@@ -2034,6 +2055,14 @@ export function setEmploymentPayComponent(
         ),
       )
       .orderBy(employmentPayComponent.validFrom);
+
+    // A new item or a date-only correction may cross closed payroll. The exception does
+    // not allow versioning any other item, even if the normal writer could close it.
+    const otherClash = clashes.find((row) => row.id !== p.replacesId);
+    if (otherClash && rejectOverlap) {
+      throw new FixedTransactionOverlapError(otherClash.code, otherClash.validFrom, otherClash.validTo);
+    }
+    if (otherClash && maintainStartDate) await checkClosedPeriod();
 
     // PASS 1 — REFUSE BEFORE WRITING ANYTHING. Both refusals are raised over the whole scan first, so a
     // rejected save cannot leave a half-versioned row behind (the old code closed `cur` and only then
@@ -2192,6 +2221,13 @@ export class FixedTransactionNotFoundError extends Error {
   }
 }
 
+export class FixedTransactionStartDateCorrectionError extends Error {
+  constructor() {
+    super('fixed-transaction-start-date-correction');
+    this.name = 'FixedTransactionStartDateCorrectionError';
+  }
+}
+
 /**
  * 4fffe638 — thrown when the Payroll Cycle named on a Fixed Transaction write cannot be linked.
  *
@@ -2274,9 +2310,12 @@ export function updateEmploymentPayComponent(
     payrollCycleId?: string | null;
     remarks?: string | null;
     prorateOverride?: boolean | null;
+    maintainStartDate?: boolean;
+    expectedStartDate?: string;
   },
+  outerTx?: Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx: Tx) => {
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
     await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
@@ -2287,20 +2326,37 @@ export function updateEmploymentPayComponent(
         currency: employmentPayComponent.currency,
         runType: employmentPayComponent.runType,
         payrollCycleId: employmentPayComponent.payrollCycleId,
+        amount: employmentPayComponent.amount,
+        validFrom: employmentPayComponent.validFrom,
+        validTo: employmentPayComponent.validTo,
+        prorateOverride: employmentPayComponent.prorateOverride,
+        remarks: employmentPayComponent.remarks,
       })
       .from(employmentPayComponent)
       .where(
         and(
           eq(employmentPayComponent.id, p.id),
           eq(employmentPayComponent.employmentId, p.employmentId),
+          p.maintainStartDate || p.expectedStartDate !== undefined ? isNull(employmentPayComponent.supersededAt) : undefined,
         ),
       )
       .limit(1);
     if (!row) throw new FixedTransactionNotFoundError();
+    const dateOnly = (p.maintainStartDate === true || p.expectedStartDate !== undefined) &&
+      p.effectiveFrom < row.validFrom &&
+      money(p.amount) === row.amount &&
+      (p.effectiveTo ?? null) === row.validTo &&
+      (p.remarks ?? null) === row.remarks &&
+      (p.payrollCycleId === undefined || p.payrollCycleId === row.payrollCycleId) &&
+      (p.runType === undefined || p.runType === row.runType) &&
+      (p.prorateOverride === undefined || p.prorateOverride === row.prorateOverride);
+    if (p.expectedStartDate !== undefined && (!dateOnly || p.expectedStartDate !== row.validFrom)) {
+      throw new FixedTransactionStartDateCorrectionError();
+    }
     // Version via the existing set path (auto-closes the prior open row at effectiveFrom, appends its event,
     // re-runs the date/currency/amount guards). We pass the row's own currency through so an edit on a legacy
     // MYR row stays MYR (the UI is MYR-only; this just avoids re-defaulting).
-    return setEmploymentPayComponent(
+    return writeEmploymentPayComponent(
       ctx,
       {
         employmentId: p.employmentId,
@@ -2309,14 +2365,14 @@ export function updateEmploymentPayComponent(
         effectiveFrom: p.effectiveFrom,
         effectiveTo: p.effectiveTo ?? null,
         currency: row.currency,
-        prorateOverride: p.prorateOverride ?? null,
+        prorateOverride: dateOnly ? row.prorateOverride : p.prorateOverride ?? null,
         remarks: p.remarks ?? null,
         runType: p.runType ?? null,
         payrollCycleId: p.payrollCycleId ?? null,
         // 4fffe638 — an edit that said nothing about the cycle keeps the one the row already had. The
         // screen's select is ALWAYS submitted, so "untouched" is decided by the action from its hidden
         // cycleTouched flag (CLAUDE.md §8), which omits both fields here.
-        ...(p.payrollCycleId === undefined && p.runType === undefined
+        ...(dateOnly || (p.payrollCycleId === undefined && p.runType === undefined)
           ? { inheritCycle: { payrollCycleId: row.payrollCycleId, runType: cleanCycle(row.runType) } }
           : {}),
         // 2aed39d4 — THE row the admin opened. Without this an edit of an ended row reads as a clash
@@ -2324,8 +2380,10 @@ export function updateEmploymentPayComponent(
         replacesId: p.id,
       },
       tx,
+      { maintainStartDate: dateOnly, rejectOverlap: p.expectedStartDate !== undefined },
     );
-  });
+  };
+  return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
 /**

@@ -383,7 +383,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     // …and the period controls the plan promised, in that one form. `companyId` rides as a HIDDEN input
     // here (the top row's Company select is gated off this tab), so there is no select to count.
     expect(controlsNamed(forms[0], 'select', 'year')).toHaveLength(1);
-    expect(controlsNamed(forms[0], 'select', 'cycle')).toHaveLength(1);
+    expect(controlsNamed(forms[0], 'select', 'payrollCycleId')).toHaveLength(1);
     expect(controlsNamed(forms[0], 'input', 'months'), 'the twelve month tick boxes').toHaveLength(12);
   });
 

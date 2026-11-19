@@ -44,7 +44,7 @@ export type TerasCapability=Readonly<{name:string;module:string|null;admin:boole
  worker:'explainers'|null;
  /** Release merge (spec v22): served as this topic of product_guidance (core/product-context/tools.ts GUIDANCE_TOPICS),
   * never bound as a tool of its own, so the offer stays within the provider's tool ceiling. Same runner, same gating. */
- topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'reward_reviews';
+ topic?:'password_policy'|'correction_controls'|'organisation_tagging'|'reward_reviews'|'offboarding_requisitions'|'document_signing'|'payroll_history_records';
  /** 96a54ed2: an extra offer condition read from the caller's own facts, after the role, module and access gates. `once`
   * shares one load between capabilities in the same offer, so a family of capabilities costs one read per call. The
   * runner still re-checks its own authority. */
@@ -125,6 +125,24 @@ export async function rewardReviewsGuidance(ctx:SessionContext,scope:TerasCapabi
  const page='/rewards/reviews';
  return {ok:true,page,purpose:'Find the native Rewards review workspace.',navigation:'Open Rewards, then Reviews.',humanBoundary:'Guidance reads no review, participant, recommendation, salary or budget. The native review owner checks each assigned role and company scope; configuration access alone does not grant access to a review. A human separately chooses and confirms any review action.',provenance:provenance('core/explainers/capabilities.ts#rewardReviewsGuidance','Not applicable: literal public navigation only.',page,'No employee, review, money, configuration or effect is read or changed.')};
 }
+/** Public navigation only; the native page separately checks every business permission. */
+export async function offboardingRequisitionGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'lifecycle',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/lifecycle/requisitions/offboarding';
+ return {ok:true,page,purpose:"Find the item-scoped Return and Revoke work for offboarding.",navigation:"Open the Offboarding requisitions page, then select a request offered by its native list.",humanBoundary:"The native owner checks current company and Full case-view or assigned fulfilment-team access. A fulfilment team sees only its own items, not the private case. A human records item progress and the required reason on that request; it does not sign a document, clear the whole case or terminate employment.",provenance:provenance('core/explainers/capabilities.ts#offboardingRequisitionGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
+/** Public navigation only; the native page separately checks every business permission. */
+export async function documentSigningGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'lifecycle',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/me/document-signing';
+ return {ok:true,page,purpose:"Find routed Onboarding and Offboarding documents awaiting your own review, approval, signature or acknowledgement.",navigation:"Open My document reviews and signatures, then select a document listed for your own assigned participation.",humanBoundary:"The native owner verifies the current account, real Person binding and frozen document route. Participation does not grant Full case view or unrelated Personnel answers. Only the assigned person confirms the offered review, approval, signature, acknowledgement or send-back on the native document; guidance never signs or supplies an answer.",provenance:provenance('core/explainers/capabilities.ts#documentSigningGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
+/** Public navigation only; the native page separately checks every business permission. */
+export async function payrollHistoryRecordsGuidance(ctx:SessionContext,scope:TerasCapabilityScope):Promise<ExplainerOutcome>{
+ if(!isAdmin(ctx)||!isModuleEnabled(ctx,'payroll',scope.companyId))return refuse('not_permitted','This guidance requires an administrator with the module enabled.');
+ const page='/payroll/history-import/records';
+ return {ok:true,page,purpose:"Find imported payroll history records, their retained item breakdown, corrections and audit history.",navigation:"Open Payroll history import, then Imported records; select the company, month and saved record to review.",humanBoundary:"The native owner requires current Payroll administration, original-company scope and the appropriate history import or revert permission. A human supplies a reason, reviews the exact revision and impact preview, then explicitly confirms the background job. Replace replaces the reviewed aggregate; Update listed updates listed totals and preserves unlisted items. Stale previews refuse; corrections do not automatically reprocess payroll, release payslips or pay anyone.",provenance:provenance('core/explainers/capabilities.ts#payrollHistoryRecordsGuidance','Not applicable: literal public page guidance only.',page,'No case, document, employee, answer, recipient, payroll amount, record identity or effect is read or changed.')};
+}
 export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'explain_payslip_statutory',module:'payroll',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnPayslipStatutory(ctx,{period:text(input.period),item:text(input.item)})},
  {name:'explain_leave_entitlement',module:'leave',admin:false,worker:'explainers',run:(ctx,input)=>explainOwnLeaveEntitlement(ctx,{leave_type:text(input.leave_type),as_of:text(input.as_of)})},
@@ -134,6 +152,9 @@ export const TERAS_CAPABILITIES:readonly TerasCapability[]=Object.freeze([
  {name:'correction_controls_guidance',module:'payroll',admin:true,worker:null,topic:'correction_controls',run:(ctx,_input,scope)=>correctionControlsGuidance(ctx,scope)},
  {name:'organisation_tagging_guidance',module:null,admin:true,worker:null,topic:'organisation_tagging',run:ctx=>organisationTaggingGuidance(ctx)},
  {name:'reward_reviews_guidance',module:'rewards',admin:true,worker:null,topic:'reward_reviews',run:(ctx,_input,scope)=>rewardReviewsGuidance(ctx,scope)},
+ {name:'offboarding_requisitions_guidance',module:'lifecycle',admin:true,worker:null,topic:'offboarding_requisitions',run:(ctx,_input,scope)=>offboardingRequisitionGuidance(ctx,scope)},
+ {name:'document_signing_guidance',module:'lifecycle',admin:true,worker:null,topic:'document_signing',run:(ctx,_input,scope)=>documentSigningGuidance(ctx,scope)},
+ {name:'payroll_history_records_guidance',module:'payroll',admin:true,worker:null,topic:'payroll_history_records',run:(ctx,_input,scope)=>payrollHistoryRecordsGuidance(ctx,scope)},
  {name:'pay_aggregates',module:'payroll',admin:false,access:'payroll',worker:null,run:(ctx,input)=>payAggregates(ctx,input)},
  {name:'workforce_metrics',module:null,admin:false,access:'team',worker:null,run:(ctx,input)=>workforceAggregates(ctx,input)},
  // AI v2 W5: "Why?" on the pay difference and the claim limits, under the explainers worker switch like the three above.

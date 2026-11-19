@@ -435,8 +435,8 @@ export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bo
         `,
       `
     const originalSlips = slips.map(s => ({...s}));
-    const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
-    const taxBasisCorrections = [...correctedBases.values()].map(value => value.correction);
+    const correctedBases = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const taxBasisCorrections = [...correctedBases.values()].flatMap(value => value.correction?[value.correction]:[]);
     for (const slip of slips) {
       const corrected = correctedBases.get(slip.id);
       if (corrected) slip.statutory = corrected.statutory;

@@ -3,6 +3,10 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
+import * as XLSX from 'xlsx';
+import {withTenant} from '../db/client';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {enqueueTransactionExport,readTransactionExportJob,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
@@ -16,7 +20,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {createIndividualTxn} from '../core/payroll-individual-txn';
 import {seedPayComponentCatalog,listPayComponents,setEmploymentPayComponent} from '../core/pay-components';
-import {listFixedTransactionsAcross,listFixedTransactionsPage,listIndividualTxnsAcross,listIndividualTxnsPage} from '../core/payroll-view';
+import {listFixedTransactionsAcross,listFixedTransactionsPage,listIndividualTxnsAcross,listIndividualTxnsPage,readTransactionExport} from '../core/payroll-view';
 import {parsePageQuery} from '../lib/pagination';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -111,6 +115,10 @@ it('pages Fixed rows in native order with exact strings, full counts, status and
  expect(first.rows[0].amount).toBe('123.45');expect(typeof first.rows[0].amount).toBe('string');
  const ended=all.filter(row=>row.validTo!==null&&row.validTo<todayInKualaLumpur());
  expect(await listFixedTransactionsPage(a,{...p,status:'ended'},parsePageQuery({size:'all'}))).toEqual({total:ended.length,rows:ended});
+ await readTransactionExport(a,{kind:'fixed',filters:{...p,status:'ended'},asOf:todayInKualaLumpur()},async(total,rows)=>{
+  const ids:string[]=[];for await(const row of rows)ids.push(row.id);
+  expect(total).toBe(ended.length);expect(ids.sort()).toEqual(ended.map(row=>row.id).sort());
+ });
  expect(await listFixedTransactionsPage(a,{companyIds:[]},parsePageQuery())).toEqual({rows:[],total:0});
  expect(await listFixedTransactionsPage(a,p,parsePageQuery({page:'100'}))).toEqual({rows:[],total:51});
  expect(await listFixedTransactionsPage(a,{...p,componentId:randomUUID()},parsePageQuery())).toEqual({rows:[],total:0});
@@ -139,6 +147,10 @@ it('transports a bounded Individual page from retained rows and keeps count, qua
  const amounts=new Map([[initial.id,'12.25'],...retained.map(row=>[row.id,row.amount] as [string,string])]);
  for(const row of page.rows){expect(row.amount).toBe(amounts.get(row.id));expect(typeof row.amount).toBe('string');if(row.id!==initial.id)expect(row.quantity).toBe('1.50');}
  const allPage=await listIndividualTxnsPage(a,p,parsePageQuery({size:'all'}));expect(allPage.rows).toHaveLength(2000);expect(allPage.total).toBe(2052);
+ await readTransactionExport(a,{kind:'individual',filters:{...p,departmentId:b.deptA,batchStatus:'draft'}},async(total,rows)=>{
+  const ids:string[]=[];for await(const row of rows)ids.push(row.id);
+  expect(total).toBe(2052);expect(ids).toEqual(expectedIds);
+ });
  expect(await listIndividualTxnsPage(a,p,parsePageQuery({page:'10000'}))).toEqual({rows:[],total:2052});
  expect(await listIndividualTxnsPage(a,{...p,month:6},parsePageQuery())).toEqual({rows:[],total:0});
  expect(await listIndividualTxnsPage(a,{...p,departmentId:other.departmentId},parsePageQuery())).toEqual({rows:[],total:0});
@@ -178,4 +190,32 @@ it('filters Processed and Pending reprocessing before LIMIT using the native pay
  expect(processed.total).toBe(1);expect(processed.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[before.id,false]]);
  expect(reprocess.total).toBe(1);expect(reprocess.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[after.id,true]]);
  const legacy=await listIndividualTxnsAcross(a,p);expect(new Map(legacy.map(row=>[row.id,row.reprocessRequired]))).toEqual(new Map([[before.id,false],[after.id,true]]));
+});
+
+it('publishes a typed private workbook from the background job and scopes each download', async()=>{
+ const actor=adminCtx(b),employee=await hire('Fictional Excel employee');
+ const batch=await createBatch(actor,{companyId:b.companyId,payPeriod:'2026-05'});
+ await createIndividualTxn(actor,{batchId:batch.batchId,employmentId:employee.employmentId,kind:'earning',txnDate:'2026-05-10',amount:12.25});
+ const {row:{id}}=await enqueueTransactionExport(actor,{kind:'individual',filters:{
+  companyIds:[b.companyId],employmentId:employee.employmentId,year:2026,month:5,
+ }});
+ let job=await readTransactionExportJob(actor,id);
+ for(let i=0;i<20&&!['completed','failed'].includes(job.state);i++){
+  await runBulkJobTick(owner.client,{handlers:[transactionExportJobHandler]});
+  job=await readTransactionExportJob(actor,id);
+ }
+ expect(job.state,job.error ?? '').toBe('completed');
+ const receipt=transactionWorkbookReceipt(job.result);
+ expect(receipt).toMatchObject({rows:1,kind:'individual',employmentId:employee.employmentId,parts:1});
+ const content=await readTransactionWorkbookPart(actor,id,0);
+ expect(content.length).toBe(receipt.bytes);
+ const workbook=XLSX.read(content,{type:'buffer',cellDates:true});
+ const sheet=workbook.Sheets[workbook.SheetNames[0]];
+ expect(sheet.B2.v).toBe('Fictional Excel employee');
+ expect(sheet.I2).toMatchObject({t:'n',v:12.25});
+ const stranger={...actor,userId:randomUUID()};
+ await expect(readTransactionWorkbookPart(stranger,id,0)).rejects.toThrow('Workbook unavailable.');
+ await owner.client`update app.payroll_transaction_export_part set expires_at=now()-interval '1 day' where job_id=${id}::uuid`;
+ await expect(readTransactionWorkbookPart(actor,id,0)).rejects.toThrow('Workbook unavailable.');
+ await expect(withTenant(actor,tx=>tx.execute(sql`select app.payroll_transaction_export_store(${id}::uuid,0,decode('00','hex'))`))).rejects.toThrow();
 });

@@ -243,6 +243,9 @@ class Fixture(old.UpgradeFlowFixture):
                 (process/'cgroup').write_text('0::/system.slice/aihr-bank-import.service\n')
                 ticks=int(time.monotonic()*os.sysconf('SC_CLK_TCK'))+1
                 (process/'stat').write_text(self.report['MainPID']+' (owned worker) '+' '.join(['S']+['0']*18+[str(ticks)]))
+            if argv==['/usr/bin/systemctl','stop','--no-block','aihr-bank-import.service'] and self.report['MainPID']=='0':
+                # A genuinely stopped process disappears from proc; retain it only in explicit reuse tests.
+                shutil.rmtree(self.proc/'456')
     @contextlib.contextmanager
     def ports(self):
         original_fstat=os.fstat;original_monotonic=time.monotonic
@@ -273,6 +276,47 @@ class Fixture(old.UpgradeFlowFixture):
             try:guard.launch(['guarded-activate-ci-runtime','--approval',str(self.authorization),'--approval-sha256',ci.sha(self.authorization.read_bytes())],self.fmt,self.base,ci,update)
             finally:
                 if self.pending_publication:os.close(self.pending_publication[0]);self.pending_publication=None
+
+
+def qualify_legacy_baseline_fixture(f,*,before_launch=False):
+    """Fictional existing producer fields, real record/receipt bytes and OS metadata.
+    Run the actual paired validator before replacing only current with the new launch.
+    No record/receipt is exported or manufactured outside the private fixture tree.
+    """
+    if not hasattr(ci,'RECOVERY'):ci.RECOVERY=load_native('legacy_receipt_policy_owner','bank_import_worker_prepared_v1.py')
+    original=copy.deepcopy(f.current)
+    # Native begin replaces current only; it does not touch the previous last-ok publication.
+    def write_changed_records():
+        for name,value in [('current',f.current),('last-ok',f.prior)]:
+            raw=''.join(k+'='+str(v)+'\n'for k,v in value.items()).encode();path=f.state/name
+            if not path.exists()or path.read_bytes()!=raw:path.write_bytes(raw)
+    f.write_records=write_changed_records
+    f.current={**f.prior,'phase':'ci-build-health','result':'ok','finished_at':'1794873500'}
+    f.prior={**f.current,'result':'failed'};f.write_records()
+    receipt=f.old_release/'worker-install-v2.json'
+    recovered={**f.old_receipt,'source':f.previous_worker,'webBuildId':f.old_build,'authorizationSha256':'6'*64,
+               'mode':'recover-ci-runtime','policy':ci.RECOVERY.POLICY,'workerRecoveryOnly':True,
+               'nativeRuntimeVerified':True,'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,
+               'completeMetadataFences':10,'journeyVerified':False,'installationAuthorizationSha256':'5'*64,
+               'firstStageApprovalSha256':'4'*64,'installId':'63333333-3333-4333-8333-333333333333'}
+    receipt.write_bytes(encoded(recovered));receipt.chmod(0o444)
+    # The actual native finish clock is seconds; the real receipt publication metadata precedes it.
+    f.current['finished_at']=str(int(time.time()));f.prior['finished_at']=f.current['finished_at'];f.write_records()
+    with patch.object(ci,'STATE',f.state):
+        selection={'format':1,'policy':ci.BASELINE_PUBLICATION_POLICY,'source':f.previous_web,'buildId':f.old_build,
+                   'currentSha256':ci.sha((f.state/'current').read_bytes()),'lastOkSha256':ci.sha((f.state/'last-ok').read_bytes()),
+                   'workerReceiptSha256':ci.sha(receipt.read_bytes()),'workerAuthorizationSha256':recovered['authorizationSha256'],
+                   'currentIdentity':ci.baseline_file_identity(f.base,f.state/'current'),
+                   'lastOkIdentity':ci.baseline_file_identity(f.base,f.state/'last-ok'),
+                   'workerReceiptIdentity':ci.baseline_file_identity(f.base,receipt)}
+        f.auth[ci.BASELINE_PUBLICATION_KEY]=copy.deepcopy(selection)
+        ci.verify_baseline_publication(f.base,f.auth,paired=True)
+    f.first[ci.BASELINE_PUBLICATION_KEY]=copy.deepcopy(selection)
+    f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes())
+    f.auth['priorLastOkSha256']=selection['lastOkSha256'];f.current=original
+    if not before_launch:f.write_records()
+    f.persist_authority();return selection
+
 
 class PauseBeforeNativeRemoval(Exception):pass
 
@@ -593,7 +637,8 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     f.runtime['authorizationSha256']=f.auth['grantSha256'];f.private_record('runtime.json',f.runtime);f.auth['runtimeSha256']=ci.sha(encoded(f.runtime))
                 if defect=='fence-deadline':f.deadline_at=3
                 f.persist_authority()
-                with self.assertRaisesRegex(ValueError,'insufficient mandatory|insufficient estimated global|stage deadline'):f.conditional()
+                reason='aggregate proof slot expired'if defect=='fence-deadline'else'insufficient mandatory|insufficient estimated global|stage deadline'
+                with self.assertRaisesRegex(ValueError,reason):f.conditional()
                 self.assertEqual(f.native_calls,1);self.assertEqual(f.fast_calls,3);self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists())
                 mutations=[v for v in f.events[events:]if isinstance(v,list)and v[:2]in [['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start']]]
                 self.assertEqual(mutations,[])
@@ -802,5 +847,117 @@ class ConditionalRuntimeTests(unittest.TestCase):
             with patch.object(ci,'SOURCE',cwd),patch.object(ci,'bounded_process',side_effect=bounded):
                 result=ci.child([node,'-e',js,str(PYTHON_PATH),program,str(cwd)],owner,env)
             self.assertEqual(result,{'safePath':True,'noUserSite':1});self.assertFalse(user_marker.exists());self.assertFalse(cwd_marker.exists())
+
+
+class QualifiedLegacyBaselineTests(unittest.TestCase):
+    def fixture(self,*,before_launch=False):
+        t=tempfile.TemporaryDirectory();self.addCleanup(t.cleanup);f=Fixture(Path(t.name))
+        selection=qualify_legacy_baseline_fixture(f,before_launch=before_launch);return f,selection
+
+    def resave_pair_pins(self,f):
+        p=f.auth[ci.BASELINE_PUBLICATION_KEY]
+        for name,key,digest in [('current','currentIdentity','currentSha256'),('last-ok','lastOkIdentity','lastOkSha256')]:
+            p[key]=ci.baseline_file_identity(f.base,f.state/name);p[digest]=ci.sha((f.state/name).read_bytes())
+
+    def test_real_pair_qualification_is_read_only_and_preserves_every_native_byte(self):
+        f,p=self.fixture(before_launch=True);paths=[f.state/'current',f.state/'last-ok',f.old_release/'worker-install-v2.json']
+        before=[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths]
+        with f.ports():self.assertEqual(ci.verify_baseline_publication(f.base,f.auth,paired=True),p)
+        self.assertEqual(before,[(x.read_bytes(),ci.baseline_file_identity(f.base,x))for x in paths])
+
+    def test_full_normal_r0_graph_uses_captured_pair_after_new_begin_replaces_current(self):
+        f,p=self.fixture();old_last=(f.state/'last-ok').read_bytes();receipt=(f.old_release/'worker-install-v2.json').read_bytes()
+        self.assertNotEqual(ci.sha((f.state/'current').read_bytes()),p['currentSha256'])
+        f.conditional();r=json.loads((f.operation/'activated.json').read_bytes())
+        self.assertEqual(set(r['transitionStages']),{'R0'});self.assertEqual((r['fullNativeAudits'],r['completeMetadataFences']),(2,10))
+        self.assertEqual((f.state/'last-ok').read_bytes(),old_last);self.assertEqual((f.old_release/'worker-install-v2.json').read_bytes(),receipt)
+        self.assertFalse(r['journeyVerified'])
+
+    def test_ordinary_running_and_final_ok_remain_exact_and_legacy_proof_cannot_relax_new_finish(self):
+        f,_=self.fixture();f.finish_on=('fast',2);f.conditional();r=json.loads((f.operation/'activated.json').read_bytes())
+        self.assertIn('R0',r['transitionStages']);self.assertIn('O',r['transitionStages']);self.assertEqual(f.prior['result'],'')
+        other,_=self.fixture();other.finish();other.prior['result']='failed';other.write_records()
+        with self.assertRaisesRegex(ValueError,'native successful finish publication differs'):other.conditional()
+        self.assertFalse((other.operation/'activated.json').exists())
+
+    def test_no_optin_keeps_original_failed_header_refusal(self):
+        f,_=self.fixture();f.auth.pop(ci.BASELINE_PUBLICATION_KEY);f.first.pop(ci.BASELINE_PUBLICATION_KEY)
+        f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes());f.persist_authority()
+        with self.assertRaisesRegex(ValueError,'prior last-ok is invalid'):f.conditional()
+        self.assertFalse((f.operation/'activated.json').exists())
+
+    def test_first_stage_selection_cannot_be_dropped_or_changed_on_activation(self):
+        for change in ['missing','changed']:
+            with self.subTest(change=change):
+                f,_=self.fixture()
+                if change=='missing':f.auth.pop(ci.BASELINE_PUBLICATION_KEY)
+                else:
+                    f.first[ci.BASELINE_PUBLICATION_KEY]['currentSha256']='0'*64
+                    f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes())
+                f.persist_authority()
+                with self.assertRaises(ValueError):f.conditional()
+                self.assertFalse((f.operation/'activated.json').exists())
+
+    def test_even_rebound_hashes_cannot_qualify_nonzero_mismatched_or_partial_native_pair(self):
+        for defect in ['current-failed','prior-empty','nonzero','source','build','phase','finished','unknown','duplicate']:
+            with self.subTest(defect=defect):
+                f,_=self.fixture(before_launch=True);path=f.state/'last-ok';value=ci.record(path.read_bytes())
+                if defect=='current-failed':
+                    c=ci.record((f.state/'current').read_bytes());c['result']='failed';(f.state/'current').write_text(''.join(k+'='+v+'\n'for k,v in c.items()))
+                if defect=='prior-empty':value['result']=''
+                if defect=='nonzero':value['exit_code']='1'
+                if defect=='source':value['ref']='7'*40
+                if defect=='build':value['build_id']='foreign-build'
+                if defect=='phase':value['phase']='restart'
+                if defect=='finished':value['finished_at']=''
+                if defect=='unknown':value['reviewed']='true'
+                raw=''.join(k+'='+v+'\n'for k,v in value.items())+('result=failed\n'if defect=='duplicate'else'');path.write_text(raw)
+                self.resave_pair_pins(f)
+                with f.ports(),self.assertRaises(ValueError):ci.verify_baseline_publication(f.base,f.auth,paired=True)
+
+    def test_receipt_must_be_actual_recovery_shape_even_when_caller_rebinds_its_hash(self):
+        for defect in ['source','webBuildId','authorizationSha256','mode','policy','workerRecoveryOnly','serviceStable','nativeRuntimeVerified','fullSourceContentInventoryVerified','fullNativeAudits','completeMetadataFences','journeyVerified','installationAuthorizationSha256','firstStageApprovalSha256','installId']:
+            with self.subTest(defect=defect):
+                f,_=self.fixture(before_launch=True);path=f.old_release/'worker-install-v2.json';saved=json.loads(path.read_bytes())
+                original=saved[defect];saved[defect]=not original if type(original)is bool else 1 if type(original)is int else 'wrong'
+                self.assertNotEqual(saved[defect],original)
+                path.chmod(0o644);path.write_bytes(encoded(saved));path.chmod(0o444)
+                proof=f.auth[ci.BASELINE_PUBLICATION_KEY];proof['workerReceiptSha256']=ci.sha(path.read_bytes());proof['workerReceiptIdentity']=ci.baseline_file_identity(f.base,path)
+                with f.ports(),self.assertRaisesRegex(ValueError,'recovered.*receipt'):ci.verify_baseline_publication(f.base,f.auth,paired=True)
+
+    def test_record_and_receipt_metadata_bytes_and_selection_are_revalidated_after_launch(self):
+        for defect in ['last-ok-content','last-ok-inode','receipt-content','receipt-inode','receipt-mode','receipt-hardlink','receipt-symlink','unknown-proof','wrong-version','wrong-policy','foreign-proof','missing-proof','auth-lastok']:
+            with self.subTest(defect=defect):
+                f,_=self.fixture();path=f.old_release/'worker-install-v2.json';last=f.state/'last-ok'
+                if defect=='last-ok-content':last.write_bytes(last.read_bytes()+b'changed=1\n')
+                if defect=='last-ok-inode':raw=last.read_bytes();last.unlink();last.write_bytes(raw)
+                if defect=='receipt-content':path.chmod(0o644);path.write_bytes(path.read_bytes()+b' ');path.chmod(0o444)
+                if defect=='receipt-inode':raw=path.read_bytes();path.unlink();path.write_bytes(raw);path.chmod(0o444)
+                if defect=='receipt-mode':path.chmod(0o644)
+                if defect=='receipt-hardlink':os.link(path,path.with_name('duplicate-receipt'))
+                if defect=='receipt-symlink':target=path.with_name('actual-receipt');path.rename(target);path.symlink_to(target)
+                if defect=='unknown-proof':f.auth[ci.BASELINE_PUBLICATION_KEY]['reviewed']=True
+                if defect=='wrong-version':f.auth[ci.BASELINE_PUBLICATION_KEY]['format']=True
+                if defect=='wrong-policy':f.auth[ci.BASELINE_PUBLICATION_KEY]['policy']='other'
+                if defect=='foreign-proof':f.auth[ci.BASELINE_PUBLICATION_KEY]['source']='7'*40
+                if defect=='missing-proof':f.auth.pop(ci.BASELINE_PUBLICATION_KEY)
+                if defect=='auth-lastok':f.auth['priorLastOkSha256']='0'*64
+                with f.ports(),self.assertRaises((ValueError,OSError)):
+                    ci.verify_baseline_publication(f.base,f.auth,last_ok=last.read_bytes())
+
+    def test_rebound_future_receipt_publication_cannot_be_presented_as_pre_finish_evidence(self):
+        f,_=self.fixture(before_launch=True);receipt=f.old_release/'worker-install-v2.json'
+        future=int(ci.record((f.state/'current').read_bytes())['finished_at'])+10
+        os.utime(receipt,ns=(future*1000000000,future*1000000000))
+        # Even an independently rebound metadata selection cannot bypass chronology.
+        f.auth[ci.BASELINE_PUBLICATION_KEY]['workerReceiptIdentity']=ci.baseline_file_identity(f.base,receipt)
+        with f.ports(),self.assertRaisesRegex(ValueError,'published after native successful finish'):
+            ci.verify_baseline_publication(f.base,f.auth,paired=True)
+
+    def test_unqualified_recovery_and_published_fieldsets_do_not_acquire_legacy_authority(self):
+        p={ci.BASELINE_PUBLICATION_KEY:{'format':1}}
+        with self.assertRaisesRegex(ValueError,'unavailable'):ci.baseline_publication_fields(ci.ACTIVATION_FIELDS,p)
+        self.assertEqual(ci.baseline_publication_fields(ci.ACTIVATION_FIELDS,{}),ci.ACTIVATION_FIELDS)
+
 
 if __name__=='__main__':unittest.main()

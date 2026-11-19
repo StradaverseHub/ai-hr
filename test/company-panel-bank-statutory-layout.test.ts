@@ -887,10 +887,10 @@ describe('Statutory tab: each body is a row (3c2f55d7 rev 2, relaid out by efe42
       expect(SCREEN, `while the note recording that ${cls} was removed is KEPT`).toContain(cls);
     }
     expect(noComments, 'nothing on this screen scrolls sideways').not.toContain('overflow-x-auto');
-    // ⚠️ THE SHARED CONSTANTS THEMSELVES ARE UNTOUCHED — every other admin table keeps the house look.
-    // Removing them from ONE screen is the fix; editing the constant would restyle forty.
+    // The approved global table redesign adds its shared ui-table-wrap marker. This screen still
+    // removes the table entirely; every other consumer retains the same canonical house owner.
     expect(read('components/ui.tsx'), 'the house table look is not restyled for one module').toContain(
-      "export const tableWrapCls = 'overflow-x-auto rounded-md border border-border';",
+      "export const tableWrapCls = 'ui-table-wrap overflow-x-auto rounded-md border border-border';",
     );
   });
 

@@ -99,7 +99,15 @@ function fullHints(env:FocusedIntentEnvironment){
  return{unit,offset,planFingerprint:env[FULL_CI_ROLE_ENV.plan]!,evidence:env[FULL_CI_ROLE_ENV.evidence]!};
 }
 /** Bootstrap requires all five hints. Read-only rehearsal deliberately requires NONE of them. */
-export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:FullCiRoleHost,readonlyRehearsal=false):FullCiRoleAdmission{
+export const FULL_CI_READONLY_REHEARSAL_FILES=[
+ 'test/personnel-draft-discard-role-transfer.test.ts',
+ 'test/contract-posting-restricted-owner-runtime.test.ts',
+ 'test/contract-navigation-owner-extraction-db.test.ts',
+] as const;
+export type FullCiReadonlyRehearsalFile=typeof FULL_CI_READONLY_REHEARSAL_FILES[number];
+export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:FullCiRoleHost,readonlyRehearsal=false,rehearsalFile:FullCiReadonlyRehearsalFile=FULL_CI_READONLY_REHEARSAL_FILES[0]):FullCiRoleAdmission{
+ fullNeed((FULL_CI_READONLY_REHEARSAL_FILES as readonly string[]).includes(rehearsalFile),'closed readonly rehearsal caller');
+ fullNeed(readonlyRehearsal||rehearsalFile===FULL_CI_READONLY_REHEARSAL_FILES[0],'bootstrap cannot select a rehearsal caller');
  const hints=readonlyRehearsal?(fullNeed(!hasFullCiRoleIntent(env)&&!hasFocusedMigrationIntent(env)&&!Object.keys(env).some(key=>key.startsWith('AIHR_FOCUSED_')&&env[key]!==undefined),'readonly hints'),null):fullHints(env);
  fullNeed(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted'&&env.RUNNER_OS==='Linux'&&host.platform==='linux','hosted Linux');
  fullNeed(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_REPOSITORY_ID==='1333414856'&&env.GITHUB_WORKFLOW==='alpha-staging-ci'&&env.GITHUB_JOB==='test','workflow identity');
@@ -158,7 +166,7 @@ export function inspectFullCiRoleAdmission(env:FocusedIntentEnvironment,host:Ful
  fullNeed(Array.isArray(plan.units),'actual plan units');const units=(plan.units as unknown[]).map(fullRecord),matching=units.filter(unit=>unit.id===unitId);
  fullNeed(matching.length===1&&matching[0].kind==='db'&&Array.isArray(matching[0].files),'actual plan DB membership');
  const files=(matching[0].files as unknown[]).map(fullText);fullNeed(files.length>0&&new Set(files).size===files.length,'unit files');
- const rehearsalFile='test/personnel-draft-discard-role-transfer.test.ts',fileIndex=files.indexOf(rehearsalFile);
+ const fileIndex=files.indexOf(rehearsalFile);
  if(readonlyRehearsal)fullNeed(fileIndex>=0,'actual rehearsal file membership');
  const offset=hints?.offset??Math.floor(fileIndex/Number(batchSize))*Number(batchSize);
  fullNeed(Number.isSafeInteger(offset)&&offset>=0&&offset<files.length&&offset%Number(batchSize)===0,'actual plan batch offset');

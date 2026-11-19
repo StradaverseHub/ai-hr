@@ -20,6 +20,8 @@ from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
 spec=importlib.util.spec_from_file_location('operation_guard',ROOT/'deploy/systemd/bank_import_worker_operation_guard_v1.py')
 guard=importlib.util.module_from_spec(spec);spec.loader.exec_module(guard)
+hash_spec=importlib.util.spec_from_file_location('fresh_runtime_hash_owner',ROOT/'deploy/systemd/bank_import_worker_ci_runtime_v1.py')
+hash_owner=importlib.util.module_from_spec(hash_spec);hash_spec.loader.exec_module(hash_owner)
 
 def check(ok,message):
     if not ok:raise ValueError(message)
@@ -184,6 +186,22 @@ class BoundaryTests(unittest.TestCase):
         result['environmentSha256']='changed-service-config'
         with patch.object(guard.time,'time',return_value=10):
             with self.assertRaisesRegex(ValueError,'environment/readiness differs'):o.file_mutation()
+    def test_explicit_legacy_pair_is_checked_after_fresh_lease_before_any_drain_mutation(self):
+        o=self.obj();o.stage='drain';o.base.NODE=Path('/node');o.lock=SimpleNamespace(fd=4)
+        o.a.update(environmentSha256='canonical',readiness={'required':'1','waitSeconds':None},baselinePublication={'policy':'fixture-selection'})
+        o.ci.child=lambda *a,**k:{'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':'canonical','readiness':o.a['readiness']}
+        o.ci.verify_baseline_publication=lambda b,a,**k:o.events.append(('baseline',k['paired']))
+        with patch.object(guard.time,'time',return_value=10):o.file_mutation()
+        self.assertEqual(o.events,['EX','SH','EX','native-lease',('baseline',True)])
+        o.ci.verify_baseline_publication=lambda *a,**k:(_ for _ in()).throw(ValueError('paired baseline refused'))
+        with patch.object(guard.time,'time',return_value=10),self.assertRaisesRegex(ValueError,'paired baseline refused'):o.file_mutation()
+
+    def test_later_activation_checks_receipt_but_does_not_look_for_overwritten_old_current(self):
+        o=self.obj();o.a['baselinePublication']={'policy':'fixture-selection'}
+        o.ci.verify_baseline_publication=lambda b,a,**k:o.events.append(('baseline',k['paired']))
+        with patch.object(guard.time,'time',return_value=10):o.file_mutation()
+        self.assertEqual(o.events,['EX','SH','EX','native-lease',('baseline',False)])
+
     def test_failure_only_requires_owned_start_without_fresh_lease_pass(self):
         o=self.obj();o.observer=SimpleNamespace(quarantine_fence=lambda:o.events.append('own-start'))
         o.native_lease=lambda:(_ for _ in()).throw(AssertionError('must not claim failed lease PASS'))
@@ -210,7 +228,7 @@ class BoundaryTests(unittest.TestCase):
             approval=r/'approval';approval.write_bytes(b'approval');lease=r/'lease';lease.write_bytes(b'lease')
             o=guard.GuardedInvocation.__new__(guard.GuardedInvocation);o.lock=SimpleNamespace(fd=3,verify=lambda:3)
             sha=lambda b:hashlib.sha256(b).hexdigest();o.base=SimpleNamespace(check=check,root_protected=lambda *a,**kw:None,NODE=node,read_bounded=lambda p,n:p.read_bytes())
-            o.ci=SimpleNamespace(sha=sha,COORDINATOR=coordinator,protected_private=lambda b,p:(p.stat().st_dev,p.stat().st_ino),verify_python=lambda *a:None,verify_node_options_pins=lambda *a:None)
+            o.ci=SimpleNamespace(sha=sha,bounded_file_sha256=hash_owner.bounded_file_sha256,COORDINATOR=coordinator,protected_private=lambda b,p:(p.stat().st_dev,p.stat().st_ino),verify_python=lambda *a:None,verify_node_options_pins=lambda *a:None)
             o.path=approval;o.bytes=b'approval';o.approval_identity=o.ci.protected_private(None,approval);o.lease_path=lease;o.lease_identity=o.ci.protected_private(None,lease)
             o.a={'python':{'fixture':True},'nodeOptions':{'policy':'aihr-worker-node-options-memory/v1','sha256':sha(b'')},'leaseFileSha256':sha(b'lease'),'coordinatorSha256':sha(b'fixed-owner'),'nodeSha256':sha(node.read_bytes())}
             self.assertEqual(o.verify(),3);node.write_bytes(b'different-node-v22.23.3')

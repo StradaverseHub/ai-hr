@@ -1,0 +1,45 @@
+/** Hosted production renderer on an owned, NEW fictional database. No installation access. */
+import assert from 'node:assert/strict';
+import {execFileSync,spawn,spawnSync} from 'node:child_process';
+import {randomBytes} from 'node:crypto';
+import {closeSync,existsSync,mkdirSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import {join,relative,resolve,isAbsolute} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {setTimeout as sleep} from 'node:timers/promises';
+import {productionBuildEnv,assertBrowserPostgresProfile} from './orchestrator-browser.mjs';
+import {hostHealth} from './host-health.mjs';
+import {capturePostgresEvidence,validatePostgresEvidence} from './postgres-evidence.mjs';
+import {CI_EXECUTION} from './manifest.mjs';
+const base='http://127.0.0.1:3174',target='ai_hr_resignation_browser';
+export function validateBrowserSource(env,sha,dirty){assert.equal(env.GITHUB_ACTIONS,'true');assert.equal(env.CI,'true');assert.equal(env.RUNNER_ENVIRONMENT,'github-hosted');assert.equal(env.GITHUB_REPOSITORY,'StradaverseHub/ai-hr');assert.equal(env.AIHR_CI_HEAD,sha);assert(/^[a-f0-9]{40}$/.test(sha));assert(/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));assert.equal(dirty,'');assert(!env.AUTH_PROVIDER);assert(!env.SEED_MAY_DESTROY_OTHER_TENANTS);}
+async function main(){
+ const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim(),sha=git('rev-parse','HEAD');validateBrowserSource(process.env,sha,git('status','--porcelain'));assert.equal(process.platform,'linux');assert(!existsSync('.next/BUILD_ID'));const profile=assertBrowserPostgresProfile(process.env);
+ const out=resolve(process.argv[2]),within=relative(resolve(process.env.RUNNER_TEMP),out);assert(within&&!within.startsWith('../')&&!isAbsolute(within));mkdirSync(out,{mode:0o700});
+ const report={kind:'RESIGNATION_PRODUCTION_RENDERER_SYNTHETIC_ONLY',releaseEligible:false,sha,controller:process.env.AIHR_CI_CONTROL_HEAD,run:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,fixtureOrigin:'NEW_SYNTHETIC_CI_FIXTURE',phases:[],browserErrors:[],serverErrors:[],exitCode:1};
+ const gate=randomBytes(24).toString('hex'),sessionKey=randomBytes(32).toString('hex'),secret=randomBytes(32).toString('hex'),scrub=text=>String(text).replaceAll(gate,'[ephemeral gate]').replaceAll(sessionKey,'[ephemeral auth key]').replaceAll(secret,'[ephemeral AI key]');
+ const dbEnv={...process.env,NODE_ENV:'development',ALLOW_DEMO_SESSION:'true',SHARE_PASSWORD:gate,AI_CONFIG_SECRET:secret,AUTH_SESSION_KEY:sessionKey,AUTH_PUBLIC_ORIGIN:'https://resignation.example.test',TEST_DB_NAMESPACE:'resignationbrowser',DATABASE_URL:`postgres://ai_hr_app@127.0.0.1:5433/${target}`,MIGRATION_DATABASE_URL:`postgres://postgres@127.0.0.1:5433/${target}`,TEST_DATABASE_URL:`postgres://ai_hr_app@127.0.0.1:5433/${target}`,TEST_MIGRATION_DATABASE_URL:`postgres://postgres@127.0.0.1:5433/${target}`};
+ const pgEnv={...process.env,AIHR_CI_UNIT:'db-1'},container=`aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-db-1`,postgres=fileURLToPath(new URL('./postgres.sh',import.meta.url)),buildHeap=fileURLToPath(new URL('./build-heap.mjs',import.meta.url));let app,browser,started=false;
+ function run(label,bin,args,env=dbEnv,timeout=180000){const began=Date.now(),child=spawnSync(bin,args,{env,encoding:'utf8',timeout,maxBuffer:64*1024*1024});writeFileSync(join(out,label+'.log'),scrub((child.stdout??'')+(child.stderr??'')),{flag:'wx',mode:0o600});report.phases.push({label,exit:child.status,signal:child.signal,elapsedMs:Date.now()-began});console.log(JSON.stringify(report.phases.at(-1)));assert(!child.error&&child.status===0&&child.signal===null,label+' failed');return child.stdout;}
+ const fixture=operation=>JSON.parse(run('fixture-'+operation+'-'+report.phases.length,process.execPath,['--conditions=react-server','--import','tsx','scripts/resignation-browser-fixture.ts',operation]));
+ const query=sql=>run('query-'+report.phases.length,'docker',['exec',container,'psql','-U','postgres','-p','5433','-d',target,'-At','-v','ON_ERROR_STOP=1','-c',sql],pgEnv).trim();
+ try{
+  report.healthBefore=hostHealth();assert(report.healthBefore.ok);
+  // Build with all four database URLs closed before starting PostgreSQL, avoiding idle database memory during compilation.
+  run('production-build',process.execPath,[buildHeap,'measure',join(out,'next-build-memory'),'--','pnpm','build'],productionBuildEnv(dbEnv),900000);report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();assert(report.buildId);
+  started=true;run('postgres-setup','bash',[postgres,'reset'],pgEnv);run('create-fictional-database','docker',['exec',container,'psql','-U','postgres','-p','5433','-d','postgres','-v','ON_ERROR_STOP=1','-c',`CREATE DATABASE ${target}`,'-c',`GRANT CONNECT ON DATABASE ${target} TO ai_hr_app`],pgEnv);run('migrate',process.execPath,['--import','tsx','scripts/resignation-browser-premigration.ts'],{...dbEnv,AIHR_RESIGNATION_ROLE_MODE:'resignation_browser_disposable',AIHR_RESIGNATION_ROLE_EVIDENCE_DIR:out},300000);run('seed',process.execPath,['--import','tsx','db/seed.ts']);
+  const {validateResignationFixture,exerciseResignationBrowser}=await import(resolve('scripts/resignation-browser-acceptance.mjs'));
+  const first=fixture('prepare'),prepared=validateResignationFixture(first),second=fixture('prepare');assert.equal(first.reused,false);assert.equal(second.reused,true);assert.deepEqual(second.fixture,prepared);assert.deepEqual(second.cases,first.cases);report.fixture=prepared;report.modelRunsBefore=Number(query('select count(*) from ai_model_run'));
+  const fd=openSync(join(out,'server.log'),'wx',0o600);app=spawn(process.execPath,[join(process.cwd(),'node_modules/next/dist/bin/next'),'start','--hostname','127.0.0.1','--port','3174'],{env:{...dbEnv,NODE_ENV:'production'},stdio:['ignore',fd,fd]});closeSync(fd);let spawnError;app.on('error',error=>{spawnError=error;});let ready=false;const auth='Basic '+Buffer.from('ci:'+gate).toString('base64');
+  for(let attempt=0;attempt<120;attempt++){assert(!spawnError&&app.exitCode===null&&app.signalCode===null);try{const response=await fetch(base+'/login',{headers:{authorization:auth},signal:AbortSignal.timeout(2000)});if(response.status===200){ready=true;await response.arrayBuffer();break;}}catch{}await sleep(1000);}assert(ready,'Production server not ready');assert.equal((await fetch(base+'/',{redirect:'manual'})).status,401,'Demo gate must remain active');
+  const require=createRequire(join(process.cwd(),'package.json'));browser=await require('playwright').chromium.launch({headless:true});await exerciseResignationBrowser({base,browser,fixture:prepared,observe:()=>fixture('observe'),clearance:()=>fixture('clearance'),publishTemplate:()=>fixture('publish-regeneration'),publishRepair:()=>fixture('publish-repair'),observeRepair:()=>fixture('observe-repair'),prepareNonApprover:()=>fixture('prepare-posting-nonapprover'),blockPostingApproval:()=>fixture('block-posting-approval'),restorePostingApproval:()=>fixture('restore-posting-approval'),verifyOutsiderDenial:()=>fixture('verify-outsider-denial'),report,out,gate,sha});
+  report.modelRunsAfter=Number(query('select count(*) from ai_model_run'));assert.equal(report.modelRunsAfter,report.modelRunsBefore);assert.equal(report.browserErrors.length,0);assert.equal(report.serverErrors.length,0);assert.equal(git('rev-parse','HEAD'),sha);assert.equal(git('status','--porcelain'),'');report.exitCode=0;
+ }catch(error){report.error=scrub(error instanceof Error?error.stack??error.message:'Renderer failed').slice(0,6000);}
+ finally{
+  if(browser)await browser.close().catch(()=>{report.exitCode=1;});if(app&&app.exitCode===null&&app.signalCode===null){app.kill('SIGTERM');for(let i=0;i<50&&app.exitCode===null&&app.signalCode===null;i++)await sleep(100);if(app.exitCode===null&&app.signalCode===null){app.kill('SIGKILL');report.exitCode=1;}}
+  if(existsSync(join(out,'server.log')))writeFileSync(join(out,'server.log'),scrub(readFileSync(join(out,'server.log'),'utf8')),{mode:0o600});
+  if(started){try{const evidence=capturePostgresEvidence('db-1',profile);writeFileSync(join(out,'postgres-evidence.json'),JSON.stringify(evidence,null,2)+'\n',{mode:0o600});validatePostgresEvidence(evidence,CI_EXECUTION);report.databaseEvidenceValid=true;}catch(error){report.databaseEvidenceValid=false;report.exitCode=1;report.databaseEvidenceError=scrub(error.message);}if(spawnSync('bash',[postgres,'stop'],{env:pgEnv,stdio:'inherit'}).status!==0)report.exitCode=1;}
+  report.healthAfter=hostHealth();writeFileSync(join(out,'walkthrough.json'),scrub(JSON.stringify(report,null,2))+'\n',{flag:'wx',mode:0o600});console.log(JSON.stringify({kind:report.kind,sha,exitCode:report.exitCode,error:report.error}));
+ }process.exitCode=report.exitCode;
+}
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){assert.equal(process.argv.length,3);main().catch(error=>{console.error(error instanceof Error?error.message:'Renderer setup failed');process.exitCode=1;});}

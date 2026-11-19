@@ -161,8 +161,16 @@ export const FORWARD_STUBS:ReadonlySet<string>=new Set(['/control-tower','/contr
  '/admin/attendance/settings/formula-builder','/admin/attendance/settings/formula-builder/new']);
 /** Native workflow grants and an active View As session cannot be inferred from a coarse role or module. */
 export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
+ // Resignation postings use configured/current-or-pending group membership plus company/workforce authority.
+ // The shell resolves offboardingPostingAccess; a coarse HR role must not advertise this queue.
+ '/lifecycle/offboarding/postings',
+ // Contract postings require native posting-group and workforce authority, beyond a coarse HR role.
+ '/lifecycle/contracts/postings',
  '/admin/attendance/settings/offline-clocking',
  '/payroll/statutory-forms/filing-history',
+ // Export artifacts and import outcomes are scoped to the initiating user and current Payroll grants.
+ '/payroll/transaction-view/workbooks',
+ '/payroll/transactions/fixed/imports',
  '/admin/rewards/access/view-as',
  '/admin/rewards/earlier-plans',
  '/admin/rewards/bonus-matrices',
@@ -297,9 +305,9 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/letters/reports','admin','employees'],['/letters/settings','admin','employees'],['/letters/settings/automation','admin','employees'],
  ['/letters/settings/policy','admin','employees'],['/letters/templates','admin','employees'],['/letters/templates/new','admin','employees'],
  ['/lifecycle','everyone','lifecycle'],['/lifecycle/acknowledgement','everyone','lifecycle'],['/lifecycle/onboarding','everyone','lifecycle'],
- ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
+ ['/lifecycle/onboarding/checklists','everyone','lifecycle'],['/lifecycle/requisitions/offboarding','everyone','lifecycle'],['/lifecycle/requisitions/onboarding','everyone','lifecycle'],
  ['/lifecycle/v9','everyone','lifecycle'],['/manage/my-team','manager',null],['/me','everyone',null],['/me/calendar','everyone',null],['/me/cases','everyone',null],['/me/cases/new','everyone',null],
- ['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
+ ['/me/document-signing','everyone','lifecycle'],['/me/ea','everyone','payroll'],['/me/home','everyone',null],['/me/letters','everyone','employees'],['/me/lifecycle','everyone','lifecycle'],
  ['/me/notifications','everyone','notifications'],['/me/payroll-readiness','everyone',null],['/me/payslip','everyone','payroll'],['/me/performance','everyone',null],
  ['/me/tax-relief','everyone','payroll'],['/me/tp3','everyone','payroll'],['/notices','everyone',null],['/org','everyone',null],
  ['/payroll','admin','payroll'],['/payroll/back-pay','admin','payroll'],['/payroll/borang-8a/preview','admin','payroll'],
@@ -308,7 +316,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/configuration/hrdf','admin','payroll'],['/payroll/configuration/pcb','admin','payroll'],
  ['/payroll/configuration/skbbk','admin','payroll'],['/payroll/configuration/socso','admin','payroll'],['/payroll/control-tower','admin','payroll'],
  ['/payroll/cp39/preview','admin','payroll'],['/payroll/cp8d/preview','admin','payroll'],['/payroll/formula-builder','admin','payroll'],
- ['/payroll/formula-builder/new','admin','payroll'],['/payroll/history-import','admin','payroll'],['/payroll/history-import/logs','admin','payroll'],
+ ['/payroll/formula-builder/new','admin','payroll'],['/payroll/history-import','admin','payroll'],['/payroll/history-import/logs','admin','payroll'],['/payroll/history-import/records','admin','payroll'],
  ['/payroll/income-tax-recalculation','admin','payroll'],['/payroll/individual-payslip','admin','payroll'],
  ['/payroll/multi-cycle-worksheet','admin','payroll'],['/payroll/payment-submission','admin','payroll'],
  ['/payroll/payslip-information','admin','payroll'],['/payroll/pcb-detail','admin','payroll'],['/payroll/process','admin','payroll'],

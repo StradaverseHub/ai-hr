@@ -1,5 +1,7 @@
 # Architecture and performance remediation
 
+Current status, 17 November: the first batch was accepted on staging at `9bdfb4596`; AP-033 is closed and AP-038 was resolved externally. Sixty observations remain open. Own Leave and Payroll selection paging are implemented and development-qualified, with migration5787 and owner-approved staging source binding. Movement must release first. This batch must then integrate its accepted baseline, pass the full release gate and complete staging acceptance before any further closure. Earlier prepared/held snapshots below are historical.
+
 Scope: the completed 16 November 2026 assessment, revalidated per fix against current main. This is the consolidated disposition ledger; an implementation is not a verified improvement until its native and staging evidence is recorded. Production is outside this task.
 
 Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve the original audit IDs and verification requirements. No finding is closed by source inspection alone.
@@ -101,7 +103,7 @@ Migration 5767 changes only the index's advisory Access lock to shared. The inst
 
 ## Additional end-to-end gap discovered during remediation
 
-AP-062 (P1, open): Own Leave's discovery GET runs a separately committed privacy-expiry command and a different
+AP-062 (P1, open): Own Leave's discovery POST list operation runs a separately committed privacy-expiry command and a different
 `assistant_own_leave_reviews_index()` owner, rather than the module compatibility index changed by 5767.
 Its neutral list carrier can still acquire exclusive Access through `assertAiPrincipalTx`; the separate legacy
 index and expiry owners need their own installed-definition and concurrency qualification. Preserve current-person
@@ -129,3 +131,15 @@ fingerprint is a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc 
 not rebound or approved. Irwin's existing literal approvals remain unchanged and cannot authorize this merged
 fingerprint. Generated manifests are source descriptions, not release or provider authority. Functional native
 qualification and whole type checking of the merged candidate remain pending.
+
+
+## Current batch: Own Leave and Payroll selection paging (17 November)
+
+Base: accepted staging `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. AP-033 was accepted for all seven legacy metadata list owners in full gate43917317649; AP-045 header/count projections and AP-058 preview locking were accepted partially. Sixty of62 observations remain open; AP-038 was resolved externally. Earlier development and release snapshots above remain historical.
+
+- **AP-062, implementation awaiting verification:** Own Leave metadata uses an explicit READ ONLY shared Access interval; separate own/admin expiry commands use shared Access while retaining row locks and READ WRITE. Cleanup stays a separate committed privacy transaction before later refusals. Suspension, person relink, native roles, body deletion and competing shared holders are covered by authored tests. Unapplied migration5787 / idx5187 / when1793330005487 replaces provisional5880 with unchanged SQL bytes; Movement must release first and lower pending blocks must be reconciled before admission.
+- **AP-045, partial:** Remove/Reprocess native readers count/filter/page identity rows before money/department/later-period or eligibility/readiness hydration. Reprocess uses the effective summary instead of full discarded batch detail. Whole-run totals stay independent of search. Existing commands, period/permission guards, audit and financial arithmetic remain with their native owners.
+- **Selection contract:** ready New/Pending defaults cover only the initial displayed page. Already chosen rows, Remove reason and Reprocess idempotency persist through navigation. Reviewed rows each submit one hidden employment ID, independent of mounted checkboxes. Select this page replaces the selection with displayed existing payslips. The prepared candidate applies the same visible default to stale existing payslips, communicated as an assumption while optional clarification remains open.
+- **Remaining costs:** Reprocess history/disclosure and recorded job-result populations are separate unfinished paging work. Global overtime availability proof remains complete-cohort to preserve its existing refusal semantics; do not claim the entire Reprocess request is bounded.
+
+Preserved development check43931609323 at2858a55d3: native121passed/2failed (missing suspended-tenant refusal after READ ONLY change; incomplete scale fixture email), repaired in next source. Combined development candidate3342531271c095a825ad67a5df942e0f74e94e7a runs focused43934876702 with native tests, whole typecheck and Linux build. Independent standards/spec reviews both found invalid JSX and conditional pager placement; working source is repaired, frozen failed source retained. Development qualification is now complete: repaired run43935883124 passed368selected cases, whole typecheck and Linux build; final application source6350cacc0 passed105affected cases, whole typecheck and Linux build in43937314461. Allocation/binding source38339d5f5 passed114affected cases in43939945809. Original failures remain preserved. The final release gate awaits Movement’s accepted baseline; staging qualification is pending and no new finding is closed. The same28 AI approval literals now carry forward under the directly verified17November owner decision; see the exact dated source-binding record. Movement releases first.

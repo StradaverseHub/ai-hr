@@ -743,11 +743,38 @@ at most16 short attempts inside the SAME20/24-second slot, with fresh original p
 Existing accepted record changes, wrong closed records, retained audit integrity errors and every genuine
 native byte-proof error are fatal; there is no generic exception retry or fallback.
 
+Bounded native failures report a fixed reason (deadline, child exit, stdout/stderr
+bound, wait timeout, interruption or other) and numeric exit/timing/byte counts.
+They never include command arguments, environment, input, captured output or arbitrary
+exception text. The original owned-process cleanup and all proof budgets still apply.
+
 Only the same original `ci-build-health` launch may progress R0 (running with pinned old last-ok) → R1
 (native exit0/finished-at/last-ok publication) → O (strict normal success). Direct R0→O is allowed. The same
 lease may advance installing→arrived only under strict O. Failed/foreign/pending/backsliding states refuse.
 The helper never publishes native finish or arrival. Final helper PASS is required before acceptance and
 handback, and need not precede the normal operator's genuine arrival while both branches run concurrently.
+
+A reviewed normal handoff may explicitly select the closed optional `baselinePublication`
+proof under `aihr-worker-qualified-legacy-finish-header/v1`. This addresses only an older
+native publisher's successful exit0 record pair whose current verdict is `ok` while its
+otherwise identical last-ok verdict is `failed`. Under the freshly held lease and native
+operation lock, before drain or new native begin, qualification pins both complete raw
+record hashes and file identities, the exact previous source/build, and the actual
+immutable recovered worker receipt's hash, identity, original authority and publication
+chronology. The same selection must survive first-stage approval, normal preparation
+(v1 or v2), sealed preparation proof and activation unchanged. For example, protected
+approval/proof paths remain local paths such as `/protected/operation/approval.json`;
+raw native records and recovered receipt contents are never exported.
+
+After begin replaces current, this proof admits only R0's exact pinned old last-ok;
+it revalidates that old publication and recovered receipt without seeking the replaced
+old current. Ordinary approvals retain their original exact schemas and refusals.
+Failed-preunit and published recovery cannot select this proof. R1 and final O keep
+all original strict success requirements, including the new blank last-ok verdict.
+Qualification never rewrites old native records, renews recovery authority, publishes
+native finish or substitutes for release acceptance. Hosted qualification must retain
+ordinary cases and additionally exercise the complete actual archive through both
+normal prepared policies and R0→R1→O, with both full audits and all ten metadata fences.
 
 Each helper slot has one absolute deadline shared across all subprocesses, without reset per child:
 preparation30s, each complete fence20s, each source content pass60s, each native audit180s, reload45s,
@@ -784,9 +811,21 @@ after managed drain and **before starting the web installer/readiness window**, 
 `guarded-prepare-ci-worker` with `ADMIN_REVIEWED_CI_WORKER_PREPARATION`. Its closed
 `preparation` object selects `normal`, the original drain approval/receipt, an
 exclusive UUID, and fixed derived prepared-tree/proof paths. The separate IO-only
-operation expires within300 seconds, re-extracts and authenticates the complete
-archive, normalizes manifest modes, verifies every file byte/link/member/root
-identity, and seals a root-private immutable proof. It changes no unit or service.
+legacy `aihr-worker-prepared-handoff/v1` operation expires within300 seconds.
+For a new normal preparation, reviewed `aihr-worker-prepared-handoff/v2` permits
+at most600 seconds of separately authorized offline I/O. Two actual staging v1
+attempts exhausted300 seconds during full content verification; a subsequent
+storage diagnostic also did not finish the complete check under300. The v2
+choice belongs to a fresh hash-pinned root approval and a new exclusive attempt,
+not an extension, rewrite or reuse of an old300-second approval or failed tree.
+Both versions re-extract and authenticate the complete archive, normalize manifest
+modes, verify every file byte/link/member/root identity, and seal an immutable
+root-private proof. Neither changes a unit or service. V1 and failed-preunit
+preparation retain their original300-second maximum; published sealing also stays300.
+The native invocation starts the selected absolute ceiling BEFORE reading and
+admitting the protected approval, and always retains any tighter enclosing limit.
+Proof admission requires the exact matching policy and its original issue/expiry
+interval. There is no caller-selected duration field or new live authority.
 The independently reviewed later `ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER`
 adds only the exact `preparedWorker:{path,sha256}` selection to the original
 activation fields. `guarded-activate-prepared-ci-runtime` then runs the same
@@ -794,7 +833,32 @@ activation fields. `guarded-activate-prepared-ci-runtime` then runs the same
 owned-process checks. The live preparation remains30 seconds. Metadata rechecking,
 immutable prepared-tree publication, unit replacement and reload share M0/45.
 One absolute827-second live cap starts at guarded entry and never resets per child
-or phase. Original grant/approval/readiness clocks and mutation admission remain.
+or phase. Original grant/approval/readiness clocks are never reset or extended.
+
+Normal `activate-prepared-ci-runtime` gives only F4, the full fence immediately
+after its owned worker starts, a60-second slot. Cold worker bootstrap competed
+with the20-second scan on the small staging server. Every other full fence stays20,
+shared sleep/stability slots stay24, each native child stays20 and native freshness
+stays60. Published recovery retains its existing60-second F4; legacy unprepared
+activation and failed-preunit recovery retain20. All ten complete two-walk fences,
+source inventories, audits and ownership checks still run.
+
+For normal prepared activation, the post-mutation graph grows497→537 seconds.
+Before any unit mutation, remaining global opportunity must therefore be at
+least537 of the unchanged827-second cap (the pre-graph may consume at most290).
+The lesser of fresh root authority and the original installation grant must have
+at least567 seconds remaining, including the original30-second reserve. The
+original immutable native marker's `verifiedAt + 600` readiness deadline must have
+at least195 seconds remaining, versus155 in the legacy normal route. These are
+stricter admission floors, not new clocks; fresh root authority still has a900-second
+maximum and cannot outlive the original unexpired installation grant (at most1800).
+
+The original-grant fork reservation is
+`max(537, max(0, readinessDeadline + 15 - now) + 830) + 30` for prepared normal.
+The830-second native branch allowance remains an estimate, not a new asserted hard
+cap. Admission returns its actual567/195 required metrics. Legacy normal admission
+retains497/527/155 and its original fork formula. A refused or expired original
+grant/readiness window cannot be renewed by worker preparation or root approval.
 
 For the exact failure before immutable worker publication/unit mutation, preparation
 may instead select `failed-preunit`, the original fully extracted directory/inode,
@@ -820,3 +884,93 @@ full source-bound ZIP extraction with more than30 seconds elapsed, the old30-sec
 negative control, and real-root full-package content/metadata/tamper checks. Native
 CI/database/systemd proof ports in graph fixtures are explicitly identified; they
 are not reported as an actual installed application acceptance.
+
+Activation failure diagnostics snapshot the closed stage name, remaining stage
+milliseconds and a fixed category before changing to failure-only clocks. Native
+child failures retain only the existing fixed reason and numeric exit/time/byte
+counts. Arbitrary exception messages, paths, argv, environment and child output
+are never serialized. This safe summary is flushed to stderr before quarantine
+and included in protected failure records when those records can be published.
+The outer recovery error remains generic; the summary identifies the original
+failure separately from any quarantine or evidence-publication failure.
+
+The active owned-process fence still protects every quarantine command and unit
+write. After graceful stop, a separate method can publish only the fixed immutable
+`activation-failure-observation.json` leaf. It rechecks held locks, protected start
+and quarantine records, boot, exact quarantine unit, current environment and one
+complete native systemd observation: stopped, disabled, no restart and no remaining
+or reused owned PID. It grants no command, activation receipt or arrival authority.
+If these checks fail, the original safe summary remains in stderr and the caller
+reports the final observation unavailable. This diagnostic repair neither retries
+an activation nor admits an already published, quarantined release through the
+pre-unit recovery route. That state requires its own reviewed recovery contract.
+
+### Published but unaccepted staging worker
+
+`bank_import_worker_published_v1.py` adds two explicit guarded modes for the
+narrow state where the prior prepared recovery published the worker directory,
+started its own process and quarantined it before producing an install receipt.
+The pre-unit modes continue to reject an existing release. Neither new mode
+extracts, renames, restores or deletes an existing release or failure record.
+
+First, `guarded-seal-published-ci-worker` takes a separately reviewed root approval
+with the original first-stage fields, `sealId` and `publishedFailure`. The latter
+selects the prior recovery approval/hash, exact operation directory/stat identity,
+all ten retained record identities/hashes, current published root identity and
+quarantine unit hash. The exact namespace includes start intent, started process,
+quarantine authority, failure record, F0–F3 and A0; unknown/partial attempts refuse.
+This read-only authentication stage holds the existing queue SH and install EX,
+requires PID0/dead/disabled/no restart and no worker UID or cgroup processes, and
+authenticates every installed file plus the original archive within300 seconds.
+Original prepared member identities and link closure must match; only the old
+root location and ctime may differ because of the recorded publication rename.
+It writes one root-private immutable `published-worker-<sealId>.json` proof, with
+no service mutation or installation acceptance.
+
+Only after that proof exists may the operator mint a fresh, at-most900-second
+`ADMIN_AUTHORIZED_PUBLISHED_WORKER_RECOVERY` for
+`guarded-recover-published-ci-runtime`. Its original recovery fields remain
+unchanged, with one additional `publishedSeal` selecting path, SHA and the complete
+seal stat identity. Mint inside the seal approval's original300-second freshness
+window. The proof's original time is never rewritten. The new graph has its own
+unchanged absolute827-second limit and original20/24-second fence slots.
+
+The live mode independently rechecks historical records, exact installed tree,
+stopped state, original failed native installation, original grant/runtime/ledger,
+web source/build and held installing lease. It runs the same F0/S0/F1/A0/F2
+admission and full subsequent proof graph. M0/45 rechecks the existing published
+tree and replaces the exact quarantine unit with the candidate unit; it publishes
+no directory. A fresh exclusive `published-recovery-<sealId>` attempt preserves
+all older attempts. A previous published recovery refuses rather than retrying.
+Any activation failure retains its safe original diagnosis and uses only the
+exact owned-process quarantine. Successful receipts explicitly identify this as
+published worker recovery; they grant no application arrival, acceptance,
+production or expired-grant write authority. The unchanged original
+`resume-arrival` remains responsible for closing the installation after actual
+all-kind worker readiness.
+
+Because quarantine disabled boot start, this published-only route restores and
+independently reads back boot enablement after the full proof graph while its
+exact owned worker is still running, before either success receipt, within the
+unchanged15-second receipt slot. It never enables before starting: a pre-start
+failure must leave the unaccepted unit disabled. Enable or readback failure uses
+the same owned-process quarantine and disables the rejected worker again.
+
+The published-only F4 post-start fence has a60-second absolute slot. The measured
+staging attempt passed F0–F3 in9.8–14.1 seconds, then failed at F4 with its20-second
+allowance exhausted while the worker's measured20.4-second bootstrap overlapped
+the scan. This does not establish the lost inner exception text. The adjustment
+retains both full enumerations, link closure, all native proofs and their20-second
+child limits, native freshness60 and every other20/24-second slot. The global827
+and fresh900-second authorities do not change. Required post-mutation opportunity
+increases497→537 and authority reserve527→567; admission therefore refuses before
+unit mutation if the pre-graph consumed more than290 seconds of the global cap.
+
+A fresh root selection may additionally bind exactly one failed published attempt
+in `publishedFailure.previousPublished`, keyed by its fixed derived directory name.
+It pins that directory, all eleven file identities/hashes and its original live
+approval/hash. The original seal, start/quarantine identity, F4 rejected boundary,
+stopped/disabled observation and absence of any success member are revalidated.
+The directory stays in place. Unknown attempts, changed records, uncertain state,
+success receipts and any unselected prior attempt still refuse. This explicit
+review is required before minting a new seal/UUID; no old clock or proof is renewed.

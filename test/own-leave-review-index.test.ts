@@ -5,10 +5,11 @@ import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
+import {createOwnLeaveBrowserCommandHandler} from '../core/assistant-actions/own-leave-browser';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {listOwnLeaveReviewsTx,prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
+import {expireOwnLeaveReviewsForCallerTx,expireOwnLeaveReviewsTx,listOwnLeaveReviewsTx,prepareOwnLeaveReviewTx,reopenOwnLeaveReviewTx} from '../core/assistant-actions/own-leave-store';
 import {leaveCancellationReviews} from '../core/assistant-actions/leave-change-review-store';
 import {listLeaveDecisionReviews} from '../core/assistant-actions/leave-decision-review-store';
 import {readHomeOwnLeaveReviewIndex,readHomeLeaveCancellationReviewIndex,readHomeLeaveDecisionReviewIndex} from '../core/home-leave-review-presentation';
@@ -210,5 +211,56 @@ describe('fixed metadata-list browser graph',()=>{
   for(const key of ['reason','reviewedDigest','employmentId','companyId','leaveRequestId','submissionEventId'])expect(OwnLeaveReviewIndexResult.safeParse({kind:'review_index',reviews:[{...row,[key]:'private'}]}).success).toBe(false);
   expect(OwnLeaveReviewIndexResult.safeParse({kind:'review_index',reviews:[row,row]}).success).toBe(false);
   expect(OwnLeaveReviewIndexResult.safeParse({kind:'review_index',reviews:Array.from({length:26},()=>({...row,actionId:randomUUID()}))}).success).toBe(false);
+ });
+});
+
+
+describe('AP-062 actual Own Leave discovery and privacy carriers',()=>{
+ it('keeps native ordered bounded metadata equivalent across every role and group/company scopes at group scale',async()=>{
+  const who=await subject();
+  await owner.db.insert(schema.company).values(Array.from({length:69},(_,i)=>({tenantId:base.tenantId,legalName:'Fictional index group '+i})));
+  const people=Array.from({length:1000},()=>({id:randomUUID(),tenantId:base.tenantId,fullName:'Fictional unrelated index person',primaryEmail:randomUUID()+'@fixture.test'}));
+  await owner.db.insert(schema.person).values(people);
+  await owner.db.insert(schema.employment).values(people.map(p=>({tenantId:base.tenantId,personId:p.id,companyId:base.companyId,hiredOn:'2020-01-01'})));
+  const now=Date.now(),expected=[];
+  for(let i=0;i<30;i++)expected.push(await terminal(who,new Date(now-10000-i*1000)));
+  await terminal(who,new Date(now-31*86400000));
+  const wanted={kind:'review_index',reviews:expected.slice(0,25)};
+  for(const role of schema.roleEnum.enumValues)for(const companyId of role==='super_admin'?[null]:[null,base.companyId]){
+   await owner.db.update(schema.roleAssignment).set({role,companyId}).where(eq(schema.roleAssignment.appUserId,who.ctx.userId!));
+   const ctx={...who.ctx,roles:[role],grants:[{role,companyId}]};
+   await withTenant(ctx,async tx=>{
+    expect(await listOwnLeaveReviewsTx(tx,ctx),role+':'+companyId).toEqual(wanted);
+    const [carrier]=await tx.execute<{mode:string;readOnly:string}>(sql`select app.access_lock_mode_held(${base.tenantId}::uuid) as mode,current_setting('transaction_read_only') as "readOnly"`);
+    expect(carrier).toEqual({mode:'S',readOnly:'on'});
+   });
+  }
+ });
+
+ it('lets the actual browser list, own expiry and administrator expiry coexist with another shared reader',async()=>{
+  const who=await subject(),review=await prepared(who);
+  await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' where id=${review.actionId}::uuid`);
+  await owner.db.transaction(async holder=>{
+   await holder.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+base.tenantId},0))`);
+   const browser=createOwnLeaveBrowserCommandHandler(async()=>({ctx:who.ctx,locale:'en'}),{publicOrigin:'https://fixture.test'});
+   const response=await browser(new Request('https://fixture.test/api/assistant/own-leave',{method:'POST',headers:{origin:'https://fixture.test','content-type':'application/json'},body:JSON.stringify({operation:'list'})}));
+   expect(response.status).toBe(200);expect(await response.json()).toMatchObject({kind:'review_index',reviews:[{actionId:review.actionId,state:'expired'}]});
+   for(const [ctx,expire] of [[who.ctx,expireOwnLeaveReviewsForCallerTx],[adminCtx(base),expireOwnLeaveReviewsTx]] as const)await withTenant(ctx,async tx=>{
+    expect(await expire(tx)).toBe(0);
+    const [mode]=await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${base.tenantId}::uuid) as mode`);expect(mode.mode).toBe('S');
+   });
+  });
+  const [body]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.assistant_own_leave_review_content where action_id=${review.actionId}::uuid`);expect(body.n).toBe(0);
+ });
+
+ it('commits privacy expiry even when the later person-bound list refuses a stale session',async()=>{
+  const who=await subject(),review=await prepared(who),other=await subject();
+  await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=now()-interval '11 minutes',expires_at=now()-interval '1 minute' where id=${review.actionId}::uuid`);
+  await owner.db.update(schema.appUser).set({personId:other.personId}).where(eq(schema.appUser.id,who.ctx.userId!));
+  const browser=createOwnLeaveBrowserCommandHandler(async()=>({ctx:who.ctx,locale:'en'}),{publicOrigin:'https://fixture.test'});
+  const response=await browser(new Request('https://fixture.test/api/assistant/own-leave',{method:'POST',headers:{origin:'https://fixture.test','content-type':'application/json'},body:JSON.stringify({operation:'list'})}));
+  expect(response.status).toBe(503);expect(await response.json()).toEqual({error:'unavailable'});
+  const [row]=await owner.db.execute<{state:string;bodies:number}>(sql`select r.state,(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${review.actionId}::uuid`);
+  expect(row).toEqual({state:'expired',bodies:0});
  });
 });

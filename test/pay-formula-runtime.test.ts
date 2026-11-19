@@ -171,7 +171,7 @@ it('matches the effective company code through companyCode, and refuses saving a
  expect(matched.readRequirements.fieldIds).toContain('employment.organisation_assignment.companyname');
  await expect(savePayFormula(ctx,{formulaId:'CODE_AS_ID',description:'The reported production mistake',method:'write',source:source('companyId','ACME','ACMT')})).rejects.toThrow(/companyId is the company's internal ID, so it never equals "ACME"\. Use companyCode/);
  const options=await payFormulaOptions(ctx),code=options.personnelFields.find(f=>f.key==='companyCode');
- expect(code).toMatchObject({enabled:true,formulaType:'string',dateBasis:'effective-date',functionCode:'EmployeeProfile',labelKey:'payFormula.fields.companyCode',listValues:[]});
+ expect(code).toMatchObject({enabled:true,formulaType:'string',dateBasis:'effective-date',functionCode:'EmployeeProfile',labelKey:'payFormula.fields.companyCode',listValues:[{value:'ACMT',label:expect.stringContaining('ACMT')}]});
  expect(options.personnelFields.find(f=>f.key==='companyId')?.labelKey).toBe('payFormula.fields.companyId');
 });
 it('refuses current-only history and sensitive authoring while retaining the existing formula contract',async()=>{

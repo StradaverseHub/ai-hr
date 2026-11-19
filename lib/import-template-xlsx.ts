@@ -41,6 +41,7 @@ import {
   type ImportCodeCategory,
 } from './payroll-history-import-schema';
 import {
+  TXN_IMPORT_COLUMNS,
   TXN_IMPORT_HEADERS,
   TXN_IMPORT_SAMPLE_ROWS,
   TXN_IMPORT_SHEETS,
@@ -383,8 +384,8 @@ export type TxnTemplateReference = {
   };
   employees: { code: string; name: string; company: string; department: string }[];
   payItems: { code: string; name: string; kind: string; input: string }[];
-  /** Fixed only — the run_type vocabulary with its own labels. */
-  cycles: { code: string; label: string }[];
+  cycles: { code: string; label: string; company?: string }[];
+  fixedExampleCycleCode?: string;
   /** Individual only — the ledger's five transaction kinds with their labels. */
   kinds: { code: string; label: string }[];
 };
@@ -400,10 +401,14 @@ export type TxnTemplateReference = {
 export async function buildTxnImportWorkbook(kind: TxnImportKind, ref: TxnTemplateReference): Promise<Uint8Array> {
   const { buildXlsx } = await import('./spreadsheet');
   const headers = [...TXN_IMPORT_HEADERS[kind]];
+  const cycleColumn = TXN_IMPORT_COLUMNS[kind].indexOf('payroll_cycle');
+  const samples = TXN_IMPORT_SAMPLE_ROWS[kind].map((row) =>
+    row.map((cell, column) => kind === 'fixed' && column === cycleColumn ? ref.fixedExampleCycleCode ?? '' : cell),
+  );
   const extraSheets: { name: string; rows: (string | number)[][] }[] = [
     {
       name: TXN_IMPORT_SHEETS.example,
-      rows: [[ref.headings.note], [], headers, ...TXN_IMPORT_SAMPLE_ROWS[kind].map((r) => [...r])],
+      rows: [[ref.headings.note], [], headers, ...samples],
     },
     {
       name: TXN_IMPORT_SHEETS.employees,
@@ -445,8 +450,8 @@ export async function buildTxnImportWorkbook(kind: TxnImportKind, ref: TxnTempla
     rows: [
       [ref.headings.cycles],
       [],
-      [ref.headings.cycleCode, ref.headings.cycleLabel],
-      ...ref.cycles.map((c) => [c.code, c.label]),
+      [ref.headings.cycleCode, ref.headings.cycleLabel, ...(kind === 'fixed' ? [ref.headings.company] : [])],
+      ...ref.cycles.map((c) => [c.code, c.label, ...(kind === 'fixed' ? [c.company ?? ''] : [])]),
     ],
   });
   return buildXlsx(headers, [], {

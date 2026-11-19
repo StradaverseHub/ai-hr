@@ -21,15 +21,20 @@
  * Organisation conditions and routings use ids (labels shown in the builder). Condition values saved earlier as names
  * still match through the runner's aliases (one-off read-time compatibility).
  */
+import type {EmailBodyDoc} from '../lib/email-body/doc';
 import {sql} from 'drizzle-orm';
+import {MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT,MANAGED_EMAIL_ATTACHMENT_MAX_BYTES} from '../lib/managed-email-policy';
 import type {SessionContext,Tx} from '../db/client';
 import {randomUUID} from 'node:crypto';
 import {runAutomationEventTx,resumeAutomationRunsTx,liveAutomationWorkflowsTx,sqlAutomationRunStore} from './automation-runtime';
+import {isModuleEnabled} from './entitlements';
 import {pgSqlState} from '../lib/db-error';
-import {newAutomationRun,resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
+import {resumeAutomationRun,newAutomationRun,resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
 import {conditionFieldsForTrigger} from '../lib/automation/catalogue';
 import {PROBATION_AUTOMATION_CATALOGUE,PROBATION_PART_LABELS} from '../lib/automation/catalogues/probation';
-import {fillAutomationMergeFields} from '../lib/automation/email';
+import {fillAutomationMergeFields,automationEmailBodyDoc,automationMergeTokens} from '../lib/automation/email';
+import {prepareProbationEmailAssetSource} from './automation-email-asset-proof';
+import {convertProbationEmail,renderProbationEmail,type ProbationEmailDefinition} from '../lib/automation/probation-email-definition';
 import type {AutomationFactValue} from '../lib/automation/conditions';
 import type {AutomationRecipient,AutomationStep} from '../lib/automation/workflow';
 import type {Routing} from '../lib/automation/routing';
@@ -54,7 +59,7 @@ export type ProbationAutomationContext = {
   employeeCode: string | null;
   fallbackGroupId: string | null; postingApproverGroupId: string | null;
   routings: Routing[]; groups: {id: string; members: string[]}[];
-  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string; cc: AutomationRecipient[]}[];
+  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string;bodyDoc?:EmailBodyDoc|null; cc: AutomationRecipient[];revision?:number;assetCount?:number;definition?:ProbationEmailDefinition}[];
 };
 /** The case as the adapter needs it (a subset of ProbationCaseView.record). */
 export type ProbationAutomationCase = {
@@ -92,7 +97,8 @@ const text = (value: unknown) => typeof value === 'string' ? value : '';
 
 export async function probationAutomationContextTx(tx: Tx, caseId: string): Promise<ProbationAutomationContext> {
   const [row] = await tx.execute<{data: ProbationAutomationContext}>(sql`select app.probation_automation_context(${caseId}::uuid) as data`);
-  return row.data;
+  const[rich]=await tx.execute<{data:Record<string,ProbationEmailDefinition>}>(sql`select app.probation_rich_email_definitions(${caseId}::uuid) as data`);
+  return {...row.data,emailTemplates:row.data.emailTemplates.map(template=>({...template,...(rich.data[template.id]?{definition:rich.data[template.id]}:{})}))};
 }
 
 /** Extension the outcome adds: months, new end date and the extension's number. */
@@ -212,15 +218,68 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
   // The email keeps {{case.link}} as a token: the private sender makes it an absolute link for its installation.
   const emailMerge = {...merge, 'case.link': ''};
   /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
-  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string) => {
+  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string, template?:ProbationAutomationContext['emailTemplates'][number]) => {
+    const richTemplate=template?.definition?{id:template.id,definition:template.definition}:undefined;
     const active = await probationActivePeopleTx(tx, record.id, [to, cc]);
     const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true, active), resolved = addressees.all;
     if (!resolved.userIds.length) return {resolved, email: null};
     const key = run.id + ':' + step.id;
-    await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
     const {queueAutomationEmailTx} = await import('./automation-email-delivery');
-    const email = await queueAutomationEmailTx(tx, {module: 'probation', subjectId: record.id, key, to: addressees.to, cc: addressees.cc,
-      subject: fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update', body: fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}')});
+    let rich:ReturnType<typeof renderProbationEmail>|null=null;
+    try{rich=richTemplate?renderProbationEmail(richTemplate.definition,{...merge,'case.link':'{{case.link}}'}):null;}catch(error){return {resolved,email:null,hold:error instanceof Error?error.message:'The rich email fields need review.'};}
+    let caseFiles:import('../lib/automation-email-ipc').AutomationEmailCaseFileRef[]=[];
+    if(richTemplate?.definition.slots.length){
+      const[files]=await tx.execute<{data:import('../lib/automation-email-ipc').AutomationEmailCaseFileRef[]}>(sql`select app.probation_email_case_file_refs(${record.id}::uuid,${richTemplate.id}::uuid) as data`);
+      caseFiles=files.data.filter(file=>richTemplate.definition.slots.some(slot=>slot.id===file.slotId));
+      const missing=richTemplate.definition.slots.filter(slot=>slot.required&&!caseFiles.some(file=>file.slotId===slot.id));
+      if(missing.length)return {resolved,email:null,hold:'Upload the required email files: '+missing.map(slot=>slot.label).join(', ')};
+    }
+    let documents:import('../lib/automation-email-ipc').AutomationEmailDocumentRef[]=[];
+    if(richTemplate){
+      const keys=[...new Set([...richTemplate.definition.links,...richTemplate.definition.attachments])];
+      if(keys.length){
+        const[references]=await tx.execute<{data:import('../lib/automation-email-ipc').AutomationEmailDocumentRef[]}>(sql`select app.probation_email_document_refs(${record.id}::uuid,array[${sql.join(keys.map(key=>sql`${key}`),sql`, `)}]::text[]) as data`);
+        if(references.data.length!==keys.length)return {resolved,email:null,hold:'A selected Probation document has not been released for this person.'};
+        documents=references.data.map(document=>({...document,link:richTemplate.definition.links.includes(document.templateId),attach:richTemplate.definition.attachments.includes(document.templateId)}));
+      }
+      if(richTemplate.definition.outcomeLetter){
+        const[outcomeDocument]=await tx.execute<{data:import('../lib/automation-email-ipc').AutomationEmailDocumentRef|null}>(sql`select app.probation_email_outcome_document(${record.id}::uuid,${facts.outcome?.id??null}::uuid,${facts.partId??null}::uuid) as data`);
+        if(!outcomeDocument.data)return {resolved,email:null,hold:'The generated outcome letter has not been released for this email.'};
+        const existing=documents.find(document=>document.id===outcomeDocument.data!.id);
+        if(existing)Object.assign(existing,{attach:true,outcome:true,outcomeId:outcomeDocument.data.outcomeId});else documents.push({...outcomeDocument.data,link:false,attach:true});
+      }
+    }
+    if(richTemplate){
+      const attached=documents.filter(document=>document.attach),shared=[...richTemplate.definition.files,...richTemplate.definition.images];
+      const[budget]=await tx.execute<{data:{count:number;bytes:number}}>(sql`select app.probation_email_file_budget(${record.id}::uuid,${'{'+attached.map(document=>document.id).join(',')+'}'}::uuid[],${'{'+caseFiles.map(file=>file.id).join(',')+'}'}::uuid[]) as data`);
+      if(Number(budget.data.count)!==attached.length+caseFiles.length)return {resolved,email:null,hold:'A selected email file is no longer available. Review the email files before sending.'};
+      if(Number(budget.data.count)+shared.length>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||Number(budget.data.bytes)+shared.reduce((total,asset)=>total+asset.size,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)return {resolved,email:null,hold:'This email exceeds the shared limit of 20 files and 20 MB. Review its documents and files before sending.'};
+    }
+    const renderedSubject=fillAutomationMergeFields(subject,merge).replace(/\s+/g,' ').trim()||'Probation update';
+    const message=rich?.text??fillAutomationMergeFields(body,emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g,'{{case.link}}');
+    if(rich&&automationMergeTokens(renderedSubject).length)return {resolved,email:null,hold:'Missing email subject fields: '+automationMergeTokens(renderedSubject).join(', ')};
+    let richBody:import('../lib/automation-email-content').AutomationRichEmailBody|undefined=!rich&&template?.bodyDoc?{doc:template.bodyDoc,values:emailMerge}:undefined;
+    let richDelivery:undefined|{templateId:string;templateRevision:number;sourceProof:{payload:string;signature:string};html:string;assets:{id:string;kind:'file'|'image';contentHash:string}[];documents:typeof documents;caseFiles:typeof caseFiles};
+    if(rich&&richTemplate){
+      const hold='Set up shared email attachment verification before continuing this template. No email was sent without its files.';
+      if(!template?.revision)return {resolved,email:null,hold};
+      const assets=[...richTemplate.definition.files,...richTemplate.definition.images].map(asset=>({id:asset.id,kind:asset.kind,contentHash:asset.contentHash}));
+      // Match the queue's PostgreSQL jsonb render exactly; the proof cannot hash itself.
+      const render={version:2,html:rich.html,assets,documents,caseFiles,templateRevision:template.revision};
+      const[digest]=await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(${JSON.stringify(render)}::jsonb::text,'UTF8')),'hex') as hash`);
+      const admitted=await prepareProbationEmailAssetSource(tx,ctx,{subjectId:record.id,key,to:addressees.to,cc:addressees.cc,subject:renderedSubject,body:message,richBody:{doc:{type:'doc',content:[]},values:{probationRichDigest:digest.hash},sourceTemplate:{id:template.id,revision:template.revision}}});
+      if(!admitted?.sourceProof)return {resolved,email:null,hold};
+      richDelivery={templateId:richTemplate.id,templateRevision:template.revision,sourceProof:admitted.sourceProof,html:rich.html,assets,documents,caseFiles};
+    }else if(template?.assetCount){
+      const hold='Set up shared email attachment verification before continuing this template. No email was sent without its files.';
+      if(!template.revision)return {resolved,email:null,assetHold:hold};
+      const source={...(richBody??{doc:automationEmailBodyDoc({body,module:'probation'}),values:emailMerge}),sourceTemplate:{id:template.id,revision:template.revision}};
+      const admitted=await prepareProbationEmailAssetSource(tx,ctx,{subjectId:record.id,key,to:addressees.to,cc:addressees.cc,subject:renderedSubject,body:message,richBody:source});
+      if(!admitted)return {resolved,email:null,assetHold:hold};
+      richBody=admitted;
+    }
+    await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
+    const email = await queueAutomationEmailTx(tx, {module:'probation',subjectId:record.id,key,to:addressees.to,cc:addressees.cc,subject:renderedSubject,body:message,...(richDelivery?{rich:richDelivery}:richBody?{richBody}:{})});
     return {resolved, email};
   };
   const unresolvedOf = (resolved: ReturnType<typeof recipientsFor>, email: {unreachable: string[]} | null) => [
@@ -243,9 +302,17 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     sendEmail: async ({run, step}) => {
       const template = templates.get(text(step.params.emailTemplateId));
       if (!template) return {status: 'skipped', reason: 'the email template no longer exists.'};
-      const {resolved, email} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body);
+      const delivery = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body,template);
+      if(typeof delivery.hold==='string'){
+        await tx.execute(sql`select app.probation_email_hold_context(${record.id}::uuid,${template.id}::uuid,${run.id}::uuid,${JSON.stringify({trigger:input.trigger,facts,pending:input.pending,released:input.released===true})}::jsonb)`);
+        return {status:'hold',resourceId:template.id,message:delivery.hold};
+      }
+      if(delivery.assetHold)return {status:'failed',reason:delivery.assetHold};
+      const{resolved,email}=delivery;
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could receive the email, and the fallback group has no members.'};
-      return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, merge)}” in AI-HR.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
+      const conversion=template.definition?null:convertProbationEmail(template);
+      const legacyWarning=conversion?.state==='legacy'?` Original renderer retained for “${template.name}”: unconverted fields ${conversion.fields.join(', ')}.`:'';
+      return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, merge)}” in AI-HR.${sent(email)}${legacyWarning}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },
     generateDocument: async ({step}) => {
       const outcome = facts.outcome;
@@ -468,4 +535,43 @@ export async function probationAutomationHistoryTx(tx: Tx, caseId: string): Prom
   return rows.map(r => ({id: r.id, trigger: r.trigger, triggerLabel: labels.get(r.trigger) ?? r.trigger, status: r.status, startedAt: r.started, updatedAt: r.updated, failure: r.failure,
     entries: (Array.isArray(r.log) ? r.log : []).map(e => ({at: text(e.at), kind: text(e.kind), message: text(e.message).slice(0, 1000), recipients: Array.isArray(e.recipients) ? e.recipients.length : 0,
       unresolved: (Array.isArray(e.unresolved) ? e.unresolved : []).slice(0, 20).map(u => ({meantFor: text(u.meantFor).slice(0, 300), reason: text(u.reason).slice(0, 300)}))}))}));
+}
+
+/** HR file uploads recheck the exact held email step against current recipients and its frozen event facts. */
+export async function resumeProbationEmailFilesTx(tx:Tx,ctx:SessionContext,caseId:string,templateId:string){
+ const store=sqlAutomationRunStore(tx),runs=await store.waiting('probation',caseId,templateId);
+ if(!runs.length)return;
+ const record=await probationAutomationCaseTx(tx,caseId);if(!record)return false;
+ if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle',record.companyId))return false;
+ const[ready]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from probation_activation a where a.tenant_id=app.current_tenant_id() and a.company_id=${record.companyId}::uuid and a.enabled and a.activation_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date) and app.probation_case_company_current(${caseId}::uuid) and not app.probation_case_source_moved(${caseId}::uuid) as ok`);
+ if(!ready?.ok)return false;
+ await tx.execute(sql`select app.probation_assert_case_runtime(${caseId}::uuid)`);
+ const context=await probationAutomationContextTx(tx,caseId);
+ for(const run of runs){
+  const[snapshot]=await tx.execute<{data:{trigger:string;facts:ProbationEventFacts;pending:string[]|null;released:boolean}|null}>(sql`select app.probation_email_hold_context(${caseId}::uuid,${templateId}::uuid,${run.id}::uuid,null) as data`);
+  if(!snapshot.data||run.remaining[0]?.step.type!=='sendEmail')continue;
+  const saved=snapshot.data,audience=await probationLegacyAudienceTx(tx,caseId,saved.facts.partId??null);
+  const effects:Effects={postingId:null,handoffId:null,documentId:null};
+  const{executors,guards}=probationRuntime(tx,{ctx,record,context,facts:saved.facts,trigger:saved.trigger,pending:saved.pending,released:saved.released,letters:await letterVersionsTx(tx,record.companyId),effects,audience});
+  const{read,aliases}=probationFactReader(saved.trigger,record,context,saved.facts);
+  const resumed=await resumeAutomationRun(run,templateId,{executors,guards,read,aliases,now:()=>new Date().toISOString()});
+  await store.save(resumed,'waiting');
+ }
+}
+
+/** The existing out-of-band workflow sweep drains only holds whose template/file evidence changed. */
+export async function sweepProbationEmailHolds(ctx:SessionContext,connection:import('./notice-projection').NotificationSweepConnection){
+ if(ctx.userId)throw new Error('Email hold sweep requires the owner connection.');
+ const due=await connection.withTenant(ctx,tx=>tx.execute<{case_id:string;template_id:string}>(sql`select h.case_id,h.template_id from automation_email_hold_context h join automation_run r on r.id=h.run_id and r.tenant_id=h.tenant_id where h.tenant_id=app.current_tenant_id() and h.needs_check and r.status='waiting' and r.waiting_for=h.template_id group by h.case_id,h.template_id order by min(h.checked_at) nulls first,h.case_id,h.template_id limit 25`));
+ let failed=0;
+ for(const item of due){try{await connection.withTenant(ctx,async tx=>{
+   await tx.execute(sql`select app.probation_write_lock()`);
+   const resumed=await resumeProbationEmailFilesTx(tx,ctx,item.case_id,item.template_id);
+   if(resumed===false){
+    // Keep the signal while paused, but rotate bounded batches so paused companies cannot starve other holds.
+    await tx.execute(sql`update automation_email_hold_context set checked_at=now() where tenant_id=app.current_tenant_id() and case_id=${item.case_id}::uuid and template_id=${item.template_id}::uuid`);return;
+   }
+   await tx.execute(sql`update automation_email_hold_context set needs_check=false,checked_at=now() where tenant_id=app.current_tenant_id() and case_id=${item.case_id}::uuid and template_id=${item.template_id}::uuid`);
+ });}catch{failed++;}}
+ return{checked:due.length,failed};
 }

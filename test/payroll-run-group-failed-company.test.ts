@@ -7,6 +7,7 @@
  * company job refused when it prepares both settle to the reason code the synchronous catch gave them
  * (`reasonForPayrollError`), and the result page renders that row beside the company that succeeded.
  */
+import { PayItemFormulaRepriceError } from '../packs/payroll/individual-calculation';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -206,4 +207,28 @@ describe('a company job that fails inside a wizard run group renders as its reas
     expect(rowOf(html, 'Beta Sdn Bhd')).toContain('reason.PRE_PROCESS_BLOCKED');
     expect(rowOf(html, result.perCompany.find((c) => c.companyId === base.companyId)!.companyName)).toContain('companySucceeded');
   });
+  it('persists the refused employee and transaction through discard, settlement and a refreshed result page', async () => {
+    const a = groupAdmin();
+    const emp = await paid(a, base.companyId, base.deptA, 'Fictional Departed Employee');
+    const failure = new PayItemFormulaRepriceError(emp, randomUUID(), 'ONOR', 'NORMAL OT', ['2026-05-12'],
+      'after_leaving_date', null, '2026-05-09', {name:'Fictional Departed Employee',code:'TEST0042'});
+    const {groupId} = await startMultiCompanyPayroll(a, {companyIds:[base.companyId],payPeriod:'2026-05',
+      payrollCycleId:await regularCycleId(base.companyId),employmentIds:[]});
+    const spy = vi.spyOn(payrollProcessJobHandler, 'applyStepTx').mockRejectedValueOnce(failure);
+    try {
+      const result = await drainRunGroup(groupId);
+      expect(result.perCompany[0]).toMatchObject({status:'failed',reason:'TRANSACTION_AFTER_LEAVING',transactionFailure:{
+        employeeName:'Fictional Departed Employee',employeeCode:'TEST0042',itemName:'NORMAL OT',itemCode:'ONOR',dates:'2026-05-12',lastDay:'2026-05-09'}});
+      const [job] = await owner.client<{plan:{transactionFailure:unknown}}[]>`select plan from bulk_job where id=(select outcomes->0->>'jobId' from payroll_run_group where id=${groupId}::uuid)::uuid`;
+      expect(job.plan.transactionFailure).toEqual(result.perCompany[0].transactionFailure);
+      expect((await jobOf(base.companyId)).status).toBe('draft');
+      for(let refresh=0;refresh<2;refresh++) {
+        const html=await renderResult(groupId);
+        for(const text of ['transactionAfterLeaving','Fictional Departed Employee','TEST0042','NORMAL OT','ONOR','2026-05-12','2026-05-09']) expect(html).toContain(text);
+        expect(html).not.toContain('reason.SYSTEM_VALIDATION_ERROR');
+      }
+      expect(await readRunGroup({...a,userId:randomUUID()},groupId)).toBeNull();
+    } finally {spy.mockRestore();}
+  });
+
 });

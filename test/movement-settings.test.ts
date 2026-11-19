@@ -606,6 +606,6 @@ describe('476f23ed — the settings screen', () => {
     expect(src).toContain("behaviour === 'blacklist'");
     expect(src).toContain('DATE_VALUE_KINDS.includes(behaviour)');
     // And the option list comes from the catalogue, not from the hard-coded array.
-    expect(src).toContain('edit ? edit.allowedKinds : catalog.map((c) => c.code)');
+    expect(src).toContain('edit ? edit.allowedKinds : (historyMode ? catalog : forwardTypes).map((c) => c.code)');
   });
 });

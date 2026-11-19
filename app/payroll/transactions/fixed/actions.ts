@@ -17,7 +17,7 @@ import {
   UnsupportedFixedCurrencyError,
   archiveEmploymentPayComponent,
   endEmploymentPayComponent,
-  setEmploymentPayComponent,
+  addFixedTransaction,
   updateEmploymentPayComponent,
 } from '@/core/pay-components';
 
@@ -60,7 +60,7 @@ export async function createFixedTransactionAction(formData: FormData) {
   }
 
   try {
-    await setEmploymentPayComponent(s, {
+    await addFixedTransaction(s, {
       employmentId,
       componentId,
       amount,
@@ -193,6 +193,7 @@ export async function updateFixedTransactionAction(formData: FormData) {
       effectiveFrom,
       effectiveTo,
       remarks,
+      maintainStartDate: true,
       ...(cycleTouched && payrollCycleId ? { payrollCycleId } : {}),
     });
   } catch (e) {

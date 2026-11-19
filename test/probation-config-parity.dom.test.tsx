@@ -11,16 +11,20 @@ import {DEFAULT_PROBATION_FORM,type ProbationForm} from '../lib/probation-form';
 import {PROBATION_SCOPED_FIELDS} from '../lib/probation-settings-scope';
 import type {ProbationSettings,ProbationSettingsScopeView,ProbationAdministrationOptions} from '../packs/probation/service';
 
-const m=vi.hoisted(()=>({refresh:vi.fn(),saveScope:vi.fn(),saveRouting:vi.fn(),saveEmail:vi.fn()}));
+const m=vi.hoisted(()=>({refresh:vi.fn(),saveScope:vi.fn(),saveRouting:vi.fn(),saveEmail:vi.fn(),
+ searchContractRoutingCases:vi.fn<typeof import('../app/automation/actions').searchContractRoutingCasesAction>().mockResolvedValue({ok:true,result:[]}),
+ checkContractRouting:vi.fn<typeof import('../app/automation/actions').checkContractRoutingAction>().mockResolvedValue({ok:false,code:'unavailable'}),
+}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:m.refresh,push:vi.fn()})}));
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch:_prefetch,...props}:Record<string,unknown>)=>React.createElement('a',props,props.children as React.ReactNode)};});
 vi.mock('../app/lifecycle/probation/actions',()=>({saveSettingsScope:m.saveScope,retireCompanySetting:vi.fn(),refreshCompanySettings:vi.fn()}));
-vi.mock('../app/automation/actions',()=>({saveRoutingAction:m.saveRouting,saveEmailTemplateAction:m.saveEmail,searchPeopleAction:vi.fn()}));
+vi.mock('../app/automation/actions',()=>({saveRoutingAction:m.saveRouting,saveEmailTemplateAction:m.saveEmail,searchPeopleAction:vi.fn(),searchContractRoutingCasesAction:m.searchContractRoutingCases,checkContractRoutingAction:m.checkContractRouting}));
 
 import {SETTINGS_CARDS} from '../app/lifecycle/probation/settings/field-groups';
 import {SettingsScopeEditor} from '../app/lifecycle/probation/settings-scope-editor';
 import {FormFields} from '../app/lifecycle/probation/form-fields';
 import {TemplatesWorkspace} from '../app/automation/templates/templates-workspace';
+import {ProbationTemplateSection} from '../app/automation/templates/probation-template-section';
 import {GroupsWorkspace} from '../app/automation/groups/groups-workspace';
 
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -143,9 +147,18 @@ describe('HR Automation templates and assignment groups (prototype TemplatesPage
   expect(within(rows[0]).getByText('v2 in use')).toBeInTheDocument();
   expect(within(rows[0]).getByRole('link',{name:'Edit Confirmation letter in the letter template editor'})).toHaveAttribute('href',`/lifecycle/probation/templates?company=${COMPANY}`);
   expect(within(rows[1]).getByText('Probation · '+a.templates.signing.existing)).toBeInTheDocument();
-  const emails=within(screen.getByRole('region',{name:a.templates.emails})).getAllByRole('listitem');
-  expect(within(emails[0]).getByText(a.templates.turnedOff)).toBeInTheDocument();
-  expect(within(emails[0]).getByRole('button',{name:'Open email template Review issued'})).toBeInTheDocument();
+  const notice=within(screen.getByRole('region',{name:a.templates.emails}));
+  expect(notice.getByText(messages.probationEmailBuilder.ui.moved)).toBeInTheDocument();
+  expect(notice.getByRole('link',{name:messages.probationEmailBuilder.ui.openEmails})).toHaveAttribute('href',`/lifecycle/v9?view=templates&module=probation&company=${COMPANY}`);
+  // The destination uses the actual shared hub component, including inactive saved records.
+  cleanup();
+  wrap(<ProbationTemplateSection refs={{routings:[],groups:[],people:[]}} emails={[{template:{id:'00000000-0000-4000-8000-0000000000e2',module:'probation',name:'Review issued',active:false,subject:'Your review is open',body:'',cc:[]},revision:1,retired:false}]}/>);
+  const emailRegion=screen.getByRole('region',{name:'Email templates · Probation'});
+  const email=within(emailRegion).getByRole('listitem');
+  expect(within(email).getByText('Review issued')).toBeInTheDocument();
+  expect(within(email).getByText('Your review is open')).toBeInTheDocument();
+  expect(within(email).getByText(messages.probationEmailBuilder.ui.inactive)).toBeInTheDocument();
+  expect(within(email).getByRole('button',{name:'Edit Review issued'})).toBeInTheDocument();
  });
 
  it('draws a card per assignment group with the routings that use it, and routing rules as cards',()=>{
@@ -161,5 +174,6 @@ describe('HR Automation templates and assignment groups (prototype TemplatesPage
   const routing=screen.getByRole('article',{name:'BP by business group'});
   expect(routing).toHaveClass('pcg-rt-card');
   expect(within(screen.getByRole('region',{name:a.groups.routings})).getByRole('button',{name:a.groups.newRouting})).toBeInTheDocument();
+  expect(m.searchContractRoutingCases).not.toHaveBeenCalled();expect(m.checkContractRouting).not.toHaveBeenCalled();
  });
 });

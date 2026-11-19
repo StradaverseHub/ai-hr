@@ -1,4 +1,5 @@
 'use server';
+import type {WorkflowPreviewContext} from '@/lib/lifecycle-case-preview';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
 import { v9CaseDetail, v9PreviewPersonnelValues, v9PreviewWorkflow, v9PlanWorkflow, v9PreviewEmail, v9PreviewUpdatedEmail, v9Command, v9CreateOffboarding, v9SaveConfig, v9Setup, v9PreviewWorkflowRemoval, v9RemoveWorkflow, v9RestoreWorkflow } from '@/packs/lifecycle/service';
@@ -19,8 +20,8 @@ export async function readV9Case(id: string) {
   catch { return { ok: false as const, error: 'The case could not be loaded. Refresh and try again.' }; }
 }
 
-export async function readV9Email(caseId: string, emailId: string) {
-  try { return { ok: true as const, preview: await v9PreviewEmail(await requireModule('lifecycle'), caseId, emailId) }; }
+export async function readV9Email(caseId: string, emailId: string,context?:WorkflowPreviewContext) {
+  try { return { ok: true as const, preview: await v9PreviewEmail(await requireModule('lifecycle'), caseId, emailId,context) }; }
   catch { return { ok: false as const, error: 'The email preview could not be loaded. Refresh and try again.' }; }
 }
 
@@ -29,8 +30,8 @@ export async function readV9UpdatedEmail(caseId:string,mailId:string) {
   catch(error){return {ok:false as const,error:error instanceof Error&&error.name==='V9Error'?error.message:'The updated copy could not be prepared. Refresh and try again.'};}
 }
 
-export async function readV9Workflow(caseId:string,workflowId:string) {
-  try {return {ok:true as const,preview:await v9PreviewWorkflow(await requireModule('lifecycle'),caseId,workflowId)};}
+export async function readV9Workflow(caseId:string,workflowId:string,context?:Omit<WorkflowPreviewContext,'workflowId'>) {
+  try {return {ok:true as const,preview:await v9PreviewWorkflow(await requireModule('lifecycle'),caseId,workflowId,context)};}
   catch {return {ok:false as const,error:'The workflow preview could not be loaded. Try again.'};}
 }
 

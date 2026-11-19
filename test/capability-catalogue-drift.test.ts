@@ -133,9 +133,15 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/history-import/logs/[attemptId]/source/route.ts':'payroll_history',
  'app/payroll/history-import/logs/page.tsx':'payroll_history',
  'app/payroll/history-import/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/[recordId]/page.tsx':'payroll_history',
  'app/payroll/history-import/upload/route.ts':'payroll_history',
  'app/payroll/transactions/import-components/page.tsx':'run_pay_components',
  'app/payroll/transactions/import-excel/actions.ts':'fixed_transactions',
+ 'app/payroll/transactions/import-excel/fixed-actions.ts':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/page.tsx':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/[id]/page.tsx':'fixed_transactions',
+ 'app/payroll/transactions/fixed/imports/[id]/errors/route.ts':'fixed_transactions',
  'app/payroll/transactions/import-excel/individual-actions.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/[attemptId]/page.tsx':'individual_transactions',
  'app/payroll/transactions/individual/imports/[attemptId]/errors/route.ts':'individual_transactions',
@@ -322,9 +328,24 @@ describe('deciding actions are mapped to the inbox work that makes them the call
   for(const action of deciding)expect((DECIDER_WORK[action.id]??MODULE_WORK[action.module]??[]).length,action.id).toBeGreaterThan(0);
   expect(DECIDER_WORK).toEqual({'approvals.leave.decide':['leave'],'approvals.claim.decide':['claim'],'approvals.attendance.decide':['attendance'],'approvals.toil.decide':['replacementLeave']});
   // Every pack task kind belongs to the module that owns it, and no kind is invented.
-  // Recruitment's kinds (slice 9) map to no deciding catalogue action: the action catalogue has no recruitment module at all, and the
-  // inbox read here does not ask for recruitment work, so a MODULE_WORK entry for them would be dead.
-  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards,...MODULE_WORK.lifecycle].sort()).toEqual(PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k)).sort());
+  // Recruitment and Contract tasks belong to their native screens, without suggestable deciding actions.
+  // Account for the exact Contract owners instead of widening the AI's Lifecycle work mapping.
+  const nativeContractWork={
+   contractApproval:['core/contract-shared-tasks.ts','contractSharedWorkPage'],
+   contractLetter:['core/contract-shared-tasks.ts','contractSharedWorkPage'],
+   contractPosting:['core/contract-shared-postings.ts','contractSharedPostingWorkPage'],
+   contractPay:['core/contract-shared-postings.ts','contractSharedPostingWorkPage'],
+  } as const;
+  for(const [kind,[file,owner]] of Object.entries(nativeContractWork)){
+   expect(PACK_TASK_KINDS).toContain(kind);
+   expect(exportsName(file,owner),`${kind} has its native owner`).toBe(true);
+   expect(Object.values(MODULE_WORK).flat()).not.toContain(kind);
+   expect(Object.values(DECIDER_WORK).flat()).not.toContain(kind);
+  }
+  expect(SUGGESTABLE_ACTIONS.filter(action=>/^packs\/contracts\/|^core\/contract-/.test(action.service)
+   ||action.screen.entryPoints.some(entry=>entry.startsWith('app/lifecycle/contracts/')))).toEqual([]);
+  const nativeOnlyKinds=new Set<string>([...RECRUITMENT_TASK_KINDS,...Object.keys(nativeContractWork)]);
+  expect([...MODULE_WORK.performance,...MODULE_WORK.rewards,...MODULE_WORK.lifecycle].sort()).toEqual(PACK_TASK_KINDS.filter(k=>!nativeOnlyKinds.has(k)).sort());
   expect(Object.keys(MODULE_WORK).sort()).toEqual(['lifecycle','performance','rewards']);
   // Own, administrator, lifecycle staff and automatic classes are not per-item deciders.
   for(const actor of ['self','hr_admin','tenant_admin','payroll_admin','rewards_admin','workforce_maintainer','lifecycle_staff','agent_principal'])

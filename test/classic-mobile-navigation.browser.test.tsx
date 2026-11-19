@@ -12,11 +12,11 @@ vi.mock('../components/intent-link',async()=>{
 });
 const {Sidebar}=await import('../components/sidebar');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');document.body.style.margin='';await page.viewport(1280,720);});
-// ADR 2026-11-15-probation-shared-automation, decision 1: Templates, Workflows and Assignment Groups moved into the
-// shared HR Automation section (test/lifecycle-v9-navigation.dom.test.tsx).
+// The shared HR Automation area owns the three builders and native-authorized On/Off Boarding settings.
+// Module Access stays within On/Off Boarding; legacy builder URLs remain compatible.
 const expectedDestinations=[
  '/lifecycle/v9','/lifecycle/v9?view=onbChecklists','/lifecycle/v9?view=leavers',
- '/lifecycle/v9?view=offChecklists','/lifecycle/v9?view=settings','/lifecycle/v9?view=access',
+ '/lifecycle/v9?view=offChecklists','/lifecycle/v9?view=access',
 ];
 function mount(){
  document.documentElement.setAttribute('data-ui-theme','classic');document.body.style.margin='0';
@@ -35,6 +35,7 @@ describe('Classic V9 flyout is reachable within the real phone viewport',()=>{
   const panel=nav.parentElement!;
   const links=within(nav).getAllByRole('link');
   expect(links.map(link=>link.getAttribute('href'))).toEqual(expectedDestinations);
+  expect(within(nav).queryByRole('link',{name:en.nav.v9Settings})).toBeNull();
   await waitFor(()=>expect(document.activeElement).toBe(links[0]));
   const bounds=panel.getBoundingClientRect();
   expect(bounds.left).toBeGreaterThanOrEqual(0);
@@ -71,5 +72,16 @@ describe('Classic V9 flyout is reachable within the real phone viewport',()=>{
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole('link',{name:en.nav.newJoiners}));
   expect(screen.queryByRole('navigation',{name:en.nav.moduleOnboarding})).toBeNull();
+  // The same native administration fixture gets one settings link in the shared area, with no alias builders.
+  if(width<640){const mobileToggle=document.querySelector<HTMLButtonElement>('[data-mobile-navigation-toggle]')!;if(mobileToggle.getAttribute('aria-expanded')!=='true')fireEvent.click(mobileToggle);}
+  const automationTrigger=screen.getByRole('button',{name:en.nav.moduleHrAutomation});
+  automationTrigger.scrollIntoView({block:'nearest'});
+  fireEvent.click(automationTrigger);
+  const automation=screen.getByRole('navigation',{name:en.nav.moduleHrAutomation});
+  expect(within(automation).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual([
+   '/automation/workflows','/automation/templates','/automation/groups','/lifecycle/v9?view=settings',
+  ]);
+  expect(within(automation).getAllByRole('link',{name:en.nav.v9Settings})).toHaveLength(1);
+  for(const label of [en.nav.automationOnOffWorkflows,en.nav.automationOnOffTemplates,en.nav.automationOnOffGroups])expect(within(automation).queryByRole('link',{name:label})).toBeNull();
  });
 });

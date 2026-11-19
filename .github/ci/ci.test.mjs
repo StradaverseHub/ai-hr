@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {verifyReports} from './verify-shards.mjs';
-import {candidateRequest,repository} from './resolve.mjs';
+import {candidateRequest,repository,selectMigrationBaseline,validateMigrationBaseComparison} from './resolve.mjs';
 const sha='a'.repeat(40),base='b'.repeat(40);
 function sample(){
  const plan={sha,controller:'c'.repeat(40),fingerprint:'fixture',suite:['test/example.test.ts'],units:[{id:'nodb-1',files:['test/example.test.ts'],kind:'nodb'}]};
@@ -23,6 +23,71 @@ for(const [name,change] of [
 test('Reject omitted and duplicate workers',()=>{const {plan,report}=sample();assert.throws(()=>verifyReports(plan,[]));assert.throws(()=>verifyReports(plan,[report,report]));});
 const event={repository:{full_name:repository},ref:'refs/heads/main',inputs:{}};
 test('Dispatch selects explicit frozen pilot branch, not controller main',()=>{assert.deepEqual(candidateRequest(event,{candidate_ref:'codex/board3-ci-pilot',expected_sha:sha,migration_base:base}),{branch:'codex/board3-ci-pilot',expected:sha,base});});
+const baselineContext={eventName:'workflow_dispatch',workflow:'alpha-staging-ci',workflowRef:repository+'/.github/workflows/alpha-staging.yml@refs/heads/main',installed:base};
+test('Default migration baseline stays the installed variable on dispatch, push and PR',()=>{
+ for(const eventName of ['workflow_dispatch','push','pull_request'])for(const override of [undefined,''])assert.deepEqual(selectMigrationBaseline({...baselineContext,eventName,override}),{base,explicit:false});
+ assert.throws(()=>selectMigrationBaseline({...baselineContext,installed:'HEAD'}));
+});
+test('Manual alpha-staging-ci may prequalify an exact expected baseline without changing installed state',()=>{
+ const context={...baselineContext,override:sha};assert.deepEqual(selectMigrationBaseline(context),{base:sha,explicit:true});assert.equal(context.installed,base);
+ assert.deepEqual(selectMigrationBaseline({...context,installed:undefined}),{base:sha,explicit:true});
+});
+test('Expected baseline rejects non-manual, foreign workflow and malformed input',()=>{
+ for(const eventName of ['push','pull_request','schedule',undefined])assert.throws(()=>selectMigrationBaseline({...baselineContext,eventName,override:sha}));
+ for(const workflow of ['alpha-focused-checks','alpha-staging-diagnostics',undefined])assert.throws(()=>selectMigrationBaseline({...baselineContext,workflow,override:sha}));
+ for(const workflowRef of [undefined,repository+'/.github/workflows/alpha-focused-checks.yml@refs/heads/main','other/repo/.github/workflows/alpha-staging.yml@refs/heads/main'])assert.throws(()=>selectMigrationBaseline({...baselineContext,workflowRef,override:sha}));
+ for(const override of [null,false,42,[],{},'HEAD','a'.repeat(39),'a'.repeat(41),'A'.repeat(40),' '+sha,sha+'\n'])assert.throws(()=>selectMigrationBaseline({...baselineContext,override}));
+});
+test('Expected baseline comparison requires the exact ancestor and frozen candidate relation',()=>{
+ const ahead={status:'ahead',base_commit:{sha:base},merge_base_commit:{sha:base}};
+ assert.equal(validateMigrationBaseComparison(ahead,{base,candidate:sha}),true);
+ assert.equal(validateMigrationBaseComparison({...ahead,status:'identical'},{base,candidate:base}),true);
+ for(const comparison of [null,{}, {...ahead,status:'behind'},{...ahead,status:'diverged'},{...ahead,status:'unknown'},{...ahead,base_commit:{sha}},{...ahead,merge_base_commit:{sha}},{...ahead,status:'identical'}])assert.throws(()=>validateMigrationBaseComparison(comparison,{base,candidate:sha}));
+ assert.throws(()=>validateMigrationBaseComparison(ahead,{base,candidate:base}));assert.throws(()=>validateMigrationBaseComparison(ahead,{base:'HEAD',candidate:sha}));
+ assert.throws(()=>validateMigrationBaseComparison(ahead,{base:base+'\n',candidate:sha}));assert.throws(()=>validateMigrationBaseComparison(ahead,{base,candidate:null}));
+});
+test('Resolver CLI projects oversized comparison bodies before the bounded child stdout buffer',()=>{
+ const directory=mkdtempSync(join(tmpdir(),'aihr-baseline-compare-'));
+ try{
+  const eventPath=join(directory,'event.json'),output=join(directory,'output'),summary=join(directory,'summary');
+  const projection='{status: .status, base_commit: {sha: .base_commit.sha}, merge_base_commit: {sha: .merge_base_commit.sha}}';
+  writeFileSync(eventPath,JSON.stringify({...event,inputs:{candidate_ref:'codex/fixture',expected_sha:sha,migration_base:base}}));
+  // Behave like gh: without --jq the real comparison shape exceeds execFileSync's default 1 MiB.
+  // No API/network/application work. The stub refuses any broader or different projection.
+  writeFileSync(join(directory,'gh'),`#!/usr/bin/env node
+const args=process.argv.slice(2),base=${JSON.stringify(base)},candidate=${JSON.stringify(sha)};
+if(args[0]!=='api')process.exit(8);
+if(args[1]==='repos/StradaverseHub/ai-hr/git/ref/heads/codex/fixture'){
+ process.stdout.write(JSON.stringify({object:{sha:candidate}}));
+}else if(args[1]==='repos/StradaverseHub/ai-hr/compare/'+base+'...'+candidate){
+ const comparison={status:process.env.FIXTURE_COMPARE_STATUS||'ahead',base_commit:{sha:base},merge_base_commit:{sha:process.env.FIXTURE_COMPARE_MERGE_BASE||base}};
+ if(args.length===4&&args[2]==='--jq'&&args[3]===${JSON.stringify(projection)})process.stdout.write(JSON.stringify(comparison));
+ else if(!args.includes('--jq'))process.stdout.write(JSON.stringify({...comparison,commits:[{message:'x'.repeat(2*1024*1024)}],files:[{patch:'y'.repeat(2*1024*1024)}]}));
+ else process.exit(9);
+}else process.exit(10);
+`,{mode:0o700});
+  const env={...process.env,PATH:directory+':'+process.env.PATH,GITHUB_EVENT_PATH:eventPath,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_WORKFLOW_REF:repository+'/.github/workflows/alpha-staging.yml@refs/heads/main',GITHUB_SHA:'c'.repeat(40),STAGING_BASE_SHA:base,GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summary,FIXTURE_COMPARE_STATUS:'ahead',FIXTURE_COMPARE_MERGE_BASE:base};
+  const result=spawnSync(process.execPath,[fileURLToPath(new URL('./resolve.mjs',import.meta.url))],{env,encoding:'utf8',timeout:10000});
+  assert.ifError(result.error);assert.equal(result.status,0,result.stderr.slice(0,1500));
+  assert.match(readFileSync(output,'utf8'),new RegExp('^sha='+sha+'\\nbranch=codex/fixture\\nbase='+base+'\\n$'));
+  assert.match(readFileSync(summary,'utf8'),/explicit prequalification; not a claim it is installed/);
+  // Compact transport must not bypass the existing ancestry validator or publish outputs on refusal.
+  for(const patch of [{FIXTURE_COMPARE_STATUS:'diverged'},{FIXTURE_COMPARE_MERGE_BASE:sha}]){
+   const rejectedOutput=join(directory,'rejected-output-'+Object.keys(patch)[0]);
+   const rejected=spawnSync(process.execPath,[fileURLToPath(new URL('./resolve.mjs',import.meta.url))],{env:{...env,...patch,GITHUB_OUTPUT:rejectedOutput},encoding:'utf8',timeout:10000});
+   assert.ifError(rejected.error);assert.notEqual(rejected.status,0);assert.match(rejected.stderr,/Expected migration baseline must be an ancestor/);
+   assert.throws(()=>readFileSync(rejectedOutput));
+  }
+ }finally{rmSync(directory,{recursive:true,force:true});}
+});
+test('Expected baseline input feeds the same resolved plan output without an installed-variable write',()=>{
+ const workflow=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8'),resolver=readFileSync(new URL('./resolve.mjs',import.meta.url),'utf8');
+ assert.match(workflow,/migration_base:\n        description: Optional full expected baseline SHA/);
+ assert.match(workflow,/STAGING_BASE_SHA: \$\{\{ vars\.STAGING_DEPLOYED_SHA \}\}/);
+ assert.match(workflow,/AIHR_CI_MIGRATION_BASE: \$\{\{ steps\.candidate\.outputs\.base \}\}/);
+ assert.match(resolver,/override:event\.inputs\?\.migration_base/);assert.match(resolver,/validateMigrationBaseComparison\(comparison/);
+ assert.doesNotMatch(resolver,/variable[s]?\/(?:STAGING_DEPLOYED_SHA)|gh.*variable.*set/);
+});
 test('Reject branch injection and malformed commit',()=>{for(const candidate_ref of ['../main','alpha\nmain','-bad','a//b'])assert.throws(()=>candidateRequest(event,{candidate_ref,expected_sha:sha}));assert.throws(()=>candidateRequest(event,{candidate_ref:'alpha',expected_sha:'HEAD'}));});
 test('Reject foreign repository and non-alpha push',()=>{assert.throws(()=>candidateRequest({...event,repository:{full_name:'other/repo'}}));assert.throws(()=>candidateRequest({repository:event.repository,ref:'refs/heads/main'}));});
 test('Reject fork, draft and wrong-target PRs',()=>{const pr={draft:false,head:{repo:{full_name:repository},ref:'feature',sha},base:{ref:'alpha',sha:base}};for(const patch of [{draft:true},{head:{...pr.head,repo:{full_name:'fork/repo'}}},{base:{...pr.base,ref:'main'}}])assert.throws(()=>candidateRequest({repository:event.repository,pull_request:{...pr,...patch}}));});

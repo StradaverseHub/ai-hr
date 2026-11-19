@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {navigationPlacement,navigationRouteOwner,placeNavigation,NAVIGATION_MODULES} from '../lib/navigation-workspaces';
+import {resolveShellNavigation,type ShellNavigationFacts} from '../lib/navigation/shell-resolver';
 import {performancePack} from '../packs/performance';
 import {readdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -34,7 +35,9 @@ describe('Ops and Strata placement never grants authority',()=>{
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders and the moved V9 builder views.
   ['/automation/workflows','ops','automation','config'],['/automation/templates','ops','automation','config'],['/automation/groups','ops','automation','config'],
   ['/lifecycle/v9?view=workflows','ops','automation','config'],['/lifecycle/v9?view=templates','ops','automation','config'],['/lifecycle/v9?view=groups','ops','automation','config'],
-  ['/lifecycle/v9?view=settings','ops','onboarding','hr'],['/lifecycle/probation/postings','ops','probation','hr'],
+  ['/recruitment','ops','recruitment','hr'],['/recruitment/positions/fictional','ops','recruitment','hr'],['/recruitment/settings','ops','recruitment','config'],['/me/referrals','ops','recruitment','mine'],['/me/referrals/mine','ops','recruitment','mine'],
+  ['/lifecycle/offboarding/postings','ops','onboarding','hr'],['/lifecycle/offboarding/postings/fictional/edit','ops','onboarding','hr'],
+  ['/lifecycle/v9?view=settings','ops','automation','config'],['/lifecycle/probation/postings','ops','probation','hr'],
   ['/performance/home','strata','performance','mine'],['/performance/my','strata','performance','mine'],
   ['/performance/workspace','strata','performance','mine'],['/performance/calibration/talent-box','strata','performance','mine'],
   ['/performance','strata','performanceAdmin','hr'],['/performance/0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e/cycle/calendar','strata','performanceAdmin','hr'],
@@ -113,5 +116,31 @@ describe('Ops and Strata placement never grants authority',()=>{
   // PT-X5: Talent and Development retired into the area's tabs; Rewards keeps its own module.
   expect(NAVIGATION_MODULES.filter(module=>module.workspace==='strata').map(module=>module.id)).toEqual(['performance','performanceAdmin','rewards','workforceInsights']);
   expect(new Set(NAVIGATION_MODULES.map(module=>module.id)).size).toBe(NAVIGATION_MODULES.length);
+ });
+});
+
+
+describe('combined Recruitment and shared HR Automation gates remain independent',()=>{
+ const hrefs=(facts:Partial<ShellNavigationFacts>)=>resolveShellNavigation({isAdmin:false,enabledModules:['lifecycle','recruitment'],...facts}).destinations.map(row=>row.href);
+ const automation=(paths:string[])=>paths.filter(href=>{const placement=navigationPlacement(href);return placement&&'module'in placement&&placement.module==='automation';});
+ const v9={onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:true}};
+ it('does not let native Recruitment or referral access grant Configuration or posting authority',()=>{
+  const paths=hrefs({canAdministerRecruitment:true,referralPortal:true});expect(paths).toContain('/recruitment');expect(paths).toContain('/me/referrals');expect(automation(paths)).toEqual([]);expect(paths).not.toContain('/lifecycle/offboarding/postings');
+ });
+ it('composes both domains and mounts exactly the approved four Configuration links under the native On/Off gate',()=>{
+  const paths=hrefs({...v9,canAdministerRecruitment:true,referralPortal:true,offboardingPostingsAccess:true});
+  expect(paths).toContain('/recruitment');expect(paths).toContain('/me/referrals');expect(paths).toContain('/lifecycle/offboarding/postings');
+  expect(automation(paths)).toEqual(['/automation/workflows','/automation/templates','/automation/groups','/lifecycle/v9?view=settings']);
+  expect(paths.filter(href=>href==='/lifecycle/v9?view=settings')).toHaveLength(1);
+  for(const view of ['workflows','templates','groups'])expect(paths).not.toContain('/lifecycle/v9?view='+view);
+  for(const href of ['/lifecycle/contracts/workflows','/lifecycle/contracts/templates'])expect(paths).not.toContain(href);
+ });
+ it('does not infer native Recruitment, referral or posting access from broad administration or Configuration',()=>{
+  const paths=hrefs({...v9,isAdmin:true});expect(paths).not.toContain('/recruitment');expect(paths).not.toContain('/me/referrals');expect(paths).not.toContain('/lifecycle/offboarding/postings');
+  expect(automation(paths)).toHaveLength(4);
+  expect(hrefs({canAdministerRecruitment:true,enabledModules:['lifecycle']})).not.toContain('/recruitment');
+ });
+ it('does not leak native On/Off settings to another module configurer even with Recruitment access',()=>{
+  const paths=hrefs({canAdministerRecruitment:true,probationAccess:{page:true,configure:true}});expect(paths).toContain('/recruitment');expect(automation(paths)).toEqual(['/automation/workflows','/automation/templates','/automation/groups']);expect(paths).not.toContain('/lifecycle/v9?view=settings');
  });
 });

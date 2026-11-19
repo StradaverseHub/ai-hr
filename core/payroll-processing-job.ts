@@ -35,7 +35,7 @@ import {
  type PayrollProcessingChunkResult,type PayrollProcessingInputSnapshot,type PayrollProcessingPlan,
 } from './payroll';
 import {PAYROLL_PROCESS_JOB_KIND,type PayrollProcessingStatus} from '../lib/payroll-processing-job';
-import {reasonForPayrollError} from './payroll-run-group-result';
+import {reasonForPayrollError,transactionFailureForPayrollError} from './payroll-run-group-result';
 import {settleRunGroupsForJobTx} from './payroll-run-group-store';
 
 export {PAYROLL_PROCESS_JOB_KIND};
@@ -138,7 +138,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   catch(error){
    if(error instanceof PayrollRunQueuedError||isTransientBulkJobError(error))throw error;
    // The wizard's result screen names the reason exactly as the synchronous run's catch mapped this error.
-   return{refused:publicErrorMessage(error),plan:{batchId,failureReason:reasonForPayrollError(error)}};
+   return{refused:publicErrorMessage(error),plan:{batchId,failureReason:reasonForPayrollError(error),transactionFailure:transactionFailureForPayrollError(error)}};
   }
  },
  async commitPrepareTx(tx,_ctx,job,prepared){
@@ -159,7 +159,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome. The
  // kernel merges it into the plan with the failure (describeFailure itself is read only).
  async describeFailure(_job,error){
-  return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error)}};
+  return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error),transactionFailure:transactionFailureForPayrollError(error)}};
  },
  // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
  // the kernel retries a settle that fails until it succeeds. One owner transaction that the kernel opens, attributes

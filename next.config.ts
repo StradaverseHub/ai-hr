@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import {NOTICE_UPLOAD_PROXY_MAX_BYTES} from './lib/notice-upload-policy';
 import {PROFILE_ATTACHMENT_ACTION_BODY_LIMIT} from './lib/profile-attachment';
 import { PHOTO_ACTION_BODY_LIMIT } from './lib/profile-photo-limits';
@@ -110,6 +111,11 @@ const nextConfig: NextConfig = {
 
 export default (phase: string) => withNextIntl({
   ...nextConfig,
+  experimental: {
+    ...nextConfig.experimental,
+    // Skip persistent Turbopack dependency tracking during production compilation.
+    ...(phase === PHASE_PRODUCTION_BUILD && { turbopackFileSystemCacheForBuild: false }),
+  },
   // Both canonical pnpm build and direct Next builds pass this validating boundary.
   // No selector means five explicit empty substitutions, despite inherited or dotenv values.
   env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() }),

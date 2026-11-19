@@ -4,7 +4,7 @@ import {useTranslations} from 'next-intl';
 import {conditionFieldsForTrigger,type AutomationModuleCatalogue} from '@/lib/automation/catalogue';
 import {describeAutomationCondition} from '@/lib/automation/conditions';
 import type {AutomationDryRun,AutomationWorkflow} from '@/lib/automation/workflow';
-import {dryRunWorkflowAction,searchProbationCasesAction} from '../actions';
+import {dryRunWorkflowAction,searchProbationCasesAction,dryRunContractWorkflowAction,searchContractCasesAction,searchOffboardingCasesAction,dryRunOffboardingWorkflowAction} from '../actions';
 import type {DryRunEventFacts} from '../types';
 
 type CaseChoice = { id: string; name: string; detail: string };
@@ -15,25 +15,29 @@ const OUTCOMES = ['Confirm', 'Extend', 'Non-confirmation', 'Other'];
  * which outcome, who is pending) is chosen here, as in the prototype; on a real case the system reads it when the
  * trigger fires. Nothing is sent and nothing is saved.
  */
-export function DryRunPanel({workflow,catalogue}:{workflow:AutomationWorkflow;catalogue:AutomationModuleCatalogue}){
+export function DryRunPanel({workflow,catalogue,values={}}:{workflow:AutomationWorkflow;catalogue:AutomationModuleCatalogue;values?:Record<string,{value:string;label:string}[]>}){
  const t=useTranslations('automation'),[busy,start]=useTransition(),[query,setQuery]=useState(''),[cases,setCases]=useState<CaseChoice[]|null>(null),[caseId,setCaseId]=useState('');
  const field=(id:string)=>catalogue.conditionFields.find(f=>f.id===id),choices=(id:string)=>[...(field(id)?.values??[])];
  const partCondition=workflow.conditions.find(c=>c.field==='part'&&c.op==='is');
- const [event,setEvent]=useState<DryRunEventFacts>({part:partCondition?.values[0]??choices('part')[0]??'',outcome:'Confirm',resultBand:'2',suggestionOverridden:'No',pendingStep:'Line Manager'});
+ const [event,setEvent]=useState<DryRunEventFacts>({part:partCondition?.values[0]??choices('part')[0]??'',outcome:'Confirm',resultBand:'2',suggestionOverridden:'No',pendingStep:'Line Manager',decision:'Renew',payChanges:'No',termMonths:'6',endReason:values.endReason?.[0]?.value,declineReason:values.declineReason?.[0]?.value});
  const [result,setResult]=useState<{employeeName:string;run:AutomationDryRun}|null>(null),[error,setError]=useState('');
  const available=new Set(conditionFieldsForTrigger(catalogue,workflow.trigger.event).map(f=>f.id));
  const label=(id:string)=>field(id)?.label??id,stepLabel=(type:string)=>catalogue.stepTypes.find(s=>s.id===type)?.label??type;
- const find=()=>{setError('');start(async()=>{const found=await searchProbationCasesAction(query);if(!found.ok){setError(found.detail??t('errors.unavailable'));return;}setCases(found.result);setCaseId(found.result[0]?.id??'');});};
- const run=()=>{if(!caseId)return;setError('');start(async()=>{const outcome=await dryRunWorkflowAction({workflow,caseId,event});if(!outcome.ok){setError(outcome.detail??t('errors.unavailable'));setResult(null);return;}setResult(outcome.result);});};
- const select=(key:keyof DryRunEventFacts,id:string,values:string[])=>available.has(id)&&<label className="v9-field" key={key}><span>{label(id)}</span><select value={event[key]} onChange={e=>{setEvent({...event,[key]:e.target.value});setResult(null);}}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>;
+ const find=()=>{setError('');start(async()=>{const found=await (workflow.module==='contract_staff'?searchContractCasesAction(query):workflow.module==='off'?searchOffboardingCasesAction(query):searchProbationCasesAction(query));if(!found.ok){setError(found.detail??t('errors.unavailable'));return;}setCases(found.result);setCaseId(found.result[0]?.id??'');});};
+ const run=()=>{if(!caseId)return;setError('');start(async()=>{const outcome=await (workflow.module==='contract_staff'?dryRunContractWorkflowAction({workflow,caseId,event}):workflow.module==='off'?dryRunOffboardingWorkflowAction({workflow,caseId}):dryRunWorkflowAction({workflow,caseId,event}));if(!outcome.ok){setError(outcome.detail??t('errors.unavailable'));setResult(null);return;}setResult(outcome.result);});};
+ const select=(key:keyof DryRunEventFacts,id:string,values:string[])=>available.has(id)&&<label className="v9-field" key={key}><span>{label(id)}</span><select value={event[key]??''} onChange={e=>{setEvent({...event,[key]:e.target.value});setResult(null);}}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>;
  return <section className="automation-dry v9-stack" aria-label={t('dry.title')}>
   <div><h3>{t('dry.title')}</h3><p className="v9-muted">{t('dry.intro')}</p></div>
   <div className="automation-row">
-   <input aria-label={t('dry.searchCase')} placeholder={t('dry.searchPlaceholder')} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
+   <input className="v9-input" aria-label={t('dry.searchCase')} placeholder={t('dry.searchPlaceholder')} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
    <button type="button" className="v9-button" disabled={busy} onClick={find}>{t('dry.findCases')}</button>
   </div>
   {cases&&(cases.length?<label className="v9-field"><span>{t('dry.testCase')}</span><select value={caseId} onChange={e=>{setCaseId(e.target.value);setResult(null);}}>{cases.map(c=><option key={c.id} value={c.id}>{c.name}{c.detail?' · '+c.detail:''}</option>)}</select></label>:<p className="v9-muted">{t('dry.noCases')}</p>)}
   <div className="v9-fields">
+   {select('decision','decision',choices('decision'))}
+   {select('payChanges','payChanges',choices('payChanges'))}
+   {available.has('termMonths')&&<label className="v9-field"><span>{label('termMonths')}</span><input className="v9-input" type="number" min={3} max={120} step={1} value={event.termMonths??''} onChange={e=>{setEvent({...event,termMonths:e.target.value});setResult(null);}}/></label>}
+   {(['endReason','declineReason'] as const).filter(key=>available.has(key)).map(key=><label className="v9-field" key={key}><span>{label(key)}</span><select value={event[key]??''} onChange={e=>{setEvent({...event,[key]:e.target.value});setResult(null);}}><option value="">—</option>{(values[key]??[]).map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
    {select('part','part',choices('part'))}
    {select('outcome','outcome',OUTCOMES)}
    {select('resultBand','resultBand',choices('resultBand'))}

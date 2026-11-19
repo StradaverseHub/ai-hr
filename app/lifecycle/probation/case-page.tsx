@@ -1,8 +1,11 @@
+import {probationEmailFileChoices} from '@/packs/automation/service';
+import {ProbationEmailCaseFiles} from '@/app/automation/templates/probation-email-case-files';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {viewerIdentity} from '@/lib/viewer';
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import {probationCase,probationAutomationHistory,probationSignerCandidates,readProbationLetter,type ProbationPartView} from '@/packs/probation/service';
+import {readProbationLetterCompletion,probationCase,probationAutomationHistory,probationSignerCandidates,readProbationLetter,type ProbationPartView} from '@/packs/probation/service';
+import {ProbationLetterCompletion} from './letter-completion';
 import {ProbationCaseViewScreen} from './case-view';
 import {probationDefaultTab,probationPartsByType,type ProbationCaseTab} from './case-stage';
 
@@ -23,13 +26,15 @@ export async function ProbationCasePage({id,tab,partId}:{id:string;tab?:string;p
  // M2: Outcome & letters shows the latest letter in full (prototype OutcomeTab). One bounded read of one letter, which
  // authorizes itself and withholds private content; earlier letters stay links. A refusal leaves the link in place.
  const latestLetter=selected==='outcome'?view.letterTasks[0]??null:null;
- const [viewer,signerCandidates,history,letter]=await Promise.all([
+ const [viewer,signerCandidates,history,letter,completion]=await Promise.all([
   part||latestLetter?viewerIdentity(ctx):Promise.resolve(null),
   part&&operations?probationSignerCandidates(ctx,id).then(rows=>Array.from(rows)):Promise.resolve(undefined),
   // I5: the shared workflow run log; a failure to read it never blocks the case (the case itself authorised the read).
   selected==='history'?probationAutomationHistory(ctx,id).catch(()=>undefined):Promise.resolve(undefined),
   latestLetter?readProbationLetter(ctx,id,latestLetter.partId).catch(()=>null):Promise.resolve(null),
+  latestLetter?readProbationLetterCompletion(ctx,{caseId:id,partId:latestLetter.partId}).catch(()=>null):Promise.resolve(null),
  ]);
+ const emailFiles=selected==='files'?await probationEmailFileChoices(ctx,id):[];
  const letterSignerCandidates=letter?.canPrepare?Array.from(await probationSignerCandidates(ctx,id)):undefined;
- return <ProbationCaseViewScreen view={view} today={todayInKualaLumpur()} tab={selected} part={part} actor={{id:ctx.userId??'',name:viewer?.name??''}} signerCandidates={signerCandidates} history={history} letter={letter} letterSignerCandidates={letterSignerCandidates}/>;
+ return <ProbationCaseViewScreen letterCompletion={completion?<ProbationLetterCompletion key={completion.partId+':'+completion.storageRevision} view={completion}/>:undefined} emailFiles={<ProbationEmailCaseFiles caseId={id} revision={view.record.revision} choices={emailFiles}/>} view={view} today={todayInKualaLumpur()} tab={selected} part={part} actor={{id:ctx.userId??'',name:viewer?.name??''}} signerCandidates={signerCandidates} history={history} letter={letter} letterSignerCandidates={letterSignerCandidates}/>;
 }

@@ -32,6 +32,6 @@ describe('spec v22',()=>{
   expect((CONTEXT_TOOL_SPECS.product_guidance.inputSchema as unknown as {properties:{topic:{enum:string[]}}}).properties.topic.enum).toEqual([...GUIDANCE_TOPICS]);
   expect((CONTEXT_TOOL_SPECS.product_guidance.inputSchema as unknown as {required:string[]}).required).toEqual(['query']);
   expect(TERAS_CAPABILITIES.filter(row=>row.topic).map(row=>[row.topic,row.name,row.admin,row.module])).toEqual([
-   ['password_policy','password_policy_guidance',true,null],['correction_controls','correction_controls_guidance',true,'payroll'],['organisation_tagging','organisation_tagging_guidance',true,null],['reward_reviews','reward_reviews_guidance',true,'rewards']]);
+   ['password_policy','password_policy_guidance',true,null],['correction_controls','correction_controls_guidance',true,'payroll'],['organisation_tagging','organisation_tagging_guidance',true,null],['reward_reviews','reward_reviews_guidance',true,'rewards'],['offboarding_requisitions','offboarding_requisitions_guidance',true,'lifecycle'],['document_signing','document_signing_guidance',true,'lifecycle'],['payroll_history_records','payroll_history_records_guidance',true,'payroll']]);
  });
 });

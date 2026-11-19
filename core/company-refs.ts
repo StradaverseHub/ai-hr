@@ -80,6 +80,11 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_system_digest',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain private Contract digest provenance without exposing its content.'},
+  {table:'contract_posting_producer',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain the first actual Contract posting producer through its actual retained Contract case and immutable workflow provenance.'},
+  {table:'contract_shared_settings',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract configuration and its audit references.'},
+  {table:'contract_access_member',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract role assignment history.'},
+  {table:'contract_access_member',column:'business_group_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract business-group assignment history.'},
   {table:'probation_activation_request',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'canonical_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
@@ -88,6 +93,7 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'company_organisation_mapping',column:'business_group_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'company_organisation_run_row',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'employment_organisation_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
+  {table:'resignation_journey',column:'company_id',disposition:'other',existsFunction:'app.resignation_company_in_use',note:'Retain resignation history without exposing custody-protected case data.'},
   {table:'contract_case',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_configuration',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},
   {table:'contract_retirement_custody',column:'company_id',disposition:'other',existsFunction:'app.replan_retained_company_in_use',note:'Retain company-bound lifecycle and payroll history.'},

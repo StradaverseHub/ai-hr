@@ -4,6 +4,8 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {OutcomeEditor} from '../app/lifecycle/probation/outcome-editor';
 import {LetterView} from '../app/lifecycle/probation/letter-view';
+import {initializePersonnelCompletion} from '../lib/lifecycle-v9-personnel-completion';
+import {recordSigningAction,type SigningDocument} from '../lib/document-signing-model';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import {probationLetterDocument} from '../lib/probation-letter-document';
 import type {ProbationLetterDefinition,ProbationLetterPreview,ProbationLetterView,ProbationOutcomeView} from '../packs/probation/service';
@@ -72,4 +74,45 @@ describe('source-bound probation letter interactions',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Send round again'}));
   await waitFor(()=>expect(m.resend).toHaveBeenCalledWith(expect.objectContaining({caseId,partId:'letter',revision:3})));
  });
+});
+
+function nativeEmployeeLetter(){
+ const route:SigningDocument['route']={version:1,steps:[{id:'employee-review',role:'employee',kind:'review',stage:0,holderId:person,required:true,owner:true},{id:'hr-sign',role:'pbp',kind:'sign',stage:1,holderId:hr,required:true},{id:'employee-sign',role:'employee',kind:'sign',stage:2,holderId:person,required:true}]},fields=preview.fields.map(field=>({...field,owner:'employee' as const,label:'Employee note'})),nativePreview={...preview,route,fields};
+ const signing:SigningDocument={tenantId:'tenant',companyId:'company',subjectId:'letter',subjectType:'probation',contentRevision:1,contentHash:'a'.repeat(64),route,actions:[],routing:{templateId:'template',templateVersion:2,caseOwnerId:hr}};
+ const base:ProbationLetterView={routed:true,contentVisible:true,owner:{stepId:'employee-review',userId:person},canEditContent:true,editableFieldOwner:'employee',unresolved:[],sourceMoved:false,runtimeEnabled:true,id:'letter',caseId,outcomeId:'outcome',outcomeRevision:4,storageRevision:1,state:'issued',createdAt:'',name:'Reviewed confirmation',templateId:'template-version',templateVersion:2,blocks:nativePreview.blocks,fields,merge:preview.merge,signing:{id:'signing',document:signing},route,canPrepare:false,canRelease:false,document:probationLetterDocument({id:'letter',name:'Reviewed confirmation',...nativePreview,createdAt:'',signing})};
+ return {base,nativePreview,signing};
+}
+
+it('offers the native employee signature after the first HR signature while retained earlier edits stay frozen',async()=>{
+ m.sign.mockResolvedValue({ok:true});const {base,nativePreview,signing}=nativeEmployeeLetter();
+ initializePersonnelCompletion(base.document,{country:'MY',sourceFingerprint:'native-source',officialValues:{},actor:{id:hr,name:'Fictional HR'},at:'2026-11-18T00:00:00.000Z'});expect(base.document.personnelCompletion).toBeUndefined();const rendered=show(<LetterView letter={base} actor={{id:person,name:'Fictional Employee'}}/>);fireEvent.click(screen.getByRole('button',{name:messages.probation.letters.editContent}));fireEvent.change(screen.getByRole('textbox',{name:'Employee note *'}),{target:{value:''}});
+ const next=structuredClone(base);next.signing!.document.actions=[{id:'reviewed',stepId:'employee-review',contentRevision:1,contentHash:signing.contentHash,actorId:person,actorPersonId:'employee-person',actorName:'Fictional Employee',representedId:person,role:'employee',at:'2026-11-18T00:30:00.000Z',action:'reviewed',comment:'',signature:null},{id:'first-signature',stepId:'hr-sign',contentRevision:1,contentHash:signing.contentHash,actorId:hr,actorPersonId:'hr-person',actorName:'Fictional HR',representedId:hr,role:'pbp',at:'2026-11-18T01:00:00.000Z',action:'signed',comment:'',signature:{method:'typed',value:'Fictional HR',consent:true}}];next.storageRevision=2;next.canEditContent=false;next.document=probationLetterDocument({id:'letter',name:'Reviewed confirmation',...nativePreview,merge:{...preview.merge,note:'Frozen employee note'},createdAt:'',signing:next.signing!.document});next.document.personnelCompletion=structuredClone(base.document.personnelCompletion);expect(next.document.hrSignature?.by.id).toBe(hr);
+ rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><LetterView letter={next} actor={{id:person,name:'Fictional Employee'}}/></NextIntlClientProvider>);expect(screen.getByRole('textbox',{name:'Employee note *'})).toBeDisabled();expect(screen.getByRole('textbox',{name:'Employee note *'})).toHaveValue('Frozen employee note');fireEvent.click(screen.getByRole('checkbox'));expect(screen.getByRole('button',{name:'Sign and submit'})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:'Sign and submit'}));await waitFor(()=>expect(m.sign).toHaveBeenCalledWith(expect.objectContaining({caseId,partId:'letter',revision:2,stepId:'employee-sign',action:'signed'})));
+});
+
+
+it('keeps plain employee fields editable after a real Review decision, which is not a signature',()=>{
+ const {base,nativePreview,signing}=nativeEmployeeLetter();
+ const reviewed=recordSigningAction(signing,{requiredRoles:[]},{id:'review-only',stepId:'employee-review',actorId:person,actorPersonId:'employee-person',actorName:'Fictional Employee',revision:1,hash:signing.contentHash,action:'reviewed',at:'2026-11-18T00:30:00.000Z'});
+ base.signing!.document=reviewed;base.storageRevision=2;
+ base.document=probationLetterDocument({id:'letter',name:'Reviewed confirmation',...nativePreview,merge:{...preview.merge,note:'Reviewed persisted note'},createdAt:'',signing:reviewed});
+ expect(base.document.hrSignature).toBeNull();expect(base.document.employeeSignature).toBeNull();
+ show(<LetterView letter={base} actor={{id:person,name:'Fictional Employee'}}/>);
+ fireEvent.click(screen.getByRole('button',{name:messages.probation.letters.editContent}));
+ expect(screen.getByRole('textbox',{name:'Employee note *'})).toBeEnabled();expect(screen.getByRole('textbox',{name:'Employee note *'})).toHaveValue('Reviewed persisted note');
+ expect(screen.queryByRole('button',{name:'Sign and submit'})).toBeNull();
+});
+
+it('starts a newly returned revision from its persisted answers instead of an older local draft',()=>{
+ const {base,nativePreview,signing}=nativeEmployeeLetter();
+ const rendered=show(<LetterView letter={base} actor={{id:person,name:'Fictional Employee'}}/>);
+ fireEvent.click(screen.getByRole('button',{name:messages.probation.letters.editContent}));fireEvent.change(screen.getByRole('textbox',{name:'Employee note *'}),{target:{value:'Old unsaved draft'}});
+ let returned=recordSigningAction(signing,{requiredRoles:[]},{id:'review-first',stepId:'employee-review',actorId:person,actorPersonId:'employee-person',actorName:'Fictional Employee',revision:1,hash:signing.contentHash,action:'reviewed',at:'2026-11-18T00:30:00.000Z'});
+ returned=recordSigningAction(returned,{requiredRoles:[]},{id:'hr-first',stepId:'hr-sign',actorId:hr,actorPersonId:'hr-person',actorName:'Fictional HR',revision:1,hash:signing.contentHash,action:'signed',method:'typed',value:'Fictional HR',consent:true,at:'2026-11-18T01:00:00.000Z'});
+ returned=recordSigningAction(returned,{requiredRoles:[]},{id:'return-current',stepId:'employee-sign',actorId:person,actorPersonId:'employee-person',actorName:'Fictional Employee',revision:1,hash:signing.contentHash,action:'returned',comment:'Please correct this note',at:'2026-11-18T01:30:00.000Z'});
+ const next={...base,storageRevision:3,signing:{...base.signing!,document:returned},document:probationLetterDocument({id:'letter',name:'Reviewed confirmation',...nativePreview,merge:{...preview.merge,note:'Current returned answer'},createdAt:'',signing:returned})};
+ rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><LetterView letter={next} actor={{id:person,name:'Fictional Employee'}}/></NextIntlClientProvider>);
+ expect(screen.getByRole('textbox',{name:'Employee note *'})).toBeDisabled();expect(screen.getByRole('textbox',{name:'Employee note *'})).toHaveValue('Current returned answer');
+ fireEvent.click(screen.getByRole('button',{name:messages.probation.letters.editContent}));
+ expect(screen.getByRole('textbox',{name:'Employee note *'})).toBeEnabled();expect(screen.getByRole('textbox',{name:'Employee note *'})).toHaveValue('Current returned answer');
 });

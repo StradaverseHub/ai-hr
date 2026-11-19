@@ -1,5 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
+import { companyContextForPage } from '@/lib/scope';
+import { lifecycleTaskCardDocuments } from '@/packs/lifecycle/service';
 import { getSession } from '@/lib/session';
 import { onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingNote, onboardingSetup, onboardingDetail, onboardingMarkSeen, searchOnboardingRecipientUsers, type OnboardingCommand, type OnboardingConfig } from '@/packs/lifecycle/service';
 import type { TaskDef } from '@/lib/onboarding-model';
@@ -66,10 +68,12 @@ export async function setupOnboarding() {
 }
 export async function loadOnboardingTask(id: string) {
     try {
-        return { detail: await onboardingDetail(await getSession(), id, 'task'), error: null };
+        const session=await getSession(),detail=await onboardingDetail(session,id,'task');
+        const scope=await companyContextForPage(session),documents=await lifecycleTaskCardDocuments(session,{companyIds:scope.scopeIds,refs:detail.case.tasks.filter(task=>task.documentTemplate).map(task=>({caseId:id,taskId:task.id}))});
+        return { detail, documents, error: null };
     }
     catch (e) {
-        return { detail: null, ...failure(e) };
+        return { detail: null, documents:[], ...failure(e) };
     }
 }
 export async function markOnboardingSeen(id: string) { await onboardingMarkSeen(await getSession(), id); revalidatePath('/lifecycle/onboarding'); }

@@ -1,0 +1,38 @@
+/** Canonical catalogue labels on real authorized Contract/approval/native Offboarding reads. */
+import {randomUUID} from 'node:crypto';
+import {beforeAll,afterAll,it,expect} from 'vitest';
+import {sql} from 'drizzle-orm';
+import {readBulkJob} from '../core/bulk-job';
+import {migrateTestDb,closeAll,owner,createAppUser} from './harness';
+import {contractPostingFixture,finishContractPostingJob} from './helpers/contract-posting-fixture';
+import {saveTerminationReason,setTerminationReasonActive} from '../core/termination-reason-catalog';
+import {v9Workspace} from '../packs/lifecycle/service';
+import {saveAutomationDocumentTemplate,saveAutomationWorkflow} from '../packs/automation/service';
+import {contractSharedWorkspace,contractSharedContext,contractTerminationReasons,readContractSharedApprovalReview,previewContractSharedDecision,submitContractSharedDecision,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
+beforeAll(migrateTestDb);afterAll(closeAll);
+it('keeps inactive tenant labels on retained case, assigned approval and native Offboarding views while excluding them from new offers',async()=>{
+ const f=await contractPostingFixture({future:true,payChanges:false}),saved=await saveTerminationReason(f.admin,{label:'Fictional original work-pass reason',category:'other'}),code=saved.code;
+ await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,conditions:[{field:'decision',op:'is',values:['Renew']}]},expectedRevision:1,reason:'Keep the original renewal workflow scoped to renewal'});
+ const templateId=randomUUID();await saveAutomationDocumentTemplate(f.admin,{template:{id:templateId,module:'contract_staff',name:'Fictional ending letter',description:'',rules:{decision:['End']},blocks:[{id:'ending',type:'text',text:'The agreed period ends.',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',owner:true,who:{kind:'people',userIds:[f.admin.userId!]}}]},expectedRevision:0,publish:true,retired:false});
+ await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,id:randomUUID(),name:'Fictional approved ending',conditions:[{field:'decision',op:'is',values:['End']}],steps:[{id:'approval',type:'requestApproval',conditions:[],to:[],cc:[],params:{layers:[{id:randomUUID(),name:'Fictional ending approval',pick:'any',approver:{kind:'person',userId:f.approver.userId!}}]}},{id:'letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}},{id:'offboarding',type:'startOffboarding',conditions:[],to:[],cc:[],params:{}}]},expectedRevision:0,reason:'Reviewed native ending fixture'});
+ const preview=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{kind:'end',payChanges:false,endReason:code,reason:'The agreed period ends.'}});await finishContractPostingJob(preview.jobId,f.proposer,'contract_preview');const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:preview.previewId});await finishContractPostingJob(accepted.jobId,f.proposer,'contract_automation');
+ const pending=(await contractSharedWorkspace(f.admin,f.caseId)).approvals[0];
+ await expect(contractSharedWorkspace(f.approver,f.caseId)).rejects.toThrow();
+ const assigned=await readContractSharedApprovalReview(f.approver,pending.id);expect(assigned.approval.canAct).toBe(true);expect(assigned.reasonLabels).toEqual([{code,label:'Fictional original work-pass reason'}]);
+ await expect(readContractSharedApprovalReview(f.employeeActor,pending.id)).rejects.toThrow();
+ const a=assigned.approval;await actContractSharedApproval(f.approver,{id:a.id,actionId:randomUUID(),layerId:a.pendingLayerId!,revision:a.contentRevision,hash:a.contentHash,action:'approve',reason:'Reviewed'});
+ const [approvalJob]=await owner.db.execute<{id:string}>(sql`select job_id as id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='approvalsComplete'`);
+ await expect(readBulkJob(f.admin,approvalJob.id,'contract_automation')).rejects.toMatchObject({status:404,message:'Job unavailable.'});
+ await finishContractPostingJob(approvalJob.id,f.approver,'contract_automation');
+ const letterId=(await contractSharedWorkspace(f.admin,f.caseId)).letters[0].id,l=await readContractSharedLetter(f.admin,letterId);await actContractSharedLetter(f.admin,{id:l.id,actionId:randomUUID(),stepId:l.pendingAction!.stepId,revision:l.contentRevision,hash:l.contentHash!,action:'reviewed'});
+ const [releasedJob]=await owner.db.execute<{id:string}>(sql`select job_id as id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='letterReleased' and data->>'letterId'=${letterId}`);await finishContractPostingJob(releasedJob.id,f.admin,'contract_automation');
+ await saveTerminationReason(f.admin,{code,label:'Fictional current renamed work-pass reason'});await setTerminationReasonActive(f.admin,{code,active:false});
+ const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional retained-case viewer',${randomUUID()+'@reason.example.test'}) returning id`);const userId=await createAppUser(f.b.tenantId,person.id,'employee'),roleId=randomUUID();
+ await saveContractSharedRole(f.admin,{id:roleId,name:'Fictional case viewer',permissions:['view'],expectedRevision:0});await saveContractSharedMember(f.admin,{id:randomUUID(),roleId,userId,companyId:f.b.companyId,businessGroupId:null,validFrom:f.start,validTo:null,revoked:false});
+ const viewer={...f.employeeActor,userId,personId:person.id};const viewed=await contractSharedWorkspace(viewer,f.caseId);expect(viewed.reasons).toEqual([]);expect(viewed.reasonLabels).toEqual([{code,label:'Fictional current renamed work-pass reason'}]);expect(viewed.view.flow?.decision?.endReason).toBe(code);
+ const manager=await contractSharedWorkspace(f.proposer,f.caseId);expect(manager.reasons.some(reason=>reason.code===code)).toBe(false);expect(manager.reasonLabels).toEqual(viewed.reasonLabels);expect((await contractTerminationReasons(f.admin)).some(reason=>reason.code===code)).toBe(false);
+ const retained=await readContractSharedApprovalReview(f.approver,pending.id);expect(retained.reasonLabels).toEqual(viewed.reasonLabels);expect(retained.approval.decision.endReason).toBe(code);
+ const native=await v9Workspace(f.admin),off=native.cases.find(c=>c.contractSharedSourceCaseId===f.caseId);expect(off?.contractSharedTerminationReason).toBe(code);expect(native.options.terminationReasonLabels).toEqual(viewed.reasonLabels);
+ const [employment]=await owner.db.execute<{termination:string|null;counter:number}>(sql`select terminated_on::text as termination,contract_number as counter from employment where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);expect(employment).toEqual({termination:null,counter:4});
+ await expect(contractSharedContext(f.employeeActor,f.caseId)).rejects.toThrow();
+},120_000);

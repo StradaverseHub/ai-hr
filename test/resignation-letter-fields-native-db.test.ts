@@ -1,0 +1,216 @@
+/** Team-native authorization: real generated documents, actual principals, immutable pinned routes. */
+import {randomUUID} from 'node:crypto';
+import {afterAll,afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {hireEmployee} from '../core/org';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
+import {currentRoundActions,signingSendBack} from '../lib/document-signing-model';
+import {prepareResignationProofTx} from '../core/resignation-proof';
+import {resignationRuntimeKey,signResignationRuntime} from '../lib/resignation-runtime-proof';
+import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,resignationLetterCapabilities,resignationLetterPendingSteps,resignationLetterEmployeePending,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
+let b:Base,employee:SessionContext,manager:SessionContext,fyi:SessionContext,id:string,employmentId:string,data:Record<string,unknown>,participants:string[];
+const master='6'.repeat(64),day='2027-06-30';
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
+beforeEach(async()=>{
+ await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','disabled');
+ vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://resignation.example.test');vi.stubEnv('AUTH_SESSION_KEY',master);
+ await owner.db.execute(sql`delete from app.resignation_runtime_state`);await owner.db.execute(sql`delete from app.resignation_runtime_verifier`);
+ await owner.db.execute(sql`insert into app.resignation_runtime_verifier(singleton,secret) values(true,${resignationRuntimeKey(master)})`);
+ const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional resigning employee',primaryEmail:randomUUID()+'@resignation.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});employmentId=hired.employmentId;
+ employee={tenantId:b.tenantId,userId:await createAppUser(b.tenantId,hired.personId,'employee'),personId:hired.personId,roles:['employee']};
+ const person=async(name:string)=>{const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,${name},${randomUUID()+'@resignation.test'}) returning id`);return{tenantId:b.tenantId,userId:await createAppUser(b.tenantId,p.id,'employee'),personId:p.id,roles:['employee']} as SessionContext;};
+ manager=await person('Fictional assigned manager');fyi=await person('Fictional FYI partner');participants=[employee.userId!,manager.userId!,fyi.userId!];id=randomUUID();
+ await owner.db.execute(sql`insert into resignation_request(id,tenant_id,employment_id,person_id,last_working_day,reason) values(${id}::uuid,${b.tenantId}::uuid,${employmentId}::uuid,${employee.personId}::uuid,${day},'Moving home')`);
+ await setModule(b.tenantId,'lifecycle','active');
+ data={facts:{employmentId,personId:employee.personId,companyId:b.companyId,basicSalary:'6400'},lastWorkingDay:day,reason:'Moving home',decision:{id:randomUUID(),to:[manager.userId],watch:[fyi.userId],choices:'both',canComment:true},offer:null,decidedBy:null,letters:[],releasedDocuments:[],waits:[],tasks:[],comments:[],progress:{}};
+ await seedJourney();
+});
+async function seedJourney(stage='decision'){
+ await owner.db.execute(sql`insert into resignation_journey(tenant_id,id,employment_id,company_id,person_id,stage,data,participant_ids,submitted_on) values(${b.tenantId}::uuid,${id}::uuid,${employmentId}::uuid,${b.companyId}::uuid,${employee.personId}::uuid,${stage},${JSON.stringify(data)}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],'2026-11-16') on conflict(tenant_id,id) do update set stage=excluded.stage,data=excluded.data`);
+}
+const begin=(tx:Tx,ctx:SessionContext,command:Record<string,unknown>,revision=1)=>prepareResignationProofTx(tx,ctx,{operation:'begin',caseId:id,revision,command,args:{}});
+async function save(tx:Tx,ctx:SessionContext,next:Record<string,unknown>,stage='decision',revision=1){
+ const args={id,revision,action:'runner',stage,data:next,participants,offboarding:null};await prepareResignationProofTx(tx,ctx,{operation:'save',caseId:id,args});
+ const[r]=await tx.execute<{revision:number}>(sql`select app.resignation_journey_save(${id}::uuid,${revision},'runner',${stage},${JSON.stringify(next)}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],null) as revision`);return r.revision;
+}
+
+async function nativeRefusal(work:Promise<unknown>,code:string,message?:RegExp){
+ let failure:unknown;try{await work;}catch(error){failure=error;}
+ expect(failure,'native command must refuse').toBeDefined();expect(pgSqlState(failure)).toBe(code);
+ if(message)expect(pgErrorChain(failure).find(link=>link.code===code)?.message).toMatch(message);
+}
+async function persisted(){const[row]=await owner.db.execute<{revision:number;stage:string;data:Record<string,unknown>;participants:string[];offboarding:string|null}>(sql`select revision,stage,data,participant_ids as participants,offboarding_case_id::text as offboarding from resignation_journey where tenant_id=${b.tenantId}::uuid and id=${id}::uuid`);return row;}
+function letterInput():GenerateResignationLetterInput{
+ return {id:randomUUID(),kind:'retention',tenantId:b.tenantId,companyId:b.companyId,subjectId:id,employeeUserId:employee.userId!,caseOwnerId:manager.userId!,personIds:{[employee.userId!]:employee.personId!,[manager.userId!]:manager.personId!,[fyi.userId!]:fyi.personId!},generatedOn:'2026-11-16',generatedAt:'2026-11-16T04:00:00Z',facts:{caseType:'Resignation'},values:{'employee.name':'Fictional employee','resignation.lastDay':day},template:{id:'tpl-off',name:'Fictional retention',module:'off',type:'Letter',rules:{},retired:false,currentVersion:1,hrStep:'before',employeeAck:true,versions:[{version:1,state:'published',at:'2026-11-16T04:00:00Z',by:manager.userId!,fields:[],blocks:[{id:'text',type:'text',section:'',text:'Last working day {resignation.lastDay}'},{id:'team-signature',type:'signature',section:'',text:'',role:'step:team-sign'},{id:'signature',type:'signature',section:'',text:'',role:'step:employee-sign'}],routing:[{id:'owner-review',order:1,action:'review',who:{kind:'people',userIds:[manager.userId!,fyi.userId!]},owner:true},{id:'team-sign',order:2,action:'sign',who:{kind:'people',userIds:[manager.userId!,fyi.userId!]},owner:false},{id:'employee-sign',order:3,action:'sign',who:{kind:'employee'},owner:false}]}]},context:{employeeUserId:employee.userId!,directSuperiorUserId:manager.userId!,facts:{},routing:()=>null,groupMembers:()=>null,choose:ids=>ids[0]??null,fallback:null,describe:()=> 'Fictional holder'}};
+}
+function realLetter():ResignationLetter{return generateResignationLetter(letterInput()).letter;}
+function act(letter:ResignationLetter,ctx:SessionContext,action:ResignationLetterAction){return actResignationLetter(letter,{id:randomUUID(),documentRevision:letter.revision,actor:{userId:ctx.userId!,personId:ctx.personId!,name:'Fictional verified actor',at:new Date().toISOString(),today:'2026-11-16'},action}).letter;}
+
+
+function formLetterInput():GenerateResignationLetterInput{
+ const input=letterInput(),version=input.template.versions[0]!;
+ input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
+ version.blocks.push({id:'local-fields',type:'fields',section:'local',text:''});return input;
+}
+function formLetter():ResignationLetter{return generateResignationLetter(formLetterInput()).letter;}
+it.each(['today','retention.salary'])('rejects generation of an unmapped reserved field %s',fieldId=>{
+ const input=formLetterInput(),fields=input.template.versions[0]!.fields;
+ fields.push({...fields[0]!,id:fieldId,label:'Reserved source collision',required:false});
+ expect(()=>generateResignationLetter(input)).toThrow(/reserved HR merge key/);
+});
+it.each(['today','retention.salary'])('denies native edits of a stored reserved local field %s',async fieldId=>{
+ const letter=formLetter();
+ // Owner setup represents a malformed or historical document; current generation rejects this definition above.
+ letter.fields.push({...letter.fields[0]!,id:fieldId,label:'Stored source collision',required:false});
+ data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values:{[fieldId]:'forged source value'}})),'42501');
+ expect(await persisted()).toEqual(original);
+});
+it('admits assigned HR local fields and atomically enabled conditional values, preserving Personnel sources',async()=>{
+ const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');
+ const values={'hr-note':'Show','hr-detail':'A verified local detail','hr-source-check':'Checked mapped source'};
+ await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});const changed=act(letter,fyi,{type:'fields',values});await save(tx,fyi,{...data,letters:[changed]},'offer');});
+ expect(await persisted()).toMatchObject({revision:2,data:{letters:[{fieldValues:values,mergeValues:values}]}});
+});
+it('preserves earlier local edits and evaluates a later conditional edit against the old parent value',async()=>{
+ let letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');
+ await withTenant(fyi,async tx=>{const values={'hr-note':'Show'};await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});letter=act(letter,fyi,{type:'fields',values});data={...data,letters:[letter]};await save(tx,fyi,data,'offer');});
+ await withTenant(fyi,async tx=>{const values={'hr-detail':'Second edit retains the first'};await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values},2);letter=act(letter,fyi,{type:'fields',values});data={...data,letters:[letter]};await save(tx,fyi,data,'offer',2);});
+ expect(await persisted()).toMatchObject({revision:3,data:{letters:[{fieldValues:{'hr-note':'Show','hr-detail':'Second edit retains the first'}}]}});
+});
+it('denies unknown, mapped, wrong-owner, hidden and future-recipient form writes',async()=>{
+ const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
+ for(const values of[{unknown:'injected'},{today:'2099-01-01'},{'retention.salary':'999999'},{salary:'999999'},{'employee-note':'wrong owner'},{'hr-detail':'still hidden'}]){await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values})),'42501');expect(await persisted()).toEqual(original);}
+ await nativeRefusal(withTenant(employee,tx=>begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values:{'employee-note':'too early'}})),'42501');expect(await persisted()).toEqual(original);
+});
+it('refuses field-definition, wrong-value and Personnel-source rewrites under a valid field command',async()=>{
+ const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted(),values={'hr-note':'Show'};
+ const valid=act(letter,fyi,{type:'fields',values});
+ const mutations=[(l:ResignationLetter)=>{l.fields[0]!.owner='employee';},(l:ResignationLetter)=>{l.fieldValues!['hr-note']='different';},(l:ResignationLetter)=>{l.mergeValues['employee.salary']='999999';}];
+ for(const mutate of mutations){const changed=structuredClone(valid);mutate(changed);await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,fyi,{...data,letters:[changed]},'offer');}),'42501');expect(await persisted()).toEqual(original);}
+});
+it('cannot turn a local field edit into a case decision or completed signature',async()=>{
+ const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted(),values={'hr-note':'Show'},changed=act(letter,fyi,{type:'fields',values});
+ for(const stage of['retained','leaving','accepted','decision','retention']){await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,fyi,{...data,letters:[changed]},stage);}),'42501',/cannot complete/);expect(await persisted()).toEqual(original);}
+});
+it('uses the pinned Start Offboarding reason and denies arbitrary reason, step or run overrides',async()=>{
+ const workflowId=randomUUID(),runId=randomUUID(),definition={trigger:{event:'accepted'},steps:[{id:'start-exit',type:'startOffboarding',params:{exitReason:'Contract end'}}]};
+ await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflowId}::uuid,1,'off','live',true,${JSON.stringify(definition)}::jsonb,'Pinned exit reason',${b.adminUserId}::uuid),(${b.tenantId}::uuid,${workflowId}::uuid,2,'off','live',true,${JSON.stringify({trigger:definition.trigger,steps:[{id:'start-exit',type:'startOffboarding',params:{exitReason:'Termination'}}]})}::jsonb,'Later draft must not replace pinned reason',${b.adminUserId}::uuid)`);
+ await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status) values(${b.tenantId}::uuid,${runId}::uuid,'off',${workflowId}::uuid,1,${id}::uuid,'exit-reason-fixture','accepted','running')`);
+ const admitted={type:'accept',lastWorkingDay:day,replacementNeeded:false},baseNext={...data,decision:null,replacementNeeded:false},start={runId,stepId:'start-exit',exitReason:'Contract end'},original=await persisted();
+ for(const invalid of[{...start,exitReason:'Termination'},{...start,stepId:'another-step'},{...start,runId:randomUUID()}]){await nativeRefusal(withTenant(manager,async tx=>{await begin(tx,manager,admitted);await save(tx,manager,{...baseNext,offboardingStart:invalid},'accepted');}),'42501',/pinned workflow step/);expect(await persisted()).toEqual(original);}
+ await withTenant(manager,async tx=>{await begin(tx,manager,admitted);await save(tx,manager,{...baseNext,offboardingStart:start},'accepted');const[projection]=await tx.execute<{intent:{type:string;employmentId:string}}>(sql`select app.resignation_offboarding_intent(${id}::uuid) intent`);expect(projection.intent).toMatchObject({type:'Contract end',employmentId});});
+});
+it('allows offer to return to retention when employee local edits invalidate a prior signature',async()=>{
+ let letter=formLetter();letter=act(letter,fyi,{type:'fields',values:{'hr-note':'Show'}});letter=act(letter,manager,{type:'complete',stepId:'owner-review'});letter=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Prior verified signature',consent:true});letter=act(letter,employee,{type:'open'});
+ const originalHistory=JSON.stringify(letter.history),originalSign=structuredClone(currentRoundActions(letter.document).find(action=>action.action==='signed'));
+ expect(originalSign).toMatchObject({stepId:'team-sign',actorId:fyi.userId,action:'signed'});
+ expect(letter.signedValues['team-sign']).toMatchObject({'employee-note':'—'});expect(resignationLetterEmployeePending(letter)).toBe(true);
+ data={...data,decision:null,letters:[letter]};await seedJourney('offer');const values={'employee-note':'New employee detail'},changed=act(letter,employee,{type:'fields',values});
+ expect(changed.revision).toBeGreaterThan(letter.revision);expect(currentRoundActions(changed.document).some(action=>action.action==='signed')).toBe(false);
+ expect(JSON.stringify(changed.history)).toBe(originalHistory);expect(changed.document.actions).toContainEqual(originalSign);
+ expect(changed.signedValues).not.toHaveProperty('team-sign');
+ expect(changed.changes['team-sign']).toEqual(expect.arrayContaining([expect.objectContaining({field:'employee-note',before:'—',after:values['employee-note']})]));
+ expect(resignationLetterPendingSteps(changed).map(step=>step.id)).toEqual(['team-sign']);expect(resignationLetterEmployeePending(changed)).toBe(false);
+ await withTenant(employee,async tx=>{await begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,employee,{...data,letters:[changed]},'retention');});
+ expect(await persisted()).toMatchObject({revision:2,stage:'retention'});
+});
+it.each([{}, {exitReason:''}])('defaults an absent or empty pinned exit reason to Resignation: %j',async params=>{
+ const workflowId=randomUUID(),runId=randomUUID(),definition={trigger:{event:'accepted'},steps:[{id:'default-exit',type:'startOffboarding',params}]};
+ await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflowId}::uuid,1,'off','live',true,${JSON.stringify(definition)}::jsonb,'Pinned default reason',${b.adminUserId}::uuid)`);
+ await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status) values(${b.tenantId}::uuid,${runId}::uuid,'off',${workflowId}::uuid,1,${id}::uuid,'default-reason-fixture','accepted','running')`);
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});await save(tx,manager,{...data,decision:null,replacementNeeded:false,offboardingStart:{runId,stepId:'default-exit',exitReason:'Resignation'}},'accepted');const[row]=await tx.execute<{intent:{type:string}}>(sql`select app.resignation_offboarding_intent(${id}::uuid) intent`);expect(row.intent.type).toBe('Resignation');});
+});
+
+it('admits a recalled owner block edit and re-send without discarding an earlier signature or unlocking pending reviewers',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};
+ route.push({id:'parallel-review',order:2,action:'review',who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ let letter=generateResignationLetter(input).letter,revision=1;
+ data={...data,decision:null,letters:[letter]};await seedJourney('retention');
+ const commit=async(ctx:SessionContext,command:Record<string,unknown>,action:ResignationLetterAction)=>{
+  await withTenant(ctx,async tx=>{await begin(tx,ctx,{...command,documentId:letter.id,documentRevision:letter.revision},revision);const next=act(letter,ctx,action);const nextData={...data,letters:[next]};const nextRevision=await save(tx,ctx,nextData,'retention',revision);letter=next;data=nextData;revision=nextRevision;});
+ };
+ await commit(manager,{type:'letterAction',action:'review'},{type:'complete',stepId:'owner-review'});
+ await commit(fyi,{type:'letterAction',action:'sign',signature:'Verified CEO',consent:true},{type:'complete',stepId:'team-sign',signature:'Verified CEO',consent:true});
+ const signed=structuredClone(currentRoundActions(letter.document).find(receipt=>receipt.action==='signed')!);
+ expect(signed).toMatchObject({actorId:fyi.userId,actorPersonId:fyi.personId,stepId:'team-sign'});
+ const blocks=letter.blocks.map(block=>block.type==='text'?{...block,text:block.text+' Owner correction.'}:block),locked=await persisted();
+ // A still-pending Review holder cannot edit after a current-round signature lands.
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks},revision)),'42501');expect(await persisted()).toEqual(locked);
+ await commit(manager,{type:'recall'},{type:'recall'});
+ expect(letter.state).toBe('owner');expect(letter.document.actions).toContainEqual(signed);
+ const returned=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks},revision)),'42501');expect(await persisted()).toEqual(returned);
+ await nativeRefusal(withTenant(manager,tx=>tx.execute(sql`select app.resignation_journey_save(${id}::uuid,${revision},'runner','retention',${JSON.stringify({...data,letters:[act(letter,manager,{type:'edit',blocks})]})}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],null)`)),'42501');expect(await persisted()).toEqual(returned);
+ await commit(manager,{type:'updateLetter',blocks},{type:'edit',blocks});
+ expect(letter.revision).toBe(2);expect(letter.state).toBe('owner');expect(letter.document.actions).toContainEqual(signed);expect(letter.history).toContainEqual(signed);
+ await commit(manager,{type:'resendLetter'},{type:'resend'});
+ expect(letter.state).toBe('review');expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['owner-review']);expect(currentRoundActions(letter.document)).toEqual([]);
+ expect(letter.document.actions).toContainEqual(signed);expect(letter.history).toContainEqual(signed);expect(await persisted()).toMatchObject({revision,data:{letters:[{state:'review',revision:2,blocks}]}});
+});
+
+it('uses exact content identity and the latest matching re-send when deciding native block edit locks',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};route.push({id:'parallel-review',order:2,action:'review',who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ let signed=generateResignationLetter(input).letter;signed=act(signed,manager,{type:'complete',stepId:'owner-review'});signed=act(signed,fyi,{type:'complete',stepId:'team-sign',signature:'Verified CEO',consent:true});
+ const recalled=act(signed,manager,{type:'recall'}),returned=structuredClone(recalled.document.actions.at(-1)!);
+ const assertAdmission=async(letter:ResignationLetter,expected:boolean,ctx=fyi)=>{
+  data={...data,decision:null,letters:[letter]};await seedJourney('retention');const before=await persisted();
+  expect(resignationLetterCapabilities(letter,ctx.userId!,ctx.personId).canEditContent).toBe(expected);
+  const admission=withTenant(ctx,tx=>begin(tx,ctx,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks:letter.blocks}));
+  // Denials leave the failed app transaction before checking aggregate immutability.
+  if(expected)await admission;else await nativeRefusal(admission,'42501');
+  expect(await persisted()).toEqual(before);
+ };
+ const signedRound=structuredClone(currentRoundActions(signed.document));
+ expect(signedRound.map(receipt=>receipt.action)).toEqual(['reviewed','signed']);
+ expect(signingSendBack(signed.document)).toBeNull();
+ const malformedReturns=[{...returned,contentHash:'different-content'},{...returned,contentRevision:signed.document.contentRevision+1}];
+ for(const malformed of malformedReturns){
+  const letter={...signed,document:{...signed.document,actions:[...signed.document.actions,malformed]}};
+  // A foreign-content return must not hide effective signatures, fabricate owner custody,
+  // or admit an owner edit. Check both the pure round and the signed native boundary.
+  expect(currentRoundActions(letter.document)).toEqual(signedRound);expect(signingSendBack(letter.document)).toBeNull();
+  await assertAdmission(letter,false);await assertAdmission(letter,false,manager);
+ }
+ // Historical/unrelated re-sends cannot erase signatures of the current content either.
+ const unrelatedResends=[
+  {...returned,action:'resent' as const,contentHash:'different-content'},
+  {...returned,action:'resent' as const,contentRevision:signed.document.contentRevision-1},
+ ];
+ for(const unrelated of unrelatedResends){
+  const letter={...signed,document:{...signed.document,actions:[...signed.document.actions,unrelated]}};
+  expect(currentRoundActions(letter.document)).toEqual(signedRound);expect(signingSendBack(letter.document)).toBeNull();
+  await assertAdmission(letter,false);await assertAdmission(letter,false,manager);
+ }
+ // A matching re-send before these signatures is historical, not permission to erase later work.
+ const earlierResend={...returned,action:'resent' as const};
+ const laterSigned={...signed,document:{...signed.document,actions:[earlierResend,...signed.document.actions]}};
+ expect(currentRoundActions(laterSigned.document)).toEqual(signedRound);expect(signingSendBack(laterSigned.document)).toBeNull();
+ await assertAdmission(laterSigned,false);await assertAdmission(laterSigned,false,manager);
+ // An actual matching re-send excludes the old signed/returned round even without a content revision bump.
+ const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);
+ expect(currentRoundActions(resent.document)).toEqual([]);expect(signingSendBack(resent.document)).toBeNull();await assertAdmission(resent,true,manager);
+ let fresh=act(resent,manager,{type:'complete',stepId:'owner-review'});fresh=act(fresh,fyi,{type:'complete',stepId:'team-sign',signature:'Fresh CEO signature',consent:true});await assertAdmission(fresh,false);
+ expect(fresh.document.actions).toContainEqual(returned);expect(currentRoundActions(fresh.document).some(receipt=>receipt.action==='returned')).toBe(false);
+});
+
+
+it('keeps optional routed steps out of managed Resignation pending actors and native admission',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};
+ route.push({id:'optional-observer-review',order:1,action:'review',required:false,who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ const letter=generateResignationLetter(input).letter;
+ expect(letter.document.route.steps.find(step=>step.id==='optional-observer-review')).toMatchObject({required:false,holderId:fyi.userId});
+ expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['owner-review']);
+ expect(resignationLetterCapabilities(letter,fyi.userId!,fyi.personId)).toMatchObject({canReview:false,canEditContent:false,canSendBack:false});
+ data={...data,decision:null,letters:[letter]};await seedJourney('retention');const original=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'letterAction',action:'review',documentId:letter.id,documentRevision:letter.revision})),'42501');
+ expect(await persisted()).toEqual(original);
+ // Positive control: the required current owner still passes exactly the same public admission.
+ await withTenant(manager,tx=>begin(tx,manager,{type:'letterAction',action:'review',documentId:letter.id,documentRevision:letter.revision}));
+ expect(await persisted()).toEqual(original);
+});
