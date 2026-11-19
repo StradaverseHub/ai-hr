@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
-import {closeSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
 import {createServer} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
@@ -70,6 +70,22 @@ async function run(label,command,args,childEnv,limit=180000) {
  }finally{clearTimeout(timer);}
 }
 const step=(label,script,limit)=>run(label,process.execPath,['--import','tsx',script],dbEnv,limit);
+
+function retainSeedPhases(){
+ const file=join(fixtureEvidenceDir,'fixture-phases.json');
+ if(!existsSync(file))return;
+ const phases=JSON.parse(readFileSync(file,'utf8'));
+ report.seedPhases=phases.filter(row=>(row.tenant===null||row.tenant===0||row.tenant===1)
+  &&/^[a-z][a-z-]{0,70}$/.test(row.phase)&&['running','passed','failed'].includes(row.status)).map(row=>({
+  tenant:row.tenant,phase:row.phase,status:row.status,
+  elapsedMs:Number.isFinite(row.elapsedMs)?Math.round(row.elapsedMs):null,
+  ...(row.failure&&{failure:{
+   kind:['assertion-error','syntax-error','type-error','error','other'].includes(row.failure.kind)?row.failure.kind:'other',
+   code:/^(?:ERR_[A-Z_]{1,60}|[0-9A-Z]{5})$/.test(row.failure.code)?row.failure.code:null,
+  }}),
+ }));
+ save();
+}
 
 let server,app,browser,databaseStarted=false;
 async function stopApp(){
@@ -258,9 +274,11 @@ try{
  await run('migrate-fictional-database','pnpm',['db:migrate'],dbEnv,300000);
  await step('verify-organisation-admission','scripts/provision-organisation-admission.ts');
  await step('seed-catalogues','scripts/seed-catalogs.ts');
- await run('seed-system-fixture',process.execPath,['--conditions=react-server','--import','tsx',
-  'scripts/performance/system-fixture.mjs'],{...dbEnv,
-   TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
+ try{
+  await run('seed-system-fixture',process.execPath,['--import','tsx',
+   'scripts/performance/system-fixture.mjs'],{...dbEnv,
+    TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
+ }finally{retainSeedPhases();}
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');

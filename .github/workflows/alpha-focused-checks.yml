@@ -193,6 +193,7 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           test "$(cat "$packet/source-sha")" = "$AIHR_CI_HEAD"
+          chmod 700 "$PWD"
           python3 ../automation/.github/ci/build-bundle.py unpack \
             "$packet/build-bundle.tar.gz" "$packet/build-bundle-files.json" .next "$PWD"
       - name: Measure the fictional production build in Chromium
@@ -274,14 +275,15 @@ jobs:
           AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
         run: |
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          packet="$RUNNER_TEMP/fictional-browser-build"
+          install -d -m 700 "$RUNNER_TEMP/browser-build-owned"
+          packet="$RUNNER_TEMP/browser-build-owned/packet"
           python3 ../automation/.github/ci/build-bundle.py pack "$PWD" "$packet"
           printf '%s\n' "$AIHR_CI_HEAD" > "$packet/source-sha"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         with:
           name: fictional-browser-build
-          path: ${{ runner.temp }}/fictional-browser-build/
+          path: ${{ runner.temp }}/browser-build-owned/packet/
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
