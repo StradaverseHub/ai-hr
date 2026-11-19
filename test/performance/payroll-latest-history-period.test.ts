@@ -1,5 +1,4 @@
 import {randomUUID} from 'node:crypto';
-import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
@@ -105,45 +104,39 @@ it('finds the same latest visible Payroll history period without joining the his
 
 it('selects the latest visible retained period before building document payloads',async()=>{
   const {base,tenant,cases}=await seedHistory();
-  // This is a disposable database proof. The existing retained-document reader compares
-  // against the candidate through the same authorized caller and tenant transaction.
+  expect(await owner.client`select to_regprocedure('app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)') is not null as installed`)
+    .toEqual([{installed:true}]);
+  // Compare the existing document reader and the migrated scalar path through the same
+  // authorized caller and tenant transaction on the disposable scale fixture.
   await owner.client`insert into information_payslip_snapshot
     (payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
     select p.id,p.tenant_id,p.employment_id,b.company_id,'2020-01-01',
       jsonb_build_object('employeeName','Fictional historical name'),${base.adminUserId}::uuid
     from payslip p join payroll_batch b on b.id=p.batch_id
     where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
-  await owner.client.begin(async tx=>{
-    const source=readFileSync('test/performance/fixtures/latest-retained-payroll-period.sql','utf8');
-    for(const statement of source.split('--> statement-breakpoint'))await tx.unsafe(statement);
-  });
-  try {
-    const group=cases[1];
-    const variants=[
-      ...cases.map(({label,ctx,scope,employmentId,expected})=>({
-        label,ctx,filters:{companyIds:scope,employmentId},expected:expected===null?null:'2026-03',
-      })),
-      {label:'month-and-cycle',ctx:group.ctx,filters:{companyIds:group.scope,year:2025,month:11,cycle:'regular'},expected:'2025-11'},
-      {label:'out-of-period',ctx:group.ctx,filters:{companyIds:group.scope,year:2024},expected:null},
-      {label:'scope-over-100',ctx:group.ctx,filters:{companyIds:[...Array.from({length:100},()=>randomUUID()),...group.scope]},expected:'2026-03'},
-    ];
-    const retainedEvidence=[];
-    for(const {label,ctx,filters,expected} of variants){
-      console.info('PAYROLL_RETAINED_PERIOD_STARTED',label);
-      const outcome=await withPayrollTenant(ctx,async tx=>{
-        const start=performance.now();
-        const docs=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit:1});
-        const baseline=docs.map(doc=>informationDocumentRow(doc).payPeriod).sort().at(-1)??null;
-        const baselineMs=Math.round(performance.now()-start),candidateStart=performance.now();
-        const candidate=await latestInformationPayslipPeriod(tx,filters);
-        return {baseline,candidate,baselineMs,candidateMs:Math.round(performance.now()-candidateStart)};
-      });
-      expect(outcome.baseline,label).toBe(expected);
-      expect(outcome.candidate,label).toBe(outcome.baseline);
-      retainedEvidence.push({label,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
-    }
-    console.info(JSON.stringify({kind:'PAYROLL_RETAINED_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence:retainedEvidence}));
-  } finally {
-    await owner.client`drop function app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)`;
+  const group=cases[1];
+  const variants=[
+    ...cases.map(({label,ctx,scope,employmentId,expected})=>({
+      label,ctx,filters:{companyIds:scope,employmentId},expected:expected===null?null:'2026-03',
+    })),
+    {label:'month-and-cycle',ctx:group.ctx,filters:{companyIds:group.scope,year:2025,month:11,cycle:'regular'},expected:'2025-11'},
+    {label:'out-of-period',ctx:group.ctx,filters:{companyIds:group.scope,year:2024},expected:null},
+    {label:'scope-over-100',ctx:group.ctx,filters:{companyIds:[...Array.from({length:100},()=>randomUUID()),...group.scope]},expected:'2026-03'},
+  ];
+  const retainedEvidence=[];
+  for(const {label,ctx,filters,expected} of variants){
+    console.info('PAYROLL_RETAINED_PERIOD_STARTED',label);
+    const outcome=await withPayrollTenant(ctx,async tx=>{
+      const start=performance.now();
+      const docs=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit:1});
+      const baseline=docs.map(doc=>informationDocumentRow(doc).payPeriod).sort().at(-1)??null;
+      const baselineMs=Math.round(performance.now()-start),candidateStart=performance.now();
+      const candidate=await latestInformationPayslipPeriod(tx,filters);
+      return {baseline,candidate,baselineMs,candidateMs:Math.round(performance.now()-candidateStart)};
+    });
+    expect(outcome.baseline,label).toBe(expected);
+    expect(outcome.candidate,label).toBe(outcome.baseline);
+    retainedEvidence.push({label,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
   }
+  console.info(JSON.stringify({kind:'PAYROLL_RETAINED_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence:retainedEvidence}));
 },360_000);

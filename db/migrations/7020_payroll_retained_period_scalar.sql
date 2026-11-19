@@ -1,5 +1,5 @@
--- Forward SQL under development. The scale fixture installs this into its owned
--- database. Allocation and a restricted-owner upgrade rehearsal precede release.
+-- Read only the latest visible retained payslip period for each bounded company scope.
+-- Keep the existing document reader and history visibility owners for full document consumers.
 CREATE FUNCTION app.information_latest_retained_payslip_period(
  p_companies uuid[], p_year integer, p_month integer, p_cycle text, p_employment uuid
 ) RETURNS text

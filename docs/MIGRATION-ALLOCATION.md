@@ -1,3 +1,20 @@
+# Payroll retained period read — 20 November 2026 (provisional development allocation)
+
+Reserve `7020_payroll_retained_period_scalar`, idx `10420`, when `1795028007020`.
+The SQL SHA-256 is `b7e1507f89e7228a003e9ab894b76b1e866b9ceae1e2e325ad1a71924df7ec9f`.
+The function returns only the latest retained period visible to the current Payroll reader.
+The existing document reader, role memberships, and stored records are unchanged.
+
+The source survey found 4,982 distinct ref heads, 787 journal blobs, 524 allocation blobs, and
+621 readable worktree journals. Eight worktree journals were unreadable or conflicted. The largest
+observed claims are `7010_payroll_history_point_read_plan`, idx `10410` and when `1795028007010`.
+Keep that separate staging candidate ahead of this one if it is installed.
+
+The ordered staging ledger matched the installed main baseline `d6bfd00891e4db5d25d5f0027d0b14b0383ef6fd`
+at 1,124 entries through `1795028007000`. The latest retained read-only production observation for
+this allocation has 883 rows through `1793330005471` on 19 November 2026 MYT. Refresh both
+installations and peer reservations before admission. This provisional allocation has no deployment authority.
+
 # Approved board candidates — 19 November 2026 (draft allocation)
 
 | Candidate migration | Journal index | Timestamp | SQL SHA-256 |

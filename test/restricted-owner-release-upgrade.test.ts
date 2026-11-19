@@ -402,12 +402,7 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});
   expect(await ledger(restricted)).toEqual(expectedLedger);
 
-  // Exercise the unallocated retained-Payroll SQL under the literal installation owner
-  // on this disposable populated database. Keep its draft separate from the journal checks above.
-  const retainedPeriod=readFileSync('test/performance/fixtures/latest-retained-payroll-period.sql','utf8');
-  await restricted.begin(async tx=>{
-   for(const statement of retainedPeriod.split('--> statement-breakpoint'))await tx.unsafe(statement);
-  });
+  // Verify the scalar reader installed by the journal with the literal owner's role topology.
   const [retainedPeriodGrant]=await observer<{
    owner:string;definer:boolean;appCanExecute:boolean;publicCanExecute:boolean;
   }[]>`select pg_get_userbyid(p.proowner)::text as owner,p.prosecdef as definer,
@@ -419,7 +414,6 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   expect(await app`select app.information_latest_retained_payslip_period(array[]::uuid[],null,null,null,null) as period`)
    .toEqual([{period:null}]);
   await close(app);
-  expect(await ledger(restricted)).toEqual(expectedLedger);
  }finally{
   for(const sql of [...open])await sql.end({timeout:5});
   for(const name of Object.values(names))await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
