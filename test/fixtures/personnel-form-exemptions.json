@@ -569,6 +569,14 @@
       "hidden": false,
       "occurrences": 1,
       "reason": "Board 154511c4: the Before value of a history entry for a dated placement field; core/movement-history.ts validates it against the record on the effective date and writes the period before it."
+    },
+    {
+      "tag": "input",
+      "context": "MovementNewEvent",
+      "name": "historicalPageMode",
+      "hidden": true,
+      "occurrences": 1,
+      "reason": "Selects the historical writer on a terminated employment where the mode checkbox is fixed. The writer checks workforce authority."
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [

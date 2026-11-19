@@ -21,18 +21,21 @@ import {
 
 type HistoryEntry={employmentId:string;typeCode:string;effectiveDate:string;before:Record<string,string|null>;remarks?:string|null;dates?:HistoryDateFacts};
 
-async function applyHistoryEntryTx(tx:Tx,ctx:SessionContext,p:HistoryEntry,correction?:RecordHistoryInput['correction']){
+async function applyHistoryEntryTx(tx:Tx,ctx:SessionContext,p:HistoryEntry,correction?:RecordHistoryInput['correction'],expectedAfter?:HistoryValues){
  const fields=Object.keys(p.before);
  if((!fields.length&&!Object.keys(p.dates??{}).length)||!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
  if(Object.entries(p.before).some(([field,value])=>field!=='employmentType'&&value!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)))throw new MovementHistoryError('movement_history_fields');
  if(Object.keys(p.dates??{}).some(field=>!isMovementHistoryDateField(field)))throw new MovementHistoryError('movement_history_fields');
  if(!isCalendarDate(p.effectiveDate))throw new MovementHistoryError('movement_history_future');
  const type=await resolveMovementEventTypeTx(tx,ctx.tenantId,p.typeCode);
- if(!type?.active||correction&&type.behaviourKind!=='entityTransfer')throw new MovementHistoryError('movement_history_fields');
+ if(!type||!type.active&&!correction||correction&&type.behaviourKind!=='entityTransfer')throw new MovementHistoryError('movement_history_fields');
  const versions=await historyVersionsTx(tx,p.employmentId);
  const on=versions.find(v=>v.validFrom<=p.effectiveDate&&(v.validTo===null||v.validTo>p.effectiveDate));
  if(!on)throw new MovementHistoryError('movement_history_no_period');
  const after=Object.fromEntries(fields.map(field=>[field,on[field as HistoryField]??null])) as HistoryValues;
+ for(const [field,expected] of Object.entries(expectedAfter??{})){
+  if(after[field as HistoryField]!==expected)throw new MovementHistoryError('movement_history_after_mismatch:'+field);
+ }
  return recordHistoryMovementTx(tx,ctx,{...p,kind:type.behaviourKind,typeCode:type.code,after,before:p.before as HistoryValues,correction});
 }
 
@@ -65,7 +68,8 @@ export async function historyMovementEditValues(ctx:SessionContext,employmentId:
   if(!authority?.allowed)return null;
   const active=await activeEntityHistoryTx(tx,ctx,employmentId,movementId);
   if(!active)return null;
-  await assertHistoryEditCompaniesTx(tx,employmentId,active.facts);
+  try { await assertHistoryEditCompaniesTx(tx,employmentId,active.facts); }
+  catch(error){if(error instanceof WorkforceAccessError)return null;throw error;}
   const {type,effectiveDate,before,remarks,dates}=active.facts;
   return {typeCode:type,effectiveDate,before,remarks,dates,revisionId:active.id};
  });
@@ -85,25 +89,30 @@ async function assertHistoryEditCompaniesTx(tx:Tx,employmentId:string,facts:Hist
  return ids;
 }
 
-export async function editEntityHistoryMovement(ctx:SessionContext,p:Omit<HistoryEntry,'typeCode'>&{movementId:string;revisionId:string;reason:string}){
+type EntityHistoryEdit=Omit<HistoryEntry,'typeCode'>&{
+ movementId:string;revisionId:string;reason:string;expectedAfter?:HistoryValues;
+};
+export function editEntityHistoryMovement(ctx:SessionContext,p:EntityHistoryEdit){
+ return withTenant(ctx,tx=>editEntityHistoryMovementTx(tx,ctx,p));
+}
+
+export async function editEntityHistoryMovementTx(tx:Tx,ctx:SessionContext,p:EntityHistoryEdit){
  const reason=p.reason.trim();
  if(!reason||reason.length>200)throw new Error('A reason is required to edit historical movement.');
  if(!ctx.roles?.some(role=>role==='hr_admin'||role==='super_admin'))throw new Error('Only an admin can edit a movement.');
- return withTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
-  const active=await activeEntityHistoryTx(tx,ctx,p.employmentId,p.movementId);
-  if(!active||p.revisionId!==active.id)throw new MovementHistoryError('movement_history_overtaken');
-  const companies=await assertHistoryEditCompaniesTx(tx,p.employmentId,active.facts);
-  await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.before.companyId?[...companies,p.before.companyId]:companies});
-  const {type,effectiveDate,before,after,remarks,dates}=active.facts;
-  if(isCalendarDate(p.effectiveDate)&&p.effectiveDate<effectiveDate&&before.companyId!==undefined&&before.companyId!==after.companyId){
-   const paid=await closedPayrollInSpanTx(tx,p.employmentId,p.effectiveDate,effectiveDate);
-   if(paid.length)throw new MovementHistoryError('movement_history_payroll_company:'+paid.map(row=>row.period).join(', '));
-  }
-  await reverseHistoryMovementTx(tx,ctx,{id:active.id,payload:active.payload,subjectEmploymentId:p.employmentId});
-  return applyHistoryEntryTx(tx,ctx,{...p,typeCode:type},{
-   movementId:p.movementId,reason,previous:{effectiveDate,before,after,remarks,dates},
-  });
- });
+ await tx.execute(sql`select app.access_configuration_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+ const active=await activeEntityHistoryTx(tx,ctx,p.employmentId,p.movementId);
+ if(!active||p.revisionId!==active.id)throw new MovementHistoryError('movement_history_overtaken');
+ const companies=await assertHistoryEditCompaniesTx(tx,p.employmentId,active.facts);
+ await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.before.companyId?[...companies,p.before.companyId]:companies});
+ const {type,effectiveDate,before,after,remarks,dates}=active.facts;
+ if(isCalendarDate(p.effectiveDate)&&p.effectiveDate<effectiveDate&&before.companyId!==undefined&&before.companyId!==after.companyId){
+  const paid=await closedPayrollInSpanTx(tx,p.employmentId,p.effectiveDate,effectiveDate);
+  if(paid.length)throw new MovementHistoryError('movement_history_payroll_company:'+paid.map(row=>row.period).join(', '));
+ }
+ await reverseHistoryMovementTx(tx,ctx,{id:active.id,payload:active.payload,subjectEmploymentId:p.employmentId});
+ return applyHistoryEntryTx(tx,ctx,{...p,typeCode:type},{
+  movementId:p.movementId,reason,previous:{effectiveDate,before,after,remarks,dates},
+ },p.expectedAfter);
 }

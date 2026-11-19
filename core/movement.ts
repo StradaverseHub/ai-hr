@@ -4971,11 +4971,12 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   const status = statusOf(row);
   const plain: CreateMovementInput = { employmentId, kind: recordedKind, effectiveDate: row.effectiveDate, endDate: row.endDate, remarks: row.remarks };
   let input: CreateMovementInput | null = null;
-  // Board 154511c4 — a history movement is corrected by deleting it and recording it again with its recorded
-  // Before / After overlaid (core/movement-import.ts); it has no forward input to replay.
   if (row.history) {
-    const p = (events.find((e) => e.id === row.id)?.payload ?? {}) as { before?: Record<string, string | null>; after?: Record<string, string | null> };
-    return { id: row.id, kind: recordedKind, displayKind: row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: { before: p.before ?? {}, after: p.after ?? {} } };
+    const revision=await latestHistoryMovementRevisionTx(tx,employmentId,row.id);
+    const p=(revision?.payload??{}) as {before?:Record<string,string|null>;after?:Record<string,string|null>;dates?:HistoryDateFacts};
+    return {id:row.id,kind:recordedKind,displayKind:row.kind,behaviour,effectiveDate:row.effectiveDate,status,
+      reversed:!!row.reversed,scheduled:row.scheduled,input,recorded:plain,
+      history:{ before:p.before??{},after:p.after??{},dates:p.dates,revisionId:revision?.id??row.id }};
   }
   if (behaviour && row.kind !== 'hired' && !row.reversed && status !== 'superseded') {
     // A pending movement wrote nothing: its values are the saved intent, read exactly as the Edit retains them.
@@ -5006,7 +5007,7 @@ export async function movementCorrectionBaseTx(tx: Tx, ctx: SessionContext, empl
   }
   // `recorded` is the bare movement (type, dates, remarks) for kinds whose effect IS their date (Join Date
   // Change, Probation Extension …); an import revert re-records a deleted movement from `input ?? recorded`.
-  return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: null as { before: Record<string, string | null>; after: Record<string, string | null> } | null };
+  return { id: row.id, kind: recordedKind, displayKind:row.kind, behaviour, effectiveDate: row.effectiveDate, status, reversed: !!row.reversed, scheduled: row.scheduled, input, recorded: plain, history: null };
 }
 
 /** The rollback guards, shared by the rollback and by read-only eligibility checks. */

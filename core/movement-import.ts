@@ -32,6 +32,7 @@ import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-im
 import {recordImportItemTx} from './import-history';
 import {isMovementHistoryDateField} from '../lib/movement-form-contract';
 import type {HistoryDateFacts} from './movement-history';
+import {editEntityHistoryMovementTx} from './movement-history-command';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
 import {HISTORY_FIELDS,classifyHistoryRows,dayBefore,historyVersionsTx,recordHistoryMovementTx,MovementHistoryError,type HistoryField,type HistoryValues} from './movement-history';
@@ -574,6 +575,7 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
  const before={...await movementCurrentStateTx(tx,employmentId),...await lifecycleTx(tx,employmentId)};
  const catalog=await catalogTx(tx,ctx,before.companyId);
  const marker=await movementLedgerMarkerTx(tx,ctx,employmentId);
+ let editedHistoryInPlace=false;
  let references:MovementManagerEvidence[]=[],kind=base.kind,effectiveDate=base.effectiveDate,behaviour=base.behaviour;
  try{
   if(action==='delete'){
@@ -582,20 +584,37 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
    if(record.cells.kind&&record.cells.kind!==base.kind&&record.cells.kind!==base.displayKind)throw new Error('event_mismatch:kind');
    await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
   }else if(base.history){
-   // Board 154511c4 — Update of a history movement: delete it, then record it again with the recorded Before /
-   // After overlaid by the cells HR filled (core/movement-history.ts checks every rule again).
+   // Historical updates keep their recorded facts for every omitted workbook cell.
    const day=record.cells.effectiveDate?movementImportDate(record.cells.effectiveDate):base.effectiveDate;if(!day)throw new Error('invalid_effective_date');
-   const fields=historyFieldsOf(record);
-   if(!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
+   const submitted=historyFieldsOf(record);
+   const fields=submitted.filter(field=>(HISTORY_FIELDS as readonly string[]).includes(field));
+   const dates:HistoryDateFacts={...base.history.dates};
+   for(const field of [...new Set([...submitted,...Object.keys(record.before??{})])]){
+    if(!isMovementHistoryDateField(field))continue;
+    const prior=record.before?.[field] || dates[field]?.before;
+    const next=record.cells[field] || dates[field]?.after;
+    const beforeDate=prior&&movementImportDate(prior);
+    const afterDate=next&&movementImportDate(next);
+    if(!beforeDate||next&&!afterDate)throw new MovementHistoryError('movement_history_fields');
+    dates[field]={before:beforeDate,...(afterDate?{after:afterDate}:{})};
+   }
+   if(submitted.some(field=>!fields.includes(field)&&!isMovementHistoryDateField(field)))throw new MovementHistoryError('movement_history_fields');
    const code=record.cells.kind??base.kind;
    const resolve=async(cells:Record<string,string>,company:string)=>{if(!Object.keys(cells).length)return{};const prepared=await inputTx(tx,ctx,{...record,cells:{kind:code,effectiveDate:day,...cells}},employmentId,company,false,undefined,undefined,true);return Object.fromEntries(Object.keys(cells).map(field=>[field,(prepared.input[field as keyof CreateMovementInput] as string|null|undefined)??null]));};
    const afterCells=Object.fromEntries(fields.map(field=>[field,record.cells[field as MovementFormField]!]));
    const beforeCells=Object.fromEntries(Object.entries(record.before??{}).filter(([field,value])=>(HISTORY_FIELDS as readonly string[]).includes(field)&&value.trim()));
-   await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
    const after={...base.history.after,...await resolve(afterCells,before.companyId)} as HistoryValues;
    const priorCompany=(beforeCells.companyId?undefined:base.history.before.companyId)??before.companyId;
    const was={...base.history.before,...await resolve(beforeCells,priorCompany)} as HistoryValues;
-   await recordHistoryMovementTx(tx,ctx,{employmentId,kind:base.behaviour??'transfer',typeCode:code,effectiveDate:day,after,before:was,remarks:reason});
+   if(base.behaviour==='entityTransfer'){
+    if(code!==base.kind)throw new Error('event_mismatch:kind');
+    await editEntityHistoryMovementTx(tx,ctx,{employmentId,movementId,revisionId:base.history.revisionId,
+     effectiveDate:day,before:was,dates,expectedAfter:after,remarks:base.recorded.remarks,reason});
+    editedHistoryInPlace=true;
+   }else{
+    await reverseMovementForImportTx(tx,ctx,employmentId,movementId,reason,{acknowledgeClosedPayroll});
+    await recordHistoryMovementTx(tx,ctx,{employmentId,kind:base.behaviour??'transfer',typeCode:code,effectiveDate:day,after,before:was,dates,remarks:reason});
+   }
    kind=code;effectiveDate=day;
   }else{
    if(!base.input)throw new Error('movement_update_not_supported');
@@ -615,12 +634,12 @@ async function applyCorrectionTx(tx:Tx,ctx:SessionContext,record:MovementImportR
    await editMovementEventTx(tx,ctx,{...merged,movementId,reason,acknowledgeClosedPayroll});
   }
  }catch(error){correctionError(error);}
- if(behaviour&&(movementNeedsEntitlementReprojection(behaviour)||!!base.behaviour&&movementNeedsEntitlementReprojection(base.behaviour)))await reprojectEntitlementForEmployment(ctx,{employmentId,trigger:'movement_recorded',gradeBefore:{gradeId:before.gradeId},...(action==='update'?{changeEffectiveOn:effectiveDate}:{})},tx);
+ if(!base.history&&behaviour&&(movementNeedsEntitlementReprojection(behaviour)||!!base.behaviour&&movementNeedsEntitlementReprojection(base.behaviour)))await reprojectEntitlementForEmployment(ctx,{employmentId,trigger:'movement_recorded',gradeBefore:{gradeId:before.gradeId},...(action==='update'?{changeEffectiveOn:effectiveDate}:{})},tx);
  // The closed months the owner recorded on the reversal(s) this correction appended (replays included).
  const reversals=await tx.select({payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),gt(domainEvent.sequence,marker),eq(domainEvent.eventType,'employment.movement.reversed')));
  const closedPayrollPeriods=[...new Set(reversals.flatMap(row=>{const periods=(row.payload as {closedPayrollPeriods?:unknown}|null)?.closedPayrollPeriods;return Array.isArray(periods)?periods.filter((period):period is string=>typeof period==='string'):[];}))].sort();
- let replacementId:string|null=null;
- if(action==='update'){
+ let replacementId:string|null=editedHistoryInPlace?movementId:null;
+ if(action==='update'&&!editedHistoryInPlace){
   // The corrected movement is the first one the correction recorded; replayed later movements follow it.
   const created=(await movementRowsAfterSequenceTx(tx,ctx,employmentId,marker)).map(row=>row.id);
   if(created.length){const [first]=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),inArray(domainEvent.id,created))).orderBy(asc(domainEvent.sequence)).limit(1);replacementId=first?.id??null;}

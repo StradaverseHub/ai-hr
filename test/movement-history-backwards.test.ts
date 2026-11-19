@@ -188,6 +188,20 @@ describe('the Movement import',()=>{
   expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'blacklist',history:true,effectiveDate:TRANSFER}));
  });
 
+ it('updates an Entity Transfer history workbook row in place',async()=>{
+  const id=await hire('HB-IMP'),ctx=adminCtx(b);
+  const original=await record(id,{effectiveDate:TRANSFER,after:{companyId:b.companyId},before:{companyId:coB}});
+  const records:MovementImportRecord[]=[{row:2,employeeCode:'HB-IMP',action:'update',movementId:original.eventId,
+   reason:'Fix the historical company',importVersion:2,errors:[],cells:{effectiveDate:'2026-03-01'},before:{companyId:coC}}];
+  const preview=await previewMovementImport(ctx,{companyId:b.companyId,csv:'',records});
+  expect(preview.employees[0].rows[0]).toMatchObject({status:'valid'});
+  const result=await commitMovementImport(ctx,{companyId:b.companyId,csv:'',records,selection:preview.selection,inputHash:preview.inputHash,
+   fingerprints:Object.fromEntries(preview.employees.map(e=>[e.employeeCode,e.fingerprint!])),acknowledgeExcluded:false});
+  expect(result.imported).toBe(1);
+  expect((await movementHistory(ctx,id)).filter(row=>row.history)).toMatchObject([{id:original.eventId,effectiveDate:'2026-03-01'}]);
+  expect((await movementDetail(ctx,id,original.eventId))?.before?.company).toBe('Gamma Fictional Sdn Bhd');
+ });
+
  it('names the correction a company change cannot be placed before (board 4604dccc; no database error)',async()=>{
   const id=await hire('HB-IMP');const ctx=adminCtx(b);
   // A transfer to a third company dated before a correction whose recorded "before" company is the original one.

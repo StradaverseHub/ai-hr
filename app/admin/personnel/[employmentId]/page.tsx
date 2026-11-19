@@ -691,7 +691,7 @@ export default async function EmployeePage({
   const rehireRead = canCorrectMovement && rehireTypeActive && derivedStatus === 'resigned'
     ? await rehireFormDefaults(s, employmentId) : null;
   const canRehire = !!rehireRead && !rehireRead.refusal;
-  const movementFormOpen = Boolean(((canCreateMovement || canRehire) && spNewEvent) || (canCorrectMovement && movementEditRow));
+  const movementFormOpen = Boolean(((canCorrectMovement || canRehire) && spNewEvent) || (canCorrectMovement && movementEditRow));
   const movementFormData = await readPersonnelMovementFormData(s, employmentId, movementTypes, movementFormOpen);
   const movementCurrent = movementFormData?.current ?? null;
   const typeControls = (code: string) => {
@@ -3169,10 +3169,8 @@ export default async function EmployeePage({
   const employmentHistoryCard = (
     <Card id="section-assignment-history" className="overflow-hidden">
       <SectionHeader title={t('movement.title')} />
-      {/* e6a144d4 — the action bar is OUTSIDE the canCreateMovement gate; only New Event is inside it.
-          The bar used to disappear wholesale once `emp.terminatedOn` was set, and a terminated employee's
-          employment history is exactly the record HR needs for exit paperwork, group HR and auditors. So a
-          terminated employment now keeps the download and loses only the button that would write. */}
+      {/* Keep the history download available for a terminated employment. Its New Event form offers
+          historical records and the supported Rehire action when applicable. */}
       <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2">
         {/* A plain link straight at the export route — no client component, no form, no approval step:
             one click and the file downloads. It carries no query string: the file is the COMPLETE
@@ -3206,8 +3204,8 @@ export default async function EmployeePage({
             {t('movement.newEvent')}
           </Link>
         )}
-        {/* Board 511aa74a — a Resigned (often terminated) employee keeps one event: Rehired. */}
-        {!canCreateMovement && canRehire && (
+        {/* Ended employments can still record history under the maintainer's existing scope. */}
+        {!canCreateMovement && (canCorrectMovement || canRehire) && (
           <Link
             href={movementPageHref(employmentId,'new',undefined,movementContext)}
             className={btnPrimary}
@@ -3659,8 +3657,9 @@ export default async function EmployeePage({
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
           .filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind))
-          .filter((r) => (r.behaviourKind === 'rehire' ? canRehire : canCreateMovement))
-          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
+          .filter(r => canCorrectMovement || (r.behaviourKind === 'rehire' && canRehire))
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description,
+            historyOnly: r.behaviourKind === 'rehire' ? !canRehire : !canCreateMovement, ...typeControls(r.code) })),
         cancelHref:historyHref,
         pageContext:movementPage?movementContext:undefined,
       }
@@ -3694,7 +3693,7 @@ export default async function EmployeePage({
   const posting = postingParam ? await personnelPosting(s, postingParam) : null;
   if (postingParam && (!posting || posting.employmentId !== employmentId)) notFound();
   const tPostings = posting ? await getTranslations('personnelPostings') : null;
-  const newEventCard = (canCreateMovement || canRehire) && spNewEvent && movementFormProps ? (
+  const newEventCard = (canCorrectMovement || canRehire) && spNewEvent && movementFormProps ? (
     <Card id="section-movement-new-event" className="overflow-hidden">
       <SectionHeader title={t('movement.newEvent')} />
       {posting && tPostings && posting.status !== 'pending' ? (
@@ -3727,7 +3726,7 @@ export default async function EmployeePage({
           postingAction={savePostingEventAction}
         />
       ) : (
-        <MovementNewEvent {...movementFormProps} rehire={rehireProps} />
+        <MovementNewEvent {...movementFormProps} rehire={rehireProps} historyOnly={!canCreateMovement && !canRehire} />
       )}
     </Card>
   ) : null;
