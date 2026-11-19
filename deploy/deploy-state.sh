@@ -201,8 +201,17 @@ case "$cmd" in
     kv_set "$CUR" exit_code "$(san "$rc_arg")"
     kv_set "$CUR" finished_at "$(now)"
     if [ "$rc_arg" = "0" ]; then
-      cp -f "$CUR" "$LAST_OK.tmp.$$" 2>/dev/null && mv -f "$LAST_OK.tmp.$$" "$LAST_OK" 2>/dev/null || true
-      kv_set "$CUR" result ok
+      # A genuine resume can enter with result=failed, and a repeated finish can enter with
+      # result=ok. Neither is the unpublished success marker consumed by native worker guards.
+      # Normalize only this new snapshot; retained historical records are never rewritten in place.
+      # Failed construction/publication must not publish a successful current verdict.
+      if { sed '/^result=/d' "$CUR" && printf 'result=\n'; } > "$LAST_OK.tmp.$$" 2>/dev/null &&
+         mv -f "$LAST_OK.tmp.$$" "$LAST_OK" 2>/dev/null; then
+        kv_set "$CUR" result ok
+      else
+        # A prior ok verdict cannot describe this unsuccessful publication attempt.
+        kv_set "$CUR" result failed
+      fi
     else
       kv_set "$CUR" result failed
     fi
