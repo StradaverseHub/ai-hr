@@ -164,7 +164,7 @@ async function signedInContext(actor){
   return context;
  }catch(error){await context.close();throw error;}
 }
-async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
+async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
  const main=page.locator('main:visible').first();
  const heading=main.locator('h1:visible').first();
  const degraded=page.locator('[role="alert"]:visible').getByRole('heading',{
@@ -213,6 +213,16 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
   const form=main.locator('[data-tour="attendance-day"] form');
   await form.locator('input[name="q"]').waitFor({state:'visible',timeout:timeout()});
   await form.locator('input[name="date"]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/lifecycle/v9'){
+  const table=main.getByRole('table',{name:'New joiners',exact:true});
+  await table.waitFor({state:'visible',timeout:timeout()});
+  const [own,other]=fixture.joiners;
+  await table.getByRole('link',{name:own,exact:true}).waitFor({state:'visible',timeout:timeout()});
+  const otherCompany=table.getByRole('link',{name:other,exact:true});
+  if(actor.role==='groupHR')await otherCompany.waitFor({state:'visible',timeout:timeout()});
+  else assert.equal(await otherCompany.count(),0,'Company HR saw a joiner outside its company');
   return 'usable-content';
  }
  if(path===payrollHistoryPath){
@@ -277,7 +287,7 @@ async function visit(page,actor,route,pass,fixture) {
   }else{
    observation.readiness=await readyContent(page,actor,route.requested,timeout,()=>{
     observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
-   });
+   },fixture);
    if(route.witness){
     if(observation.readiness==='usable-content')observation.witness=route.requested==='/'?'today-panel-content':route.witness;
     else observation.unverifiedWitness=route.witness;
@@ -354,7 +364,7 @@ async function measureShellLinks(fixture){
 async function measureRoutes(fixture){
  const plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
-  for(const path of [payrollHistoryPath,'/recruitment']){
+  for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9']){
    plan.push({role,actorIndex,requested:path,final:path});
   }
  }
@@ -405,6 +415,26 @@ async function measureActions(fixture){
    assert.equal(options.report.browserMovementJourneys?.[0]?.auditVerified,true);
   },timings:result=>Object.entries(result.browserMovementJourneys?.[0]?.steps??{})
    .map(([step,row])=>({step,status:row.status,elapsedMs:row.elapsedMs}))},
+  {name:'new-joiners-search',actorIndex:1,run:async ({page,user,fixture,report,save})=>{
+   const deadline=performance.now()+15000,timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+   const response=await page.goto(origin+'/lifecycle/v9',{waitUntil:'domcontentloaded',timeout:timeout()});
+   assert.equal(response?.status(),200);
+   assert.equal(page.url(),origin+'/lifecycle/v9');
+   await readyContent(page,user,'/lifecycle/v9',timeout,undefined,fixture);
+   const search=page.getByRole('textbox',{name:'Search by name',exact:true});
+   const results=page.getByRole('table',{name:'New joiners',exact:true});
+   const owned=results.getByRole('link',{name:fixture.joiners[0],exact:true});
+   report.joinerSteps=[];
+   for(const [step,query,state] of [['search-no-matches','Fictional unmatched joiner','hidden'],['clear-search','','visible']]){
+    const started=performance.now();
+    await search.fill(query,{timeout:timeout()});
+    await owned.waitFor({state,timeout:timeout()});
+    if(state==='hidden')await results.getByText('No new joiners match your search or filters.',{exact:true})
+     .waitFor({state:'visible',timeout:timeout()});
+    report.joinerSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+    save();
+   }
+  },timings:result=>result.joinerSteps},
  ];
  try{
   for(const action of actions){
@@ -446,9 +476,13 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
+ await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+  '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
+ assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
+ report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
