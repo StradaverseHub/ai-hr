@@ -2993,31 +2993,33 @@ export function attendanceForDatePage(
   return withTenant(ctx, async (tx) => {
     const q = (opts.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
     const like = '%' + q.replace(/[\\%_]/g, (c) => '\\' + c) + '%';
+    // The department filter needs membership only. A join multiplied employments by
+    // their current assignments, even for the ordinary view with every department.
+    const departmentMembership = opts.departmentId ? sql`exists (
+      select 1 from ${assignment} where ${and(
+        eq(assignment.employmentId, employment.id),
+        isNull(assignment.validTo),
+        isNull(assignment.supersededAt),
+        eq(assignment.departmentId, opts.departmentId),
+      )}
+    )` : undefined;
     const where = and(
       isNull(employment.terminatedOn),
       companyIds && companyIds.length ? inArray(employment.companyId, companyIds) : undefined,
-      opts.departmentId ? eq(assignment.departmentId, opts.departmentId) : undefined,
+      departmentMembership,
       q ? sql`(${person.fullName} ilike ${like} or ${employment.employeeCode} ilike ${like})` : undefined,
     );
-    const currentAssignment = and(
-      eq(assignment.employmentId, employment.id),
-      isNull(assignment.validTo),
-      isNull(assignment.supersededAt),
-    );
     const [counted] = await tx
-      .select({ n: sql<number>`count(distinct ${employment.id})::int` })
+      .select({ n: sql<number>`count(*)::int` })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
       .where(where);
     const total = counted?.n ?? 0;
     const idRows = await tx
       .select({ id: employment.id })
       .from(employment)
       .innerJoin(person, eq(person.id, employment.personId))
-      .leftJoin(assignment, currentAssignment)
       .where(where)
-      .groupBy(employment.id, employment.employeeCode, person.fullName)
       .orderBy(sql`${employment.employeeCode} asc nulls last`, asc(person.fullName), asc(employment.id))
       .limit(opts.limit)
       .offset(opts.offset);
