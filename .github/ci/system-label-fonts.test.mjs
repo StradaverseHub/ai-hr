@@ -61,7 +61,7 @@ test('full fonts use the trusted current unit output before headroom admission a
  assert(selector.includes('id: system-label-fonts'));
  assert(selector.includes('run: node ../automation/.github/ci/system-label-fonts.mjs "$UNIT"'));
  assert(selector.includes("env: {UNIT: '${{ matrix.unit }}'}"));
- assert(install.includes("if: ${{ steps.system-label-fonts.outputs.required == 'true' }}"));
+ assert(install.includes("if: ${{ steps.system-label-fonts.outputs.required == 'true' && !inputs.unit_recovery }}"));
  assert(install.includes(packages));assert(!/continue-on-error|always\(\)/.test(install));
  assert.equal((text.match(/sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk/g)??[]).length,1);
 });
