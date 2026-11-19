@@ -46,6 +46,40 @@ test('Expected baseline comparison requires the exact ancestor and frozen candid
  assert.throws(()=>validateMigrationBaseComparison(ahead,{base,candidate:base}));assert.throws(()=>validateMigrationBaseComparison(ahead,{base:'HEAD',candidate:sha}));
  assert.throws(()=>validateMigrationBaseComparison(ahead,{base:base+'\n',candidate:sha}));assert.throws(()=>validateMigrationBaseComparison(ahead,{base,candidate:null}));
 });
+test('Resolver CLI projects oversized comparison bodies before the bounded child stdout buffer',()=>{
+ const directory=mkdtempSync(join(tmpdir(),'aihr-baseline-compare-'));
+ try{
+  const eventPath=join(directory,'event.json'),output=join(directory,'output'),summary=join(directory,'summary');
+  const projection='{status: .status, base_commit: {sha: .base_commit.sha}, merge_base_commit: {sha: .merge_base_commit.sha}}';
+  writeFileSync(eventPath,JSON.stringify({...event,inputs:{candidate_ref:'codex/fixture',expected_sha:sha,migration_base:base}}));
+  // Behave like gh: without --jq the real comparison shape exceeds execFileSync's default 1 MiB.
+  // No API/network/application work. The stub refuses any broader or different projection.
+  writeFileSync(join(directory,'gh'),`#!/usr/bin/env node
+const args=process.argv.slice(2),base=${JSON.stringify(base)},candidate=${JSON.stringify(sha)};
+if(args[0]!=='api')process.exit(8);
+if(args[1]==='repos/StradaverseHub/ai-hr/git/ref/heads/codex/fixture'){
+ process.stdout.write(JSON.stringify({object:{sha:candidate}}));
+}else if(args[1]==='repos/StradaverseHub/ai-hr/compare/'+base+'...'+candidate){
+ const comparison={status:process.env.FIXTURE_COMPARE_STATUS||'ahead',base_commit:{sha:base},merge_base_commit:{sha:process.env.FIXTURE_COMPARE_MERGE_BASE||base}};
+ if(args.length===4&&args[2]==='--jq'&&args[3]===${JSON.stringify(projection)})process.stdout.write(JSON.stringify(comparison));
+ else if(!args.includes('--jq'))process.stdout.write(JSON.stringify({...comparison,commits:[{message:'x'.repeat(2*1024*1024)}],files:[{patch:'y'.repeat(2*1024*1024)}]}));
+ else process.exit(9);
+}else process.exit(10);
+`,{mode:0o700});
+  const env={...process.env,PATH:directory+':'+process.env.PATH,GITHUB_EVENT_PATH:eventPath,GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_WORKFLOW_REF:repository+'/.github/workflows/alpha-staging.yml@refs/heads/main',GITHUB_SHA:'c'.repeat(40),STAGING_BASE_SHA:base,GITHUB_OUTPUT:output,GITHUB_STEP_SUMMARY:summary,FIXTURE_COMPARE_STATUS:'ahead',FIXTURE_COMPARE_MERGE_BASE:base};
+  const result=spawnSync(process.execPath,[fileURLToPath(new URL('./resolve.mjs',import.meta.url))],{env,encoding:'utf8',timeout:10000});
+  assert.ifError(result.error);assert.equal(result.status,0,result.stderr.slice(0,1500));
+  assert.match(readFileSync(output,'utf8'),new RegExp('^sha='+sha+'\\nbranch=codex/fixture\\nbase='+base+'\\n$'));
+  assert.match(readFileSync(summary,'utf8'),/explicit prequalification; not a claim it is installed/);
+  // Compact transport must not bypass the existing ancestry validator or publish outputs on refusal.
+  for(const patch of [{FIXTURE_COMPARE_STATUS:'diverged'},{FIXTURE_COMPARE_MERGE_BASE:sha}]){
+   const rejectedOutput=join(directory,'rejected-output-'+Object.keys(patch)[0]);
+   const rejected=spawnSync(process.execPath,[fileURLToPath(new URL('./resolve.mjs',import.meta.url))],{env:{...env,...patch,GITHUB_OUTPUT:rejectedOutput},encoding:'utf8',timeout:10000});
+   assert.ifError(rejected.error);assert.notEqual(rejected.status,0);assert.match(rejected.stderr,/Expected migration baseline must be an ancestor/);
+   assert.throws(()=>readFileSync(rejectedOutput));
+  }
+ }finally{rmSync(directory,{recursive:true,force:true});}
+});
 test('Expected baseline input feeds the same resolved plan output without an installed-variable write',()=>{
  const workflow=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8'),resolver=readFileSync(new URL('./resolve.mjs',import.meta.url),'utf8');
  assert.match(workflow,/migration_base:\n        description: Optional full expected baseline SHA/);
