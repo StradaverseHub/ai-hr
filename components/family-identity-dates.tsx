@@ -1,7 +1,8 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { DateField, inputCls } from '@/components/ui';
+import { inputCls } from '@/components/ui';
+import { DateField } from '@/components/ui/date-field';
 import { deriveDobFromIcInput, nextAutofilledDob } from '@/components/ic-dob-autofill';
 import { PersonnelField } from '@/components/personnel-field';
 import { childAgeYears } from '@/lib/dependent-vocabulary';
