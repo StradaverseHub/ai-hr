@@ -77,6 +77,7 @@ export async function exercisePayrollBrowser({base,page,user,fixture,report,save
      await main.getByText(fixture.month,{exact:true}).waitFor({state:'visible',timeout:remaining()});
      resumeTrace.reviewVisibleMs=elapsed();
      // Continue is a hydrated wizard step, not a submit. Require the actual scoped employee data.
+     resumeTrace.continueStartedMs=elapsed();
      await main.getByRole('button',{name:processCopy.continue,exact:true}).click({timeout:remaining()});
      resumeTrace.continueClickedMs=elapsed();
      const labels=main.locator('label').filter({has:page.locator('input[type="checkbox"]')});

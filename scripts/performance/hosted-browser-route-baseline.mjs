@@ -11,6 +11,10 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {nativePreflightRoutePlan} from './system-route-manifest.mjs';
 import {admittedBuildNodeOptions} from '../../.github/ci/build-heap.mjs';
+import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
+import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
+import {exerciseSavedReport} from './reports-browser.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -27,7 +31,7 @@ assert.equal(git('status','--porcelain'),'');
 const privateDir=mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,controllerSha:env.AIHR_CI_CONTROL_HEAD,
- releaseEligible:false,fixture:{tenants:2,companies:10,users:500},phases:[],observations:[]};
+ releaseEligible:false,fixture:{tenants:2,companies:10,users:500},phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
@@ -99,6 +103,14 @@ async function waitForApp(){
 }
 
 const payrollHistoryPath='/payroll/transaction-view';
+async function signedInContext(actor){
+ assert(typeof actor?.token==='string'&&actor.token.length>0,'Expected a fictional fixture session');
+ const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
+ try{
+  await context.addCookies([{name:'__Host-aihr_internal',value:actor.token,url:origin,secure:true,httpOnly:true}]);
+  return context;
+ }catch(error){await context.close();throw error;}
+}
 async function visit(page,actor,route,pass) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
  const started=performance.now(),deadline=started+15000;
@@ -137,15 +149,49 @@ async function measureRoutes(fixture){
  const lanes=await Promise.allSettled([...new Set(plan.map(route=>route.actorIndex))].map(async actorIndex=>{
   const actor=fixture.users[actorIndex],routes=plan.filter(route=>route.actorIndex===actorIndex);
   assert(actor&&routes.every(route=>route.role===actor.role),'Fixture role differs from the route inventory');
-  assert(typeof actor.token==='string'&&actor.token.length>0,'Expected a fictional fixture session');
-  const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
+  const context=await signedInContext(actor);
   try{
-   await context.addCookies([{name:'__Host-aihr_internal',value:actor.token,url:origin,secure:true,httpOnly:true}]);
    const page=await context.newPage();
    for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass);
   }finally{await context.close();}
  }));
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+}
+
+async function measureActions(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const postgres=require('postgres');
+ const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ const actions=[
+  {name:'personnel-switcher',actorIndex:0,run:async options=>{
+   await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
+   await exercisePersonnelSwitcher(options);
+  },timings:result=>result.personnelSwitcherBrowser?.map(row=>({step:row.step,elapsedMs:row.elapsedMs,usable:row.usable}))},
+  {name:'payroll-wizard',actorIndex:0,run:exercisePayrollBrowser,
+   timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,usable:row.usable,
+    ...(Number.isFinite(row.trace?.expectedEmployeeVisibleMs)&&{continueToReadyMs:row.trace.expectedEmployeeVisibleMs-row.trace.continueStartedMs})}))},
+  {name:'payroll-scope-denial',actorIndex:1,run:exercisePayrollBrowser,
+   timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,scopeDenied:row.scopeDenied}))},
+  {name:'org-explorer',actorIndex:250,run:exerciseOrgExplorer,timings:result=>result.orgExplorerJourneys?.[0]?.steps
+   .map(row=>({step:row.action,elapsedMs:row.elapsedMs}))},
+  {name:'saved-report-draft',actorIndex:0,run:exerciseSavedReport,timings:result=>result.browserSavedReportJourneys?.[0]?.timings
+   .map(row=>({step:row.operation,elapsedMs:row.visibleByMs}))},
+ ];
+ try{
+  for(const action of actions){
+   const user=fixture.users[action.actorIndex],context=await signedInContext(user),result={};
+   const row={journey:action.name,role:user.role,status:'incomplete',timings:[]};
+   report.journeys.push(row);
+   const retain=()=>{row.timings=action.timings(result)??[];save();};
+   try{
+    const page=await context.newPage();
+    await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db});
+    if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
+    row.status='observed';
+   }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
+   finally{retain();await context.close();}
+  }
+ }finally{await db.end({timeout:5});}
 }
 
 save();
@@ -168,8 +214,13 @@ try{
  await waitForApp();
  await proxy();
  await measureRoutes(fixture);
- report.complete=report.observations.length===2*report.plannedRoleRoutes;
- assert(report.complete&&report.observations.every(row=>row.status==='observed'),'Browser baseline had missing or failed visits');
+ await measureActions(fixture);
+ const routesObserved=report.observations.length===2*report.plannedRoleRoutes
+  &&report.observations.every(row=>row.status==='observed');
+ const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
+ report.complete=routesObserved&&journeysObserved;
+ assert(routesObserved,'Browser baseline had missing or failed visits');
+ assert(journeysObserved,'Browser baseline had missing or failed actions');
 }finally{
  try{await browser?.close();}
  finally{
