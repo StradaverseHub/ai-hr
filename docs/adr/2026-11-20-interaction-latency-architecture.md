@@ -10,6 +10,8 @@ On staging source `d6bfd00891e4db5d25d5f0027d0b14b0383ef6fd`, build `kPIRX2RNPn5
 
 The existing implementation already has pieces to build on: request-scoped read snapshots, row-level permissions, pool admission, durable bulk jobs, and a role-aware browser load driver. The installed shell still awaits several independent navigation and queue read groups before it can return on a full load. Module flyout mount also focuses the first link, which the generic intent link treats as a reason to fetch its entire route. Payroll History demonstrates the distinction between limiting the number of displayed rows and limiting the work PostgreSQL performs to find them.
 
+Follow-up spot checks on the same installed build reached visible headings in 1.7 s for Org Chart, 0.9 s for Knowledge Base, and 0.7 s for My Private Cases. The spread makes the per-route cost and the browser's usable-content milestone important in the acceptance check.
+
 ## Proposed direction
 
 Make interactive work explicit and bounded at the shared application boundaries. Keep the current web runtime and domain modules for the first experiment. Borrow the design principle behind Rust ownership: move enforcement of an invariant into a common boundary so every caller benefits by default. [The Rust Book explains how compiler-checked ownership avoids runtime overhead.](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html)
@@ -22,6 +24,13 @@ Make interactive work explicit and bounded at the shared application boundaries.
 | Load isolation | Budget interactive work, optional reads, and bulk work independently across the web process, database connections, and worker. Compare mixed-load and quiet-tenant tail latency. Size the host using measured CPU, memory, I/O and swap pressure. |
 
 Synchronous authorization and fresh row visibility remain part of each command or read. A shared projection may contain stable identifiers and display facts when the requesting session still proves current tenant, company, and row access before selecting them. A workflow may report pending before completion. Completion and publication remain authoritative, audited outcomes. Never reuse payroll, Personnel, or access results across identities or scope changes.
+
+## Enforce the contracts in shared code
+
+- Give each measurable route or action a stable identifier, an owner, a workload class, and an observable completion state. Maintain these alongside the route and action definitions so the coverage check can flag an unclassified entry point. Use the same identifiers in application traces and browser checks.
+- Make the bounded reader the default API for list and search flows. Require an explicit page size and stable order before loading display details. Measure the actual candidate and policy work in the database because a small returned page can still hide a wide scan. Flows that need an exact count or broad aggregation declare that work explicitly and measure it under their own budget.
+- Give passive reads and bulk jobs separate admission limits. Test that interactive requests still make progress when those limits are saturated. Release checks should report click-to-feedback and usable-content timings independently of server response timings. A fast response can still leave the browser waiting on data or rendering.
+- Record the expected actions in each role's inventory before the test runs. Require observed samples for each access case and report incomplete coverage separately from slow or failed interactions. A request observed through the HTTP load driver supplies server evidence. Browser acceptance also requires the expected content or action outcome to appear.
 
 ## Alternatives and the deciding evidence
 
