@@ -10,9 +10,29 @@ profile=fixture.profile;origin=profile.origin;ci,published,prepared=fixture.ci,f
 guard,update=origin.guard,origin.update
 
 
+class CompleteInstallFixture(origin.unstarted_fixture.prior.Fixture):
+ """Canonical stage/activate/status record schemas; codec/runtime execution remains a fictional native port."""
+ def __init__(self,root):
+  super().__init__(root)
+  # Exact result keysets from staging-build-install.mjs stageCiBuild/activateCiBuild/confirmRuntime
+  # and build-bundle.py verify-active-directory. Complete BEFORE any immutable history is produced.
+  authority=self.auth['grantSha256'];stamp=self.timestamp();capacity=copy.deepcopy(self.grant['build']['capacityProfile'])
+  native={'format':2,'capacityProfile':capacity,'sharp':'fictional-codec-port','vips':'fictional-vips-port','pngSha256':ci.sha(b'fictional png'),'webpSha256':ci.sha(b'fictional webp'),'losslessPixels':True,'cjkGlyphsPresent':True}
+  self.verified.update(kind='CI_BUILD_STAGED_AND_VERIFIED_NOT_ACTIVE',authorizationSha256=authority,stagedDirectory=copy.deepcopy(self.activated['activation']['activeDirectory']),native=native,verifiedAt=stamp,releaseAuthorized=False,activeServiceVerified=False)
+  self.activated.update(format=1,authorizationSha256=authority,migrationLedger={**self.ledger,'verifiedAt':stamp},afterActivationMonotonicUs=1000000,activatedAt=stamp,releaseAuthorized=False,activeServiceVerified=False)
+  self.runtime['compiledByteInventory']={'format':2,'capacityProfile':capacity,'kind':'next-build-byte-bundle','files':12000,'archiveBytes':1,'unpackedBytes':1,'releaseAuthorized':False,'runtimeCacheExcluded':True}
+  assert set(self.verified)=={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','stagedDirectory','native','verifiedAt','releaseAuthorized','activeServiceVerified'}
+  assert set(self.activated)=={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','activation','migrationLedger','afterActivationMonotonicUs','bootIdSha256','activatedAt','releaseAuthorized','activeServiceVerified'}
+  assert set(self.runtime)=={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','pid','startedMonotonicUs','healthStatus','compiledByteInventory','migrationLedger','verifiedAt','releaseAuthorized','fullSourceChecksumVerified','fullMigrationLedgerVerified'}
+  for name,value in [('verified.json',self.verified),('activated.json',self.activated),('runtime.json',self.runtime)]:self.private_record(name,value)
+  self.auth.update(activatedSha256=ci.sha(origin.unstarted_fixture.prior.encoded(self.activated)),runtimeSha256=ci.sha(origin.unstarted_fixture.prior.encoded(self.runtime)))
+  self.original_auth=copy.deepcopy(self.auth)
+
+
 class OverallRecoveryTests(unittest.TestCase):
  def fixture(self):
-  f=profile.RecoveryProfileTests.fixture(self);proof=f.seal();old=f.live(proof);old[published.BUDGET_KEY]=published.BUDGET_PROFILE;old[published.SEAL_FRESHNESS_KEY]=published.SEAL_FRESHNESS_POLICY
+  with patch.object(origin.unstarted_fixture.prior,'Fixture',CompleteInstallFixture):f=profile.RecoveryProfileTests.fixture(self)
+  proof=f.seal();old=f.live(proof);old[published.BUDGET_KEY]=published.BUDGET_PROFILE;old[published.SEAL_FRESHNESS_KEY]=published.SEAL_FRESHNESS_POLICY
   actual=ci.RuntimeObservation.complete_fence
   def partial(o,*args,**kwargs):
    if o.fence_count==2:raise ValueError('Worker installation refused: aggregate proof slot expired')
@@ -90,7 +110,7 @@ class OverallRecoveryTests(unittest.TestCase):
   # Real streaming subprocess owner with a harmless child; clock supplies a long remaining budget, no long wait.
   with patch.object(ci,'OVERALL_EXECUTION_DEADLINE',time.monotonic()+1700),patch.object(ci,'FAILURE_CLEANUP_ONLY',False):
    self.assertGreater(ci.execution_timeout(20),1600)
-   result=ci.bounded_process([sys.executable,'-c','print("actual child")'],timeout=20);self.assertEqual(result.strip(),'actual child')
+   result=ci.bounded_process([sys.executable,'-c','print("actual child")'],timeout=20);self.assertEqual(result.strip(),b'actual child')
   base=origin.unstarted_fixture.prior.core.load_native('overall_actual_base','bank_import_worker_installer_v2.py');observed=[]
   with patch.object(base,'OVERALL_EXECUTION_DEADLINE',time.monotonic()+1700,create=True),patch.object(base.subprocess,'run',side_effect=lambda *args,**kw:(observed.append(kw['timeout'])or SimpleNamespace(returncode=0,stdout=''))):base.command(['/usr/bin/true'])
   self.assertGreater(observed[0],1600)
