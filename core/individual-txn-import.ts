@@ -8,8 +8,7 @@ import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImp
 import {adminCompaniesTx} from './read';
 import {isAdmin} from '../lib/authz-model';
 import {analyzeTxnImport,txnImportReason} from './payroll-txn-import';
-import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,type PayRule} from '../packs/payroll/service';
-import {resolveDailyImportInput} from './pay-rule';
+import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,resolveDailyImportInput,type PayRule} from '../packs/payroll/service';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import type {IndividualImportMethod,TxnImportPreview} from '../lib/payroll-txn-import-schema';
 import type {IndividualImportAttempt,IndividualImportOutcome} from '../lib/individual-txn-import-model';

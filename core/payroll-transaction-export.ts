@@ -14,10 +14,9 @@ import { transactionXlsxStream, type TransactionCell } from '../lib/transaction-
 import { bulkJobTx, BulkJobError, enqueueBulkJobTx } from './bulk-job';
 import { BulkJobAuthorityLost, type BulkJobHandler } from './bulk-job-worker';
 import {
-  INDIVIDUAL_TXN_STATUS_FILTERS, readTransactionExport,
+  INDIVIDUAL_TXN_STATUS_FILTERS, readTransactionExport, TXN_KINDS,
   type FixedTransactionViewRow, type IndividualTxnViewRow, type TransactionExportQuery,
-} from './payroll-view';
-import { TXN_KINDS } from './payroll-individual-txn';
+} from '../packs/payroll/service';
 
 export const TRANSACTION_EXPORT_KIND = 'payroll_transaction_export';
 const partBytes = 256 * 1024;

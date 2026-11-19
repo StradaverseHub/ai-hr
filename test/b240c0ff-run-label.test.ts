@@ -53,7 +53,7 @@ const SURFACES: [string, RegExp][] = [
   ['app/payroll/transaction-view/history-export.ts', /payrollRunLabel\(row,/],
   ['app/payroll/transaction-view/grid-export/route.ts', /payrollRunLabel\(r,/],
   ['app/payroll/transaction-view/page.tsx', /payrollRunLabel\(m,/],
-  ['app/payroll/individual-payslip/page.tsx', /payrollRunLabel\(o,/],
+  ['app/payroll/individual-payslip/page.tsx', /payrollRunLabel\(run,/],
   ['app/payroll/process/steps/step-period.tsx', /payrollRunLabel\(r,/],
   ['app/payroll/process/wizard.tsx', /payrollRunLabel\(resumeBatch,/],
   ['app/payroll/[batchId]/reprocess/page.tsx', /payrollRunLabel\(batch,/],

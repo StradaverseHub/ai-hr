@@ -862,9 +862,9 @@ describe('§6 the Movement screen reaches the same refusal, and it is now legibl
       const name=body.match(/^export async function (\w+)/)?.[1];
       return name?Array.from(body.matchAll(/await compensationErrorMessage\(e\)/g),()=>name):[];
     });
-    // Board 154511c4 — the third createMovementEventAction entry is New Event's Record history refusal path.
+    // The third entry on each Movement action covers the Record History refusal path.
     expect(writers).toEqual(['createMovementEventAction','createMovementEventAction','createMovementEventAction',
-      'editMovementEventAction','editMovementEventAction','setCompensationAction','editCompensationAction']);
+      'editMovementEventAction','editMovementEventAction','editMovementEventAction','setCompensationAction','editCompensationAction']);
   });
 
   it('the ROLLBACK action is deliberately NOT routed, and the reason is checkable', () => {

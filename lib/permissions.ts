@@ -1497,6 +1497,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.
       '/payroll/transaction-view',
+      '/payroll/transaction-view/workbooks',
       '/payroll/transactions',
       // 7076f8af: the two functions that came OFF the run screen. `adjustments` renders the draft run's
       // consolidation bridges + input grid (its primary home is the run flow's Review step, which is not a
@@ -1512,6 +1513,8 @@ export const SCREENS: readonly ScreenEntry[] = [
       // test/function-access.test.ts fails the build for a guarded page.tsx with no column, which is how
       // a new screen is stopped from being invisible on the access grid.)
       '/payroll/transactions/fixed/[id]',
+      '/payroll/transactions/fixed/imports',
+      '/payroll/transactions/fixed/imports/[id]',
       '/payroll/transactions/individual',
       '/payroll/transactions/individual/imports',
       '/payroll/transactions/individual/imports/[attemptId]',

@@ -1,6 +1,5 @@
-import Link from 'next/link';
 import { getTranslations, getFormatter } from 'next-intl/server';
-import { Card, PageHeader, buttonVariants } from '@/components/ui';
+import { Card, PageHeader, buttonVariants, pageWideCls } from '@/components/ui';
 import { scopedAdmin } from '@/lib/scope';
 import { bulkJobActive } from '@/lib/bulk-job';
 import { listBulkJobsTx } from '@/core/bulk-job';
@@ -18,11 +17,11 @@ export default async function TransactionWorkbookList({
   const jobs = (await withPayrollTenant(s, (tx) => listBulkJobsTx(tx, s, TRANSACTION_EXPORT_KIND, 25)))
     .filter((item) => item.company_ids.length > 0 && item.company_ids.every((id) => scopeIds.includes(id)));
   const active = jobs.some((item) => bulkJobActive(item.state));
+  const backHref = tab === 'fixed' || tab === 'individual' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view';
 
   return (
-    <main className="mx-auto max-w-4xl space-y-4 px-4 py-6">
-      <PageHeader title={t('title')} />
-      <Link href={tab === 'fixed' || tab === 'individual' ? `/payroll/transaction-view?tab=${tab}` : '/payroll/transaction-view'} className={buttonVariants({ variant: 'outline', size: 'sm' })}>{t('back')}</Link>
+    <main className={pageWideCls}>
+      <PageHeader title={t('title')} back={{ href: backHref, label: t('back') }} />
       {(unavailable || (job && !jobs.some((item) => item.id === job))) && (
         <p role="alert" className="text-sm text-destructive">{t('unavailable')}</p>
       )}
