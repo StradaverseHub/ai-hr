@@ -179,28 +179,27 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
-  const cookieStore = await cookies();
-  const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
-  // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
-  // there is no open/closed state to persist (stale cookies in existing browsers are unused and
-  // harmless). rail_collapsed handling is unchanged.
   // fbf6abd0 — WHO IS SIGNED IN. The name + Employee ID shown in the top right, read from the viewer's
   // own EMPLOYMENT and PERSON (lib/viewer.ts), never from lib/principals.ts: that list is the dev/demo
   // switcher and is empty on a real deployment, which is exactly why the header used to carry no
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
+  const [companyContext, viewer, navigationAccess, cookieStore] = await Promise.all([
+    companyContextForPage(session),
+    viewerIdentity(session),
+    readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
+    cookies(),
   ]);
-  const letterDestinations=isModuleEnabledOrFalse(session,'employees')
-    ? await letterNavigation(session,scopeIds) : [];
-  const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
-    ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
-      rewardNavigation(session),
-    ).catch(() => [])
-    : [];
+  const { allowed, scopeIds } = companyContext;
+  const { accessConfigurationAvailable, workforceAvailable, onboarded, peopleGeneralConfigurable } = navigationAccess;
+  const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
+  const [letterDestinations,rewardDestinations]=await Promise.all([
+    isModuleEnabledOrFalse(session,'employees') ? letterNavigation(session,scopeIds) : [],
+    isModuleEnabledOrFalse(session,'rewards')
+      ? import('@/packs/rewards/service').then(({rewardNavigation})=>rewardNavigation(session)).catch(()=>[])
+      : [],
+  ]);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
