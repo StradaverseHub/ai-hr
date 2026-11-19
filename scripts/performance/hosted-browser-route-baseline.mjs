@@ -488,6 +488,74 @@ async function measureClaimApproval({page,user,db,report,save}){
  report.claimSteps[0].auditVerified=true;
 }
 
+const noticeProbeTitles=['Fictional bell single read','Fictional bell mark all'];
+
+async function seedNotificationReads(fixture){
+ const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+ const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+ try{
+  const employee=fixture.users[4],peer=fixture.users[5];
+  assert(employee.role==='employee'&&peer.role==='employee'&&employee.tenantId===peer.tenantId);
+  const rows=await db`insert into notification(tenant_id,recipient_employment_id,kind,title,body)
+   values (${employee.tenantId}::uuid,${employee.employmentId}::uuid,'performance.bell-probe',${noticeProbeTitles[0]},'Fictional notification'),
+    (${employee.tenantId}::uuid,${employee.employmentId}::uuid,'performance.bell-probe',${noticeProbeTitles[1]},'Fictional notification'),
+    (${peer.tenantId}::uuid,${peer.employmentId}::uuid,'performance.bell-probe',${noticeProbeTitles[1]},'Fictional notification') returning id`;
+  assert.equal(rows.length,3);
+ }finally{await db.end({timeout:5});}
+}
+
+async function measureNotificationReads({page,user,fixture,db,report,save}){
+ const path='/me/cases';
+ const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(response?.status(),200);
+ await readyContent(page,user,path,()=>15000);
+ const bell=page.getByRole('button',{name:/^Notifications, (?:[\d,]+ waiting: )?[\d,]+ unread/});
+ await bell.waitFor({state:'visible',timeout:15000});
+ const unreadPattern=count=>new RegExp('^Notifications, (?:[\\d,]+ waiting: )?'+count+' unread(?:$| and )');
+ const label=await bell.getAttribute('aria-label');
+ const unread=Number(label?.match(/([\d,]+) unread/)?.[1].replaceAll(',',''));
+ assert(Number.isSafeInteger(unread)&&unread>=2&&unread<1000);
+
+ const rows=()=>db`select title,recipient_employment_id as recipient,read_at is not null as read
+  from notification where tenant_id=${user.tenantId}::uuid and kind='performance.bell-probe'`;
+ const own=notices=>notices.filter(item=>item.recipient===user.employmentId);
+ const peer=fixture.users[5];
+ const before=await rows();
+ assert.equal(before.length,3);
+ assert(before.every(item=>item.read===false));
+ await bell.click({timeout:15000});
+ report.notificationSteps=[];
+ let current;
+ const observe=request=>{
+  const url=new URL(request.url());
+  if(current&&url.origin===origin&&url.pathname===path&&url.searchParams.has('_rsc')&&request.method()==='GET')current.refreshRequests++;
+ };
+ page.on('request',observe);
+ async function mark(step,button,count){
+  current={step,refreshRequests:0};
+  report.notificationSteps.push(current);
+  const started=performance.now();
+  await button.click({timeout:15000});
+  await page.getByRole('button',{name:unreadPattern(count)}).waitFor({state:'visible',timeout:15000});
+  current.elapsedMs=Math.round(performance.now()-started);
+  await assertContentAvailable(page);
+  save();
+ }
+ try{
+  await mark('read-one-notification',page.getByRole('button',{name:/^Fictional bell single read/}),unread-1);
+  const first=await rows();
+  assert.equal(own(first).filter(item=>item.read).length,1);
+  assert.equal(own(first).find(item=>item.title===noticeProbeTitles[0])?.read,true);
+  current.persisted=true;
+  await bell.click({timeout:15000});
+  await mark('mark-all-notifications-read',page.getByRole('button',{name:'Mark all read',exact:true}),0);
+  const last=await rows();
+  assert.equal(own(last).filter(item=>item.read).length,2);
+  assert.equal(last.find(item=>item.recipient===peer.employmentId)?.read,false);
+  current.persisted=true;
+ }finally{page.off('request',observe);}
+}
+
 async function measureActions(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
@@ -496,6 +564,7 @@ async function measureActions(fixture){
   ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,
    timings:result=>result.approvalSteps})),
   {name:'claim-approval',actorIndex:1,run:measureClaimApproval,timings:result=>result.claimSteps},
+  {name:'notification-read',actorIndex:4,run:measureNotificationReads,timings:result=>result.notificationSteps},
   {name:'personnel-switcher',actorIndex:0,run:async options=>{
    await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
    await exercisePersonnelSwitcher(options);
@@ -586,6 +655,7 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
+  await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
   await waitForApp();
