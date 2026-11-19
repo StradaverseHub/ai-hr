@@ -1,5 +1,5 @@
 /**
- * Board 154511c4 — New Event's "Record history": HR names a comparison event type, its effective date and what
+ * Board 154511c4 — New Event's "Record history": HR names a configured event type, its effective date and what
  * the employee had BEFORE that date; the After side is what is on record on the date. The same writer as the
  * Movement import (core/movement-history.ts) checks and writes it, in one tenant transaction under the same
  * locks the company leg of an Entity Transfer takes.
@@ -11,7 +11,6 @@ import {isCalendarDate} from '../lib/calendar-date';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {WorkforceAccessError,assertWorkforceEmploymentTx} from './workforce-access';
-import {isComparisonKind} from './movement-kinds';
 import {resolveMovementEventTypeTx} from './movement-type';
 import {
  HISTORY_FIELDS,MovementHistoryError,closedPayrollInSpanTx,historyVersionsTx,latestHistoryMovementRevisionTx,
@@ -27,7 +26,7 @@ async function applyHistoryEntryTx(tx:Tx,ctx:SessionContext,p:HistoryEntry,corre
  if(Object.values(p.before).some(value=>value!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)))throw new MovementHistoryError('movement_history_fields');
  if(!isCalendarDate(p.effectiveDate))throw new MovementHistoryError('movement_history_future');
  const type=await resolveMovementEventTypeTx(tx,ctx.tenantId,p.typeCode);
- if(!type?.active||!isComparisonKind(type.behaviourKind)||correction&&type.behaviourKind!=='entityTransfer')throw new MovementHistoryError('movement_history_fields');
+ if(!type?.active||correction&&type.behaviourKind!=='entityTransfer')throw new MovementHistoryError('movement_history_fields');
  const versions=await historyVersionsTx(tx,p.employmentId);
  const on=versions.find(v=>v.validFrom<=p.effectiveDate&&(v.validTo===null||v.validTo>p.effectiveDate));
  if(!on)throw new MovementHistoryError('movement_history_no_period');

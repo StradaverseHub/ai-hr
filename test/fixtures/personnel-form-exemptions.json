@@ -979,5 +979,79 @@
       "occurrences": 1,
       "reason": "Guarded record pointer selecting the latest applicable native movement; the salary command repeats current subject scope and applicable-event checks."
     }
+  ],
+  "app/admin/personnel/[employmentId]/history-movement-edit-form.tsx": [
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementPage",
+      "reason": "Hidden standalone Movement page mode used to choose the return route and error presentation after the server action. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "showCorrected",
+      "reason": "Hidden history display preference carried through the server action so the user returns to the same corrected-events view. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "from",
+      "reason": "Hidden return-context hint carried through the server action and normalized by the Movement navigation owner. It carries no Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by HistoryMovementEditForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementId",
+      "reason": "Guarded action record/subject pointer (movementId) used by HistoryMovementEditForm; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "historyEdit",
+      "reason": "Selects the in-place historical correction command, whose service checks scope and the movement kind."
+    },
+    {
+      "tag": "input",
+      "context": "HistoryMovementEditForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "revisionId",
+      "reason": "Optimistic concurrency pointer checked by the historical correction command."
+    },
+    {
+      "tag": "select",
+      "context": "HistoryMovementEditForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Historical Before placement goes through the protected history writer and is validated against the effective-dated assignment.",
+      "name": "history.companyId"
+    },
+    {
+      "tag": "select",
+      "context": "HistoryMovementEditForm",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Historical Before placement goes through the protected history writer and is validated against the effective-dated assignment.",
+      "nameExpression": "`history.${field}`"
+    }
   ]
 }

@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from '@/components/ui';
+import { personnelWorkflowControl, personnelWorkflowInput } from '@/lib/personnel-form-contract';
+import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
 import { DateField } from '@/components/ui/date-field';
 import type { HistoryValues } from '@/core/movement-history';
 import type { MovementOrgScope, MovementOption } from './movement-new-event';
@@ -11,7 +13,7 @@ import type { MovementPageContext } from '@/lib/personnel-movement-navigation';
 import { saveMovementPageAction } from './actions';
 
 export function HistoryMovementEditForm({
-  employmentId, movementId, revisionId, before, effectiveDate, remarks, today, companies, orgByCompany,
+  employmentId, movementId, revisionId, before, effectiveDate, remarks, companies, orgByCompany,
   selectedCompanyId, fallbackOrganisation, cancelHref, context,
 }: {
   employmentId: string;
@@ -20,7 +22,6 @@ export function HistoryMovementEditForm({
   before: HistoryValues;
   effectiveDate: string;
   remarks?: string | null;
-  today: string;
   companies: MovementOption[];
   orgByCompany: Record<string, MovementOrgScope>;
   selectedCompanyId: string;
@@ -51,10 +52,11 @@ export function HistoryMovementEditForm({
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <p className="text-sm text-muted-foreground">{t('form.recordHistory')}</p>
       <fieldset disabled={pending} className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('columns.effectiveDate')}>
-          <DateField name="effectiveDate" max={today} required defaultValue={effectiveDate}
+        <label className="space-y-1 text-sm">
+          <span>{t('columns.effectiveDate')}</span>
+          <DateField {...personnelWorkflowControl(MOVEMENT_FORM_IDS.effectiveDate, 'movement', 'record')} defaultValue={effectiveDate}
             label={t('columns.effectiveDate')} className={inputCls} />
-        </Field>
+        </label>
         <Field label={t('field.company')}>
           <select name="history.companyId" className={inputCls} value={companyId}
             onChange={(event) => {
@@ -78,12 +80,12 @@ export function HistoryMovementEditForm({
             </select>
           </Field>
         ))}
-        <Field label={t('columns.remarks')}>
-          <input name="remarks" maxLength={200} defaultValue={remarks ?? ''} className={inputCls} />
-        </Field>
-        <Field label={t('correctionReasonLabel')}>
-          <input name="reason" maxLength={200} required className={inputCls} />
-        </Field>
+        <label className="space-y-1 text-sm"><span>{t('columns.remarks')}</span>
+          <input {...personnelWorkflowInput(MOVEMENT_FORM_IDS.remarks, 'movement', 'edit')} maxLength={200} defaultValue={remarks ?? ''} className={inputCls} />
+        </label>
+        <label className="space-y-1 text-sm"><span>{t('correctionReasonLabel')}</span>
+          <input {...personnelWorkflowInput(MOVEMENT_FORM_IDS.reason, 'movement', 'record')} maxLength={200} className={inputCls} />
+        </label>
       </fieldset>
       <div className="flex justify-end gap-2">
         <Button asChild variant="outline"><Link href={cancelHref}>{t('form.cancel')}</Link></Button>

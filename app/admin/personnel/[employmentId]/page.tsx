@@ -3766,7 +3766,6 @@ export default async function EmployeePage({
           {...historyEditValues}
           employmentId={employmentId}
           movementId={movementEditRow.id}
-          today={today}
           companies={movementFormProps.companies}
           orgByCompany={movementFormProps.orgByCompany}
           selectedCompanyId={movementFormProps.current.companyId}
