@@ -113,8 +113,8 @@ export default (phase: string) => withNextIntl({
   ...nextConfig,
   experimental: {
     ...nextConfig.experimental,
-    // Let production compilation reclaim unreachable Turbopack work on standard hosted runners.
-    ...(phase === PHASE_PRODUCTION_BUILD && { turbopackGc: true }),
+    // Skip persistent Turbopack dependency tracking during production compilation.
+    ...(phase === PHASE_PRODUCTION_BUILD && { turbopackFileSystemCacheForBuild: false }),
   },
   // Both canonical pnpm build and direct Next builds pass this validating boundary.
   // No selector means five explicit empty substitutions, despite inherited or dotenv values.
