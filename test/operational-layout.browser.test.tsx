@@ -9,6 +9,8 @@ const {AssistantLauncher}=await import('../components/assistant/assistant-launch
 import {cleanup,render} from '@testing-library/react';
 import {EmployeeName,Field,inputCls} from '../components/ui';
 import {PieChart} from '../components/charts/PieChart';
+import {BarChart} from '../components/charts/BarChart';
+import {LineChart} from '../components/charts/LineChart';
 import {InquiryScopeSummary} from '../components/leave/inquiry-scope-summary';
 import '../app/globals.css';
 import '../app/atelier.css';
@@ -69,4 +71,17 @@ describe('operational spacing in the browser',()=>{
   expect(legend.getBoundingClientRect().height).toBeGreaterThanOrEqual(12);
   await page.screenshot({element:view.container,path:'../.vitest-attachments/operational-layout-mobile.png',animations:'disabled'});
  });
+ it('keeps bar and line legends readable and separate at a narrow chart width',()=>{
+  const series=[{label:'Recorded employees',values:[12,15]},{label:'Missing employee data',values:[28,25]}];
+  const view=render(<main style={{width:320}}><BarChart id="bar-layout" grouped categories={['January','February']} series={series}/><LineChart id="line-layout" labels={['January','February']} series={series}/></main>);
+  for(const svg of view.container.querySelectorAll('svg')){
+   expect(svg.getBoundingClientRect().width).toBeGreaterThanOrEqual(480);
+   const legends=[...svg.querySelectorAll('text')].filter(node=>series.some(series=>series.label===node.textContent));
+   expect(legends).toHaveLength(2);
+   expect(legends[0].getBoundingClientRect().height).toBeGreaterThanOrEqual(12);
+   expect(legends[0].getBoundingClientRect().bottom).toBeLessThan(legends[1].getBoundingClientRect().top);
+   expect(legends[1].getBoundingClientRect().bottom).toBeLessThanOrEqual(svg.getBoundingClientRect().bottom);
+  }
+ });
+
 });

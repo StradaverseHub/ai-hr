@@ -20,11 +20,13 @@ const FONT = 'system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans
 
 export function LineChart({ id, labels, series, height = 220, ariaLabel }: LineChartProps) {
   const W = 640;
-  const H = height;
-  const padL = 40;
-  const padR = 12;
-  const padT = 12;
-  const padB = 48;
+  const legendCount = series.length;
+  const legendHeight = legendCount > 0 ? legendCount * 26 + 12 : 0;
+  const H = Math.max(height, 260) + legendHeight;
+  const padL = 56;
+  const padR = 56;
+  const padT = 28;
+  const padB = 96 + legendHeight;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
 
@@ -38,13 +40,13 @@ export function LineChart({ id, labels, series, height = 220, ariaLabel }: LineC
   const ticks = 4;
 
   return (
-    <svg
+    <div className="overflow-x-auto"><svg
       id={id}
       viewBox={`0 0 ${W} ${H}`}
       width="100%"
       role="img"
       aria-label={ariaLabel}
-      style={{ fontFamily: FONT, color: 'var(--muted-foreground)' }}
+      style={{ minWidth: 480, fontFamily: FONT, color: 'var(--muted-foreground)' }}
     >
       {Array.from({ length: ticks + 1 }, (_, i) => {
         const v = min + (span / ticks) * i;
@@ -52,7 +54,7 @@ export function LineChart({ id, labels, series, height = 220, ariaLabel }: LineC
         return (
           <g key={i}>
             <line x1={padL} y1={yy} x2={W - padR} y2={yy} stroke="var(--border)" strokeWidth={1} />
-            <text x={padL - 6} y={yy + 3} textAnchor="end" fontSize={9} fill="var(--muted-foreground)">
+            <text x={padL - 6} y={yy + 3} textAnchor="end" fontSize={16} fill="var(--muted-foreground)">
               {Math.round(v)}
             </text>
           </g>
@@ -65,7 +67,7 @@ export function LineChart({ id, labels, series, height = 220, ariaLabel }: LineC
           x={x(i)}
           y={H - padB + 14}
           textAnchor="middle"
-          fontSize={9}
+          fontSize={16}
           fill="var(--muted-foreground)"
           transform={labels.length > 6 ? `rotate(35 ${x(i)} ${H - padB + 14})` : undefined}
         >
@@ -91,14 +93,14 @@ export function LineChart({ id, labels, series, height = 220, ariaLabel }: LineC
       {/* legend */}
       <g>
         {series.map((s, si) => (
-          <g key={s.label} transform={`translate(${padL + si * 130}, ${H - 12})`}>
+          <g key={s.label} transform={`translate(${padL}, ${H - 12 - (legendCount - 1 - si) * 26})`}>
             <rect x={0} y={-8} width={10} height={10} rx={2} fill={colorAt(si)} />
-            <text x={14} y={0} fontSize={9} fill="var(--muted-foreground)">
+            <text x={14} y={0} fontSize={16} fill="var(--muted-foreground)">
               {s.label}
             </text>
           </g>
         ))}
       </g>
-    </svg>
+    </svg></div>
   );
 }
