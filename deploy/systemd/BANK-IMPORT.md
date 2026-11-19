@@ -1001,6 +1001,50 @@ this is an explicit expansion of the proof-to-LIVE issuance window.
 Metadata, source, original failure lineage and sealed tree are still revalidated before mutation;
 the LIVE900/global827 limits, complete proof graph and budget allocation do not change.
 
+### Explicit overall execution after a reviewed prestart partial
+
+The optional LIVE-only `executionPolicy` value
+`aihr-worker-published-prestart-overall/v1` selects one fixed1800-second overall
+execution deadline and a fresh root authority of at most2100 seconds. It requires
+the exact published-unstarted origin, both named budget and seal-completion policies,
+and one authenticated `publishedFailure.previousPrestart` descriptor. Every normal
+route and every authority without this exact selection retains its previous limits.
+
+This route follows an actual pre-mutation failure: F0 and F1 and the first full native
+audit completed, but repeated fresh runtime hashing in the final F2 guard exhausted
+the short slot before the F2 record or any worker start. The owner requested that
+the complete worker recovery have a generous overall opportunity instead of failing
+on those short internal scheduling limits. This is an explicit timing-policy change,
+not a claim that an earlier failure passed or that elapsed-time evidence was absent.
+
+`previousPrestart` binds exactly one old `published-recovery-<sealId>` directory,
+its original LIVE approval, original completed SEAL proof and their hashes/identities,
+the original unit/stopped state, and exactly four immutable records: the started
+operation marker, F0, F1 and A0. No F2, worker-start, failure or quarantine receipt is
+invented. The new SEAL and LIVE admission revalidate these records and the original
+failed-worker lineage. An unknown or changed attempt still refuses.
+
+The overall monotonic clock starts before guard admission and covers every phase,
+guard/hash, child process and final receipt. Phase labels remain diagnostic labels;
+they cannot restart or shorten this clock. The selected route does not apply the
+legacy per-slot scheduling ceilings or the mid-sequence post-opportunity estimate.
+All remaining-time checks consume the same original deadline. Stream/output bounds,
+child-session cleanup, root authority, exact lease and fresh guards remain mandatory.
+HTTP health latency bounds, database connection/statement limits, proposal review,
+issuer revalidation and native ledger/runtime freshness are unchanged. The canonical
+native fast identity/health/ledger owner is observed after expensive guards immediately
+before each selected-route mutation. Neither the original CI grant nor a prior root
+authority is extended. SEAL execution remains at most300 seconds.
+
+Both full native audits, both source-content audits, all ten complete metadata fences
+and three distinct4-second worker stability intervals must pass before acceptance.
+The receipt includes the exact execution policy. A failure before worker start leaves
+an immutable partial operation and stops; it does not authorize another attempt. A
+failure after start retains the existing bounded, exact-owned-process-only quarantine
+grace, which cannot start a worker or publish acceptance after the overall deadline.
+Actual authenticated arrival, source checksum, ledger, owned cleanup and release
+handback remain separate requirements after the native worker receipt.
+
 A fresh root selection may additionally bind exactly one failed published attempt
 in `publishedFailure.previousPublished`, keyed by its fixed derived directory name.
 It pins that directory, all eleven file identities/hashes and its original live

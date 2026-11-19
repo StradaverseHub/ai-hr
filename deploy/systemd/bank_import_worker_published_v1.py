@@ -18,6 +18,11 @@ BUDGET_PROFILE='aihr-worker-unstarted-published-budget/v1'
 BUDGET_KEY='recoveryBudgetProfile'
 SEAL_FRESHNESS_KEY='sealFreshnessPolicy'
 SEAL_FRESHNESS_POLICY='aihr-worker-unstarted-published-seal-completion/v1'
+EXECUTION_KEY='executionPolicy'
+EXECUTION_POLICY='aihr-worker-published-prestart-overall/v1'
+OVERALL_SECONDS=1800
+AUTHORITY_SECONDS=2100
+PRESTART_MEMBERS={'ci-runtime-started.json','ci-runtime-fence-00.json','ci-runtime-fence-01.json','ci-runtime-full-audit-0.json'}
 SEAL_STAGE='seal-published-ci-worker'
 LIVE_STAGE='recover-published-ci-runtime'
 KINDS={SEAL_STAGE:'ADMIN_REVIEWED_PUBLISHED_WORKER_SEAL',LIVE_STAGE:'ADMIN_AUTHORIZED_PUBLISHED_WORKER_RECOVERY'}
@@ -35,7 +40,23 @@ def budget_fields(b,ci,fields,a,stage):
     if SEAL_FRESHNESS_KEY in a:
         b.check(a[SEAL_FRESHNESS_KEY]==SEAL_FRESHNESS_POLICY and a.get(BUDGET_KEY)==BUDGET_PROFILE and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named live seal-completion freshness required')
         fields=fields|{SEAL_FRESHNESS_KEY}
+    if EXECUTION_KEY in a:
+        b.check(a[EXECUTION_KEY]==EXECUTION_POLICY and a.get(BUDGET_KEY)==BUDGET_PROFILE and a.get(SEAL_FRESHNESS_KEY)==SEAL_FRESHNESS_POLICY and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named prestart overall execution policy required')
+        fields=fields|{EXECUTION_KEY}
     return fields
+
+
+def overall_selected(ci,a,stage):
+    return a.get(EXECUTION_KEY)==EXECUTION_POLICY and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and a.get(BUDGET_KEY)==BUDGET_PROFILE and a.get(SEAL_FRESHNESS_KEY)==SEAL_FRESHNESS_POLICY and unstarted_origin(ci,a)
+
+
+def initial_overall_selection(b,ci,path,pinned,stage):
+    """Read-only policy selection before ANY guard/expensive proof; never itself grants authority."""
+    path=Path(path);ci.protected_private(b,path);raw=b.read_bounded(path,65536)
+    b.check(ci.sha(raw)==pinned,'initial overall approval hash differs');a=json.loads(raw)
+    if EXECUTION_KEY not in a:return False
+    budget_fields(b,ci,set(),a,stage)
+    return overall_selected(ci,a,stage)
 
 
 def validate_seal_window(b,ci,a,authority,record,proof_mtime,now):
@@ -78,7 +99,7 @@ def unstarted_origin(ci,a):
 
 def historical_unstarted(b,ci,prepared,a,pins):
     """One exact, rejected F5 unstarted producer. Old preunit/published histories keep their original grammar."""
-    b.check(set(pins)==(FAILURE_FIELDS|{'originPolicy'}) and pins['originPolicy']==ci.UNSTARTED.POLICY,'closed unstarted published origin required')
+    b.check(set(pins)in(FAILURE_FIELDS|{'originPolicy'},FAILURE_FIELDS|{'originPolicy','previousPrestart'}) and pins['originPolicy']==ci.UNSTARTED.POLICY,'closed unstarted published origin required')
     _,old=selected_json(b,ci,{'path':pins['approval'],'sha256':pins['approvalSha256']})
     fields=ci.baseline_publication_fields(ci.UNSTARTED.LIVE_FIELDS,old,allow=True)
     b.check(set(old)==fields and old['format']==1 and old['kind']==ci.UNSTARTED.KINDS[ci.UNSTARTED.LIVE_STAGE] and old['policy']==ci.POLICY and old['target']=='alpha-staging' and old['releaseAuthorized']is False,'exact historical unstarted authority required')
@@ -116,11 +137,63 @@ def historical_unstarted(b,ci,prepared,a,pins):
     audit=records['ci-runtime-full-audit-0.json']
     b.check(set(audit)=={'authorizationSha256','releaseAuthorized','runtime','verified','activated'} and audit['authorizationSha256']==old['grantSha256'] and audit['releaseAuthorized']is False and audit['runtime']['source']==a['identity']['source'] and audit['runtime']['installId']==old['install']['id'] and audit['runtime']['nextBuildId']==a['identity']['build_id'],'original complete A0 differs')
     b.check(ci.sha(b.read_bounded(ci.BOOT_ID,4096))==old['bootIdSha256'],'original unstarted boot changed')
+    previous=previous_prestart(b,ci,prepared,a,pins)
     for path in original.iterdir():
         if path.name.startswith(('recovery-','unstarted-recovery-','published-recovery-')):
-            b.check(path==operation or path.name=='published-recovery-'+a.get('publishedSeal',{}).get('path','').rsplit('published-worker-',1)[-1].removesuffix('.json'),'unreviewed recovery namespace exists')
+            b.check(path==operation or path.name in previous or path.name=='published-recovery-'+a.get('publishedSeal',{}).get('path','').rsplit('published-worker-',1)[-1].removesuffix('.json'),'unreviewed recovery namespace exists')
         b.check(not path.name.startswith(('ci-runtime-','ci-worker-','activation-')),'unexpected original activation namespace exists')
     return old,process,candidate
+
+
+def previous_prestart(b,ci,prepared,a,pins):
+    """One truthful R5-shaped pre-mutation partial. Missing failure/start/quarantine records are NOT invented."""
+    selected=pins.get('previousPrestart',{})
+    b.check(type(selected)is dict and len(selected)<=1,'at most one exact reviewed prestart partial required')
+    original=b.ROOT/'upgrades'/a['identity']['source'];names=set()
+    for name,p in selected.items():
+        b.check(re.fullmatch('published-recovery-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',name) and set(p)=={'approval','approvalSha256','seal','sealSha256','sealIdentity','operationIdentity','members','unitSha256','workerState'},'closed previous prestart selection required')
+        operation=original/name;b.root_protected(operation)
+        b.check(identity(operation)==p['operationIdentity'] and set(os.listdir(operation))==PRESTART_MEMBERS and set(p['members'])==PRESTART_MEMBERS,'exact four-record prestart namespace required')
+        _,old=selected_json(b,ci,{'path':p['approval'],'sha256':p['approvalSha256']})
+        fields=ci.baseline_publication_fields(budget_fields(b,ci,LIVE_FIELDS,old,LIVE_STAGE),old,allow=unstarted_origin(ci,old))
+        b.check(set(old)==fields and EXECUTION_KEY not in old and old['format']==1 and old['kind']==KINDS[LIVE_STAGE] and old['policy']==ci.POLICY and old['target']=='alpha-staging' and old['releaseAuthorized']is False and old.get(BUDGET_KEY)==BUDGET_PROFILE and old.get(SEAL_FRESHNESS_KEY)==SEAL_FRESHNESS_POLICY,'exact historical prestart LIVE authority required')
+        issued,expires=ci.epoch(old['issuedAt']),ci.epoch(old['expiresAt'])
+        b.check(issued<expires<=issued+900,'original prestart authority remains historical900')
+        ci.require_same_baseline_publication(b,old,a)
+        shared=prepared.FIELDS-{'kind','helperSha256','issuedAt','expiresAt'}
+        b.check(all(old[k]==a[k]for k in shared)if 'install'in a else all(old[k]==a[k]for k in ci.FIRST_APPROVAL_FIELDS-{'kind','helperSha256','issuedAt','expiresAt','gate'}),'previous prestart source/installation/shared pins differ')
+        seal_path,seal_record=selected_json(b,ci,{'path':p['seal'],'sha256':p['sealSha256']})
+        b.check(old['publishedSeal']=={'path':p['seal'],'sha256':p['sealSha256'],'identity':p['sealIdentity']} and identity(seal_path)==p['sealIdentity'] and seal_path==original/('published-worker-'+name.removeprefix('published-recovery-')+'.json'),'original prestart seal identity differs')
+        b.check(set(seal_record)=={'format','kind','policy','sealId','approval','approvalSha256','sealedAt','identity','publishedFailure','tree','releaseAuthorized'} and seal_record['format']==1 and seal_record['kind']=='ROOT_AUTHENTICATED_PUBLISHED_WORKER_NOT_ACTIVATION' and seal_record['policy']==POLICY and seal_record['sealId']==name.removeprefix('published-recovery-') and seal_record['identity']==a['identity'] and seal_record['releaseAuthorized']is False and seal_record['publishedFailure']=={k:v for k,v in pins.items()if k!='previousPrestart'},'original prestart seal provenance differs')
+        _,seal_auth=selected_json(b,ci,{'path':seal_record['approval'],'sha256':seal_record['approvalSha256']})
+        seal_fields=ci.baseline_publication_fields(SEAL_FIELDS,seal_auth,allow=unstarted_origin(ci,seal_auth))
+        b.check(set(seal_auth)==seal_fields and seal_auth['format']==1 and seal_auth['policy']==ci.POLICY and seal_auth['kind']==KINDS[SEAL_STAGE] and seal_auth['sealId']==seal_record['sealId'] and seal_auth['identity']==a['identity'] and seal_auth['publishedFailure']==seal_record['publishedFailure'] and seal_auth['target']=='alpha-staging' and seal_auth['releaseAuthorized']is False,'original prestart SEAL authority differs')
+        validate_seal_window(b,ci,old,seal_auth,seal_record,seal_path.stat().st_mtime,time.time())
+        records={}
+        for leaf in sorted(PRESTART_MEMBERS):
+            path=operation/leaf;ci.protected_private(b,path);before=identity(path);raw=b.read_bounded(path,65536)
+            b.check(before==identity(path) and {**before,'sha256':ci.sha(raw)}==p['members'][leaf] and issued<=int(before['st_mtime_ns'])/10**9<=expires,'immutable prestart record identity/content/chronology differs')
+            records[leaf]=json.loads(raw)
+        b.check(identity(operation)==p['operationIdentity'] and set(os.listdir(operation))==PRESTART_MEMBERS,'prestart partial changed during observation')
+        b.check(records['ci-runtime-started.json']=={'authorizationSha256':p['approvalSha256'],'journeyVerified':False},'prestart marker authority differs')
+        for index in range(2):
+            fence=records['ci-runtime-fence-%02d.json'%index]
+            fields={'policy','slot','stage','leasePhase','metadataSha256','private','freshNativeIdentity','currentSha256','lastOkSha256','elapsedSeconds','byteProof','journeyVerified','releaseAuthorized'}
+            b.check(set(fence)==fields and fence['policy']==ci.POLICY and fence['slot']=='F'+str(index) and fence['stage']=='F' and fence['leasePhase']=='installing' and fence['currentSha256']==old['recovery']['failureCurrentSha256'] and fence['lastOkSha256']==old['recovery']['failureLastOkSha256'] and fence['byteProof']is False and fence['journeyVerified']is False and fence['releaseAuthorized']is False and type(fence['elapsedSeconds'])in(int,float) and 0<=fence['elapsedSeconds']<=20 and re.fullmatch('[a-f0-9]{64}',fence['metadataSha256']),'original prestart F0/F1 differs')
+            fresh=fence['freshNativeIdentity']
+            b.check(set(fresh)=={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'} and fresh['kind']=='CI_WORKER_COMPLETE_FENCE_V2' and ci.sha(fresh['bootId'].encode())==old['bootIdSha256'] and fresh['readiness']==old['readiness'] and fresh['pid']==old['webPid'] and fresh['startedMonotonicUs']==old['webStartedMonotonicUs'] and fresh['build']==a['identity']['build_id'] and fresh['environmentSha256']==old['environmentSha256'] and fresh['healthStatus']==200 and set(fresh['migrationLedger'])==ci.LEDGER_FIELDS|{'verifiedAt'} and {k:v for k,v in fresh['migrationLedger'].items()if k!='verifiedAt'}==old['ledger'],'prestart native identity/ledger differs')
+            stamp=int(p['members']['ci-runtime-fence-%02d.json'%index]['st_mtime_ns'])/10**9
+            ci.native_timestamp(b,fresh['migrationLedger']['verifiedAt'],issued,stamp,fresh=True)
+            b.check(set(fence['private'])=={'members','records','removed'},'closed prestart private fence required')
+        b.check(records['ci-runtime-fence-00.json']['metadataSha256']==records['ci-runtime-fence-01.json']['metadataSha256'],'original prestart metadata commitments differ')
+        audit=records['ci-runtime-full-audit-0.json']
+        runtime=audit['runtime'];runtime_fields={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','pid','startedMonotonicUs','healthStatus','compiledByteInventory','migrationLedger','verifiedAt','releaseAuthorized','fullSourceChecksumVerified','fullMigrationLedgerVerified'}
+        b.check(set(audit)=={'authorizationSha256','releaseAuthorized','runtime','verified','activated'} and audit['authorizationSha256']==old['grantSha256'] and audit['releaseAuthorized']is False and set(runtime)==runtime_fields and runtime['format']==1 and runtime['kind']=='CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL' and runtime['source']==a['identity']['source'] and runtime['installId']==old['install']['id'] and runtime['buildRecordId']==old['install']['buildRecordId'] and runtime['authorizationSha256']==old['grantSha256'] and runtime['nextBuildId']==a['identity']['build_id'] and runtime['pid']==old['webPid'] and runtime['startedMonotonicUs']==old['webStartedMonotonicUs'] and runtime['healthStatus']==200 and runtime['compiledByteInventory']['format']==2 and runtime['fullSourceChecksumVerified']is False and runtime['fullMigrationLedgerVerified']is True and runtime['releaseAuthorized']is False and {k:v for k,v in runtime['migrationLedger'].items()if k!='verifiedAt'}==old['ledger'],'original prestart A0 differs')
+        for role in ('verified','activated'):
+            record=audit[role];b.check(record['source']==a['identity']['source'] and record['installId']==old['install']['id'] and record['buildRecordId']==old['install']['buildRecordId'] and record['nextBuildId']==a['identity']['build_id'] and record['authorizationSha256']==old['grantSha256'] and record['releaseAuthorized']is False,'original prestart A0 paired install identity differs')
+        b.check(p['workerState']=={'MainPID':'0','ActiveState':'inactive','SubState':'dead','UnitFileState':'disabled'} and p['unitSha256']==pins['unitSha256'],'prestart stopped original unit proof differs')
+        names.add(name)
+    return names
 
 
 def historical(b,ci,prepared,a,pins):
@@ -281,6 +354,7 @@ def load_seal(guard,fmt,b,ci,prepared):
     b.check(path==b.ROOT/'upgrades'/a['identity']['source']/('published-worker-'+record['sealId']+'.json'),'fixed published seal destination required')
     validate_seal_window(b,ci,a,authority,record,path.stat().st_mtime,time.time())
     old,_,_=historical(b,ci,prepared,a,record['publishedFailure'])
+    if overall_selected(ci,a,guard.stage):b.check(len(record['publishedFailure'].get('previousPrestart',{}))==1,'overall execution requires one exact authenticated prestart partial')
     shared=(prepared.FIELDS|({ci.BASELINE_PUBLICATION_KEY}if ci.BASELINE_PUBLICATION_KEY in old else set()))-{'helperSha256','issuedAt','expiresAt','kind'}
     b.check(all(a[k]==old[k]for k in shared),'published recovery original installation/history pins differ')
     b.check(all(authority[k]==a[k]for k in ci.FIRST_APPROVAL_FIELDS-{'gate','helperSha256','issuedAt','expiresAt','kind'}),
@@ -291,7 +365,7 @@ def run(guard,fmt,b,ci,prepared,update):
     a=guard.a;record=load_seal(guard,fmt,b,ci,prepared);pins=record['publishedFailure']
     release=b.ROOT/'releases'/a['identity']['source'];original=b.ROOT/'upgrades'/a['identity']['source']
     operation=original/('published-recovery-'+record['sealId'])
-    b.check({p.name for p in original.iterdir()if p.name.startswith('published-recovery-')}==set(pins.get('previousPublished',{})),
+    b.check({p.name for p in original.iterdir()if p.name.startswith('published-recovery-')}==set(pins.get('previousPublished',{}))|set(pins.get('previousPrestart',{})),
             'previous published recovery requires separate review')
     stopped(b,ci,update,a,pins)
     _,actual,proof,_=tree(b,ci,fmt,prepared,a,pins,deadline=ci.SLOT_DEADLINE,content=False)

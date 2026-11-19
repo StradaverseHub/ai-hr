@@ -167,6 +167,8 @@ class GuardedInvocation:
         held=self.native_lease()
         if 'baselinePublication' in a:
             self.ci.verify_baseline_publication(b,a,paired=self.stage in('drain','prepare-ci-worker'))
+        if self.observer is not None and a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage) and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
+            self.observer.fresh_native_identity()  # Fresh owner proof AFTER expensive guards, immediately before action.
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
         return held
 
@@ -201,11 +203,21 @@ def launch(argv,fmt,base,ci,update):
     stage=args.mode.removeprefix('guarded-')
     guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',());previous_guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
     previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None);previous_overall=getattr(base,'RECOVERY_OVERALL_DEADLINE',None)
-    if stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
+    previous_execution=getattr(ci,'OVERALL_EXECUTION_DEADLINE',None);previous_failure=getattr(ci,'FAILURE_CLEANUP_ONLY',False)
+    previous_base_execution=getattr(base,'OVERALL_EXECUTION_DEADLINE',None);previous_base_failure=getattr(base,'OVERALL_EXECUTION_FAILURE_ONLY',False)
+    execution_started=time.monotonic()
+    overall=stage=='recover-published-ci-runtime' and ci.PUBLISHED.initial_overall_selection(base,ci,args.approval,args.approval_sha256,stage)
+    if overall:
+        selection_bytes=base.read_bounded(Path(args.approval),65536);base.check(ci.sha(selection_bytes)==args.approval_sha256,'overall selection changed before admission')
+        authority_end=time.monotonic()+(ci.epoch(json.loads(selection_bytes)['expiresAt'])-time.time())
+        end=min([execution_started+ci.PUBLISHED.OVERALL_SECONDS,authority_end,*[v for v in (previous_deadline,previous_slot,previous_overall,previous_execution)if v is not None]])
+        ci.OVERALL_EXECUTION_DEADLINE=end;ci.FAILURE_CLEANUP_ONLY=False;base.OVERALL_EXECUTION_DEADLINE=end;base.OVERALL_EXECUTION_FAILURE_ONLY=False
+        base.RECOVERY_OVERALL_DEADLINE=end
+    elif stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
     if stage in ('activate-ci-runtime','prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime',*published_kinds(ci),*unstarted_kinds(ci)):
         initial_started=time.monotonic()
         initial_seconds=preparation_initial_seconds(base,ci,args.approval,args.approval_sha256)if stage=='prepare-ci-worker'else 300 if stage=='seal-published-ci-worker'else 30
-        initial_deadline=min([initial_started+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
+        initial_deadline=base.RECOVERY_OVERALL_DEADLINE if overall else min([initial_started+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
         base.VERIFIED_OPERATION_DEADLINE=initial_deadline;ci.SLOT_DEADLINE=initial_deadline
     try:
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
@@ -234,4 +246,5 @@ def launch(argv,fmt,base,ci,update):
         else:update.upgrade(managed,fmt,base,ci)
     finally:
         base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;base.VERIFIED_OPERATION_DEADLINE=previous_deadline;base.RECOVERY_OVERALL_DEADLINE=previous_overall;ci.SLOT_DEADLINE=previous_slot;ci.ACTIVE_OPERATION_GUARD=None
+        ci.OVERALL_EXECUTION_DEADLINE=previous_execution;ci.FAILURE_CLEANUP_ONLY=previous_failure;base.OVERALL_EXECUTION_DEADLINE=previous_base_execution;base.OVERALL_EXECUTION_FAILURE_ONLY=previous_base_failure
         if guard:guard.close()

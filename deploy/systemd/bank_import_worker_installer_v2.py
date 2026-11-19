@@ -34,9 +34,12 @@ VERIFIED_OPERATION_GUARD=None  # Fixed launcher only; normal installer paths hav
 VERIFIED_OPERATION_FDS=()  # Set only by the fixed root-owned staging launcher; default behavior is unchanged.
 
 def command(argv,*,input=None,env=None,allow_failure=False):
-    timeout=45 if VERIFIED_OPERATION_DEADLINE is None else min(45,VERIFIED_OPERATION_DEADLINE-time.monotonic())
+    overall=globals().get('OVERALL_EXECUTION_DEADLINE')
+    selected=overall is not None and not globals().get('OVERALL_EXECUTION_FAILURE_ONLY',False)
+    timeout=overall-time.monotonic() if selected else 45 if VERIFIED_OPERATION_DEADLINE is None else min(45,VERIFIED_OPERATION_DEADLINE-time.monotonic())
     check(timeout>0,'absolute operation command deadline exceeded')
     result=subprocess.run(argv,input=input,env=env or BASE_ENV,cwd='/',capture_output=True,text=True,timeout=timeout,pass_fds=VERIFIED_OPERATION_FDS)
+    if selected:check(time.monotonic()<overall,'overall operation command deadline exceeded')
     if not allow_failure: check(result.returncode==0,'administrator/runtime command failed (credentials suppressed)')
     return result
 

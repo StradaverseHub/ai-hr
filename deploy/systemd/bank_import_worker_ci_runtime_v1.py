@@ -30,6 +30,8 @@ LOADER_PROBE = r"""import{openSync,readFileSync,fstatSync,lstatSync,closeSync,co
 ACTIVE_OPERATION_GUARD = None
 FENCES = None  # Injected reviewed, root-pinned metadata primitive; never a source import.
 SLOT_DEADLINE = None
+OVERALL_EXECUTION_DEADLINE = None
+FAILURE_CLEANUP_ONLY = False
 ACTIVATION_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','drainSha256','helperSha256','nodeSha256','python','nodeOptions','install','grantSha256','activatedSha256','runtimeSha256','environmentSha256','dotenvSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifest','sourceManifestSha256','priorLastOkSha256','launch','releaseAuthorized','firstStageApproval','firstStageApprovalSha256','readiness','operationsLock'}
 FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','helperSha256','nodeSha256','python','nodeOptions','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','gate','releaseAuthorized','operationsLock'}
 
@@ -76,6 +78,13 @@ def assert_python_runtime(base,owner,environment,pins):
     verify_python(base,pins)
     result=child([pins['path'],'-c',"import json,sys;print(json.dumps({'version':'.'.join(map(str,sys.version_info[:3])),'safePath':sys.flags.safe_path,'noUserSite':sys.flags.no_user_site}))"],owner,environment,timeout=15)
     base.check(result=={'version':pins['version'],'safePath':True,'noUserSite':1},'actual Python version/safe_path/user-site policy differs')
+
+
+def execution_timeout(legacy):
+    if OVERALL_EXECUTION_DEADLINE is None or FAILURE_CLEANUP_ONLY:return legacy
+    remaining=OVERALL_EXECUTION_DEADLINE-time.monotonic()
+    SimpleCheck.check(remaining>0,'overall execution deadline expired')
+    return remaining
 
 
 def canonical(value):
@@ -375,8 +384,10 @@ def bounded_process(argv, **options):
     """
     supplied=options.pop('input',None)
     timeout=options.pop('timeout',600)
-    if not 0<timeout<=600:raise ValueError('CI runtime cutover refused: finite positive native child budget required')
-    deadline=time.monotonic()+timeout
+    timeout=execution_timeout(timeout)
+    limit=1800 if OVERALL_EXECUTION_DEADLINE is not None and not FAILURE_CLEANUP_ONLY else 600
+    if not 0<timeout<=limit:raise ValueError('CI runtime cutover refused: finite positive native child budget required')
+    deadline=OVERALL_EXECUTION_DEADLINE if OVERALL_EXECUTION_DEADLINE is not None and not FAILURE_CLEANUP_ONLY else time.monotonic()+timeout
     if supplied is not None and len(supplied.encode())>8192:
         raise ValueError('CI runtime cutover refused: native request exceeds bound')
     process=subprocess.Popen(argv,stdin=subprocess.PIPE if supplied is not None else subprocess.DEVNULL,
@@ -432,6 +443,7 @@ def bounded_process(argv, **options):
 
 def child(argv, identity, environment, *, input=None, timeout=600, operation_fd=None, node_options=None):
     """Fixed caller-owned argv only. Drop all supplementary groups/UID/GID BEFORE exec, never root JS."""
+    timeout=execution_timeout(timeout)
     safe_runtime={'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1','TSX_DISABLE_CACHE':'1'}
     if any(re.fullmatch(r'NODE_OPTIONS|NODE_PATH|NODE_V8_COVERAGE|NODE_COMPILE_CACHE|NODE_REDIRECT_WARNINGS|NODE_ICU_DATA|NODE_EXTRA_CA_CERTS|NODE_REPL_EXTERNAL_MODULE|LD_.*|DYLD_.*|PYTHON.*|OPENSSL_CONF|OPENSSL_MODULES|TSX_TSCONFIG_PATH|TSX_DISABLE_CACHE',key) and not(key in safe_runtime and environment[key]==safe_runtime[key])for key in environment):
         raise ValueError('CI runtime cutover refused: unreviewed controlled loader environment')
@@ -559,7 +571,11 @@ class RuntimeObservation:
         self.check_slot()
         remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']) if self.recovery is None else epoch(self.auth['expiresAt']))-time.time()
         self.base.check(remaining>0,'success authority expired before stage')
-        self.slot_name=name;SLOT_DEADLINE=min(time.monotonic()+min(seconds,remaining),self.overall_deadline if self.overall_deadline is not None else float('inf'))
+        self.slot_name=name
+        if OVERALL_EXECUTION_DEADLINE is not None and not FAILURE_CLEANUP_ONLY:
+            self.base.check(self.overall_deadline==OVERALL_EXECUTION_DEADLINE,'one original overall execution deadline required')
+            SLOT_DEADLINE=OVERALL_EXECUTION_DEADLINE
+        else:SLOT_DEADLINE=min(time.monotonic()+min(seconds,remaining),self.overall_deadline if self.overall_deadline is not None else float('inf'))
         self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
     def check_slot(self):
@@ -568,7 +584,9 @@ class RuntimeObservation:
     def failure_deadline(self,seconds):
         # Failure-only exact-owned-process quarantine is separately bounded. This
         # resets no success slot and confers no activation/receipt/arrival authority.
-        global SLOT_DEADLINE
+        global SLOT_DEADLINE,FAILURE_CLEANUP_ONLY
+        FAILURE_CLEANUP_ONLY=True
+        self.base.OVERALL_EXECUTION_FAILURE_ONLY=True
         SLOT_DEADLINE=time.monotonic()+seconds
         self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
@@ -602,7 +620,8 @@ class RuntimeObservation:
         b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and bounded_file_sha256(b,b.NODE,128*1024**2)==a['nodeSha256'],'root-pinned helper/runtime changed')
         b.root_protected(self.drain_operation/'drained.json',regular=True)
         b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
-        b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + 900,
+        ceiling=2100 if a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.guard.stage=='recover-published-ci-runtime' and getattr(self.guard.ci,'PUBLISHED',None) is not None and PUBLISHED.overall_selected(self.guard.ci,a,self.guard.stage) else 900
+        b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + ceiling,
                 'finite administrator operation authority expired or not yet valid')
         private_install(b,self.directory.parent,self.owner.pw_uid,True)
         st = private_install(b,self.directory,self.owner.pw_uid,True)
@@ -1094,6 +1113,17 @@ class RuntimeObservation:
         self.audits.append(native)
         return native
 
+    def fresh_native_identity(self):
+        b,a=self.base,self.auth
+        if self.recovery is not None:b.check(FAST_PROBE.count('validateInstallGrant(grant);')==1,'closed read-only grant probe owner changed')
+        observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE if self.recovery is None else FAST_PROBE.replace('validateInstallGrant(grant);','validateInstallGrant(grant,{allowExpired:true});',1),str(self.directory)],self.owner,self.environment,timeout=20)
+        fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
+        b.check(set(observed)==fields and observed['kind']=='CI_WORKER_COMPLETE_FENCE_V2' and observed['pid']==a['webPid'] and observed['startedMonotonicUs']==a['webStartedMonotonicUs'] and sha(observed['bootId'].encode())==a['bootIdSha256'] and observed['build']==self.args.build_id and observed['environmentSha256']==a['environmentSha256'] and observed['healthStatus']==200 and observed['readiness']==a['readiness'],'fresh complete native identity/environment/health differs')
+        ledger=observed['migrationLedger'];b.check(set(ledger)==LEDGER_FIELDS|{'verifiedAt'},'exact fresh full ordered ledger schema required')
+        native_timestamp(b,ledger['verifiedAt'],epoch(self.grant['issuedAt']),time.time(),fresh=True)
+        b.check({k:v for k,v in ledger.items()if k!='verifiedAt'}==a['ledger'],'fresh full ordered ledger differs')
+        return observed
+
     def complete_fence(self,*,shared_stability_deadline=False):
         b,a=self.base,self.auth;started=time.monotonic()
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
@@ -1148,13 +1178,7 @@ class RuntimeObservation:
         b.check(self.metadata is None or commitments==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
         metadata=commitments
         del covered,tree
-        if self.recovery is not None:b.check(FAST_PROBE.count('validateInstallGrant(grant);')==1,'closed read-only grant probe owner changed')
-        observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE if self.recovery is None else FAST_PROBE.replace('validateInstallGrant(grant);','validateInstallGrant(grant,{allowExpired:true});',1),str(self.directory)],self.owner,self.environment,timeout=20)
-        fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
-        b.check(set(observed)==fields and observed['kind']=='CI_WORKER_COMPLETE_FENCE_V2' and observed['pid']==a['webPid'] and observed['startedMonotonicUs']==a['webStartedMonotonicUs'] and sha(observed['bootId'].encode())==a['bootIdSha256'] and observed['build']==self.args.build_id and observed['environmentSha256']==a['environmentSha256'] and observed['healthStatus']==200 and observed['readiness']==a['readiness'],'fresh complete native identity/environment/health differs')
-        ledger=observed['migrationLedger'];b.check(set(ledger)==LEDGER_FIELDS|{'verifiedAt'},'exact fresh full ordered ledger schema required')
-        native_timestamp(b,ledger['verifiedAt'],epoch(self.grant['issuedAt']),time.time(),fresh=True)
-        b.check({k:v for k,v in ledger.items()if k!='verifiedAt'}==a['ledger'],'fresh full ordered ledger differs')
+        observed=self.fresh_native_identity()
         self.check_authority();stage,raw=self.snapshot()
         b.check(self.stage_ranks()[stage]>=self.stage_ranks()[before] and (self.last is None or self.stage_ranks()[stage]>=self.stage_ranks()[self.last]),'native finish publication backslid')
         self.check_slot();self.metadata=metadata;self.last=stage
@@ -1191,7 +1215,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {**({key:self.auth[key]for key in ('recoveryBudgetProfile','sealFreshnessPolicy')if key in self.auth}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {**({key:self.auth[key]for key in ('recoveryBudgetProfile','sealFreshnessPolicy','executionPolicy')if key in self.auth}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
