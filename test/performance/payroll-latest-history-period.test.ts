@@ -4,7 +4,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
 import {withPayrollTenant} from '../../core/module-gate';
 import {latestProcessedPayslipPeriod,listProcessedPayslipsAcross} from '../../core/payroll-view';
-import {client} from '../../db/client';
+import {client,withTenant} from '../../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import type {SessionContext,Tx} from '../../db/client';
 
@@ -254,7 +254,36 @@ it('profiles the complete capped Transaction View table read after the period is
         const statementIntervals=events.flatMap((event,index)=>event.kind==='other'?[]:[{
           kind:event.kind,untilNextCommandMs:Math.round((events[index+1]?.started??end)-event.started),
         }]);
-        evidence.push({label,retained,elapsedMs:Math.round(end-start),rows:rows.length,statementIntervals});
+        const liveEvidence={label,retained,elapsedMs:Math.round(end-start),rows:rows.length,statementIntervals};
+        if(retained){
+          evidence.push(liveEvidence);
+          continue;
+        }
+        const batches=sql`array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+        const probeStarted=performance.now();
+        const batchFirst=await withTenant(ctx,tx=>tx.execute<{id:string;employeeName:string;net:string}>(sql`
+          with visible_batches as materialized (
+            select b.id,b.pay_period,b.run_seq
+            from payroll_batch b join company c on c.id=b.company_id
+            where b.company_id=any(${batches}) and b.pay_period='2026-03'
+          )
+          select candidate.id,candidate.name as "employeeName",candidate.net
+          from visible_batches b
+          join lateral(
+            select p.id,person.full_name as name,p.net_pay::text as net
+            from payslip p
+            join employment e on e.id=p.employment_id
+            join person on person.id=e.person_id
+            where p.batch_id=b.id
+            order by person.full_name
+            limit 201
+          ) candidate on true
+          order by b.pay_period desc,b.run_seq,candidate.name
+          limit 201
+        `));
+        const batchFirstMs=Math.round(performance.now()-probeStarted);
+        expect(batchFirst,label).toEqual(rows.map(({id,employeeName,net})=>({id,employeeName,net})));
+        evidence.push({...liveEvidence,batchFirstMs});
       }finally{client.options.debug=originalDebug;}
     }
   }
