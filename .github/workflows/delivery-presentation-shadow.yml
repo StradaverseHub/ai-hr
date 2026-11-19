@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}', path: source, fetch-depth: 0, persist-credentials: false}
+        with: {ref: "${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}", path: source, fetch-depth: 0, persist-credentials: false}
       - name: Resolve the narrow policy from committed source
         run: node automation/scripts/delivery/presentation-pilot.mjs source "$BASE" "$CANDIDATE" "$RUNNER_TEMP/presentation-plan.json"
       - uses: ./source/.github/actions/setup-browser-image
