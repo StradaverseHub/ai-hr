@@ -9,7 +9,9 @@ import {finished} from 'node:stream/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Response} from 'playwright';
 import {eq} from 'drizzle-orm';
-import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
+import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll,setModule} from './harness';
+import {hireEmployee} from '../core/org';
+import {createClaimType,setClaimPolicy} from '../packs/claims/service';
 import {createCompany} from '../core/admin';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
@@ -304,22 +306,34 @@ describe('System Labels authenticated Excel browser journey',()=>{
    console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'verified-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
    sampleCapacity?.('fonts-ready');
   }
-  // No production credentials or identity provider. This is the existing explicit developer identity route.
-  signal.throwIfAborted();
-  server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
-  sampleCapacity?.('next-spawned');
-  const nextChild=server;
-  nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
-  nextChild.once('error',()=>{serverSpawnFailed=true;});
-  nextChild.once('close',()=>{serverClosed=true;});
-  server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
-  let ready=false;
-  for(let attempt=0;attempt<120;attempt++){
-   if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
-   try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
+  // No production credentials or identity provider. Recycle only this owned detached server:
+  // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
+  // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
+  async function startOwnedNext(){
+   signal.throwIfAborted();
+   serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
+   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
+    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   sampleCapacity?.('next-spawned');
+   const nextChild=server;
+   nextChild.once('spawn',()=>{if(server===nextChild)serverStartTicks=detachedLeaderStart(nextChild);});
+   nextChild.once('error',()=>{if(server===nextChild)serverSpawnFailed=true;});
+   nextChild.once('close',()=>{if(server===nextChild)serverClosed=true;});
+   server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
+   let ready=false;
+   for(let attempt=0;attempt<120;attempt++){
+    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
+    try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
+   }
+   expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
   }
-  expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
+  async function recycleNext(phase:string){
+   const deadline=performance.now()+20000;
+   await within(deadline,'phase server cleanup',()=>stopNext(deadline));
+   sampleCapacity?.(phase+'-stopped');
+   await startOwnedNext();
+  }
+  await startOwnedNext();
   signal.throwIfAborted();
   browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
   const browser=await browserLaunch;
@@ -371,6 +385,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
   await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
   for(const locale of locales){
+   await recycleNext('locale-'+locale);
    const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
@@ -380,6 +395,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
     await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
    }
   }
+  await recycleNext('restricted-role');
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
@@ -406,9 +422,18 @@ describe('System Labels authenticated Excel browser journey',()=>{
   await restrictedContext.close();
   // Read-only UI acceptance on the same isolated authenticated fixture. These are actual route renders,
   // not HTML replicas; no Roster or Rewards action is submitted.
+  // A real own employment lets Profile and Claims render their forms, while the same login retains
+  // its original tenant-wide HR grant. Only this disposable test database is changed.
+  for(const module of ['claims','rewards','recruitment'])await setModule(b.tenantId,module,'active');
+  const subject=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Visual Reviewer',primaryEmail:'visual-reviewer@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+  await owner.db.update(s.appUser).set({personId:subject.personId}).where(eq(s.appUser.id,b.adminUserId));
+  const claimType=await createClaimType(adminCtx(b),{code:'VISUAL',name:'Fictional visual claim',defaultTaxable:false,requiresReceipt:false});
+  await setClaimPolicy(adminCtx(b),{claimTypeId:claimType.id,annualBudget:100,perClaimCap:100,effectiveFrom:'2024-01-01'});
   await context.addCookies([{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const visualResults:unknown[]=[];
-  for(const route of ['/admin/settings/system-labels','/roster','/rewards']){
+  const visualRoutes=['/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily','/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records','/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/'];
+  for(const [routeIndex,route] of visualRoutes.entries()){
+   if(routeIndex%2===0)await recycleNext('operational-pair-'+Math.floor(routeIndex/2));
    for(const [name,width,height] of [['desktop',1440,1050],['mobile',390,844]] as const){
     await page.setViewportSize({width,height});
     const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:180000});
@@ -416,10 +441,11 @@ describe('System Labels authenticated Excel browser journey',()=>{
     expect(new URL(page.url()).pathname).toBe(route);
     await page.locator('main h1').first().waitFor();
     expect(await page.locator('main').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
-    const metrics=await page.evaluate(()=>({width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:document.querySelector('main')!.getBoundingClientRect().width}));
+    const metrics=await page.evaluate(()=>{const main=document.querySelector('main')!;return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:main.getBoundingClientRect().width,mainClientWidth:main.clientWidth,mainScrollWidth:main.scrollWidth};});
     expect(metrics.documentWidth).toBeLessThanOrEqual(width+1);
     expect(metrics.mainWidth).toBeGreaterThan(250);
-    const key=route.split('/').filter(Boolean).join('-');
+    expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth+1);
+    const key=route.split('/').filter(Boolean).join('-')||'today';
     await page.screenshot({path:join(evidence,`operational-${key}-${name}.png`),fullPage:true});
     if(route.endsWith('system-labels')){
      const help=page.locator('[data-label-import] details');
@@ -441,10 +467,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
      expect(await allReviews.count()).toBeGreaterThan(0);
      expect(await allReviews.last().getAttribute('href')).toBe('/rewards/reviews');
     }
-    visualResults.push({route,viewport:name,...metrics});
+    const scrollable=await page.locator('main').evaluate(element=>element.scrollHeight>element.clientHeight+20);
+    if(scrollable){
+     await page.locator('main').evaluate(element=>{element.scrollTop=element.scrollHeight;});
+     await page.screenshot({path:join(evidence,`operational-${key}-${name}-bottom.png`),fullPage:true});
+    }
+    visualResults.push({route,viewport:name,scrollable,...metrics});
    }
   }
-  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated group administrator',checks:visualResults},null,2));
+  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated HR administrator with own employment',checks:visualResults},null,2));
   await context.close();
   signal.throwIfAborted();
   sampleCapacity?.('functional-checks-complete');
@@ -453,6 +484,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
    if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
    writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   };
- // Includes first-time Roster and Rewards route compilation in addition to the original Excel journey.
+ // Includes six locale processes and nine bounded pairs of actual operational route renders.
  },900000);
 });
