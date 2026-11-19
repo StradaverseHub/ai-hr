@@ -183,7 +183,19 @@ export default async function ApprovalsPage({
   searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;resignationPage?:string;resignationSize?:string;contractPage?:string;contractSize?:string;task?:string|string[];requestId?:string|string[] }>;
 
 }) {
+  // Temporary probe for the fictional hosted browser course.
+  const timings: Record<string, number> | undefined = process.env.PERF_HTTP_SUITE === 'browser-route-baseline' ? {} : undefined;
+  const startedAt = performance.now();
+  const mark = (stage: string) => {
+    if (timings) timings[stage] = Math.round(performance.now() - startedAt);
+  };
+  const time = <T,>(stage: string, result: Promise<T>): Promise<T> => {
+    if (!timings) return result;
+    const began = performance.now();
+    return result.finally(() => { timings[stage] = Math.round(performance.now() - began); });
+  };
   const { s, scopeIds } = await scopedSession();
+  mark('scope');
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
   const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,resignationPage,resignationSize,contractPage,contractSize,task,requestId,leaveFilter}=await searchParams;
@@ -191,6 +203,7 @@ export default async function ApprovalsPage({
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
   if(focus&&!await isCurrentAssignedApproval(s,focus,{attendance:attendanceOn,claims:claimsOn}))notFound();
+  mark('focus');
   const include=(kind:AssignedApprovalKind)=>focus===null||focus.kind===kind;
   const focusedId=(kind:AssignedApprovalKind)=>focus?.kind===kind?focus.id:undefined;
   // Exact current assignment may sit outside the selected company UX filter. RLS and the
@@ -205,13 +218,14 @@ export default async function ApprovalsPage({
   const resignationQuery=parsePageQuery({page:resignationPage,size:['200','all'].includes(resignationSize??'')?'100':resignationSize});
   const probationOn=isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length;
   const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks,resignationWork,contractWork]=await Promise.all([
-    !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
-    !focus&&probationOn?probationTaskList(s,{category:'approval',companyIds:scopeIds}):Promise.resolve({count:0,capped:false,items:[]}),
-    focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
+    !focus&&isModuleEnabledOrFalse(s,'rewards')?time('readReward', pendingRewardReviews(s,scopeIds)):Promise.resolve([]),
+    !focus&&probationOn?time('readProbation', probationTaskList(s,{category:'approval',companyIds:scopeIds})):Promise.resolve({count:0,capped:false,items:[]}),
+    focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?time('readAttendanceAssignment', hasPendingAttendanceParticipantAssignment(s)):Promise.resolve(false),
     !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}):Promise.resolve([]),
-    !focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset}):Promise.resolve({items:[],total:0,cases:[],actionableTotal:0,fyiTotal:0}),
-    !focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset}):Promise.resolve({items:[],total:0}),
+    !focus&&probationOn?time('readResignationInbox', resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset})):Promise.resolve({items:[],total:0,cases:[],actionableTotal:0,fyiTotal:0}),
+    !focus&&probationOn?time('readContracts', contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset})):Promise.resolve({items:[],total:0}),
   ]);
+  mark('eligibility');
   if(!focus&&!admin&&!manager&&!resignationWork.total&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
   const attendanceOnly=!admin&&!manager&&!resignationWork.total&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
@@ -240,6 +254,7 @@ export default async function ApprovalsPage({
   // fef49b9a — the tenant's own name for unpaid leave, resolved once for the whole page rather than per
   // row. Undefined when the tenant has no UNPAID type; leaveDisplaySplit then uses the translated label.
   const unpaidTypeName = attendanceOnly ? undefined : (await listLeaveTypes(s)).find((lt) => lt.code === 'UNPAID')?.name;
+  mark('labels');
   const decideLabels = {
     yourRequest: t('yourRequest'),
     approve: t('approve'),
@@ -268,10 +283,10 @@ export default async function ApprovalsPage({
     // 8cb7b089 pre-fix: cap the 200-row limit over PENDING rows only. Without the status filter, a pending
     // request older than the 200 most recent rows of ANY status silently never reached this inbox — quietly
     // incomplete before, actively misleading once calendar pills deep-link straight to this section.
-    attendanceOnly||!include('leave') ? Promise.resolve([]) : listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') }),
-    attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : listPendingLeaveCancellations(s, queueScope,undefined,focusedId('leaveCancellation')),
+    attendanceOnly||!include('leave') ? Promise.resolve([]) : time('readLeave', listLeaveRequests(s, queueScope, focus?1:200, { status: 'pending',requestId:focusedId('leave') })),
+    attendanceOnly||!include('leaveCancellation') ? Promise.resolve([]) : time('readCancellation', listPendingLeaveCancellations(s, queueScope,undefined,focusedId('leaveCancellation'))),
     // 5ff7daff: same reporting-line scope as every other queue on this page; RLS trims it further.
-    attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') }),
+    attendanceOnly||!include('replacementLeave') ? Promise.resolve([]) : time('readReplacement', listPendingReplacementLeaveRequests(s, { companyIds: queueScope,requestId:focusedId('replacementLeave') })),
     // r292 — THE INBOX IS A CORE SCREEN AND MUST SURVIVE A TENANT THAT DECLINED THE OPTIONAL PACKS.
     // `listAttendanceCorrections` and `listPendingClaims` are now service-gated (core/module-gate.ts), so
     // calling them unconditionally would throw ModuleNotEnabledError here and take /approvals down for a
@@ -279,15 +294,16 @@ export default async function ApprovalsPage({
     // customer who did not buy Claims has no claims to decide. `isModuleEnabledOrFalse` (the PAGE form) is
     // used rather than the throwing one for the reason its header gives — a resolver outage must degrade
     // one queue, not the whole inbox.
-    attendanceOn&&include('attendance') ? listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') }) : Promise.resolve([]),
+    attendanceOn&&include('attendance') ? time('readAttendance', listAttendanceCorrections(s, { companyIds: queueScope, status: 'pending',requestId:focusedId('attendance') })) : Promise.resolve([]),
     // Claims: the same row set as listPendingClaims (no company-switcher filter), paged.
     claimsOn && !attendanceOnly&&include('claim')
       ? focus
         ? listPendingClaims(s,{requestId:focusedId('claim')}).then(rows=>({rows,page:pageState(parsePageQuery(),rows.length,rows.length)}))
-        : listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort})
+        : time('readClaims', listPendingClaimsPage(s,{page:claimsPage,size:claimsSize,sort}))
       : Promise.resolve({rows:[],page:pageState(parsePageQuery(),0,0)}),
-    admin&&include('resignation') ? listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') }) : Promise.resolve([]),
+    admin&&include('resignation') ? time('readResignationLegacy', listResignationRequests(s, { status: 'pending',requestId:focusedId('resignation') })) : Promise.resolve([]),
   ]);
+  mark('queues');
   const claims=claimResult.rows;
   const corrections = attendanceOnly&&!focus ? loadedCorrections.filter(row => (row.workflow?.routingVersion === 3 || row.workflow?.routingVersion === 4) && row.canDecide && row.personId !== s.personId) : loadedCorrections;
   // 1e9145d4 — the kind of day each OVERTIME row is asking for, so a rest-day or public-holiday plan is
@@ -306,6 +322,7 @@ export default async function ApprovalsPage({
           .map((c) => ({ employmentId: c.employmentId, date: c.attendanceDate })),
       )
     : new Map<string, PlanOtDayType>();
+  mark('overtime');
   // "Long plan": four hours or more. That is the threshold the rejected auto-escalation rule named, kept
   // as a MARKER rather than a gate — the plan's explicit decision.
   const LONG_PLAN_MINUTES = 4 * 60;
@@ -319,6 +336,7 @@ export default async function ApprovalsPage({
     admin&&include('hrReview')?listReviews(s,{status:'pending_hr',requestId:focusedId('hrReview')}):Promise.resolve([]),
   ]);
 
+  mark('reviews');
   const pendingLeave = leave.filter((r) => r.status === 'pending');
   // ADR-0068 §6: fetch date breakdowns for the visible PENDING leave page together. A non-empty result
   // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
@@ -326,6 +344,7 @@ export default async function ApprovalsPage({
   // to the viewer.
   const breakdowns = await leaveRequestDateBreakdowns(s, pendingLeave.map((request) => request.id));
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
+  mark('leaveDates');
   const locale = await getLocale();
   const dateBreakdownLabels = {
     viewDateBreakdown: t('viewDateBreakdown'),
@@ -395,6 +414,7 @@ export default async function ApprovalsPage({
   // (categories without that state, and both review queues which decide confirm/extend instead).
   const decided = attendanceOnly||focus ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
 
+  mark('decided');
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
   // rows are unchanged and a re-sort preserves the (bulk-approval) selection keyed by id. Each section
@@ -404,6 +424,7 @@ export default async function ApprovalsPage({
   // worker may run (./leave-recommendations.tsx). "Passes every check" narrows the leave table to the requests
   // whose recommendation passed every check; it never selects or decides anything by itself.
   const recommendations = await readApprovalRecommendations(s, visible('leave') ? allSortedLeave.map((r) => r.id) : []);
+  mark('recommendations');
   const passing = passingIds(recommendations);
   const leaveFilterPassing = !focus && leaveFilter === 'passing' && passing.size > 0;
   const sortedLeave = leaveFilterPassing ? allSortedLeave.filter((r) => passing.has(r.id)) : allSortedLeave;
@@ -486,6 +507,13 @@ export default async function ApprovalsPage({
   ];
 
   const claimSelectionScope = !focus && claimsOn && visible('claims') ? [...scopeIds].sort().join(',') : undefined;
+  mark('prepared');
+  if (timings) console.info('PERF_APPROVALS_PHASES ' + JSON.stringify({
+    role: admin ? 'admin' : manager ? 'manager' : 'assigned',
+    view: focus ? 'focused' : category === 'all' ? 'inbox' : 'category',
+    timings,
+  }));
+
   return (
     <BulkSelectionProvider rows={bulkRows} sort={sortParam ?? ''} category={nav.category}
       key={JSON.stringify([s.userId, scopeIds, nav.category, focus?.id])}
