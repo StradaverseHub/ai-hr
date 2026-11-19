@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
-import {routeLatency} from './route-latency.mjs';
+import {browserDocumentLatency,routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
@@ -190,6 +190,10 @@ const homeFailureMessages=(()=>{
  catch{return new Map();}
 })();
 const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/claims','/leave'],manager:['/approvals','/claims','/performance/home'],companyHR:['/admin/personnel','/payroll','/claims'],groupHR:['/admin/personnel','/payroll','/claims']};
+const payrollHistoryPath='/payroll/transaction-view';
+const browserRoutePools=suite==='whole-system'?{...routePools,
+ companyHR:[...routePools.companyHR,payrollHistoryPath],groupHR:[...routePools.groupHR,payrollHistoryPath],
+}:measuredRoutePools;
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
@@ -855,12 +859,20 @@ async function main(){
    }
    await rows.first().waitFor({state:'visible',timeout:timeout()});
    if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
+   if(!nativeRoute)witness='visible-table-rows';
   }
   if(path==='/me/payslip'){
    visitStage='payslip-statement';
    // The heading can stream before the actual statement. Keep the existing90s ceiling
    // and prove the real document control exists before taking identity/readiness snapshots.
    await page.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible',timeout:timeout()});
+   if(!nativeRoute)witness='payslip-download-control';
+  }
+  if(path===payrollHistoryPath){
+   visitStage='payroll-transaction-history';
+   const history=page.locator('main table:visible').filter({has:page.locator('button[data-table-disclosure]')});
+   await history.locator('tbody tr:visible button[data-table-disclosure]:visible').first().waitFor({state:'visible',timeout:timeout()});
+   witness='payroll-history-payslip-rows';
   }
   if(path==='/analytics'){
    visitStage='analytics-metrics';
@@ -919,6 +931,7 @@ async function main(){
     await page.locator('main a[href="'+href+'"]').getByText(String(count),{exact:true}).waitFor({state:'visible',timeout:timeout()});
    }
    (report.lifecycleStaffHub??=[]).push({phase,role:user.role,open,pending});save();
+   if(!nativeRoute)witness='lifecycle-staff-tiles';
   }
   let homeCards=null,homeCardIds=[],todaySectionIds=[],cardFailures=0;
   visitStage='home-cards';
@@ -1018,7 +1031,10 @@ async function main(){
    if(phase==='loaded'&&user.index===employee.index)report.loadedBrowserSignIn=result;
    save();
   }
-  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,startedWith,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,startedWith,
+   entry:'document',signIn,contentWitness:cardFailures===0?witness:null,scopeDenied:nativePreflightReadiness(witness)==='scope-denial',
+   usableWith:loadState?.(),
+   elapsedMs:performance.now()-start,...timing});save();
   }catch(error){
    visitFailed=true;
    failures.notePrimary(error);
@@ -1097,7 +1113,8 @@ async function main(){
  await lanes.run(()=>settleDriverLanes([employee,manager,hr,group,fixture.users[254],fixture.users[251]],async user=>{
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
-  const routes=strictRenderedPreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
+  const historyRoute=suite==='whole-system'&&['companyHR','groupHR'].includes(user.role)?[payrollHistoryPath]:[];
+  const routes=strictRenderedPreflight&&primaryActors.includes(user)?['/',...historyRoute]:suite==='whole-system'?browserRoutePools[user.role]:user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
   for(const route of routes)await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
@@ -1350,6 +1367,7 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   requireNativeBusiness();
+  const clickStartedAt=performance.now();
   await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   const heading=page.getByRole('heading',{level:1,name:catalog.claims.title,exact:true});
@@ -1359,7 +1377,8 @@ async function main(){
   assert.equal(documents.length,0,'client link unexpectedly reloaded the document');
   assert(await main.locator('tbody tr:visible').count()>0,'client route has no visible Claims rows');
   assert((await main.innerText()).includes(catalog.claims.typeLabel),'client form lost route translations');
-  report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});
+  report.browser.push({workflow:'client navigation',entry:'client-link',phase:'baseline',role:employee.role,
+   from:'/leave',to:'/claims',documentRequests:0,contentWitness:'claims-rows-and-draft-form',elapsedMs:performance.now()-clickStartedAt,passed:true});
   });
   requireCleanDriver();save();
  }
@@ -1676,6 +1695,7 @@ async function main(){
   const page=await ctx.newPage();
   const routes=user.role==='employee'?['/','/claims','/leave','/attendance/individual']
    :user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/',...(suite==='whole-system'?architectureHrReadRoutes:[]),'/admin/personnel','/payroll','/claims'];
+  if(suite==='whole-system'&&(user.index===group.index||user.index===hr.index))routes.splice(1,0,payrollHistoryPath);
   // The two existing-session actors start on the target pages so the language proof
   // is not queued behind the sign-in and Home sequence of the four real-login actors.
   if(suite==='whole-system'&&!signIn){
@@ -1848,6 +1868,7 @@ async function main(){
   .map(action=>({role,route:'/claims',action}))).concat(mixedWorkflows?.plannedWrites()??[]);
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
   homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedWrites,steadyStart,steadyUntil});
+ report.browserDocumentLatency=browserDocumentLatency({observations:report.browser,routePools:browserRoutePools});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;

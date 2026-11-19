@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {routeLatency} from '../scripts/performance/route-latency.mjs';
+import {browserDocumentLatency,routeLatency} from '../scripts/performance/route-latency.mjs';
 const read=(role:string,route:string,durationMs:number,startedMs=20,action?:string)=>({role,route,durationMs,startedMs,action,method:'GET'});
 const navigation=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs});
 const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
@@ -95,4 +95,30 @@ it('measures seeded records together for the same action and keeps the role sepa
 it('does not conceal an invalid measurement as a passing sample',()=>{
  const fixture=input();fixture.samples[0].durationMs=NaN;expect(()=>routeLatency(fixture)).toThrow(RangeError);
  fixture.steadyUntil=fixture.steadyStart;expect(()=>routeLatency(fixture)).toThrow(RangeError);
+});
+it('requires usable browser content within steady load and tracks unmeasured pages',()=>{
+ const fullLoad={active:500,inSteadyWindow:true};
+ const visit={phase:'loaded',role:'groupHR',path:'/payroll',entry:'document',contentWitness:'table-rows',
+  startedWith:fullLoad,usableWith:fullLoad,elapsedMs:100};
+ const observations=[
+  ...Array.from({length:19},()=>visit),
+  {...visit,usableWith:{...fullLoad,inSteadyWindow:false}},
+  {...visit,startedWith:{...fullLoad,active:499}},
+  {...visit,contentWitness:null},
+  {...visit,scopeDenied:true},
+  {...visit,signIn:true},
+  {...visit,entry:'client-link'},
+  {...visit,phase:'baseline'},
+ ];
+ const routePools={groupHR:['/payroll','/payroll/transaction-view']};
+ const result=browserDocumentLatency({observations,routePools});
+ expect(result).toMatchObject({targetMet:false,rows:[
+  {phase:'baseline',path:'/payroll',samples:1,targetMet:false},
+  {phase:'baseline',path:'/payroll/transaction-view',samples:0},
+  {phase:'loaded',path:'/payroll',samples:19,targetMet:false,headingOnly:1,scopeDenials:1,outsideSteadyLoad:2,signIns:1},
+  {phase:'loaded',path:'/payroll/transaction-view',samples:0},
+ ]});
+ expect(result.missing.map(row=>row.path)).toEqual(['/payroll/transaction-view','/payroll/transaction-view']);
+ observations.push(visit);
+ expect(browserDocumentLatency({observations,routePools}).rows[2]).toMatchObject({samples:20,targetMet:true});
 });
