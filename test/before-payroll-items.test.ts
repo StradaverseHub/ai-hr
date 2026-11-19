@@ -12,10 +12,15 @@
  * No database. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
-const fx=vi.hoisted(()=>({approvalSummary:vi.fn(),cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
+const fx=vi.hoisted(()=>({today:'2026-11-10',approvalSummary:vi.fn(),cutOffRow:true as boolean,cutOffDay:20 as number|null,modules:{} as Record<string,boolean>,fail:new Set<string>(),calls:[] as unknown[][],
  own:true as boolean,gaps:null as null|unknown[],tp3Answer:null as null|'yes'|'no',
  // AI Centre navigation speed: holds the person's own employment read until released, to see what runs meanwhile.
  subjectGate:null as null|Promise<void>,subjectFails:false as boolean}));
+// The Ask entry reads the HR clock itself. Match the same day used by the direct reader fixture.
+vi.mock('../lib/hr-date',async importOriginal=>({
+ ...await importOriginal<typeof import('../lib/hr-date')>(),
+ todayInKualaLumpur:()=>fx.today,
+}));
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
@@ -122,7 +127,7 @@ import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
 import type {SessionContext} from '../db/client';
 
 const CTX={tenantId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',personId:'00000000-0000-4000-8000-000000000003',roles:['employee']} as SessionContext;
-const TODAY='2026-11-10';
+const TODAY=fx.today;
 const read=()=>readMyPayrollReadiness(CTX,{today:TODAY,locale:'en'});
 const brief=(rows:readonly PayrollItem[])=>rows.map(row=>[row.kind,row.state,row.date,row.due,row.action.kind==='confirm'?'confirm:'+row.action.caseId:row.action.kind==='answer'?'answer:'+row.action.href:row.action.href]);
 beforeEach(()=>{fx.approvalSummary.mockReset();fx.cutOffRow=true;fx.cutOffDay=20;fx.modules={};fx.fail=new Set();fx.calls=[];fx.own=true;fx.gaps=null;fx.tp3Answer=null;fx.subjectGate=null;fx.subjectFails=false;});
