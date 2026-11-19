@@ -28,6 +28,15 @@
  *   engine; it never recomputes a closed payslip and posts through the one-off ledger),
  *   `core/payroll-run-group.ts` (multi-company run groups),
  *   `core/payroll-view.ts` (processed-payslip read models + cross-company listings),
+ *   History maintenance and tax-source implementations remain private Payroll owners:
+ *   `core/payroll-history-maintenance-plan.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance-read.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance-state.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-maintenance.ts` (canonical Payroll implementation),
+ *   `core/payroll-history-native-baseline.ts` (canonical Payroll implementation),
+ *   `core/payroll-import-tax-source.ts` (canonical Payroll implementation),
+ *   `core/payroll-tax-basis-read.ts` (canonical Payroll implementation),
+ *   `core/payroll-tax-basis.ts` (canonical Payroll implementation),
  *   `core/payroll-readiness.ts` (pre-run readiness checks), `core/payroll-history-import.ts`
  *   (historical payslip analysis), `core/payroll-history-revisions.ts` (immutable multi-company import,
  *   correction and guarded recovery), `core/payroll-permissions-admin.ts` (payroll permission grants +

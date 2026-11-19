@@ -152,7 +152,24 @@ it('recovers only the reviewed second on-time manager hold and preserves the ear
  const c=await makeCase();await owner.client`update reporting_line set valid_to=${day}::date where subordinate_employment_id=${subject}::uuid`;
  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'manager'});
  const held=(await v9CaseDetail(admin,c.id)).case,first=structuredClone(held.runs[0]),second={...structuredClone(held.runs[0]),id:'reviewed-second-manager-run'};
- expect(first.status).toBe('waiting');expect(first.hold?.missing[0].reason).toBe('no supervisor on the Personnel record');expect(held.mails).toEqual([]);
+ expect(first.status).toBe('waiting');expect(first.hold?.missing[0].reason).toBe('no supervisor on the Personnel record');
+ // Missing business recipients still notify authorised Full case-view HR, including an account without a Person.
+ expect((await owner.client`select person_id from app_user where id=${admin.userId!}::uuid`)[0].person_id).toBeNull();
+ expect(held.mails.filter(mail=>mail.workflowId==='manager')).toEqual([]);
+ expect(held.mails).toHaveLength(1);const alert=held.mails[0];expect(alert.id).toMatch(/^[0-9a-f-]{36}$/);
+ expect(held.mails).toEqual([{
+  id:alert.id,key:`hold-alert:${first.id}:message:${first.hold!.at}:0`,workflowId:null,templateId:null,
+  to:[admin.userId!],cc:[],subject:`Email held for Fictional subject (${held.number}): Fictional`,
+  body:`The email "Fictional" in the workflow "Manager message" for Fictional subject (${held.number}) was not sent to anyone because a recipient is missing:\n\n- Line manager: no supervisor on the Personnel record\n\nFix the record or change the recipients for this case, then press Continue on the case. Nobody receives the email until then.`,
+  documentIds:[],fileIds:[],delivery:{version:1,queuedBy:{id:admin.userId!,name:'User'},sender:'noreply',linkDocumentIds:[],pdfDocumentIds:[],toNames:['User'],ccNames:[]},
+  status:'pending',test:false,at:first.hold!.at,deliveredAt:null,failure:null,
+ }]);
+ const priorMails=structuredClone(held.mails);
+ // Freeze the complete native queue rows, not just the workflow subset or payload fields.
+ const queue=()=>owner.client`select to_jsonb(d) as row from lc_v9_email_delivery d where case_id=${c.id}::uuid order by mail_id`;
+ const priorReceipts=await queue();expect(priorReceipts).toHaveLength(1);
+ expect(priorReceipts[0].row).toMatchObject({mail_id:alert.id,status:'queued',started_at:null,completed_at:null,recipient_proof:null});
+ expect(priorReceipts[0].row.payload.mail).toEqual(alert);
  await owner.client`update lc_v9_case set data=jsonb_set(data,'{runs}',${JSON.stringify([first,second])}::jsonb) where id=${c.id}::uuid`;
  await owner.client`update reporting_line set valid_to=null where subordinate_employment_id=${subject}::uuid`;
  const page=await managerEmailRecoveryPage(admin),source=page.items.find(target=>target.caseId===c.id&&target.runId===first.id)!;
@@ -161,10 +178,16 @@ it('recovers only the reviewed second on-time manager hold and preserves the ear
  expect(await withTenant(admin,tx=>recoverManagerEmailHoldTx(tx,admin,target))).toMatchObject({outcome:'resumed',revision:held.revision+1});
  const after=(await v9CaseDetail(admin,c.id)).case;
  expect(after.runs.find(run=>run.id===first.id)).toEqual(first);expect(after.runs.find(run=>run.id===second.id)?.hold).toBeUndefined();
- expect(after.mails).toHaveLength(1);expect(after.mails[0]).toMatchObject({key:'reviewed-second-manager-run:message:main',workflowId:'manager',to:['address:manager@example.invalid'],status:'pending'});
- const receipts=await owner.client`select mail_id,payload,status from lc_v9_email_delivery where case_id=${c.id}::uuid order by mail_id`;
- expect(receipts).toHaveLength(1);expect(receipts[0].mail_id).toBe(after.mails[0].id);expect(receipts[0].payload.mail.key).toBe('reviewed-second-manager-run:message:main');
+ expect(after.mails).toHaveLength(priorMails.length+1);expect(after.mails.slice(0,priorMails.length)).toEqual(priorMails);
+ const recovered=after.mails.at(-1)!;
+ expect(recovered).toMatchObject({key:'reviewed-second-manager-run:message:main',workflowId:'manager',templateId:null,to:['address:manager@example.invalid'],cc:[],subject:'Fictional',body:'Fictional body',documentIds:[],fileIds:[],status:'pending',test:false,deliveredAt:null,failure:null});
+ expect(after.mails.filter(mail=>mail.workflowId==='manager')).toEqual([recovered]);
+ const receipts=await queue();expect(receipts).toHaveLength(priorReceipts.length+1);
+ const byMail=new Map(receipts.map(receipt=>[receipt.row.mail_id,receipt]));
+ expect(byMail.size).toBe(receipts.length);expect([...byMail.keys()].sort()).toEqual([...priorReceipts.map(receipt=>receipt.row.mail_id),recovered.id].sort());
+ for(const prior of priorReceipts)expect(byMail.get(prior.row.mail_id)).toEqual(prior);
+ const captured=byMail.get(recovered.id)!;expect(captured.row).toMatchObject({mail_id:recovered.id,status:'queued',started_at:null,completed_at:null,recipient_proof:null});expect(captured.row.payload.mail).toEqual(recovered);
  expect(await withTenant(admin,tx=>recoverManagerEmailHoldTx(tx,admin,target))).toEqual({outcome:'changed'});
  expect((await v9CaseDetail(admin,c.id)).case).toEqual(after);
- expect(await owner.client`select mail_id,payload,status from lc_v9_email_delivery where case_id=${c.id}::uuid order by mail_id`).toEqual(receipts);
+ expect(await queue()).toEqual(receipts);
 });

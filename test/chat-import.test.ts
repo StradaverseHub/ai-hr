@@ -256,8 +256,25 @@ describe('payroll history: the owner\'s own attempt, confirmed once, reverted by
   expect(await confirmChatImport(ctx,{proposal,confirm:true})).toEqual({...done,replayed:true});
   expect(await slips()).toHaveLength(1);
   const recovery=await previewPayrollHistoryRevert(ctx,attempt.id);
-  await revertPayrollHistoryUpload(ctx,attempt.id,recovery.previewHash);
-  await expect(revertPayrollHistoryUpload(ctx,attempt.id,recovery.previewHash)).rejects.toThrow(/already been reverted/);
+  const reverted=await revertPayrollHistoryUpload(ctx,attempt.id,recovery.previewHash);
+  expect(reverted).toEqual({attemptId:attempt.id,restored:1});
+  const historyImage=async()=>({
+   attempts:await owner.db.execute(sql`select to_jsonb(a) as row from payroll_history_import_attempt a where tenant_id=${base.tenantId}::uuid order by id`),
+   records:await owner.db.execute(sql`select to_jsonb(r) as row from payroll_history_import_record r where tenant_id=${base.tenantId}::uuid order by id`),
+   snapshots:await owner.db.execute(sql`select to_jsonb(s) as row from payroll_history_import_snapshot s where tenant_id=${base.tenantId}::uuid order by id`),
+   batches:await owner.db.execute(sql`select to_jsonb(b) as row from payroll_batch b where tenant_id=${base.tenantId}::uuid order by id`),
+   revisions:await owner.db.execute(sql`select to_jsonb(r) as row from payroll_history_import_revision r where tenant_id=${base.tenantId}::uuid order by id`),
+   events:await owner.db.execute(sql`select to_jsonb(e) as row from payroll_history_import_event e where tenant_id=${base.tenantId}::uuid order by id`),
+   audit:await owner.db.execute(sql`select to_jsonb(e) as row from domain_event e where tenant_id=${base.tenantId}::uuid order by sequence`),
+   payslips:await slips(),
+  });
+  const beforeReplay=await historyImage();
+  const[latest]=await owner.db.execute<{snapshot_id:string|null;operation:string}>(sql`select snapshot_id,maintenance->>'operation' as operation
+   from payroll_history_import_revision where tenant_id=${base.tenantId}::uuid order by ordinal desc limit 1`);
+  expect(latest).toEqual({snapshot_id:null,operation:'remove_batch'});
+  // Repeating the same actor-bound reviewed removal returns its accepted outcome without another write.
+  expect(await revertPayrollHistoryUpload(ctx,attempt.id,recovery.previewHash)).toEqual(reverted);
+  expect(await historyImage()).toEqual(beforeReplay);
  });
  it('a file with an invalid row is not confirmable here: every row is fixed on the import page first',async()=>{
   const file:ChatImportFile={name:'payroll-history.csv',format:'csv',text:toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...lines(),...lines('9999')])};

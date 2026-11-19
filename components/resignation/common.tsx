@@ -48,5 +48,19 @@ export function OfferReplyDeadline({value}:{value:ResignationCaseView}){
 /** One terms-and-reply summary for the employee profile and their authorized direct case. */
 export function ResignationOfferSummary({value}:{value:ResignationCaseView}){
  const t=useTranslations('resignationJourney');if(value.stage!=='offer'||!value.offer)return null;
- return <section className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950"><h3 className="font-semibold">{t('offerTitle')}</h3><table data-wrap-headings className="w-full table-fixed text-sm [&_td]:[overflow-wrap:anywhere] [&_th]:[overflow-wrap:anywhere]"><thead><tr><th className="py-2 text-left">{t('term')}</th><th className="text-left">{t('current')}</th><th className="text-left">{t('proposed')}</th></tr></thead><tbody>{[[t('position'),value.position,value.offer.position],[t('grade'),value.jobGrade,value.offer.jobGrade],[t('salaryMonthly')+(value.currency?' · '+value.currency:''),money(value.currentBasicSalary,value.currency),money(value.offer.basicSalary,value.currency)]].map(([label,before,after])=><tr key={label}><th className="py-2 text-left font-normal">{label}</th><td className="pr-3">{before}</td><td className="font-semibold">{after}</td></tr>)}</tbody></table><p className="text-sm">{t('effectiveDate')}: {day(value.offer.effectiveDate)}</p><OfferReplyDeadline value={value}/></section>;
+ const terms=[
+  {key:'position',label:t('position'),current:value.position,proposed:value.offer.position},
+  {key:'grade',label:t('grade'),current:value.jobGrade,proposed:value.offer.jobGrade},
+  {key:'salary',label:t('salaryMonthly')+(value.currency?' · '+value.currency:''),current:money(value.currentBasicSalary,value.currency),proposed:money(value.offer.basicSalary,value.currency)},
+ ];
+ return <section className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950"><h3 className="font-semibold">{t('offerTitle')}</h3>
+  <table data-resignation-offer-desktop data-wrap-headings className="hidden w-full table-fixed text-sm sm:table [&_td]:[overflow-wrap:anywhere] [&_th]:[overflow-wrap:anywhere]"><thead><tr><th className="py-2 text-left">{t('term')}</th><th className="text-left">{t('current')}</th><th className="text-left">{t('proposed')}</th></tr></thead><tbody>{terms.map(term=><tr key={term.key}><th className="py-2 text-left font-normal">{term.label}</th><td className="pr-3">{term.current}</td><td className="font-semibold">{term.proposed}</td></tr>)}</tbody></table>
+  <dl data-resignation-offer-mobile className="space-y-4 text-sm sm:hidden">{terms.map(term=><div key={term.key} data-offer-term={term.key}>
+   <dt className="font-medium">{term.label}</dt><dd className="mt-2"><dl className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-x-4 gap-y-3">
+    <div className="min-w-0"><dt className="text-xs text-muted-foreground">{t('current')}</dt><dd data-offer-value="current" className="mt-1 [overflow-wrap:anywhere]">{term.current}</dd></div>
+    <div className="min-w-0"><dt className="text-xs text-muted-foreground">{t('proposed')}</dt><dd data-offer-value="proposed" className="mt-1 font-semibold [overflow-wrap:anywhere]">{term.proposed}</dd></div>
+   </dl></dd>
+  </div>)}</dl>
+  <p className="text-sm">{t('effectiveDate')}: {day(value.offer.effectiveDate)}</p><OfferReplyDeadline value={value}/>
+ </section>;
 }

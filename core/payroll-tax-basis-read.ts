@@ -150,12 +150,17 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
  if(options.includeImported){
   // Eligible consumers ask for their saved prefix. Recompose cumulative noncash snapshots from
   // owned sources across cycles; never treat each imported cycle as an entire monthly baseline.
+  const contextKey=(source:TaxBasisSource)=>source.companyId+':'+source.employmentId+':'+source.period.slice(0,4);
+  // Ordinary native snapshots already own their recurring projection/regular-run semantics.
+  // Recompose only a prefix whose inputs were actually replaced by accepted import/review.
+  const affected=new Set(sources.filter(source=>out.has(source.id)).map(contextKey));
   const builders=new Map<string,ReturnType<typeof createNonCashOwnershipReplay>>();
   const ordered=[...sources].sort((a,b)=>a.companyId.localeCompare(b.companyId)||a.employmentId.localeCompare(b.employmentId)||a.period.localeCompare(b.period)||String(a.batch.batch_date??'').localeCompare(String(b.batch.batch_date??''))||String(a.batch.cycle_id??'').localeCompare(String(b.batch.cycle_id??''))||Number(a.batch.run_seq??0)-Number(b.batch.run_seq??0)||String(a.batch.id).localeCompare(String(b.batch.id))||a.id.localeCompare(b.id));
   for(const source of ordered){
    const effective=out.get(source.id),stat=effective?.statutory??source.source.statutory;if(!object(stat))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
    const saved=readPcbNonCash(stat.pcbNonCash);if(stat.pcbNonCash!==undefined&&!saved)throw new PayrollTaxBasisError('Original month noncash ownership is malformed.');
-   const key=source.companyId+':'+source.employmentId+':'+source.period.slice(0,4),builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
+   const key=contextKey(source);if(!affected.has(key))continue;
+   const builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
    let rebuilt:ReturnType<typeof builder>;
    try{rebuilt=builder({period:source.period,cashNormal:typeof effective?.basis.normal==='number'?effective.basis.normal:saved?.cashNormal??0,owned:saved?.ownedEntries??[],ownedEa:saved?.ownedEaEntries??[],original:saved,completeSource:saved!==null||object(stat.importedTaxBasis)});}catch{throw new PayrollTaxBasisError('Original month noncash source ownership is incomplete or duplicated. Review the complete month prefix.');}
    if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt}});

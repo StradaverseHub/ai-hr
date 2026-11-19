@@ -1,7 +1,7 @@
 /** Actual HTTP/UI journey on a disposable hosted-runner database, never an installation. */
 import {describe,it,expect,afterAll,afterEach} from 'vitest';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
-import {closeSync,createWriteStream,fstatSync,mkdirSync,openSync,readFileSync,readSync,writeFileSync} from 'node:fs';
+import {appendFileSync,closeSync,createWriteStream,fstatSync,mkdirSync,openSync,readFileSync,readSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {totalmem,availableParallelism} from 'node:os';
 import {performance} from 'node:perf_hooks';
@@ -21,6 +21,9 @@ let server:ChildProcess|undefined,browserLaunch:Promise<Browser>|undefined,serve
 let serverClosed=false,serverSpawnFailed=false,logFailed=false;
 let serverStartTicks:string|undefined;
 let publishResult:(()=>void)|undefined;
+let capacityTimer:ReturnType<typeof setInterval>|undefined;
+let sampleCapacity:((phase:string)=>void)|undefined;
+let capacityEvidenceFailed=false;
 function logTail(path:string,limit:number){
  const fd=openSync(path,'r');
  try{
@@ -88,6 +91,7 @@ async function stopNext(deadline:number){
  }
 }
 async function stop(){
+ clearInterval(capacityTimer);try{sampleCapacity?.('cleanup-begin');}catch{capacityEvidenceFailed=true;console.error('SYSTEM_LABEL_CAPACITY_ERROR cleanup sample unavailable');}
  const begin=performance.now();
  const closeDeadline=begin+15000,deadline=begin+27000;
  const [chrome,next]=await Promise.allSettled([
@@ -114,6 +118,7 @@ async function stop(){
  const failures=[chrome,next,...rest].flatMap(result=>result.status==='rejected'?[result.reason]:[]);
  if(failures.length)throw new AggregateError(failures,'System Labels owned cleanup incomplete');
  remaining(deadline,'cleanup');
+ sampleCapacity?.('cleanup-complete');
  publishResult?.();
 }
 afterAll(stop,30000);
@@ -125,15 +130,32 @@ afterEach(async ({task})=>{
 },30000);
 describe('System Labels authenticated Excel browser journey',()=>{
  it('downloads, previews and imports actual authorized data, refuses restricted global imports, and renders six languages',async({signal,task})=>{
+  const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
+  const capacityStarted=performance.now();
+  sampleCapacity=phase=>{
+   const meminfo=readFileSync('/proc/meminfo','utf8');
+   const field=(name:string)=>{const match=meminfo.match(new RegExp('^'+name+':\\s+(\\d+) kB','m'));if(!match)throw Error('Actual runner memory field unavailable');return Number(match[1])*1024;};
+   const available=field('MemAvailable');
+   const row={source:process.env.AIHR_CI_HEAD,phase,elapsedMs:Math.round(performance.now()-capacityStarted),
+    memTotalBytes:field('MemTotal'),memAvailableBytes:available,swapTotalBytes:field('SwapTotal'),swapFreeBytes:field('SwapFree'),
+    vitestPid:process.pid,vitestRssBytes:process.memoryUsage.rss(),nextPid:server?.pid??null,nextLeaderStartTicks:serverStartTicks??null,
+    webpackParallelism:1,lowHeadroomDiagnostic:available<1.5*1024**3,releaseAuthorized:false};
+   // A diagnostic flag is never a capacity/test PASS. Keep actual per-PID heap and DB cgroup evidence too.
+   appendFileSync(join(evidence,'system-label-capacity-phases.jsonl'),JSON.stringify(row)+'\n');
+   console.info('SYSTEM_LABEL_CAPACITY '+JSON.stringify(row));
+  };
+  if(process.platform==='linux'){
+   sampleCapacity('case-entry');
+   capacityTimer=setInterval(()=>{try{sampleCapacity?.('interval');}catch{capacityEvidenceFailed=true;console.error('SYSTEM_LABEL_CAPACITY_ERROR actual sample unavailable');}},10000);capacityTimer.unref();
+  }else sampleCapacity=undefined;
   const url=new URL(process.env.TEST_DATABASE_URL!);
   expect(['127.0.0.1','localhost'].includes(url.hostname)).toBe(true);
   expect(url.pathname).toMatch(/test/);
-  await migrateTestDb();await resetDb();const b=await seedBase();
+  await migrateTestDb();sampleCapacity?.('migrations-ready');await resetDb();sampleCapacity?.('reset-ready');const b=await seedBase();sampleCapacity?.('seed-ready');
   const other=await createCompany(adminCtx(b),{legalName:'Fictional browser company B'});
   await owner.db.update(s.appUser).set({onboardedAt:new Date()}).where(eq(s.appUser.id,b.adminUserId));
   const [restricted]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-label-browser-restricted',onboardedAt:new Date()}).returning();
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:restricted.id,role:'hr_admin',companyId:b.companyId});
-  const evidence=resolve(process.env.AIHR_FOCUSED_EVIDENCE_DIR??'/tmp/aihr-label-browser-evidence');mkdirSync(evidence,{recursive:true});
   const log=join(evidence,'system-label-browser-server.log'),stream=createWriteStream(log);serverLog=stream;
   stream.once('error',()=>{logFailed=true;});
   const port=3149,origin=`http://127.0.0.1:${port}`;
@@ -145,7 +167,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // available memory under system-label-dev-server-heap/ in its evidence.
   const memory=totalmem(),heapMiB=memory>=15*1024**3?12288:memory>=12*1024**3?8192:4096;
   const heapEvidence=join(evidence,'system-label-dev-server-heap');mkdirSync(heapEvidence,{recursive:true});
-  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
+  writeFileSync(join(evidence,'system-label-browser-resources.json'),JSON.stringify({memoryBytes:memory,cpus:availableParallelism(),heapMiB,webpackParallelism:1,runner:process.env.RUNNER_ENVIRONMENT??'local'}));
   const labelsPath='/admin/settings/system-labels',profilePath='/admin/settings/system-labels/profile-options';
   type LabelsPath=typeof labelsPath|typeof profilePath;
   function importTrigger(target:Page,messages:typeof en){
@@ -237,29 +259,56 @@ describe('System Labels authenticated Excel browser journey',()=>{
     target.off('pageerror',pageError);target.off('console',consoleError);target.off('requestfailed',requestFailed);target.off('response',responseError);
    }
   }
-  // Provision required fonts before the owned Next server consumes runner resources.
-  // The packages and both existing finite command budgets remain unchanged.
+  // Verify real Noto packages, selected font faces and glyphs before skipping duplicate package work.
   signal.throwIfAborted();
   if(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'){
    const fontSetupStarted=performance.now();
-   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'update',elapsedMs:0}));
-   execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
-   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'install',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
-   try{
-    execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
-   }catch(error){
-    const failure=error as {code?:string;signal?:string;stdout?:Buffer;stderr?:Buffer};
-    // Only this fixed public-runner package command's bounded output; no environment or application logs.
-    console.error('SYSTEM_LABEL_FONT_INSTALL_FAILURE '+JSON.stringify({elapsedMs:Math.round(performance.now()-fontSetupStarted),code:failure.code,signal:failure.signal,
-     stdout:failure.stdout?.subarray(-8192).toString('utf8'),stderr:failure.stderr?.subarray(-8192).toString('utf8')}));
-    throw error;
+   const fontEvidence=join(evidence,'system-label-font-readiness.json');
+   const requiredFaces=[
+    {family:'Noto Sans',lang:'en',pkg:'fonts-noto-core',sample:'System Labels Tetapan Nhãn hệ thống'},
+    {family:'Noto Sans Tamil',lang:'ta',pkg:'fonts-noto-core',sample:'அமைப்பு பெயர்கள்'},
+    {family:'Noto Sans Thai',lang:'th',pkg:'fonts-noto-core',sample:'ป้ายกำกับระบบ'},
+    {family:'Noto Sans CJK SC',lang:'zh-cn',pkg:'fonts-noto-cjk',sample:'系统标签'},
+   ];
+   const probe=()=>{
+    const command=(file:string,args:string[])=>execFileSync(file,args,{encoding:'utf8',stdio:'pipe',timeout:10000,maxBuffer:1024**2}).trim();
+    const statuses=command('dpkg-query',['-W','-f','${db:Status-Status}\n','fonts-noto-core','fonts-noto-cjk']).split('\n');
+    if(statuses.length!==2||statuses.some(status=>status!=='installed'))throw Error('Required Noto packages are not installed');
+    return requiredFaces.map(face=>{
+     const [file,families,index]=command('fc-match',['--format','%{file}\n%{family}\n%{index}\n',`${face.family}:lang=${face.lang}`]).split('\n');
+     if(!file?.startsWith('/usr/share/fonts/')||!families?.split(',').map(value=>value.trim()).includes(face.family)||!/^\d+$/.test(index??''))throw Error('Actual required Noto face unavailable');
+     const owner=command('dpkg-query',['-S',file]);if(!owner.startsWith(face.pkg+': '))throw Error('Required font face has a different package owner');
+     const ranges=command('fc-query',['--index',index,'--format','%{charset}',file]).split(/\s+/).filter(Boolean).map(range=>range.split('-').map(value=>Number.parseInt(value,16)));
+     if(!ranges.length||ranges.some(range=>range.length>2||range.some(value=>!Number.isSafeInteger(value))))throw Error('Actual font charset unavailable');
+     for(const character of face.sample){const code=character.codePointAt(0)!;if(!ranges.some(([first,last=first])=>code>=first&&code<=last))throw Error('Required Noto script glyph unavailable');}
+     return {family:face.family,lang:face.lang,package:face.pkg,file,index:Number(index),sampleGlyphsVerified:true};
+    });
+   };
+   let ready:ReturnType<typeof probe>|undefined;
+   try{ready=probe();}catch{console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'not-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));}
+   if(!ready){
+    let phase='update';
+    try{
+     console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+     execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
+     phase='install';console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+     execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
+    }catch(error){
+     const failure=error as {code?:string;signal?:string;stdout?:Buffer;stderr?:Buffer};
+     console.error('SYSTEM_LABEL_FONT_INSTALL_FAILURE '+JSON.stringify({phase,elapsedMs:Math.round(performance.now()-fontSetupStarted),code:failure.code,signal:failure.signal,
+      stdout:failure.stdout?.subarray(-8192).toString('utf8'),stderr:failure.stderr?.subarray(-8192).toString('utf8')}));throw error;
+    }
+    ready=probe();
    }
-   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+   writeFileSync(fontEvidence,JSON.stringify({source:process.env.AIHR_CI_HEAD,faces:ready,elapsedMs:Math.round(performance.now()-fontSetupStarted),releaseAuthorized:false},null,2));
+   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'verified-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+   sampleCapacity?.('fonts-ready');
   }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   signal.throwIfAborted();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+  sampleCapacity?.('next-spawned');
   const nextChild=server;
   nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
   nextChild.once('error',()=>{serverSpawnFailed=true;});
@@ -270,7 +319,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
    try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
   }
-  expect(ready,'Owned preview server is reachable').toBe(true);
+  expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
   signal.throwIfAborted();
   browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
   const browser=await browserLaunch;
@@ -325,9 +374,10 @@ describe('System Labels authenticated Excel browser journey',()=>{
    const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
+    sampleCapacity?.('locale-'+locale+'-'+name+'-begin');
     await page.setViewportSize({width,height});await navigate(page,labelsPath,messages,locale);
     expect(await page.locator('body').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
-    await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});
+    await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
    }
   }
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
@@ -355,8 +405,10 @@ describe('System Labels authenticated Excel browser journey',()=>{
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
   await restrictedContext.close();await context.close();
   signal.throwIfAborted();
+  sampleCapacity?.('functional-checks-complete');
   publishResult=()=>{
    if(task.result?.state!=='pass')return;
+   if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
    writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   };
  },600000);

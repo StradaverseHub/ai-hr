@@ -106,3 +106,6 @@ export { payComponentCompanyChoices, PayComponentCompanyError } from '../../core
 export {payrollHistoryMaintenanceRecords,payrollHistoryMaintenanceRecord} from '../../core/payroll-history-maintenance-read';
 export {previewPayrollHistoryMaintenance} from '../../core/payroll-history-maintenance';
 export type {PayrollHistoryUploadMaintenance,PayrollHistoryMaintenanceRecord,PayrollHistoryMaintenanceDetail,PayrollHistoryMaintenancePage,PayrollHistoryMaintenanceQuery,PayrollHistoryMaintenanceRequest,PayrollHistoryMaintenancePreview} from '../../lib/payroll-history-maintenance';
+
+/** Correction-aware read contract for country report producers; callers retain their tenant transaction. */
+export {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';

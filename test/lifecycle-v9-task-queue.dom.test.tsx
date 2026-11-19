@@ -58,15 +58,16 @@ it('keeps a rejected save visible and applies company filtering to both owners',
   expect(screen.getByRole('combobox', { name: 'Status for Offboarding owned work · Offboarding person' })).toHaveValue('todo');
 });
 
-it('combines the canonical REQ and RVK records and retains native request numbers and case links', () => {
+it('combines canonical REQ and RVK records and links each request to its dedicated owner page', () => {
   const props = fixture(), c = props.native.rows[0].case;
   c.requisitions.push({ id: 'request', number: 'IT-REQ-0042', createdAt: '2026-10-30T00:00:00Z', cancelledAt: null, handedAt: null, items: [], hrNote: '', noteVersion: 0, noteAcks: {} });
   render(<RequestRecords {...props} labels={{}}/>);
   expect(screen.getByRole('link', { name: 'IT-REQ-0042' })).toHaveAttribute('href', '/lifecycle/requisitions/onboarding/same-case-id');
-  expect(screen.getByRole('button', { name: 'RVK-0009' })).toBeVisible();
+  expect(screen.getByRole('link', { name: 'RVK-0009' })).toHaveAttribute('href','/lifecycle/requisitions/offboarding/same-case-id');
   fireEvent.change(screen.getByRole('combobox', { name: 'Request type' }), { target: { value: 'off' } });
   expect(screen.queryByRole('link', { name: 'IT-REQ-0042' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'RVK-0009' })); expect(props.openCase).toHaveBeenCalledWith('same-case-id');
+  expect(screen.getByRole('link', { name: 'RVK-0009' })).toHaveAttribute('href','/lifecycle/requisitions/offboarding/same-case-id');
+  expect(props.openCase).not.toHaveBeenCalled();
 });
 
 it('routes return/revoke ownership and progress to the item owner, preserving completed owners',async()=>{
@@ -110,9 +111,17 @@ it('exports exactly the currently filtered, authorized request rows and escapes 
 });
 it('exports the eleven reference columns with labels, real item names, not-returned markers and clearance time',()=>{
  const props=fixture(),c=props.cases[0];c.facts.title='position';c.facts.businessGroup='group';c.facts.lastDay='2026-10-30';c.state='cleared';c.closedAt='2026-10-30T10:00:00Z';c.items=[{name:'Fictional laptop',status:'notReturned'} as V9Case['items'][number]];
- render(<RequestRecords cases={props.cases} native={null} labels={{title:{position:'Site engineer'},businessGroup:{group:'Fictional group'}}} company="two" search="Offboarding person" openCase={props.openCase}/>);
+ const view=render(<RequestRecords cases={props.cases} native={null} labels={{title:{position:'Site engineer'},businessGroup:{group:'Fictional group'}}} company="two" search="Offboarding person" openCase={props.openCase}/>);
  fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));
  const csv=(screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value;
  expect(csv.split(/\r?\n/)[0]).toBe('Type,Request,Case,Person,Job title,Business Group,Join date / last working day,Status,Done,Items,Handed over / cleared');
- expect(csv).toContain('Site engineer,Fictional group,2026-10-30,Cleared,1/1,Fictional laptop (not returned),2026-10-30T10:00:00Z');
+ expect(csv).toContain('Site engineer,Fictional group,2026-10-30,Needs HR review,0/1,Fictional laptop (not returned),');
+ expect(csv).not.toContain('2026-10-30T10:00:00Z');
+ // Requisition completion has its own recorded time; case clearance must never substitute for it.
+ c.items[0].status='done';c.itemsClearedAt='2026-10-29T09:00:00Z';
+ view.rerender(<RequestRecords cases={props.cases} native={null} labels={{title:{position:'Site engineer'},businessGroup:{group:'Fictional group'}}} company="two" search="Offboarding person" openCase={props.openCase}/>);
+ const completed=(screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value;
+ expect(completed.split(/\r?\n/)[0]).toBe(csv.split(/\r?\n/)[0]);
+ expect(completed).toContain('Site engineer,Fictional group,2026-10-30,Completed,1/1,Fictional laptop,2026-10-29T09:00:00Z');
+ expect(completed).not.toContain('2026-10-30T10:00:00Z');
 });

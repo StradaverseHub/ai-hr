@@ -9,6 +9,7 @@
  *  - byte-identical regression: a batch for an UNASSIGNED employment is unchanged by the additive column
  *  - history preservation: a processed batch's payslip is immutable and regeneration throws BatchNotDraftError
  */
+import {normalizeEmptyTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -112,7 +113,7 @@ async function statutoryForMoneyComparison(ps: typeof schema.payslip.$inferSelec
   const reportComparison={...report,payingCompanyId:'validated-paying-company',proration:{...proration,
     payMode:differentPayStructure?'validated-pay-mode':proration.payMode,window:'validated-proration-window'}};
   // Keep every saved input and monetary field; only independently validated employment-owned UUIDs differ.
-  return {...statutory,reportContext:reportComparison,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:differentPayStructure?'validated-whole-salary-basis':{...basis,compensationId:'validated-compensation-selection'}};
+  return {...normalizeEmptyTaxOpeningProvenance(statutory,{year,companyId:batch.companyId,employmentId:ps.employmentId}),reportContext:reportComparison,pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'},salaryBasis:differentPayStructure?'validated-whole-salary-basis':{...basis,compensationId:'validated-compensation-selection'}};
 }
 
 describe('2.1 Payroll Policy — service + substrate', () => {

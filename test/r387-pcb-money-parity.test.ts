@@ -1,5 +1,6 @@
+import {withoutVerifiedTaxOpeningProvenance,type OpeningPrefix} from './helpers/payroll-opening-provenance';
 import {readFileSync,writeFileSync} from 'node:fs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {requirePackFor} from '../localization/registry';
@@ -130,11 +131,41 @@ describe('r387 complete monetary parity against original calculation',()=>{
   ];
   for(const spec of specs){const {amount,...input}=spec;const c=await upsertPayComponent(ctx,{...flags,...input,label:input.name});await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:c.id,amount,allowZeroAmount:amount===0,effectiveFrom:`${year}-01-01`});}
   await saveTp3(ctx,{personId:e.personId,assessmentYear:year,sectionC:{c1:{amount:30000},c2:{subItems:{i:pack.payroll.pcbExemptionTables.pcb.PCB_TRA_BUSINESS-50}}}});
-  const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-01`});await generatePayslips(ctx,{batchId:first.batchId});
-  const second=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-02`});await generatePayslips(ctx,{batchId:second.batchId});
+  // Capture the exact prior native owners BEFORE processing consumes their opening. The fixture,
+  // not the resulting stamp, chooses the complete source population: Jan has none, Feb has Jan,
+  // and the Feb bonus has Jan plus its earlier regular run. No imported history is present.
+  const openingPrefixes=new Map<string,OpeningPrefix>();
+  const capturePrefix=async(priorBatchIds:string[]):Promise<OpeningPrefix>=>{
+    if(!priorBatchIds.length)return [];
+    const sources=await owner.client<{id:string;employment_id:string;company_id:string;source:Record<string,unknown>;batch:Record<string,unknown>}[]>`
+      select p.id,p.employment_id,b.company_id,to_jsonb(p) as source,
+        jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,
+          'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch
+      from public.payslip p join public.payroll_batch b on b.id=p.batch_id
+      where p.tenant_id=${base.tenantId}::uuid and p.employment_id=${e.employmentId}::uuid
+        and b.company_id=${base.companyId}::uuid and b.id=any(${priorBatchIds}::uuid[])
+      order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`;
+    expect(sources).toHaveLength(priorBatchIds.length);
+    expect(sources.map(row=>String(row.batch.id)).sort()).toEqual([...priorBatchIds].sort());
+    const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>isRecord(item)
+      ?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
+    return sources.map(row=>{
+      expect(row).toMatchObject({employment_id:e.employmentId,company_id:base.companyId});
+      expect(row.source).toMatchObject({id:row.id,tenant_id:base.tenantId,employment_id:e.employmentId,batch_id:row.batch.id});
+      return {payslipId:row.id,sourceHash:createHash('sha256').update(canonical({source:row.source,batch:row.batch,importRevision:null})).digest('hex')};
+    });
+  };
+  const first=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-01`});
+  openingPrefixes.set(first.batchId,await capturePrefix([]));
+  await generatePayslips(ctx,{batchId:first.batchId});
+  const second=await createBatch(ctx,{companyId:base.companyId,payPeriod:`${year}-02`});
+  openingPrefixes.set(second.batchId,await capturePrefix([first.batchId]));
+  await generatePayslips(ctx,{batchId:second.batchId});
   const extra=await createAdditionalRun(ctx,{companyId:base.companyId,payPeriod:`${year}-02`,runType:'bonus'});
   const bonus=await upsertPayComponent(ctx,{...flags,code:'SYNTH_TAXABLE_BONUS',label:'Cash Bonus',name:'Cash Bonus',includedInSocsoEis:false,pcbRemunerationType:'additional',pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:true});
-  await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:1000});await generatePayslips(ctx,{batchId:extra.batchId});
+  await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:1000});
+  openingPrefixes.set(extra.batchId,await capturePrefix([first.batchId,second.batchId]));
+  await generatePayslips(ctx,{batchId:extra.batchId});
   const snapshots:ReturnType<typeof nativeMoneySnapshot>[]=[];
   const comp=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,e.employmentId));
   expect(comp).toHaveLength(1);expect(Number(comp[0].basicSalary)).toBe(10000);
@@ -154,7 +185,13 @@ describe('r387 complete monetary parity against original calculation',()=>{
     // Tax recalculation adds opening-exemption provenance to the saved statutory JSON. Assert it exactly,
     // then compare every remaining native money field against the unchanged golden.
     // 69d6ed3c — statutory trace v1 is verified against this payslip's own amounts, then set aside.
-    const native=withoutVerifiedStatutoryTrace(row.statutory as Record<string,unknown>);
+    expect(row).toMatchObject({tenantId:base.tenantId,employmentId:e.employmentId,batchId:batch.batchId});
+    const expectedPrefix=openingPrefixes.get(batch.batchId);
+    expect(expectedPrefix).toBeDefined();
+    const native=withoutVerifiedTaxOpeningProvenance(
+      withoutVerifiedStatutoryTrace(row.statutory as Record<string,unknown>),
+      {year,companyId:base.companyId,employmentId:e.employmentId},expectedPrefix!,
+    );
     expect(native.taxBasisOpeningExemptionYear).toBe(year);
     expect(native.taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
     // c2ea9567 adds the HRD Corp levy working to regular runs only. This company is not HRDF-registered:

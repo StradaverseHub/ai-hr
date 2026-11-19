@@ -1,5 +1,6 @@
 /** Disposable historical Form signer. No migration/reset, future SQL, fabricated signature or recovery shim. */
 import assert from 'node:assert/strict';
+import {withoutApprovedPhoneDependency} from './approved-phone-dependency';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {existsSync,lstatSync,readFileSync,readdirSync,realpathSync} from 'node:fs';
@@ -149,7 +150,15 @@ async function main(){
  assert(!existsSync(join(source,'.git'))&&!existsSync(join(source,'.env'))&&!existsSync(join(source,'.env.local')));
  validateCapsule(source,current,git);
  for(const [file,hash]of Object.entries(PINS))assert.equal(sha(readFileSync(join(source,file))),hash,'Frozen source mismatch: '+file);
- for(const file of ['package.json','pnpm-lock.yaml'])assert.equal(sha(readFileSync(join(current,file))),sha(readFileSync(join(source,file))),'Prepared dependencies must match historical source');
+ // One exact approved dependency-transition owner is shared with the parent and worker proofs.
+ // Its graph contains only native node:assert/strict; frozen capsule/runtime bytes stay untouched.
+ const dependencyHelper='test/helpers/approved-phone-dependency.ts';
+ assert.equal(sha(readFileSync(join(current,dependencyHelper))),sha(git(['show','HEAD:'+dependencyHelper])),'The approved dependency proof helper must be frozen');
+ for(const file of ['package.json','pnpm-lock.yaml']){
+  const historical=readFileSync(join(source,file),'utf8');
+  const prepared=withoutApprovedPhoneDependency(file,readFileSync(join(current,file),'utf8'),historical);
+  assert.equal(sha(prepared),sha(historical),file+' prepared graph differs only by the exact approved phone leaf');
+ }
  assert.equal(realpathSync(join(source,'node_modules')),realpathSync(join(current,'node_modules')));assert(existsSync(join(source,'node_modules/drizzle-orm/index.js')));
  assert.equal(realpathSync(env.TSX_TSCONFIG_PATH!),join(source,'tsconfig.json'));
  const currentJournal=JSON.parse(readFileSync(join(current,'db/migrations/meta/_journal.json'),'utf8')) as {entries:{tag:string}[]};

@@ -1,3 +1,5 @@
+-- The canonical commit sealer owns the audit-chain key. Business commands retain
+-- their existing Access, lifecycle and source-row locks without taking that key.
 -- Narrow source custodian: only a validated document delta is applied to its existing V9 case.
 CREATE FUNCTION app.v9_document_route_apply(p_case uuid,p_revision integer,p_document text,p_next jsonb,p_operation text) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -57,7 +59,7 @@ DECLARE source record;d jsonb;s jsonb;step jsonb;prior_action jsonb;next jsonb;a
 BEGIN
  IF NOT app.v9_signing_current_actor() THEN RAISE EXCEPTION 'Verified signer required' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
- PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
  PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
  SELECT * INTO source FROM app.v9_document_route_sources(p_case) WHERE case_id=p_case AND document->>'id'=p_document;
@@ -102,7 +104,7 @@ DECLARE source record;d jsonb;next jsonb;k text;v jsonb;block jsonb;cleaned json
 BEGIN
  IF NOT app.v9_signing_current_actor() OR p_edits IS NOT NULL AND (jsonb_typeof(p_edits) IS DISTINCT FROM 'object' OR octet_length(p_edits::text)>1048576) OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>1048576 THEN RAISE EXCEPTION 'Invalid document edit';END IF;
  PERFORM app.access_workforce_write_lock();
- PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
  PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
  SELECT * INTO source FROM app.v9_document_route_sources(p_case) WHERE case_id=p_case AND document->>'id'=p_document;

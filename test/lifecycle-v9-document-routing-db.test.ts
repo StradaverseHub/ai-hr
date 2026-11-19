@@ -152,3 +152,40 @@ it('uses the verified assignment closed by the actual exit for after-LWD linked 
  await expect(withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(forged)}::jsonb where id=${id}::uuid and tenant_id=${base.tenantId}::uuid`))).rejects.toThrow();
  await v9Command(admin,id,c.revision,{type:'generate',template:template.id});c=(await v9Workspace(admin)).cases.find(c=>c.id===id)!;const d=c.documents.find(d=>d.templateId===template.id)!;expect(c.documents.find(d=>d.id===retained.id)).toEqual(retained);expect(d.values).toMatchObject({dept:'Finance',position:'Executive'});expect(d.personnelSourceReference).toMatchObject({basis:'exit-boundary',asOf:exit,assignmentId:boundary.id});expect(d.mergeValues).not.toHaveProperty('_assignmentId');expect(d.mergeValues).not.toHaveProperty('personalEmail');
 });
+
+
+it('requires real Person custody only for document holders, including fixed, named and group choices',async()=>{
+ const {id}=await prepared();
+ let config=(await v9Workspace(admin)).config!;
+ const mixedGroup='document-person-mixed',emptyGroup='document-person-missing';
+ config.groups.push({id:mixedGroup,name:'Fictional signing candidates',members:[employee.userId!,admin.userId!],limit:0},{id:emptyGroup,name:'Fictional missing signing Person',members:[employee.userId!],limit:0});
+ // Publish shared groups first: Offboarding route references validate against their current canonical owner.
+ await v9SaveConfig(admin,config.revision,config);config=(await v9Workspace(admin)).config!;
+ const template=structuredClone(config.templates[0]);template.id='person-custody-check';template.name='Person custody check';
+ template.versions[0].routing=[
+  {id:'hr-sign',order:1,action:'sign',owner:true,who:{kind:'people',userIds:[admin.userId!]}},
+  {id:'employee-sign',order:2,action:'sign',owner:false,who:{kind:'employee'}},
+  {id:'named-missing',order:2,action:'review',owner:false,who:{kind:'people',userIds:[employee.userId!]}},
+  {id:'group-any',order:2,action:'review',owner:false,who:{kind:'group',groupId:mixedGroup},pick:'any'},
+  {id:'group-round-robin',order:2,action:'review',owner:false,who:{kind:'group',groupId:mixedGroup},pick:'roundRobin'},
+  {id:'group-missing',order:2,action:'review',owner:false,who:{kind:'group',groupId:emptyGroup}},
+ ];
+ config.templates.push(template);await v9SaveConfig(admin,config.revision,config);
+ // The saved routing was valid; the account subsequently lost its Personnel binding.
+ await owner.withTenant(admin,tx=>tx.execute(sql`update app_user set person_id=null where id=${employee.userId!}::uuid and tenant_id=${base.tenantId}::uuid`));
+ let current=(await v9CaseDetail(admin,id)).case;
+ await v9Command(admin,id,current.revision,{type:'generate',template:template.id});
+ current=(await v9CaseDetail(admin,id)).case;
+ const document=current.documents.find(document=>document.templateId===template.id)!;
+ expect(document.signing!.route.steps.map(step=>({id:step.id,holderId:step.holderId,holderPersonId:step.holderPersonId??null}))).toEqual([
+  {id:'hr-sign',holderId:admin.userId,holderPersonId:admin.personId},
+  {id:'employee-sign',holderId:null,holderPersonId:null},
+  {id:'named-missing',holderId:null,holderPersonId:null},
+  {id:'group-any',holderId:admin.userId,holderPersonId:admin.personId},
+  {id:'group-round-robin',holderId:admin.userId,holderPersonId:admin.personId},
+  {id:'group-missing',holderId:null,holderPersonId:null},
+ ]);
+ expect(document.signing!.actions).toEqual([]);
+ expect(document.routingUnresolved?.map(item=>item.stepId)).toEqual(['employee-sign','named-missing','group-missing']);
+ expect((await owner.client`select person_id,archived_at from app_user where id=${employee.userId!}::uuid`)[0]).toEqual({person_id:null,archived_at:null});
+});

@@ -17,7 +17,7 @@ GRANT EXECUTE ON FUNCTION app.payroll_tax_basis_subject_page(uuid[],integer,inte
 --> statement-breakpoint
 -- Read only: keep every existing write policy, self reader and restrictive source/reader guard.
 CREATE FUNCTION app.payroll_tax_basis_original_employer_read(source_batch uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=off AS $$
- SELECT EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=source_batch AND b.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.can_admin_payroll_for(b.company_id))
+ SELECT EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=source_batch AND b.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.payroll_tax_basis_permission(b.company_id,'payroll.tax-basis.view'))
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.payroll_tax_basis_original_employer_read(uuid) FROM PUBLIC;

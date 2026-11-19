@@ -516,6 +516,32 @@ class ActualArchiveCapacityTests(unittest.TestCase):
    with patch.object(f.fmt,'extract_archive',side_effect=expensive):proof=f.invoke_preparation(a,umask=0o077)
    elapsed=time.monotonic()-started;self.assertGreater(elapsed,30);r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
    print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_PREPARED_NORMAL_GRAPH','source':f.source,'archiveBytes':PACKAGE.stat().st_size,'entries':len(f.manifest['entries']),'preparationElapsedSeconds':elapsed,'offlinePreparationPolicy':a['preparation']['policy'],'offlinePreparationMaxSeconds':600,'fixedLiveCapSeconds':827,'originalLivePreparationSeconds':30,'nativeProofPorts':'deterministic; actual files/hash/locks/elapsed','unitMutationBeforePreparation':False}))
+ def test_actual_full_archive_legacy_v1_normal_prepared_f4_startup_window(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)
+   started=time.monotonic();a=f.prepare_record();self.assertEqual(a['preparation']['policy'],prepared.POLICY);self.assertEqual(prepared.PREPARE_SECONDS,300);proof=f.invoke_preparation(a);self.assertLess(time.monotonic()-started,300);capture=core.fences.capture_tree;fired=[]
+   def startup(*args,**kwargs):
+    o=getattr(ci.ACTIVE_OPERATION_GUARD,'observer',None)
+    if o is not None and o.slot_name=='F4'and not fired:fired.append(True);REAL_SLEEP(30)
+    return capture(*args,**kwargs)
+   began=time.monotonic()
+   with patch.object(core.fences,'capture_tree',startup):r=f.invoke_live(f.live_record(a,proof))
+   f4=json.loads((f.operation/'ci-runtime-fence-04.json').read_bytes())
+   self.assertEqual(fired,[True]);self.assertGreaterEqual(f4['elapsedSeconds'],30);self.assertLess(f4['elapsedSeconds'],60)
+   self.assertEqual((r['completeMetadataFences'],r['fullNativeAudits']),(10,2));self.assertLess(time.monotonic()-began,827)
+   print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_LEGACY_V1_NORMAL_PREPARED_F4_WINDOW','source':f.source,
+    'entries':len(f.manifest['entries']),'archiveBytes':PACKAGE.stat().st_size,'f4ElapsedSeconds':f4['elapsedSeconds'],
+    'offlinePreparationPolicy':a['preparation']['policy'],'offlinePreparationMaxSeconds':300,'fixedLiveCapSeconds':827,'nativeReadinessSeconds':600,'nativeProofPorts':'deterministic; actual bytes/hash/locks/monotonic elapsed'}))
+ def test_actual_full_archive_legacy_v1_preparation_over30_then_normal_full_wrapper(self):
+  with tempfile.TemporaryDirectory()as tmp:
+   f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)
+   raw_extract=f.fmt.extract_archive
+   def expensive(*args,**kw):
+    result=raw_extract(*args,**kw);REAL_SLEEP(31);return result
+   started=time.monotonic();a=f.prepare_record();self.assertEqual(a['preparation']['policy'],prepared.POLICY);self.assertEqual(prepared.PREPARE_SECONDS,300)
+   with patch.object(f.fmt,'extract_archive',side_effect=expensive):proof=f.invoke_preparation(a,umask=0o077)
+   elapsed=time.monotonic()-started;self.assertGreater(elapsed,30);self.assertLess(elapsed,300);r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
+   print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_LEGACY_V1_PREPARED_NORMAL_GRAPH','source':f.source,'archiveBytes':PACKAGE.stat().st_size,'entries':len(f.manifest['entries']),'preparationElapsedSeconds':elapsed,'offlinePreparationPolicy':a['preparation']['policy'],'offlinePreparationMaxSeconds':300,'fixedLiveCapSeconds':827,'originalLivePreparationSeconds':30,'nativeProofPorts':'deterministic; actual files/hash/locks/elapsed','unitMutationBeforePreparation':False}))
  def test_actual_full_archive_failed_preunit_wrapper_preserves_original_failure(self):
   with tempfile.TemporaryDirectory()as tmp:
    f=Fixture(Path(tmp),PACKAGE);started=time.monotonic();a=f.prepare_record(True);REAL_SLEEP(31);proof=f.invoke_preparation(a);before=(f.state/'current').read_bytes();marker=(f.operation/'ci-runtime-started.json').read_bytes();r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['transitionStages'],['F']*10);self.assertEqual(r['fullNativeAudits'],2);self.assertEqual((f.state/'current').read_bytes(),before);self.assertEqual((f.operation/'ci-runtime-started.json').read_bytes(),marker);self.assertEqual(f.original_probe_modes.count('resume-status'),2)

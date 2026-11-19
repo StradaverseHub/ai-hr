@@ -1,3 +1,5 @@
+-- The canonical commit sealer owns the audit-chain key. Business commands retain
+-- their existing Access, lifecycle and source-row locks without taking that key.
 -- One canonical saved-document command. Inputs are values/intent, never a policy or arbitrary case blob.
 CREATE FUNCTION app.v9_personnel_completion_sources(p_case uuid) RETURNS TABLE(case_id uuid,revision integer,company_id uuid,employment_id uuid,person_id uuid,is_native boolean,state text,document jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -36,7 +38,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE s record;c lc_v9_case;n lc_onboarding_case;private_data jsonb;case_data jsonb;before_doc jsonb;d jsonb;source jsonb;official jsonb;fingerprint text;policy jsonb;entries jsonb;entry jsonb;prior_entry jsonb;field jsonb;key text;value jsonb;answer text;old_value text;owner text;hr boolean;own boolean;actor jsonb;stamp text;history jsonb;changes jsonb;docs jsonb;log jsonb;reason text;before_owner text;after_owner text;recorded boolean:=false;target_revision integer;
 BEGIN
  IF NOT app.v9_signing_current_actor() OR coalesce(p_operation IN('save','submit','refresh','override','adopt'),false) IS NOT TRUE OR p_revision IS NULL OR p_revision<1 OR length(coalesce(p_document,'')) NOT BETWEEN 1 AND 120 OR p_override IS NOT NULL AND octet_length(p_override::text)>8000 OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>1048576 OR (SELECT count(*) FROM jsonb_each(p_values))>500 THEN RAISE EXCEPTION 'Invalid completion command' USING ERRCODE='42501';END IF;
- PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
+ PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
  SELECT * INTO c FROM lc_v9_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF c.id IS NULL THEN
   SELECT * INTO n FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;

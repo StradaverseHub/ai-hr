@@ -11,6 +11,7 @@
  * - The run is 'processing' (never visible as processed) until finalize; a failed chunk discards everything the job
  *   wrote and returns the run to draft.
  */
+import {verifyTaxOpeningProvenance,legacyOpeningDocument} from './helpers/payroll-opening-provenance';
 import {createHash} from 'node:crypto';
 import {asc,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -102,6 +103,14 @@ async function fixture(){
  await setPayrollInput(a,{batchId,employmentId:hired.get('Chen')!.employmentId,overtimeAmount:120,bonusAmount:1000});
  const snapshot=async()=>{
   const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+   expect(slips).toHaveLength(people.length);
+   for(const person of people){
+    const employmentId=hired.get(person.label)!.employmentId;
+    const owned=slips.filter(row=>row.employmentId===employmentId);
+    expect(owned).toHaveLength(1);
+    expect(owned[0]).toMatchObject({tenantId:base.tenantId,batchId,employmentId});
+    verifyTaxOpeningProvenance(owned[0].statutory as Record<string,unknown>,{year:2026,companyId:base.companyId,employmentId});
+   }
   const [batch]=await owner.db.select({status:schema.payrollBatch.status,employeeCount:schema.payrollBatch.employeeCount,totals:schema.payrollBatch.totals}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
   const [ledger]=await owner.db.select({outstandingBalance:schema.employeeLoan.outstandingBalance,instalmentsPaid:schema.employeeLoan.instalmentsPaid,status:schema.employeeLoan.status}).from(schema.employeeLoan).where(eq(schema.employeeLoan.id,loan.id));
   const schedule=await owner.db.select({sequenceNo:schema.loanRepayment.sequenceNo,dueAmount:schema.loanRepayment.dueAmount,appliedAmount:schema.loanRepayment.appliedAmount,status:schema.loanRepayment.status}).from(schema.loanRepayment).where(eq(schema.loanRepayment.loanId,loan.id)).orderBy(asc(schema.loanRepayment.sequenceNo));
@@ -138,7 +147,7 @@ describe('payroll processing background job',()=>{
   // aside. The full documents (traces included) are still compared sync-vs-job below with toEqual.
   const storedTraces=async()=>verifyStoredTraces(await owner.db.select({statutory:schema.payslip.statutory}).from(schema.payslip).where(eq(schema.payslip.batchId,f.batchId)));
   expect(await storedTraces()).toBe(5);
-  expect(createHash('sha256').update(JSON.stringify(withoutTraces(sync))).digest('hex')).toBe(GOLDEN);
+  expect(createHash('sha256').update(JSON.stringify(legacyOpeningDocument(withoutTraces(sync)))).digest('hex')).toBe(GOLDEN);
   await resetProcessedBatch(f.a,{batchId:f.batchId,reason:'Fictional job equivalence reset'});
   const before=await f.lastSequence();
   await generatePayslips(f.a,{batchId:f.batchId});
@@ -162,7 +171,7 @@ describe('payroll processing background job',()=>{
   const viaJob=await f.snapshot();
   expect(viaJob).toEqual(sync);
   expect(await storedTraces()).toBe(5);
-  expect(createHash('sha256').update(JSON.stringify(withoutTraces(viaJob))).digest('hex')).toBe(GOLDEN);
+  expect(createHash('sha256').update(JSON.stringify(legacyOpeningDocument(withoutTraces(viaJob)))).digest('hex')).toBe(GOLDEN);
   // The same audit events (the reset's own events precede `started`; the job's notice is kernel bookkeeping).
   expect(await f.eventsSince(started)).toEqual(syncEvents);
   const status=await payrollProcessingStatus(f.a,f.batchId);

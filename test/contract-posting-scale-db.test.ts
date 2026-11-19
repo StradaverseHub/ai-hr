@@ -6,6 +6,10 @@ import {contractPostingFixture,releaseContractPosting} from './helpers/contract-
 import {listContractSharedPostings,contractSharedPostingWorkPage} from '../packs/contracts/service';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
+// Execution headroom (SCALE rule 15): original full gate M, job 135112006272, timed out at
+// 30,009.57 ms. Focused run 44408917660 completed this whole case in 44,656.69 ms; 135 s is
+// about 3x that measured duration. This includes fixture/oracle work, not a request-latency
+// measurement or performance certification. Keep every scale and authority assertion.
 it('pages 1,000 source-bound postings across 70 companies with the same current group scope and no salary projection',async()=>{
  const f=await contractPostingFixture(),original=await releaseContractPosting(f);
  // Read-only scale records reuse the real fixture's released-letter identity; these clones are never submitted or approved.
@@ -51,4 +55,4 @@ it('pages 1,000 source-bound postings across 70 companies with the same current 
  const shape=JSON.stringify(first);expect(shape).not.toMatch(/salaryCents|basicSalary|signingPolicy|5200\.12|4976\.21/);
  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',(select jsonb_agg(case when g->>'id'=${f.groupId} then jsonb_set(g,'{members}','[]'::jsonb) else g end) from jsonb_array_elements(data->'groups') g)) where tenant_id=${f.b.tenantId}::uuid`);
  expect((await listContractSharedPostings(f.approver)).rows).toEqual([]);expect(await contractSharedPostingWorkPage(f.approver)).toEqual({items:[],total:0});
-});
+},135_000);

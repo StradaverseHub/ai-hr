@@ -70,3 +70,18 @@ export {v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9ReadPerso
 export async function recoverPersonnelCompletionRunsTx(...args:Parameters<typeof import('./v9/service').recoverPersonnelCompletionRunsTx>){
  return (await import('./v9/service')).recoverPersonnelCompletionRunsTx(...args);
 }
+
+/** Keep scheduler and queue registration imports independent of the server-only V9 runtime. */
+export {v9PersonnelWritableKeys} from '../../lib/lifecycle-v9-personnel-keys';
+export async function pushV9PersonnelTx(...args:Parameters<typeof import('../../core/lifecycle-v9-personnel').pushV9PersonnelTx>){
+ return (await import('../../core/lifecycle-v9-personnel')).pushV9PersonnelTx(...args);
+}
+export type {ManagerEmailRecoveryTarget} from './v9/service';
+export async function managerEmailRecoveryPage(...args:Parameters<typeof import('./v9/service').managerEmailRecoveryPage>){
+ return (await import('./v9/service')).managerEmailRecoveryPage(...args);
+}
+export async function recoverManagerEmailHoldTx(...args:Parameters<typeof import('./v9/service').recoverManagerEmailHoldTx>){
+ return (await import('./v9/service')).recoverManagerEmailHoldTx(...args);
+}
+export {requestManagerEmailRecovery,lifecycleManagerRecoveryHandler} from '../../core/lifecycle-manager-recovery';
+export {lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler} from '../../core/lifecycle-personnel-completion-recovery';

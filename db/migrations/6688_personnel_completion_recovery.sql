@@ -1,3 +1,5 @@
+-- The canonical commit sealer owns the audit-chain key. Business commands retain
+-- their existing Access, lifecycle and source-row locks without taking that key.
 -- Explicit HR recovery. Candidate pages hash saved metadata only; official Personnel is read
 -- for ONE target by the bulk worker. No document/source values leave the public review RPC.
 CREATE FUNCTION app.personnel_completion_recovery_hash(value jsonb) RETURNS text
@@ -171,7 +173,7 @@ BEGIN
  v_case_id:=(candidate->>'caseId')::uuid;v_company_id:=(candidate->>'companyId')::uuid;
  -- Match the canonical command's lock order, then freeze the exact source rows before repeating
  -- its guarded one-target review. No source values are projected by this function.
- PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
+ PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
  SELECT c.employment_id,false INTO v_employment_id,native FROM public.lc_v9_case c WHERE c.id=v_case_id AND c.tenant_id=app.current_tenant_id() AND c.company_id=v_company_id FOR UPDATE;
  IF NOT FOUND THEN
   SELECT c.employment_id,c.source_draft_id,true INTO v_employment_id,v_draft_id,native FROM public.lc_onboarding_case c WHERE c.id=v_case_id AND c.tenant_id=app.current_tenant_id() AND c.company_id=v_company_id FOR UPDATE;
