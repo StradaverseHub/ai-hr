@@ -2681,10 +2681,18 @@ export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
  *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
  *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
  *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
-export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
-  return withTenant(ctx, (tx) =>
+export async function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+  const breakdowns = await leaveRequestDateBreakdowns(ctx, [leaveRequestId]);
+  const [dates] = breakdowns.values();
+  return dates ?? [];
+}
+
+/** Read date breakdowns for the bounded request list displayed by the inbox in one authorized query. */
+export async function leaveRequestDateBreakdowns(ctx: SessionContext, leaveRequestIds: readonly string[]) {
+  const rows = leaveRequestIds.length === 0 ? [] : await withTenant(ctx, (tx) =>
     tx
       .select({
+        requestId: leaveRequestDate.leaveRequestId,
         id: leaveRequestDate.id,
         leaveDate: leaveRequestDate.leaveDate,
         days: leaveRequestDate.days,
@@ -2696,9 +2704,17 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
       .from(leaveRequestDate)
       .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
       .leftJoin(person, eq(person.id, employment.personId))
-      .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
-      .orderBy(leaveRequestDate.leaveDate),
+      .where(inArray(leaveRequestDate.leaveRequestId, leaveRequestIds))
+      .orderBy(leaveRequestDate.leaveRequestId, leaveRequestDate.leaveDate),
   );
+  type DateRow = Omit<(typeof rows)[number], 'requestId'>;
+  const breakdowns = new Map<string, DateRow[]>();
+  for (const { requestId, ...row } of rows) {
+    const existing = breakdowns.get(requestId);
+    if (existing) existing.push(row);
+    else breakdowns.set(requestId, [row]);
+  }
+  return breakdowns;
 }
 
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card
