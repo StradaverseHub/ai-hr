@@ -1,0 +1,22 @@
+name: prelaunch-operator-development
+run-name: Prelaunch operator controls only · ${{ github.sha }}
+on:
+  push:
+    branches: ['codex/board-prelaunch-resume-20261119']
+permissions:
+  contents: read
+jobs:
+  prelaunch-operator-controls:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Versioned prelaunch controls, not application or release evidence
+        run: |
+          node -e "require('node:assert/strict').equal(process.versions.node,'22.23.3')"
+          node --test .github/ci/prelaunch-recovery.test.mjs
