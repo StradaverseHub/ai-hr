@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {missingUnitFixture} from './repair-missing-unit-test-fixture.mjs';
 import {hash} from './manifest.mjs';
-import {UNIT_RECOVERY as c,UNIT_RECOVERY_BINDING,UNIT_RECOVERY_POLICY,validateInterruptedSource,validateUnitRecoveryRequest,verifyUnitRecovery,validateUnitRecoveryGrantEvidence} from './unit-recovery-policy.mjs';
+import {UNIT_RECOVERY as c,UNIT_RECOVERY_BINDING,UNIT_RECOVERY_POLICY,UNIT_RECOVERY_CONTROLLER_BRANCH,validateDedicatedUnitControllerRequest,validateInterruptedSource,validateUnitRecoveryRequest,verifyUnitRecovery,validateUnitRecoveryGrantEvidence} from './unit-recovery-policy.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {createInstallGrant,validateInstallGrant} from './ci-install-grant.mjs';
 import {NATIVE_POSTGRES_IMAGE} from './unit-postgres-prepull.mjs';
@@ -21,7 +21,7 @@ function fixture(){
  Object.assign(q.expectation.metadata.run,{id:c.expectationRunId,head_sha:c.expectationController,head_branch:'main',conclusion:'failure'});
  const priorJob=q.expectation.metadata.jobs[0];Object.assign(priorJob,{run_id:c.expectationRunId,head_sha:c.expectationController,head_branch:'main'});
  Object.assign(q.expectation.metadata.artifacts[0].workflow_run,{id:c.expectationRunId,head_sha:c.expectationController,head_branch:'main'});Object.assign(q.expectation.source,{runId:c.expectationRunId,controller:c.expectationController,branch:'main'});
- const producer=q.producer,font=producer.steps[0];producer.steps.push({name:'Bounded source-owned native PostgreSQL image transport',conclusion:'success'});
+ const producer=q.producer,font=producer.steps[0];font.number=8;producer.steps.push({name:'Bounded source-owned native PostgreSQL image transport',number:7,conclusion:'success',started_at:producer.started_at,completed_at:new Date(Date.parse(producer.started_at)+250).toISOString()});
  q.metadata.jobs.find(j=>j.name==='deployment-hold').steps.push({name:'Deployment remains disabled',conclusion:'success'});
  const start=Date.parse(producer.started_at),at=n=>new Date(start+n).toISOString();
  q.nativePrepull={kind:'BOUNDED_SOURCE_NATIVE_POSTGRES_PREPULL_NOT_TEST_PASS',releaseAuthorized:false,source:c.source,controller,runId:q.run.id,attempt:1,unit:c.unit,owner:{path:'.github/ci/postgres.sh',gitBlob:'49d3fe2671ca6f13192169d8101c2c14f62236fc',sha256:'e14ab0a207112c61d40b7801c0b1272ed20eb0aca0042d56c8a4cc7e572e52d0',image:NATIVE_POSTGRES_IMAGE},timeoutMs:180000,pullAttempts:1,startedAt:at(100),endedAt:at(200),pull:{status:0,signal:null,errorCode:null,timedOut:false,elapsedMs:100},inspect:{status:0,signal:null,errorCode:null,configId:'sha256:'+'9'.repeat(64),repoDigests:[NATIVE_POSTGRES_IMAGE.replace('postgres:16@','postgres@')],os:'linux',architecture:'amd64'}};
@@ -40,8 +40,19 @@ test('grant consumer refuses malformed/rebound/dropped original coverage under a
  const wrap=c=>({...c,recovery:c,controllerBranch:'main',fingerprint:hash(c)}),evidence=wrap(cert);validateUnitRecoveryGrantEvidence(evidence,f.source.run);
  for(const edit of [c=>c.bindingVersion='old',c=>c.originalReportAbsent=false,c=>c.originalConclusion='success',c=>c.controller='e'.repeat(40),c=>c.baseline='e'.repeat(40),c=>c.units.pop(),c=>c.units[2].source.jobId=c.units[1].source.jobId,c=>c.originalDependentJobs[1].name='verify',c=>c.tests--,c=>c.sourceFingerprint='a'.repeat(64)]){const bad=clone(cert);edit(bad);assert.throws(()=>validateUnitRecoveryGrantEvidence(wrap(bad),f.source.run));}
  assert.throws(()=>validateUnitRecoveryGrantEvidence({...evidence,controllerBranch:'codex/other'},f.source.run));
- const i=installationFixture(),input={...i,evidence:{...i.evidence,...evidence,result:'PASS',tier:'ci',build:{...i.evidence.build,source:c.source,controller:c.controller,runId:c.runId}},run:{...i.run,...f.source.run},producer:{...i.producer,run_id:c.runId,head_sha:c.controller}};
+ const i=installationFixture(),input={...i,evidence:{...i.evidence,...evidence,result:'PASS',tier:'ci',build:{...i.evidence.build,source:c.source,controller:c.controller,runId:c.runId}},run:{...i.run,...f.source.run},producer:{...i.producer,run_id:c.runId,head_sha:c.controller,started_at:new Date(Date.parse(f.source.run.created_at)+60000).toISOString(),completed_at:new Date(Date.parse(f.source.run.updated_at)-60000).toISOString()}};
  const grant=createInstallGrant(input);assert.equal(grant.format,2);assert.equal(grant.source,c.source);assert.equal(grant.controller,c.controller);assert.equal(grant.runId,c.runId);assert.equal(grant.build.nextBuildId,i.evidence.build.nextBuildId);assert.equal(grant.witnessFingerprint,hash(cert));assert(!Object.hasOwn(grant,'recovery'));validateInstallGrant(grant);
  assert.throws(()=>createInstallGrant({...input,evidence:{...input.evidence,controller:f.verificationController}}));
  const s=readFileSync(new URL('./ci-install-grant.mjs',import.meta.url),'utf8');assert(s.includes('unitRecovered?evidence.recovery.originalConclusion'));
+});
+
+test('dedicated controller admits only exact controller qualification or exact 825 missing-unit mode; FULL cannot start',()=>{
+ const controller='e'.repeat(40),ref='refs/heads/'+UNIT_RECOVERY_CONTROLLER_BRANCH;
+ const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_JOB:'resolve',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ATTEMPT:'1',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_REF:ref,GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@'+ref,GITHUB_SHA:controller,AIHR_CI_CONTROL_HEAD:controller};
+ const event={ref,repository:{full_name:'StradaverseHub/ai-hr',id:1333414856},inputs:{candidate_ref:UNIT_RECOVERY_CONTROLLER_BRANCH,expected_sha:controller,migration_base:c.baseline,test_parallelism:'48',diagnostics_only:'true',controller_only:'true',build_only:'false',missing_unit:'',missing_original_run:''}};
+ assert.equal(validateDedicatedUnitControllerRequest(env,event),'controller-only');assert.equal(validateDedicatedUnitControllerRequest(env,{...event,ref:UNIT_RECOVERY_CONTROLLER_BRANCH}),'controller-only');
+ const producer=clone(event);Object.assign(producer.inputs,{candidate_ref:'codex/board-final-fixture-repairs-20261119',expected_sha:c.source,diagnostics_only:'false',controller_only:'false',missing_unit:c.unit,missing_original_run:String(c.runId)});assert.equal(validateDedicatedUnitControllerRequest(env,producer),'missing-unit');
+ for(const patch of [{missing_unit:''},{missing_original_run:''},{expected_sha:c.expectationSource},{build_only:'true'},{diagnostics_only:'true'},{candidate_ref:'main'},{unknown_mode:'true'},{test_parallelism:'4'}])assert.throws(()=>validateDedicatedUnitControllerRequest(env,{...producer,inputs:{...producer.inputs,...patch}}));
+ const full=clone(producer);Object.assign(full.inputs,{missing_unit:'',missing_original_run:''});assert.throws(()=>validateDedicatedUnitControllerRequest(env,full));assert.throws(()=>validateDedicatedUnitControllerRequest({...env,GITHUB_EVENT_NAME:'push'},event));assert.throws(()=>validateDedicatedUnitControllerRequest({...env,GITHUB_REF:'refs/heads/main'},event));
+ const workflow=readFileSync(new URL('../workflows/alpha-staging.yml',import.meta.url),'utf8');assert(workflow.indexOf('validateDedicatedUnitControllerRequest(process.env')<workflow.indexOf('CI integrity regression checks'));
 });

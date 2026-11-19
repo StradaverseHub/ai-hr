@@ -15,14 +15,17 @@ export function nativePostgresOwner(bytes,blob){
  assert.deepEqual(matches,[NATIVE_POSTGRES_IMAGE],'Native source image owner changed');
  return {path:'.github/ci/postgres.sh',gitBlob:blob,sha256:sum(bytes),image:NATIVE_POSTGRES_IMAGE};
 }
-export function validatePostgresPrepull(p,{owner,source,controller,runId,unit,producer,fontStep}){
+export function validatePostgresPrepull(p,{owner,source,controller,runId,unit,producer,fontStep,prepullStep}){
  assert(p?.kind==='BOUNDED_SOURCE_NATIVE_POSTGRES_PREPULL_NOT_TEST_PASS'&&p.releaseAuthorized===false&&p.source===source&&p.controller===controller&&p.runId===runId&&p.attempt===1&&p.unit===unit,'Exact pre-pull source/producer identity required');
  assert(JSON.stringify(p.owner)===JSON.stringify(owner)&&p.timeoutMs===POSTGRES_PULL_TIMEOUT_MS&&p.pullAttempts===1,'Pre-pull owner/timeout/attempt changed');
  assert(p.pull?.status===0&&p.pull.signal===null&&p.pull.errorCode===null&&p.pull.timedOut===false&&p.pull.elapsedMs>=0&&p.pull.elapsedMs<=195000,'Actual bounded successful image pull required');
  assert(p.inspect?.status===0&&p.inspect.signal===null&&p.inspect.errorCode===null&&p.inspect.os==='linux'&&p.inspect.architecture==='amd64'&&/^sha256:[a-f0-9]{64}$/.test(p.inspect.configId),'Actual immutable image inspection required');
  const digest=owner.image.replace('postgres:16@','postgres@');
  assert(Array.isArray(p.inspect.repoDigests)&&p.inspect.repoDigests.some(x=>x===digest||x==='docker.io/library/'+digest),'Actual RepoDigests must contain source-owned immutable digest');
- assert(Date.parse(p.startedAt)>=Date.parse(producer.started_at)&&Date.parse(p.endedAt)>=Date.parse(p.startedAt)&&Date.parse(p.endedAt)<=Date.parse(fontStep.started_at)&&Date.parse(fontStep.completed_at)<=Date.parse(producer.completed_at),'Pre-pull must complete inside producer before fonts');
+ // GitHub step timestamps are truncated to seconds; the local receipt retains milliseconds.
+ // Admit only that sub-second quantization, backed by actual successful numbered step order.
+ assert(prepullStep?.conclusion==='success'&&fontStep?.conclusion==='success'&&Number.isSafeInteger(prepullStep.number)&&prepullStep.number>0&&Number.isSafeInteger(fontStep.number)&&fontStep.number>0&&prepullStep.number<fontStep.number,'Actual successful pre-pull must precede the font step');
+ assert(Date.parse(p.startedAt)>=Date.parse(producer.started_at)&&Date.parse(p.startedAt)>=Date.parse(prepullStep.started_at)&&Date.parse(p.endedAt)>=Date.parse(p.startedAt)&&Date.parse(p.endedAt)<Date.parse(prepullStep.completed_at)+1000&&Date.parse(prepullStep.completed_at)<=Date.parse(fontStep.started_at)&&Date.parse(p.endedAt)<Date.parse(fontStep.started_at)+1000&&Date.parse(fontStep.completed_at)<=Date.parse(producer.completed_at),'Pre-pull must complete inside its actual step before fonts (second-precision API)');
  return {kind:p.kind,owner,source,controller,runId,unit,timeoutMs:p.timeoutMs,pullAttempts:1,pull:p.pull,inspect:p.inspect,startedAt:p.startedAt,endedAt:p.endedAt,releaseAuthorized:false};
 }
 export function prefetchNativePostgres({env=process.env,output,run=spawnSync,clock=Date.now,git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim()}={}){

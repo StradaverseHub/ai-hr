@@ -13,6 +13,21 @@ const same=(a,b,m)=>assert(isDeepStrictEqual(a,b),m);
 const id=n=>Number.isSafeInteger(n)&&n>0;
 const sha=s=>typeof s==='string'&&/^[a-f0-9]{40}$/.test(s);
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
+export const UNIT_RECOVERY_CONTROLLER_BRANCH='codex/board-825-exact-unit-recovery-20261119';
+/** This owned controller is never a normal full-gate controller. It must not merge into app source. */
+export function validateDedicatedUnitControllerRequest(e,event){
+ const i=event?.inputs,ref='refs/heads/'+UNIT_RECOVERY_CONTROLLER_BRANCH;
+ assert(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_JOB==='resolve'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_RUN_ATTEMPT==='1','First manual hosted recovery controller only');
+ assert(e.GITHUB_REPOSITORY===REPOSITORY&&e.GITHUB_REPOSITORY_ID===String(REPOSITORY_ID)&&event?.repository?.full_name===REPOSITORY&&event.repository.id===REPOSITORY_ID,'Exact controller repository required');
+ assert(e.GITHUB_REF===ref&&[ref,UNIT_RECOVERY_CONTROLLER_BRANCH].includes(event.ref)&&e.GITHUB_WORKFLOW_REF===REPOSITORY+'/'+WORKFLOW_PATH+'@'+ref&&sha(e.AIHR_CI_CONTROL_HEAD)&&e.GITHUB_SHA===e.AIHR_CI_CONTROL_HEAD,'Exact owned controller branch/SHA required');
+ const yes=x=>x===true||x==='true',no=x=>x===false||x==='false',empty=x=>x===undefined||x==='';
+ assert(i&&Object.keys(i).every(k=>['candidate_ref','expected_sha','migration_base','test_parallelism','missing_unit','missing_original_run','diagnostics_only','controller_only','build_only'].includes(k))&&i.migration_base===UNIT_RECOVERY.baseline&&i.test_parallelism==='48'&&no(i.build_only),'Closed recovery controller inputs required');
+ if(yes(i.controller_only)&&yes(i.diagnostics_only)){
+  assert(i.candidate_ref===UNIT_RECOVERY_CONTROLLER_BRANCH&&i.expected_sha===e.AIHR_CI_CONTROL_HEAD&&empty(i.missing_unit)&&empty(i.missing_original_run),'Controller qualification must select only its exact source');return 'controller-only';
+ }
+ assert(no(i.controller_only)&&no(i.diagnostics_only)&&i.candidate_ref==='codex/board-final-fixture-repairs-20261119','Only the unchanged frozen 825 source branch may recover');
+ validateUnitRecoveryRequest(i,e.GITHUB_EVENT_NAME);return 'missing-unit';
+}
 export function validateUnitRecoveryRequest(inputs,event){
  validateMissingUnitRequest(inputs,event);
  assert(inputs.missing_unit===UNIT_RECOVERY.unit&&inputs.missing_original_run===String(UNIT_RECOVERY.runId)&&inputs.expected_sha===UNIT_RECOVERY.source,'Exact frozen interrupted execution required');
@@ -52,7 +67,7 @@ export function verifyUnitRecovery({plan,freshPlan,source,reports,missingProof,v
  const v=verifyMissingUnitEvidence({sourcePlan:plan,plan:freshPlan,missing:unit.id,proof:missingProof.proof});
  const proof=missingProof.proof;
  const owner={path:'.github/ci/postgres.sh',gitBlob:'49d3fe2671ca6f13192169d8101c2c14f62236fc',sha256:'e14ab0a207112c61d40b7801c0b1272ed20eb0aca0042d56c8a4cc7e572e52d0',image:NATIVE_POSTGRES_IMAGE};
- const nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:plan.sha,controller:freshPlan.controller,runId:proof.run.id,unit:unit.id,producer:proof.producer,fontStep:proof.producer.steps.find(s=>s.name==='Source-bound fixed HTTPS fonts for missing whole unit')});
+ const nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:plan.sha,controller:freshPlan.controller,runId:proof.run.id,unit:unit.id,producer:proof.producer,prepullStep:proof.producer.steps.find(s=>s.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(s=>s.name==='Source-bound fixed HTTPS fonts for missing whole unit')});
  assert(proof.producer.steps.some(s=>s.name==='Bounded source-owned native PostgreSQL image transport'&&s.conclusion==='success'),'Actual pre-pull workflow step required');
  assert(proof.metadata.jobs.find(j=>j.name==='deployment-hold').steps?.some(s=>s.name==='Deployment remains disabled'&&s.conclusion==='success'),'Actual fresh deployment-disabled proof required');
  assert(proof.expected.after===source.run.updated_at&&proof.fileBlob.original===UNIT_RECOVERY.testBlob,'Replacement chronology/test blob changed');

@@ -82,6 +82,13 @@ jobs:
       - name: Pin dependency-free controller runtime
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
+      - name: Refuse any full gate or unbound mode in this dedicated recovery controller
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs';
+          import {validateDedicatedUnitControllerRequest} from './.github/ci/unit-recovery-policy.mjs';
+          validateDedicatedUnitControllerRequest(process.env,JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH,'utf8')));
+          NODE
       - name: Refuse an invalid controller-only selection
         if: ${{ inputs.controller_only }}
         env:
