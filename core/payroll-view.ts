@@ -1027,6 +1027,7 @@ export type ProcessedPayslipViewRow = {
    * to showing no provenance block rather than fail to compile.
    */
   batchId?: string;
+  payrollCycleId?: string | null;
   payPeriod: string;
   runType: RunType;
   runSeq: number;
@@ -1087,14 +1088,50 @@ export type ProcessedPayslipViewRow = {
  * add a status predicate. Optional `cycle` = payroll run type (the Payroll-Cycle filter);
  * unknown values are ignored rather than cast to the pg enum (which would throw).
  */
+type ProcessedPayslipFilters = {
+  companyIds: string[];
+  year?: number;
+  month?: number;
+  employmentId?: string;
+  cycle?: string;
+  payrollCycleId?: string;
+};
+
+function processedPayslipFilters(p: ProcessedPayslipFilters) {
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
+  return and(
+    inArray(payrollBatch.companyId, p.companyIds),
+    periodFilter(p.year, p.month),
+    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
+    p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
+    cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
+  );
+}
+
+/** Resolve the latest visible period before reading payslip rows for the History landing page. */
+export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
+  if (!p.companyIds.length) return null;
+  return withTenant(ctx, async (tx) => {
+    const [live] = await tx.select({ payPeriod: payrollBatch.payPeriod })
+      .from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(processedPayslipFilters(p))
+      .orderBy(desc(payrollBatch.payPeriod))
+      .limit(1);
+    const retained = await informationPayslipDocuments(tx, {
+      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
+    });
+    const periods = [live?.payPeriod, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
+    return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
+  });
+}
+
 export function listProcessedPayslipsAcross(
   ctx: SessionContext,
-  p: {
-    companyIds: string[];
-    year?: number;
-    month?: number;
-    employmentId?: string;
-    cycle?: string;
+  p: ProcessedPayslipFilters & {
     /**
      * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
      * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
@@ -1114,7 +1151,7 @@ export function listProcessedPayslipsAcross(
   },
 ): Promise<ProcessedPayslipViewRow[]> {
   if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
-  const cycle = cleanRunType(p.cycle);
+  const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
   return withTenant(ctx, async (tx) => {
     const q = tx
@@ -1129,6 +1166,7 @@ export function listProcessedPayslipsAcross(
         currency: company.currency,
         // 417d4937 — the run id, so a caller can ask the ledger which transactions this slip consumed.
         batchId: payslip.batchId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1160,15 +1198,7 @@ export function listProcessedPayslipsAcross(
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(
-        and(
-          inArray(payrollBatch.companyId, p.companyIds),
-          periodFilter(p.year, p.month),
-          p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
-          // b240c0ff — imported history filters under its real Pay Cycle (see `filterRunTypeSql`).
-          cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
-        ),
-      )
+      .where(processedPayslipFilters(p))
       .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
       .$dynamic();
     // An absent cap does not call .limit() at all, so every existing caller — including the CSV
@@ -1178,7 +1208,7 @@ export function listProcessedPayslipsAcross(
     const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
     const seen=new Set(rows.map(row=>row.id));
     for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
     }
     if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
     return limit?rows.slice(0,limit):rows;
@@ -1226,6 +1256,7 @@ export type PayslipRunRow = {
   /** THIS employee's payslip in that run. */
   payslipId: string;
   companyId: string;
+  payrollCycleId?: string | null;
   /** 'YYYY-MM'. */
   payPeriod: string;
   runType: RunType;
@@ -1247,6 +1278,7 @@ export function listPayslipRunsFor(
       .select({
         payslipId: payslip.id,
         companyId: payrollBatch.companyId,
+        payrollCycleId: payrollBatch.payrollCycleId,
         payPeriod: payrollBatch.payPeriod,
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
@@ -1260,7 +1292,7 @@ export function listPayslipRunsFor(
     const seen=new Set(rows.map(r=>r.payslipId));
     for(const document of await informationPayslipDocuments(tx,p)){
       const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({payslipId:r.id,companyId:r.companyId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
+      rows.push({payslipId:r.id,companyId:r.companyId,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null});
     }
     return rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.companyId.localeCompare(b.companyId));
   });

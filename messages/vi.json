@@ -9018,6 +9018,7 @@
       "noSelection": "Chọn một phiếu lương để xem các khoản khấu trừ pháp định được tính như thế nào.",
       "notFound": "Không có phiếu lương nào khớp với liên kết đó.",
       "notRecordedShort": "Không được ghi lại",
+      "historicalRuns": "Hồ sơ lịch sử chưa được liên kết với chu kỳ lương đã cấu hình",
       "otherRuns": "Các lần chạy lương trong lựa chọn này",
       "otherRunsHint": "Có nhiều hơn một lần chạy lương khớp với công ty, năm, tháng và chu kỳ này — ví dụ một lần chạy thưởng bên cạnh lần chạy thường. Hãy chọn lần chạy cần giải thích.",
       "payslipHint": "Tiền lương mà mỗi cơ quan dùng làm căn cứ, quy tắc được áp dụng, cùng số tiền của người lao động và của công ty — đọc từ những gì lần chạy lương này đã ghi lại, không tính lại.",

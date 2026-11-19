@@ -9018,6 +9018,7 @@
       "noSelection": "Choose a payslip to see how its statutory deductions were worked out.",
       "notFound": "No payslip matches that link.",
       "notRecordedShort": "Not recorded",
+      "historicalRuns": "Historical records without a configured payroll cycle",
       "otherRuns": "Payroll runs in this selection",
       "otherRunsHint": "More than one payroll run matches this company, year, month and cycle — for example a bonus run beside the regular one. Choose the one to explain.",
       "payslipHint": "The wage each body was charged on, the rule applied, and the employee and employer amounts — read from what this payroll run recorded, not recalculated.",
