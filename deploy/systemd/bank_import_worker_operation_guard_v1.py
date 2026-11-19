@@ -167,7 +167,7 @@ class GuardedInvocation:
         held=self.native_lease()
         if 'baselinePublication' in a:
             self.ci.verify_baseline_publication(b,a,paired=self.stage in('drain','prepare-ci-worker'))
-        if self.observer is not None and a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage) and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
+        if a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage) and self.observer is not None and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
             self.observer.fresh_native_identity()  # Fresh owner proof AFTER expensive guards, immediately before action.
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
         return held
