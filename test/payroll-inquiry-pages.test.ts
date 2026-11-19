@@ -3,6 +3,10 @@ import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {performance} from 'node:perf_hooks';
+import * as XLSX from 'xlsx';
+import {withTenant} from '../db/client';
+import {runBulkJobTick} from '../core/bulk-job-worker';
+import {enqueueTransactionExport,readTransactionExportJob,readTransactionWorkbookPart,transactionExportJobHandler,transactionWorkbookReceipt} from '../core/payroll-transaction-export';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import type {SessionContext,Tx} from '../db/client';
@@ -186,4 +190,32 @@ it('filters Processed and Pending reprocessing before LIMIT using the native pay
  expect(processed.total).toBe(1);expect(processed.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[before.id,false]]);
  expect(reprocess.total).toBe(1);expect(reprocess.rows.map(row=>[row.id,row.reprocessRequired])).toEqual([[after.id,true]]);
  const legacy=await listIndividualTxnsAcross(a,p);expect(new Map(legacy.map(row=>[row.id,row.reprocessRequired]))).toEqual(new Map([[before.id,false],[after.id,true]]));
+});
+
+it('publishes a typed private workbook from the background job and scopes each download', async()=>{
+ const actor=adminCtx(b),employee=await hire('Fictional Excel employee');
+ const batch=await createBatch(actor,{companyId:b.companyId,payPeriod:'2026-05'});
+ await createIndividualTxn(actor,{batchId:batch.batchId,employmentId:employee.employmentId,kind:'earning',txnDate:'2026-05-10',amount:12.25});
+ const {row:{id}}=await enqueueTransactionExport(actor,{kind:'individual',filters:{
+  companyIds:[b.companyId],employmentId:employee.employmentId,year:2026,month:5,
+ }});
+ let job=await readTransactionExportJob(actor,id);
+ for(let i=0;i<20&&!['completed','failed'].includes(job.state);i++){
+  await runBulkJobTick(owner.client,{handlers:[transactionExportJobHandler]});
+  job=await readTransactionExportJob(actor,id);
+ }
+ expect(job.state,job.error ?? '').toBe('completed');
+ const receipt=transactionWorkbookReceipt(job.result);
+ expect(receipt).toMatchObject({rows:1,kind:'individual',employmentId:employee.employmentId,parts:1});
+ const content=await readTransactionWorkbookPart(actor,id,0);
+ expect(content.length).toBe(receipt.bytes);
+ const workbook=XLSX.read(content,{type:'buffer',cellDates:true});
+ const sheet=workbook.Sheets[workbook.SheetNames[0]];
+ expect(sheet.B2.v).toBe('Fictional Excel employee');
+ expect(sheet.I2).toMatchObject({t:'n',v:12.25});
+ const stranger={...actor,userId:randomUUID()};
+ await expect(readTransactionWorkbookPart(stranger,id,0)).rejects.toThrow('Workbook unavailable.');
+ await owner.client`update app.payroll_transaction_export_part set expires_at=now()-interval '1 day' where job_id=${id}::uuid`;
+ await expect(readTransactionWorkbookPart(actor,id,0)).rejects.toThrow('Workbook unavailable.');
+ await expect(withTenant(actor,tx=>tx.execute(sql`select app.payroll_transaction_export_store(${id}::uuid,0,decode('00','hex'))`))).rejects.toThrow();
 });
