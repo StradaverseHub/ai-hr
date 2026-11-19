@@ -1,5 +1,16 @@
 /** Observed steady-window latency by actual role and route; no cross-route pooling. */
 const minimumSteadySamples=20;
+const recordId=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+function writeRouteTemplate(route,action) {
+ const [root,module,view,record,extra]=route.split('/');
+ if(root!==''||extra!==undefined)return route;
+ if(action==='payrollProcess'&&module==='payroll'&&record===undefined&&recordId.test(view))return '/payroll/[batchId]';
+ if(module!=='attendance')return route;
+ if(action==='attendanceCreate'&&view==='my-records'&&/^\d{4}-\d{2}-\d{2}$/.test(record))return '/attendance/my-records/[date]';
+ if(action==='attendanceApprove'&&view==='application-history'&&recordId.test(record))return '/attendance/application-history/[id]';
+ return route;
+}
 
 export function routeLatency({samples,pageInteractions,routePools,homeTemplates,steadyStart,steadyUntil}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
@@ -15,7 +26,7 @@ export function routeLatency({samples,pageInteractions,routePools,homeTemplates,
  for(const {role,requests} of homeTemplates)for(const {path} of requests)add('read',role,path);
  for(const row of samples){
   const bucket=row.method==='POST'
-   ?add('write',row.role,row.route,row.action)
+   ?add('write',row.role,writeRouteTemplate(row.route,row.action),row.action)
    :row.method==='GET'?buckets.get(keyFor('read',row.role,row.route)):undefined;
   if(bucket&&inside(row))bucket.values.push(row.durationMs);
  }

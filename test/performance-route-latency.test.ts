@@ -58,6 +58,25 @@ it('reports distinct write actions on the same route and requires observed actio
  expect(result.missing.map(row=>row.action)).toEqual(['claimsDelete']);
  expect(result.targetMet).toBe(false);
 });
+it('measures seeded records together for the same action and keeps the role separate',()=>{
+ const fixture=input();
+ for(let index=0;index<20;index++){
+  const id='10000000-0000-4000-8000-'+String(index).padStart(12,'0');
+  fixture.samples.push(
+   {...read('companyHR','/attendance/application-history/'+id,100),method:'POST',action:'attendanceApprove'},
+   {...read('groupHR','/payroll/'+id,100),method:'POST',action:'payrollProcess'},
+   {...read('employee','/attendance/my-records/2026-11-'+String(index+1).padStart(2,'0'),100),method:'POST',action:'attendanceCreate'},
+  );
+ }
+ fixture.samples.push({...fixture.samples[1],role:'groupHR'});
+ const result=routeLatency(fixture);
+ expect(result.rows.filter(row=>row.kind==='write')).toMatchObject([
+  {role:'companyHR',route:'/attendance/application-history/[id]',samples:20,targetMet:true},
+  {role:'groupHR',route:'/payroll/[batchId]',samples:20,targetMet:true},
+  {role:'employee',route:'/attendance/my-records/[date]',samples:20,targetMet:true},
+  {role:'groupHR',route:'/attendance/application-history/[id]',samples:1,targetMet:false},
+ ]);
+});
 it('does not conceal an invalid measurement as a passing sample',()=>{
  const fixture=input();fixture.samples[0].durationMs=NaN;expect(()=>routeLatency(fixture)).toThrow(RangeError);
  fixture.steadyUntil=fixture.steadyStart;expect(()=>routeLatency(fixture)).toThrow(RangeError);
