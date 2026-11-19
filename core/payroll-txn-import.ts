@@ -786,7 +786,7 @@ async function analyzeIndividual(
     if (rec.__method === 'daily') {
       const daily = resolveDailyImportInput(comp.rule, explicitDaily ? typedUnit : undefined);
       if ('reason' in daily) {
-        push(fail(base, daily.reason, 'expected' in daily ? { value: daily.expected } : undefined));
+        push(fail(base, daily.reason, daily.expected ? { value: daily.expected } : undefined));
         continue;
       }
       inputUnit = daily.unit;

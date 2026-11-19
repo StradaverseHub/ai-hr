@@ -44,7 +44,7 @@
  * pay_component.resolution_order (migration 0330) and resolvePayComponentSet() replays that recorded order,
  * so the order that was validated is the order that pays and two runs of the same payroll cannot disagree.
  */
-import { isTxnUnit } from '../lib/payroll-transaction-units';
+import { isTxnUnit, type TxnUnit } from '../lib/payroll-transaction-units';
 import type { FormulaOp, FormulaOperand, FormulaTerm, PayRule } from '../db/schema';
 
 export { type PayRule, type FormulaOperand, type FormulaOp, type FormulaTerm } from '../db/schema';
@@ -473,7 +473,11 @@ export function payRuleAllowsDayByDay(rule: PayRule | null | undefined): boolean
 }
 
 /** Shared by preview and locked confirmation. Older admitted daily files had implicit quantity types. */
-export function resolveDailyImportInput(rule: PayRule | null | undefined, submitted?: string) {
+type DailyImportInput =
+  | { unit: TxnUnit }
+  | { reason: 'dailyItemUnsupported' | 'inputTypeRequired' | 'inputTypeInvalid' | 'dailyInputTypeMismatch'; expected?: TxnUnit };
+
+export function resolveDailyImportInput(rule: PayRule | null | undefined, submitted?: string): DailyImportInput {
   const expected = payRuleInputUnit(rule);
   if (submitted === undefined) {
     return payRuleAllowsDayByDay(rule) && payRuleDerivesAmount(rule) && expected
