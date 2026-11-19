@@ -1843,7 +1843,11 @@ async function main(){
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
- report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
+ const claimWriteRoles=mixedWorkflows?['manager']:Object.keys(measuredRoutePools);
+ const plannedWrites=claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete']
+  .map(action=>({role,route:'/claims',action}))).concat(mixedWorkflows?.plannedWrites()??[]);
+ report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
+  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedWrites,steadyStart,steadyUntil});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;

@@ -58,6 +58,21 @@ it('reports distinct write actions on the same route and requires observed actio
  expect(result.missing.map(row=>row.action)).toEqual(['claimsDelete']);
  expect(result.targetMet).toBe(false);
 });
+it('reports a planned mutation missing even when the driver never attempts it',()=>{
+ const fixture=input();
+ fixture.samples.push(...Array.from({length:19},()=>read('employee','/',100)));
+ fixture.pageInteractions.push(...Array.from({length:19},()=>navigation('employee','/',150)));
+ const plannedWrites=[{role:'companyHR',route:'/attendance/application-history/[id]',action:'attendanceApprove'}];
+ expect(routeLatency({...fixture,plannedWrites})).toMatchObject({targetMet:false,missing:[
+  {role:'companyHR',kind:'write',route:'/attendance/application-history/[id]',action:'attendanceApprove',samples:0},
+ ]});
+ expect(routeLatency(fixture).targetMet).toBe(true);
+ const id='10000000-0000-4000-8000-000000000001';
+ fixture.samples.push(...Array.from({length:20},()=>({
+  ...read('companyHR','/attendance/application-history/'+id,100),method:'POST',action:'attendanceApprove',
+ })));
+ expect(routeLatency({...fixture,plannedWrites})).toMatchObject({targetMet:true,missing:[]});
+});
 it('measures seeded records together for the same action and keeps the role separate',()=>{
  const fixture=input();
  for(let index=0;index<20;index++){

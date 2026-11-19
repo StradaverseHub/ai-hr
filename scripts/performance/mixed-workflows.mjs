@@ -6,6 +6,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
+import {readRouteForMeasurement} from './system-route-manifest.mjs';
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
 
@@ -431,5 +432,27 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return false;
  }
- return {run,verifyFailedAttendanceActions};
+ function plannedWrites() {
+  const cases=new Map();
+  const add=(role,action,path=templates[action].path)=>{
+   const route=readRouteForMeasurement(path);
+   cases.set(JSON.stringify([role,action,route]),{role,action,route});
+  };
+  for(const user of fixture.users){
+   if(user.role==='employee'){
+    if(user.index%2===1){
+     add(user.role,'attendanceCreate','/attendance/my-records/[date]');
+     const approver=approverFor(user);assert(approver,'missing planned Attendance approval actor');
+     add(approver.role,'attendanceApprove','/attendance/application-history/[id]');
+    }else for(const action of ['leaveCreate','leaveEdit','leaveCancel'])add(user.role,action);
+   }else if(user.role==='companyHR'||user.role==='groupHR'){
+    if(user.role==='groupHR')add(user.role,'payrollProcess','/payroll/[batchId]');
+    add(user.role,'personnelCreate');
+    for(const action of ['personnelEdit','personnelDelete'])add(user.role,action,'/admin/personnel/new');
+    if(user.index%50===1)for(const action of ['importValidate','importCommit'])add(user.role,action);
+   }
+  }
+  return [...cases.values()];
+ }
+ return {run,verifyFailedAttendanceActions,plannedWrites};
 }
