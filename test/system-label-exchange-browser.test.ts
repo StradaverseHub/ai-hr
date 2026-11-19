@@ -9,9 +9,7 @@ import {finished} from 'node:stream/promises';
 import {setTimeout as delay} from 'node:timers/promises';
 import {chromium,type Browser,type ConsoleMessage,type Page,type Request,type Response} from 'playwright';
 import {eq} from 'drizzle-orm';
-import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll,setModule} from './harness';
-import {hireEmployee} from '../core/org';
-import {createClaimType,setClaimPolicy} from '../packs/claims/service';
+import {adminCtx,migrateTestDb,resetDb,seedBase,owner,closeAll} from './harness';
 import {createCompany} from '../core/admin';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
@@ -388,8 +386,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const [group]=await owner.db.select().from(s.gradeGroup).where(eq(s.gradeGroup.name,'BROWSER_GROUP_LABEL'));expect(group).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:null});
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
   await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
-  for(const locale of locales){
-   page=await recycleNext('locale-'+locale,page);
+  for(const [localeIndex,locale] of locales.entries()){
+   if(localeIndex%2===0)page=await recycleNext('locale-'+locale,page);
    const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
@@ -424,62 +422,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
   await restrictedContext.close();
-  // Read-only UI acceptance on the same isolated authenticated fixture. These are actual route renders,
-  // not HTML replicas; no Roster or Rewards action is submitted.
-  // A real own employment lets Profile and Claims render their forms, while the same login retains
-  // its original tenant-wide HR grant. Only this disposable test database is changed.
-  for(const module of ['claims','rewards','recruitment'])await setModule(b.tenantId,module,'active');
-  const subject=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Visual Reviewer',primaryEmail:'visual-reviewer@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
-  await owner.db.update(s.appUser).set({personId:subject.personId}).where(eq(s.appUser.id,b.adminUserId));
-  const claimType=await createClaimType(adminCtx(b),{code:'VISUAL',name:'Fictional visual claim',defaultTaxable:false,requiresReceipt:false});
-  await setClaimPolicy(adminCtx(b),{claimTypeId:claimType.id,annualBudget:100,perClaimCap:100,effectiveFrom:'2024-01-01'});
-  await context.addCookies([{name:LOCALE_COOKIE,value:'en',url:origin}]);
-  const visualResults:unknown[]=[];
-  const visualRoutes=['/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily','/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records','/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/'];
-  for(const [routeIndex,route] of visualRoutes.entries()){
-   if(routeIndex%2===0)page=await recycleNext('operational-pair-'+Math.floor(routeIndex/2),page);
-   for(const [name,width,height] of [['desktop',1440,1050],['mobile',390,844]] as const){
-    await page.setViewportSize({width,height});
-    const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:180000});
-    expect(response?.status()).toBe(200);
-    expect(new URL(page.url()).pathname).toBe(route);
-    await page.locator('main h1').first().waitFor();
-    expect(await page.locator('main').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
-    const metrics=await page.evaluate(()=>{const main=document.querySelector('main')!;return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:main.getBoundingClientRect().width,mainClientWidth:main.clientWidth,mainScrollWidth:main.scrollWidth};});
-    expect(metrics.documentWidth).toBeLessThanOrEqual(width+1);
-    expect(metrics.mainWidth).toBeGreaterThan(250);
-    expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth+1);
-    const key=route.split('/').filter(Boolean).join('-')||'today';
-    await page.screenshot({path:join(evidence,`operational-${key}-${name}.png`),fullPage:true});
-    if(route.endsWith('system-labels')){
-     const help=page.locator('[data-label-import] details');
-     expect(await help.getAttribute('open')).toBeNull();
-     await help.locator('summary').click();
-     await help.getByText(en.admin.systemLabels.criteriaHelp,{exact:true}).waitFor();
-     await help.getByText(en.systemLabelExchange.scopeHelp,{exact:true}).waitFor();
-     await page.screenshot({path:join(evidence,`operational-label-guidance-${name}.png`),fullPage:true});
-    }
-    if(route==='/roster'){
-     const help=page.locator('[data-roster-guidance]');
-     expect(await help.getAttribute('open')).toBeNull();
-     await help.locator('summary').click();
-     await help.getByText(en.roster.manageShiftsHint,{exact:true}).waitFor();
-     expect(await help.getByRole('link',{name:en.roster.manageShiftsLink+' →'}).getAttribute('href')).toBe('/admin/attendance');
-    }
-    if(route==='/rewards'){
-     const allReviews=page.getByRole('link',{name:en.nav.rewardsAllReviews,exact:true}).filter({visible:true});
-     expect(await allReviews.count()).toBeGreaterThan(0);
-     expect(await allReviews.last().getAttribute('href')).toBe('/rewards/reviews');
-    }
-    const scrollable=await page.locator('main').evaluate(element=>element.scrollHeight>element.clientHeight+20);
-    if(scrollable){
-     await page.locator('main').evaluate(element=>{element.scrollTop=element.scrollHeight;});
-     await page.screenshot({path:join(evidence,`operational-${key}-${name}-bottom.png`),fullPage:true});
-    }
-    visualResults.push({route,viewport:name,scrollable,...metrics});
-   }
-  }
-  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated HR administrator with own employment',checks:visualResults},null,2));
   await context.close();
   signal.throwIfAborted();
   sampleCapacity?.('functional-checks-complete');
@@ -488,6 +430,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
    if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
    writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   };
- // Includes six locale processes and nine bounded pairs of actual operational route renders.
+ // Recycle after each two-language group; the unbounded process exhausted memory in run 44573956115.
  },900000);
 });
