@@ -25,7 +25,7 @@ beforeEach(async () => {
   await v9Setup(admin);
 });
 afterAll(closeAll);
-/** These recipient/provider journeys need a real HR directory identity; other tests retain seedBase's deliberate no-Person actor. */
+/** Recipient/provider and signer journeys need a real HR directory identity; other tests retain seedBase's deliberate no-Person actor. */
 async function bindAdminFixturePerson(){
  const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${base.tenantId}::uuid,'Fictional recipient HR','recipient-hr@test.invalid') returning id`);
  await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`);
@@ -1158,6 +1158,8 @@ it('applies live equipment bulk changes atomically and keeps completed items and
 });
 
 it('limits unsigned signer choices to fresh company HR and lets an authorized HR reviewer countersign',async()=>{
+  // A document signer needs a retained Person name, unlike seedBase's general no-Person administrator.
+  await bindAdminFixturePerson();
   let c=await prepared();const alternateId=await createAppUser(base.tenantId,other.personId!,'hr_admin'),alternate:SessionContext={...admin,userId:alternateId,personId:other.personId,roles:['hr_admin'],grants:undefined};
   const signerAccess=await onboardingContext(admin);signerAccess.config.access.offboarding.push(alternateId);await onboardingSaveConfig(admin,signerAccess.revision,signerAccess.config);
   let config=(await v9Workspace(admin)).config!;config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Default title',allowedSignatoryUserIds:[admin.userId!,alternateId]}];config.signatoryTitles={[alternateId]:'Alternate printed title'};
@@ -1166,6 +1168,7 @@ it('limits unsigned signer choices to fresh company HR and lets an authorized HR
   await v9SaveConfig(admin,config.revision,config);
   const workspace=await v9Workspace(admin);expect(workspace.options.signatoryCandidates![base.companyId]).toContain(alternateId);expect(workspace.options.signatoryCandidates![base.companyId]).not.toContain(employee.userId);
   await v9Command(admin,c.id,c.revision,{type:'generate',template:'signer-letter'});c=(await v9CaseDetail(admin,c.id)).case;const doc=c.documents.find(doc=>doc.templateId==='signer-letter')!;
+  expect(doc).toMatchObject({signatoryUserId:admin.userId,mergeValues:{'signatory.name':'Fictional recipient HR','signatory.title':'Default title'},values:{'printed-signer':'Fictional recipient HR','printed-title':'Default title'}});
   expect(doc.personnelCompletion).toBeUndefined(); // Existing case-owned signatory aliases are not missing Personnel fields.
   const forgedAlias=async(kind:'value'|'merge'|'user')=>{
     const forged=structuredClone(c),target=forged.documents.find(document=>document.id===doc.id)!;
