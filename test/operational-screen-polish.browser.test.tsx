@@ -14,6 +14,7 @@ vi.mock('next/navigation',()=>({usePathname:()=>'/admin/personnel',useSearchPara
 vi.mock('../app/rewards/dashboard-actions',()=>({saveDashboardAction:vi.fn()}));
 const {RewardsDashboard}=await import('../app/rewards/dashboard');
 const {SystemLabelImport}=await import('../components/system-label-import');
+const {SystemLabelsGrid}=await import('../components/system-labels-grid');
 const {PersonnelOrganisationFilters}=await import('../app/admin/personnel/organisation-filters');
 const empty:RewardDashboard={kind:'annual',year:2026,years:[2026],choice:{version:2,kind:'annual',period:'monthly',businessUnit:'all',companies:[],year:2026},canSelectAll:false,businessUnits:[],companies:[],context:null,figures:null,excluded:[],preparing:[],waiting:[],roles:[],emptyReason:null};
 const initialBodyStyle=document.body.getAttribute('style');
@@ -22,6 +23,18 @@ async function screenshot(element:HTMLElement,name:string){
  const shot=await page.screenshot({element,path:`../.vitest-attachments/${name}.png`,base64:true,animations:'disabled',scale:'css'});
  console.info('OPERATIONAL_POLISH_SCREENSHOT '+JSON.stringify({name,source:'candidate components and compiled CSS',fixture:'fictional',base64:shot.base64}));
 }
+ it('keeps label categories in a compact strip on mobile',async()=>{
+  await page.viewport(390,844);document.documentElement.dataset.uiTheme='atelier';
+  const action=vi.fn(async()=>({ok:true as const}));
+  const view=render(<NextIntlClientProvider locale="en" messages={en}><main className="p-4"><SystemLabelsGrid data={{department:[],position:[],cost_center:[],business_unit:[]}} companies={[]} writableCompanyIds={[]} isGroupAdmin actions={{save:vi.fn(async()=>({ok:true as const,created:0,updated:0,createdIds:[]})),setCriteria:action,assign:action,unassign:action,copyToCompanies:action}}/></main></NextIntlClientProvider>);
+  const nav=view.container.querySelector<HTMLElement>('[data-label-categories]')!,list=nav.querySelector('ul')!;
+  expect(within(nav).getAllByRole('button')).toHaveLength(4);
+  expect(nav.getBoundingClientRect().height).toBeLessThan(130);
+  expect(list.scrollWidth).toBeGreaterThan(list.clientWidth);
+  expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(390);
+  await screenshot(view.container,'label-categories-mobile');
+ });
+
 for(const [locale,messages] of [['en',en],['ta',ta]] as const)for(const width of [390,1440])describe(`${locale} at ${width}px`,()=>{
  it('offers one readable empty Rewards message and a reachable All reviews action',async()=>{
   await page.viewport(width,900);document.documentElement.dataset.uiTheme='atelier';document.body.style.margin='0';

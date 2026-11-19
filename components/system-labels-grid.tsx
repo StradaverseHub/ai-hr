@@ -664,14 +664,14 @@ export function SystemLabelsGrid({
   return (
     <div className="flex flex-col gap-4 lg:flex-row">
       {/* Left rail: categories */}
-      <nav className="shrink-0 lg:w-52">
+      <nav className="min-w-0 shrink-0 lg:w-52" data-label-categories>
         <div className="rounded-xl border border-border bg-card p-2">
-          <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('categories')}</div>
+          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{t('categories')}</div>
           {/* c9986927 — the rail now carries up to thirteen entries (four kinds + Grades + eight relocated
               organisation categories), so it scrolls in place rather than pushing the page. */}
-          <ul className="mt-1 max-h-[60vh] space-y-0.5 overflow-y-auto">
+          <ul className="mt-1 flex max-w-full gap-1 overflow-x-auto lg:block lg:max-h-[60vh] lg:space-y-0.5 lg:overflow-x-hidden lg:overflow-y-auto">
             {KINDS.map((k) => (
-              <li key={k}>
+              <li key={k} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -683,7 +683,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     !showGrades && !showGradeGroups && optionKey === null && kind === k
                       ? 'bg-primary/10 font-medium text-primary'
                       : 'text-foreground hover:bg-muted'
@@ -697,7 +697,7 @@ export function SystemLabelsGrid({
             {/* b1b81a08 — the fifth rail entry: Grades. Same button, same live count; selecting it swaps
                 the BODY for gradesSlot rather than re-pointing `kind` (job_grade is tenant-global). */}
             {gradesSlot !== undefined && (
-              <li>
+              <li className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -708,7 +708,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     showGrades ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -722,7 +722,7 @@ export function SystemLabelsGrid({
                 label comes from the page for the reason the option slots' do — the editor keeps its own
                 `admin.benefitScheme` strings, so nothing is re-translated for the move. */}
             {gradeGroupsSlot !== undefined && (
-              <li>
+              <li className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -733,7 +733,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     showGradeGroups ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
@@ -746,7 +746,7 @@ export function SystemLabelsGrid({
                 labels come from the page (they keep their existing admin.profileOptions.category.* strings,
                 so nothing is re-translated for the move). */}
             {optionSlots.map((slot) => (
-              <li key={slot.key}>
+              <li key={slot.key} className="shrink-0">
                 <button
                   type="button"
                   onClick={() => {
@@ -757,7 +757,7 @@ export function SystemLabelsGrid({
                     setRowErrors({});
                     setError(null);
                   }}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm transition-colors ${
+                  className={`flex w-full items-center justify-between gap-3 whitespace-nowrap rounded-lg lg:whitespace-normal px-3 py-2 text-sm transition-colors ${
                     optionKey === slot.key ? 'bg-primary/10 font-medium text-primary' : 'text-foreground hover:bg-muted'
                   }`}
                 >
