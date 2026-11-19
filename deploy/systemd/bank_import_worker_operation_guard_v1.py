@@ -81,6 +81,7 @@ class GuardedInvocation:
         if stage in published_kinds(ci):fields=ci.PUBLISHED.SEAL_FIELDS if stage==ci.PUBLISHED.SEAL_STAGE else ci.PUBLISHED.LIVE_FIELDS
         if stage in published_kinds(ci):fields=ci.PUBLISHED.budget_fields(base,ci,fields,self.a,stage)
         if stage in unstarted_kinds(ci):fields=ci.UNSTARTED.LIVE_FIELDS
+        fields=ci.normal_overall_fields(fields,self.a,stage)
         baseline_allowed=stage in('drain','activate-ci-runtime','activate-prepared-ci-runtime',*unstarted_kinds(ci))
         if stage in published_kinds(ci) and ci.PUBLISHED.unstarted_origin(ci,self.a):baseline_allowed=True
         if stage=='prepare-ci-worker'and 'baselinePublication'in self.a:
@@ -167,7 +168,8 @@ class GuardedInvocation:
         held=self.native_lease()
         if 'baselinePublication' in a:
             self.ci.verify_baseline_publication(b,a,paired=self.stage in('drain','prepare-ci-worker'))
-        if a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage) and self.observer is not None and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
+        overall=(self.stage=='activate-prepared-ci-runtime' and self.ci.normal_overall_selected(a,self.stage)) or (a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.ci.PUBLISHED.overall_selected(self.ci,a,self.stage))
+        if overall and self.observer is not None and not getattr(self.ci,'FAILURE_CLEANUP_ONLY',False):
             self.observer.fresh_native_identity()  # Fresh owner proof AFTER expensive guards, immediately before action.
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
         return held
@@ -195,6 +197,19 @@ def preparation_initial_seconds(base,ci,path,pinned):
     return 600 if isinstance(p,dict) and p.get('policy')=='aihr-worker-prepared-handoff/v2' and p.get('mode')=='normal' else 300
 
 
+def normal_overall_approval(base,ci,path,pinned,stage):
+    if stage!='activate-prepared-ci-runtime':return None
+    path=Path(path)
+    ci.protected_private(base,path)
+    raw=base.read_bounded(path,65536)
+    base.check(ci.sha(raw)==pinned,'normal timing approval hash differs')
+    approval=json.loads(raw)
+    if not ci.normal_overall_selected(approval,stage):return None
+    now=time.time();issued=ci.epoch(approval['issuedAt']);expires=ci.epoch(approval['expiresAt'])
+    base.check(issued<=now<expires<=issued+ci.NORMAL_EXECUTION_SECONDS,'normal timing approval expired or exceeds its fixed ceiling')
+    return raw
+
+
 def launch(argv,fmt,base,ci,update):
     parser=argparse.ArgumentParser()
     parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime','guarded-recover-unstarted-ci-runtime'])
@@ -206,11 +221,15 @@ def launch(argv,fmt,base,ci,update):
     previous_execution=getattr(ci,'OVERALL_EXECUTION_DEADLINE',None);previous_failure=getattr(ci,'FAILURE_CLEANUP_ONLY',False)
     previous_base_execution=getattr(base,'OVERALL_EXECUTION_DEADLINE',None);previous_base_failure=getattr(base,'OVERALL_EXECUTION_FAILURE_ONLY',False)
     execution_started=time.monotonic()
-    overall=stage=='recover-published-ci-runtime' and ci.PUBLISHED.initial_overall_selection(base,ci,args.approval,args.approval_sha256,stage)
+    normal_approval=normal_overall_approval(base,ci,args.approval,args.approval_sha256,stage)
+    published_overall=stage=='recover-published-ci-runtime' and ci.PUBLISHED.initial_overall_selection(base,ci,args.approval,args.approval_sha256,stage)
+    overall=normal_approval is not None or published_overall
     if overall:
-        selection_bytes=base.read_bounded(Path(args.approval),65536);base.check(ci.sha(selection_bytes)==args.approval_sha256,'overall selection changed before admission')
+        selection_bytes=normal_approval if normal_approval is not None else base.read_bounded(Path(args.approval),65536)
+        base.check(ci.sha(selection_bytes)==args.approval_sha256,'overall selection changed before admission')
         authority_end=time.monotonic()+(ci.epoch(json.loads(selection_bytes)['expiresAt'])-time.time())
-        end=min([execution_started+ci.PUBLISHED.OVERALL_SECONDS,authority_end,*[v for v in (previous_deadline,previous_slot,previous_overall,previous_execution)if v is not None]])
+        budget=ci.NORMAL_EXECUTION_SECONDS if normal_approval is not None else ci.PUBLISHED.OVERALL_SECONDS
+        end=min([execution_started+budget,authority_end,*[v for v in (previous_deadline,previous_slot,previous_overall,previous_execution)if v is not None]])
         ci.OVERALL_EXECUTION_DEADLINE=end;ci.FAILURE_CLEANUP_ONLY=False;base.OVERALL_EXECUTION_DEADLINE=end;base.OVERALL_EXECUTION_FAILURE_ONLY=False
         base.RECOVERY_OVERALL_DEADLINE=end
     elif stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))

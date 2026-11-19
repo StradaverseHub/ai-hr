@@ -189,6 +189,37 @@ class PreparedFlowTests(unittest.TestCase):
     self.assertRaisesRegex(ValueError,reason,f.invoke_live,f.live_record(a,proof));self.assertEqual(changed,[True]);self.assertGreaterEqual(f.native_calls,1);self.assert_no_unit_mutation(f)
  def test_normal_prepared_wrapper_full_graph(self):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a);self.assert_no_unit_mutation(f);r=f.invoke_live(f.live_record(a,proof));self.assertTrue(r['serviceStable']);self.assertFalse(r['journeyVerified']);self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
+ def test_normal_overall_uses_one_deadline_through_complete_slow_cutover(self):
+  f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a)
+  live=f.live_record(a,proof);live.update(executionPolicy=ci.NORMAL_EXECUTION_POLICY,expiresAt=f.iso(1200))
+  real_slot=ci.RuntimeObservation.slot;deadlines=[]
+  def slow_slot(observer,name,seconds):
+   real_slot(observer,name,seconds);deadlines.append(ci.SLOT_DEADLINE)
+   delay={'F2':45,'W/F1':42}.get(name,0)
+   f.clock+=delay;f.monotonic_offset+=delay
+  with patch.object(ci.RuntimeObservation,'slot',slow_slot):receipt=f.invoke_live(live)
+  self.assertEqual(len(set(deadlines)),1);self.assertGreater(len(deadlines),8)
+  self.assertEqual((receipt['executionPolicy'],receipt['completeMetadataFences'],receipt['fullNativeAudits']),
+                   (ci.NORMAL_EXECUTION_POLICY,10,2))
+  self.assertTrue(receipt['serviceStable']);self.assertFalse(receipt['journeyVerified'])
+
+ def test_normal_overall_refuses_expired_deadline_before_unit_mutation(self):
+  f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a)
+  live=f.live_record(a,proof);live.update(executionPolicy=ci.NORMAL_EXECUTION_POLICY,expiresAt=f.iso(1200))
+  real_slot=ci.RuntimeObservation.slot
+  def expire(observer,name,seconds):
+   real_slot(observer,name,seconds)
+   if name=='F2':f.monotonic_offset+=1200
+  with patch.object(ci.RuntimeObservation,'slot',expire),self.assertRaisesRegex(ValueError,'deadline|expired'):
+   f.invoke_live(live)
+  self.assert_no_unit_mutation(f)
+
+ def test_normal_overall_refuses_overlong_authority(self):
+  f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a)
+  live=f.live_record(a,proof);live.update(executionPolicy=ci.NORMAL_EXECUTION_POLICY,expiresAt=f.iso(1201))
+  with self.assertRaisesRegex(ValueError,'fixed ceiling'):f.invoke_live(live)
+  self.assert_no_unit_mutation(f)
+
  def test_normal_preparation_normalizes_restrictive_umask(self):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a,umask=0o077);self.assertEqual(stat.S_IMODE(Path(a['preparation']['directory']).stat().st_mode),0o755);self.assertTrue(f.invoke_live(f.live_record(a,proof))['serviceStable'])
  def test_native_activation_pair_is_real_exchange_and_retained_build_is_public_mode(self):

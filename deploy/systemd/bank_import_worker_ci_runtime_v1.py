@@ -32,6 +32,8 @@ FENCES = None  # Injected reviewed, root-pinned metadata primitive; never a sour
 SLOT_DEADLINE = None
 OVERALL_EXECUTION_DEADLINE = None
 FAILURE_CLEANUP_ONLY = False
+NORMAL_EXECUTION_POLICY = 'aihr-worker-prepared-normal-overall/v1'
+NORMAL_EXECUTION_SECONDS = 1200
 ACTIVATION_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','drainSha256','helperSha256','nodeSha256','python','nodeOptions','install','grantSha256','activatedSha256','runtimeSha256','environmentSha256','dotenvSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifest','sourceManifestSha256','priorLastOkSha256','launch','releaseAuthorized','firstStageApproval','firstStageApprovalSha256','readiness','operationsLock'}
 FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','helperSha256','nodeSha256','python','nodeOptions','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','gate','releaseAuthorized','operationsLock'}
 
@@ -78,6 +80,14 @@ def assert_python_runtime(base,owner,environment,pins):
     verify_python(base,pins)
     result=child([pins['path'],'-c',"import json,sys;print(json.dumps({'version':'.'.join(map(str,sys.version_info[:3])),'safePath':sys.flags.safe_path,'noUserSite':sys.flags.no_user_site}))"],owner,environment,timeout=15)
     base.check(result=={'version':pins['version'],'safePath':True,'noUserSite':1},'actual Python version/safe_path/user-site policy differs')
+
+
+def normal_overall_selected(approval, stage):
+    return stage == 'activate-prepared-ci-runtime' and approval.get('executionPolicy') == NORMAL_EXECUTION_POLICY
+
+
+def normal_overall_fields(fields, approval, stage):
+    return fields | {'executionPolicy'} if normal_overall_selected(approval, stage) else fields
 
 
 def execution_timeout(legacy):
@@ -521,6 +531,7 @@ class RuntimeObservation:
         if published:fields=PUBLISHED.LIVE_FIELDS
         if published:fields=PUBLISHED.budget_fields(base,ACTIVE_OPERATION_GUARD.ci,fields,a,ACTIVE_OPERATION_GUARD.stage)
         if unstarted:fields=UNSTARTED.LIVE_FIELDS
+        fields=normal_overall_fields(fields,a,getattr(ACTIVE_OPERATION_GUARD,'stage',None))
         fields=baseline_publication_fields(fields,a,allow=unstarted or published and PUBLISHED.unstarted_origin(ACTIVE_OPERATION_GUARD.ci,a) or recovery is None and not published)
         kind=UNSTARTED.KINDS[ACTIVE_OPERATION_GUARD.stage]if unstarted else PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
@@ -621,6 +632,7 @@ class RuntimeObservation:
         b.root_protected(self.drain_operation/'drained.json',regular=True)
         b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
         ceiling=2100 if a.get('executionPolicy')=='aihr-worker-published-prestart-overall/v1' and self.guard.stage=='recover-published-ci-runtime' and getattr(self.guard.ci,'PUBLISHED',None) is not None and PUBLISHED.overall_selected(self.guard.ci,a,self.guard.stage) else 900
+        if normal_overall_selected(a,self.guard.stage):ceiling=NORMAL_EXECUTION_SECONDS
         b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + ceiling,
                 'finite administrator operation authority expired or not yet valid')
         private_install(b,self.directory.parent,self.owner.pw_uid,True)
@@ -968,6 +980,11 @@ class RuntimeObservation:
         self.start_intent={'source':self.args.source,'unitSha256':sha(self.base.service_unit(self.args.source).encode()),
                            'bootIdSha256':self.auth['bootIdSha256'],'notBeforeTicks':int(time.monotonic()*os.sysconf('SC_CLK_TCK'))}
         self.guard.file_mutation()
+        if normal_overall_selected(self.auth,self.guard.stage):
+            marker_bytes=self.base.read_bounded(self.directory/'runtime.json',1024**2)
+            self.base.check(sha(marker_bytes)==self.auth['runtimeSha256'],'original readiness marker changed')
+            self.base.check(time.time()+30<epoch(json.loads(marker_bytes)['verifiedAt'])+600,
+                            'original readiness window is too short for a worker start')
         self.base.write_new(self.operation/'ci-worker-start-request.json',self.fmt.canonical(self.start_intent),0o400)
 
     def record_started(self,report):
