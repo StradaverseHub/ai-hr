@@ -246,7 +246,7 @@ jobs:
         if: ${{ inputs.browser_route_baseline }}
       - name: Measure the fictional production build in Chromium
         if: ${{ inputs.browser_route_baseline }}
-        run: node scripts/performance/hosted-browser-route-baseline.mjs
+        run: node ../automation/scripts/performance/hosted-browser-route-baseline.mjs
         env:
           AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
           AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}

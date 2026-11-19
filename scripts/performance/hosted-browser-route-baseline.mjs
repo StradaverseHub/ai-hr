@@ -6,11 +6,11 @@ import {closeSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs
 import {createServer} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
+import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {chromium} from 'playwright';
 import {nativePreflightRoutePlan} from './system-route-manifest.mjs';
-import {admittedBuildNodeOptions} from '../../../automation/.github/ci/build-heap.mjs';
+import {admittedBuildNodeOptions} from '../../.github/ci/build-heap.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -131,6 +131,8 @@ async function measureRoutes(fixture){
   plan.push({role,actorIndex,requested:payrollHistoryPath,final:payrollHistoryPath});
  }
  report.plannedRoleRoutes=plan.length;
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const {chromium}=require('playwright');
  browser=await chromium.launch();
  const lanes=await Promise.allSettled([...new Set(plan.map(route=>route.actorIndex))].map(async actorIndex=>{
   const actor=fixture.users[actorIndex],routes=plan.filter(route=>route.actorIndex===actorIndex);
