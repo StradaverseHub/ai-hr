@@ -24,8 +24,11 @@ class UnstartedTests(unittest.TestCase):
   a=f.live_record(p,proof);a['kind']=unstarted.KINDS[unstarted.LIVE_STAGE]
   a['recovery']={'policy':unstarted.POLICY,'id':'b0000000-0000-4000-8000-000000000009','originalOperation':str(f.operation),'failureCurrentSha256':ci.sha((f.state/'current').read_bytes()),'failureLastOkSha256':ci.sha((f.state/'last-ok').read_bytes()),'failureLog':str(log),'failureLogSha256':ci.sha(log.read_bytes()),'failureFinishedAt':f.current['finished_at']}
   return f,p,proof,a
- def invoke(self,f,a):
+ def invoke(self,f,a,*,root_owned_marker=True):
   path=f.approval(f.root/'live-unstarted.json',a);f.auth=a;f.web=f.source;f.held_phase='installing'
+  # Emulate only the exact root-created credential, using the existing descriptor port.
+  # Real files, modes, link counts and every other ownership check remain unchanged.
+  if root_owned_marker and 'recovery'in a:f.additional_root_private_files.add(f.operation/('unstarted-recovery-'+a['recovery']['id'])/'ci-runtime-started.json')
   with f.prepared_ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
    guard.launch(['guarded-'+unstarted.LIVE_STAGE,'--approval',str(path),'--approval-sha256',ci.sha(path.read_bytes())],f.fmt,f.base,ci,update)
   return json.loads((f.operation/('unstarted-recovery-'+a['recovery']['id'])/'activated.json').read_bytes())
@@ -41,6 +44,10 @@ class UnstartedTests(unittest.TestCase):
  def test_qualified_legacy_baseline_and_normal_preparation_lineage_survive_entire_graph(self):
   f,p,proof,a=self.fixture(legacy=True,expired=True);last=(f.state/'last-ok').read_bytes();receipt=(f.old_release/'worker-install-v2.json').read_bytes()
   self.assertTrue(self.invoke(f,a)['serviceStable']);self.assertEqual((f.state/'last-ok').read_bytes(),last);self.assertEqual((f.old_release/'worker-install-v2.json').read_bytes(),receipt)
+ def test_runner_owned_marker_without_exact_root_port_remains_refused(self):
+  f,p,proof,a=self.fixture()
+  with self.assertRaisesRegex(ValueError,'root-private non-linked operation credential required'):self.invoke(f,a,root_owned_marker=False)
+  self.no_mutation(f)
  def test_running_or_non_worker_failure_is_not_admitted(self):
   for fault in ('running','phase','exit','finish','live-pid','pending'):
    with self.subTest(fault=fault):
