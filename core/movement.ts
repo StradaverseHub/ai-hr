@@ -1499,6 +1499,11 @@ function companyIdsInPlay(companyEvents: RawEvent[], currentCompanyId: string): 
   return ids;
 }
 
+/** The same starting interval used by hire correction. Same-day replaced rows cover no day. */
+function startingAssignment<T extends { validFrom: string; validTo: string | null }>(rows: T[]): T | null {
+  return rows.find((row) => row.validTo === null || row.validFrom < row.validTo) ?? null;
+}
+
 /**
  * r78c — the placement columns every history row shows (Company, Division, Department, Job Title, Basic),
  * loaded ONCE for the whole employment and resolved per row in memory. Deliberately not per-row queries:
@@ -1553,15 +1558,20 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
 
   const infoEvents = events.filter((e) => e.eventType === 'employment.info.updated');
 
-  const companyNames = await companyNamesTx(tx, [...new Set([...companyIdsInPlay(companyEvents, companyId), ...(datedCompany ? asgRows.map((a) => a.companyId).filter((id): id is string => !!id) : [])])]);
+  const hireAssignment = startingAssignment(asgRows);
+  const datedCompanyIds = datedCompany ? asgRows.map((a) => a.companyId) : [hireAssignment?.companyId];
+  const companyNames = await companyNamesTx(tx, [
+    ...companyIdsInPlay(companyEvents, companyId), ...datedCompanyIds.filter((id): id is string => !!id),
+  ]);
 
-  return (asOf: string, seqBound: number, exitSequence?: number) => {
-    const asg = exitSequence === undefined
+  return (eventDate: string, seqBound: number, exitSequence?: number, atHire = false) => {
+    const asOf = (atHire ? hireAssignment?.validFrom : undefined) ?? eventDate;
+    const asg = atHire ? hireAssignment : exitSequence === undefined
       ? asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null
       : movementExitVersion(asgRows, asOf, exitSequence, versionEvents);
     const comp = compRows.filter((c) => c.validFrom <= asOf && (c.validTo == null || c.validTo > asOf)).pop() ?? null;
     return {
-      company: companyNames.get((datedCompany ? asg?.companyId : null) ?? companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
+      company: companyNames.get((atHire || datedCompany ? asg?.companyId : null) ?? companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
       division: flatValueAtSequence(infoEvents, 'orgDivision', seqBound, empRow?.orgDivision ?? null),
       // e6a144d4 — the same flat-column replay as `division` one line up; `orgSection` is already in
       // MOVEMENT_FLAT_FIELDS, so a movement that moved Section has the before/after in its own event.
@@ -1782,7 +1792,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       const closedPeriods = financial ? closed.filter((period) => overlapsClosedPeriod([period], payrollFrom, null)).sort() : [];
       const locked = closedPeriods.length > 0;
       const exitEvent = g.find(event => event.eventType === 'employment.terminated');
-      const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd,exitEvent?.sequence);
+      const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd,exitEvent?.sequence,r.kind==='hired');
       const salaryLeg=[...g].reverse().find(event=>event.eventType==='compensation.set');
       const hireSalaryApplies=latestHireSalary?.replacementId&&(r.kind==='hired'||r.effectiveDate>=(latestHireSalary.validFrom??emp.hiredOn)&&(!latestHireSalary.until||r.effectiveDate<latestHireSalary.until));
       const salaryReference=salaryLeg?.aggregateId??(hireSalaryApplies?latestHireSalary?.replacementId:null);
@@ -1878,6 +1888,7 @@ async function snapshotAt(
   /** Board 154511c4 — the employee has a history movement: read the company from the dated version (see placementColumnsTx). */
   datedCompany = false,
   exitBoundary?: { sequence: number; events: RawEvent[] },
+  atHire = false,
 ): Promise<MovementSnapshot> {
 
   const asgRows = await tx
@@ -1897,10 +1908,12 @@ async function snapshotAt(
     .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
     .where(and(eq(assignment.employmentId, emp.id), isNull(assignment.supersededAt)))
     .orderBy(asc(assignment.validFrom));
-  const asg = exitBoundary
+  const hireAssignment = atHire ? startingAssignment(asgRows) : null;
+  const asg = atHire ? hireAssignment : exitBoundary
     ? movementExitVersion(asgRows, asOf, exitBoundary.sequence, exitBoundary.events)
     : asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
-  const datedCompanyId = datedCompany ? asg?.companyId ?? null : null;
+  asOf = hireAssignment?.validFrom ?? asOf;
+  const datedCompanyId = atHire || datedCompany ? asg?.companyId ?? null : null;
   const companyNames = await companyNamesTx(tx, [...companyIdsInPlay(companyEvents, emp.companyId), ...(datedCompanyId ? [datedCompanyId] : [])]);
   const companyName =
     companyNames.get(datedCompanyId ?? companyIdAtSequence(companyEvents, seqBound, inclusive, emp.companyId)) ?? null;
@@ -2161,7 +2174,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const exitBoundary = exitEvent ? { sequence: exitEvent.sequence, events: exitVersionEventsOf(events) } : undefined;
     const beforeDate = exitBoundary ? row.effectiveDate : dayBefore(row.effectiveDate);
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
-    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events), exitBoundary));
+    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events), exitBoundary, row.kind==='hired'));
     // The entered business day and the first open payroll day are distinct after a closed-payroll correction.
     // Resolve this event's own amount by reference; never substitute the amount paid in the protected month.
     const salaryLeg=[...group].reverse().find(event=>event.eventType==='compensation.set');
