@@ -3,7 +3,7 @@ import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {inquiryBalancePage} from '../../app/leave/employee-balances/inquiry-data';
 import {employeeBalanceRows,type EmployeeBalanceRow} from '../../app/leave/employee-balances/rows';
-import {leaveInquiryBalancePairsTx,leaveInquirySnapshot,readLeaveInquiryPicker} from '../../core/leave-inquiry';
+import {leaveInquiryBalancePairsTx,leaveInquirySnapshot,readLeaveInquiryPicker,readLeaveInquiryPickerTx} from '../../core/leave-inquiry';
 import {adminCompaniesTx,leaveInquiryPickerDisplayRowsTx,leaveInquiryPickerFacetsTx,listLeaveInquiryPickerIdentitiesTx} from '../../core/read';
 import {withTenant,type SessionContext} from '../../db/client';
 import type {EmployeeChoiceInput} from '../../lib/employee-choice';
@@ -107,7 +107,21 @@ it('measures the employee chooser and its owners at group and single-company sca
     });
     balanceEvidence.push(row);
   }
-  const report=JSON.stringify({kind:'LEAVE_INQUIRY_COMPONENT_ONLY',companies,employments,evidence,balanceEvidence});
+  const landingCases=[cases[0],cases[0],cases[2],cases[3]];
+  const concurrentLandings=await Promise.all(landingCases.map(async({name,ctx,scope})=>{
+    const query=parseInquiryQuery({asOf:fixture.today},'balances');
+    const landing=await timed(()=>leaveInquirySnapshot(ctx,scope,query,async(tx,selection)=>{
+      const picker=await readLeaveInquiryPickerTx(tx,ctx,selection.companyIds,{limit:25},'en');
+      const balance=await inquiryBalancePage(ctx,selection,query,'en',query.pq,tx);
+      return {people:picker.populationTotal,pickerRows:picker.rows.length,balanceRows:balance.rows.length,total:balance.total};
+    }));
+    const expected=balanceEvidence.find(row=>row.name===name);
+    expect(landing.result.total,name).toBe(expected?.visiblePairs);
+    expect(landing.result.balanceRows,name).toBe(expected?.displayedRows);
+    expect(landing.result.pickerRows,name).toBe(25);
+    return {name,landingDataMs:landing.ms,...landing.result};
+  }));
+  const report=JSON.stringify({kind:'LEAVE_INQUIRY_COMPONENT_ONLY',companies,employments,evidence,balanceEvidence,concurrentLandings});
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
     writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-inquiry-picker-scale.json'),report);
   }
