@@ -102,7 +102,7 @@ it('measures the employee chooser and its owners at group and single-company sca
       expect(full.result.total,name).toBe(pairs.result.total);
       expect(full.result.rows,name).toEqual(unbundled.result);
       return {name,snapshotMs,scopeRows:selection.employees.length,balanceReadMs:full.ms,
-        legacyBalanceReadMs:pairs.ms+unbundled.ms,membershipMs:pairs.ms,
+        unbundledBalanceReadMs:pairs.ms+unbundled.ms,membershipMs:pairs.ms,
         visiblePairs:pairs.result.total,displayedRows:full.result.rows.length};
     });
     balanceEvidence.push(row);
