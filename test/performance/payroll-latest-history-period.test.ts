@@ -198,26 +198,27 @@ it('bounds retained document projection to the requested page with identical ord
       const companyList=sql`ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
       const outcome=await withPayrollTenant(ctx,async tx=>{
         const baselineStarted=performance.now();
-        const baseline=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit});
+        const rows=await tx.execute<{document:unknown}>(sql`
+          select d.document from app.information_payslip_documents(
+            ${companyList}, ${filters.year}::integer, ${filters.month}::integer,
+            ${cycle}::text, ${employmentId??null}::uuid, true
+          ) with ordinality as d(document, ordinal)
+          order by d.ordinal limit ${limit}
+        `);
+        const baseline=rows.map(row=>row.document);
         const baselineMs=Math.round(performance.now()-baselineStarted);
         const candidateStarted=performance.now();
-        const rows=await tx.execute<{document:unknown}>(sql`
-          select d.document from app.test_bounded_retained_payroll_documents(
-            ${companyList}, ${filters.year}::integer, ${filters.month}::integer,
-            ${cycle}::text, ${employmentId??null}::uuid, ${limit}::integer
-          ) with ordinality as d(document, ordinal)
-          order by d.ordinal
-        `);
-        return {baseline,candidate:rows.map(row=>row.document),baselineMs,
+        const candidate=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit});
+        return {baseline,candidate,baselineMs,
           candidateMs:Math.round(performance.now()-candidateStarted)};
       });
       expect(outcome.baseline,label).toHaveLength(expectedCounts[label]);
       expect(outcome.candidate,label).toEqual(outcome.baseline);
-      expect(outcome.baseline.map(document=>informationDocumentRow(document).id),label).not.toContain(revertedId);
+      expect(outcome.candidate.map(document=>informationDocumentRow(document).id),label).not.toContain(revertedId);
       evidence.push({label,rows:outcome.candidate.length,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
     }
   } finally {
-    await owner.client`drop function app.test_bounded_retained_payroll_documents(uuid[],integer,integer,text,uuid,integer)`;
+    await owner.client`drop function app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)`;
   }
   console.info(JSON.stringify({kind:'PAYROLL_RETAINED_DOCUMENT_PAGE_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },360_000);

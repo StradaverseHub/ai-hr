@@ -1,5 +1,5 @@
 -- Disposable performance proof for the ordered, capped retained-document path.
-CREATE FUNCTION app.test_bounded_retained_payroll_documents(
+CREATE FUNCTION app.information_retained_payslip_documents_page(
  p_companies uuid[], p_year integer, p_month integer, p_cycle text, p_employment uuid, p_limit integer
 ) RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -62,6 +62,6 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  ORDER BY page.pay_period DESC,page.run_seq,page.payslip_id
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.test_bounded_retained_payroll_documents(uuid[],integer,integer,text,uuid,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer) FROM PUBLIC;
 --> statement-breakpoint
-GRANT EXECUTE ON FUNCTION app.test_bounded_retained_payroll_documents(uuid[],integer,integer,text,uuid,integer) TO ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer) TO ai_hr_app;

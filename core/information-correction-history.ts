@@ -80,8 +80,18 @@ export async function latestInformationPayslipPeriod(tx:Tx,p:InformationPayslipF
 export async function informationPayslipDocuments(tx:Tx,p:InformationPayslipFilters & {intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
  const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
  const limit=Number.isInteger(p.limit)&&p.limit!>0?Math.min(p.limit!,RETAINED_DOCUMENT_CEILING):undefined;
+ // Explicit cycle IDs must retain the legacy post-ceiling filter and its membership.
+ const pageLimit=limit&&p.intendedCycle&&!p.payrollCycleId?limit:undefined;
+ const [capability]=pageLimit&&companies.length?await tx.execute<{available:boolean}>(sql`
+  select to_regprocedure('app.information_retained_payslip_documents_page(uuid[],integer,integer,text,uuid,integer)') is not null as available
+ `):[];
  for(let offset=0;offset<companies.length;offset+=100){
-  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) with ordinality as d(document,ordinal)
+  const companyList=sql`array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+  const filters=sql`${companyList},${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid`;
+  const source=pageLimit&&capability?.available
+   ?sql`app.information_retained_payslip_documents_page(${filters},${pageLimit}::integer)`
+   :sql`app.information_payslip_documents(${filters},${p.intendedCycle??false}::boolean)`;
+  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from ${source} with ordinality as d(document,ordinal)
     ${p.payrollCycleId ? sql`where d.document->'batch'->>'payroll_cycle_id' = ${p.payrollCycleId}` : sql``}
     order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
   documents.push(...rows.map(r=>r.document));
