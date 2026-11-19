@@ -64,7 +64,40 @@ async function finishPreview(id:string,as:SessionContext,statementTimeoutMs?:num
    const plan=await connection.unsafe('explain (format json,verbose,costs) '+query,[native.caseId]);
    await connection`select set_config('plan_cache_mode',${planning.mode},true)`;
    console.info('[Actual native Contract setup source plan]',JSON.stringify({sourceHash:native.sourceHash,owner:native.owner,role:native.role,jobId:job.id,caseId:native.caseId,diagnosticPlanMode:'force_generic_plan',nativePlanMode:planning.mode,plan}));
-   return run(connection);
+   // Observe the actual fenced owner statements, not a substitute EXPLAIN or application reader.
+   // Categories/GUCs only: no SQL text, parameters, case identities or returned Personnel payloads.
+   const [settings]=await connection<{jit:string;statementTimeout:string;planCacheMode:string}[]>`select current_setting('jit') as jit,current_setting('statement_timeout') as "statementTimeout",current_setting('plan_cache_mode') as "planCacheMode"`;
+   console.info('[Contract actual owner SQL settings]',JSON.stringify(settings));
+   let sequence=0;
+   const category=(text:string)=>{
+    for(const [token,phase] of [
+     ['contract_shared_setup_revision','setup-fingerprint'],['contract_shared_worker_context','worker-context'],
+     ['contract_shared_context','proposer-context'],['contract_shared_participants','participants'],
+     ['contract_shared_preview_finish','finish-and-recheck'],['contract_shared_preview','preview-request'],
+     ['contract_verified_human','referenced-people'],['document_signing_assignment','assignment-history'],
+     ['automation_workflow_version','workflow-definitions'],['automation_routing_version','routing-definitions'],
+     ['automation_document_template','document-definitions'],['automation_email_template','email-definitions'],
+     ['lc_v9_config','group-configuration'],['set_config','transaction-context'],
+    ])if(text.includes(token))return phase;
+    return 'other-owner-statement';
+   };
+   const observed=async(operation:PromiseLike<unknown>,text:string,channel:'tagged'|'unsafe')=>{
+    const phase=category(text),number=++sequence,started=performance.now();let status='passed',sqlstate:string|null=null;
+    try{return await operation;}catch(error){status='failed';const code=(error as {code?:unknown})?.code;sqlstate=typeof code==='string'&&/^[A-Z0-9]{5}$/.test(code)?code:'unreported';throw error;}
+    finally{console.info('[Contract actual owner SQL phase]',JSON.stringify({sequence:number,phase,channel,status,sqlstate,durationMs:performance.now()-started}));}
+   };
+   const measured=new Proxy(connection,{
+    apply(target,thisArg,args){
+     const result=Reflect.apply(target,thisArg,args);
+     // Preserve postgres identifier/fragment builders; only tagged SQL is an executing statement.
+     return Array.isArray(args[0])&&Object.prototype.hasOwnProperty.call(args[0],'raw')?observed(result,args[0].join('?'),'tagged'):result;
+    },
+    get(target,key,receiver){
+     if(key==='unsafe')return (text:string,...args:unknown[])=>observed(Reflect.apply(target.unsafe,target,[text,...args]),text,'unsafe');
+     return Reflect.get(target,key,receiver);
+    },
+   });
+   return run(measured);
   })});
  },describeFailure:async(...args:Parameters<NonNullable<typeof contractPreviewJobHandler.describeFailure>>)=>{
   failure=args[1];return contractPreviewJobHandler.describeFailure!(...args);
