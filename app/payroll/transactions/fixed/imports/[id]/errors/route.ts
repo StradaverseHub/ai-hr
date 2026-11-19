@@ -16,7 +16,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       if (!reason) return [];
       const message = reason !== 'unexpected' && t.has(`reason.${reason}` as never)
         ? t(`reason.${reason}` as never, (detail ?? {}) as never) : log('importFailed');
-      return [[rowNum, employeeId, payItemCode, message]];
+      return [[String(rowNum), employeeId, payItemCode, message]];
     });
     if (!rows.length) return new Response(null, { status: 404 });
     const bytes = await buildXlsx([t('colRow'), t('colEmployeeId'), t('colPayItemCode'), t('colError')], rows, {
