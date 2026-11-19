@@ -17,10 +17,10 @@ const fx=vi.hoisted(()=>({today:'2026-11-10',approvalSummary:vi.fn(),cutOffRow:t
  // AI Centre navigation speed: holds the person's own employment read until released, to see what runs meanwhile.
  subjectGate:null as null|Promise<void>,subjectFails:false as boolean}));
 // The Ask entry reads the HR clock itself. Match the same day used by the direct reader fixture.
-vi.mock('../lib/hr-date',async importOriginal=>({
- ...await importOriginal<typeof import('../lib/hr-date')>(),
- todayInKualaLumpur:()=>fx.today,
-}));
+vi.mock('../lib/hr-date',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../lib/hr-date')>();
+ return {...actual,todayInKualaLumpur:(date?:Date)=>date===undefined?fx.today:actual.todayInKualaLumpur(date)};
+});
 const failing=(name:string)=>{if(fx.fail.has(name))throw new Error('Fictional owner failure: '+name);};
 
 // The only direct query is app.own_payroll_cut_off_day (migration 0967): one row for the person's own employment, or none.
