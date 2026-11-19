@@ -2,7 +2,8 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../../db/client';
 import {decidedStatusCounts} from '../../core/approvals-summary';
-import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
+import {listPendingClaimsPage} from '../../packs/claims/service';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 
 beforeAll(migrateTestDb);
 afterAll(closeAll);
@@ -21,6 +22,7 @@ async function previousClaimCounts(ctx:SessionContext){
 it('preserves the decided totals without counting the much larger pending claim queue',async()=>{
   await resetDb();
   const base=await seedBase();
+  await setModule(base.tenantId,'claims','active');
   const [type]=await owner.client<{id:string}[]>`
     insert into claim_type(tenant_id,code,name) values(${base.tenantId}::uuid,'SCOPE','Fictional scale claim') returning id`;
   const companies=await owner.client<{id:string}[]>`
@@ -71,6 +73,15 @@ it('preserves the decided totals without counting the much larger pending claim 
     const filteredMs=Math.round(performance.now()-next);
     expect(before).toEqual({approved:2*employees,rejected:employees,cancelled:employees});
     expect(after).toEqual(before);
+    // Independent direct RLS read in this fixture with no delegates or legacy claim types.
+    const expected=await withTenant(actor,tx=>tx.execute<{id:string}>(sql`
+      select id from claim_request where status='pending'
+      order by date_trunc('milliseconds',created_at) desc,id limit 25`),{readOnlySnapshot:true});
+    const pageStarted=performance.now();
+    const page=await listPendingClaimsPage(actor);
+    console.info('Approvals pending claim page',{label,elapsedMs:Math.round(performance.now()-pageStarted)});
+    expect(page.page.total).toBe(employees*200);
+    expect(page.rows.map(row=>row.id)).toEqual(Array.from(expected,row=>row.id));
     console.info('Approvals decided claim comparison',{label,previousMs,filteredMs});
   }
 },90000);

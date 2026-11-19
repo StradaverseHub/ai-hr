@@ -3624,20 +3624,29 @@ function pendingClaimQueueSql(ctx:SessionContext){
   const roles=ctx.roles??[],everySubject=roles.includes('hr_admin')||roles.includes('super_admin');
   const trim=everySubject?sql`true`:sql`case when approval_subject.employment_id in (select visible.employment_id from queue_visible visible) then true
      else app.can_see_employment(approval_subject.employment_id) or app.can_decide_via_delegation(approval_subject.employment_id,NULL,NULL) end`;
-  return sql`with queue_request as materialized (
+  // Start restricted callers from the two employment populations in Claim SELECT RLS
+  // (2134, 0818). The actual request and type policies still run. This gives PostgreSQL
+  // the existing (tenant, employment, status) index before it materializes pending rows.
+  const candidates=everySubject?sql``:sql`queue_visible as materialized (
+    select unnest(app.visible_employment_ids()) as employment_id
+   ), queue_candidates as materialized (
+    select employment_id from queue_visible
+    union select unnest(app.delegated_subject_ids('claims','claims.claim'))
+   ), `;
+  const requestSource=everySubject?sql`public.claim_request request`:sql`queue_candidates candidate
+    join public.claim_request request on request.employment_id=candidate.employment_id`;
+  return sql`with ${candidates}queue_request as materialized (
     select request.id,request.employment_id,request.created_at
-    from public.claim_request request
+    from ${requestSource}
     join public.claim_type claim_kind on claim_kind.id=request.claim_type_id
-    where request.status='pending'
+    where request.tenant_id=${ctx.tenantId}::uuid and request.status='pending'
    ), queue_employment as materialized (
     select queued.employment_id,count(*)::int as pending from queue_request queued group by queued.employment_id
    ), queue_bucket as (
     select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from queue_employment
    ), queue_batch as (
     select array_agg(employment_id order by employment_id) as ids from queue_bucket group by bucket
-   ),${everySubject?sql``:sql` queue_visible as materialized (
-    select unnest(app.visible_employment_ids()) as employment_id where exists(select 1 from queue_employment)
-   ),`} queue_subject as materialized (
+   ), queue_subject as materialized (
     select approval_subject.employment_id,approval_subject.person_id,approval_subject.employee,approval_subject.employee_code
     from queue_batch batch
     cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
@@ -3716,7 +3725,7 @@ async function pendingClaimQueuePageTx(tx:Tx,ctx:SessionContext,sort:ApprovalSor
     from public.claim_request request
     join public.claim_type claim_kind on claim_kind.id=request.claim_type_id
     join queue_rank ranked on ranked.employment_id=request.employment_id
-    where request.status='pending'
+    where request.tenant_id=${ctx.tenantId}::uuid and request.status='pending'
    )
    select jsonb_build_object('total',(select count(*)::int from queue_request),
     'rows',coalesce((select jsonb_agg(jsonb_build_object('id',page.id,'employmentId',page.employment_id) order by ${pendingClaimOrderSql(sort,'page')})
