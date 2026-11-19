@@ -100,7 +100,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
@@ -148,9 +148,7 @@ jobs:
         with: {capacity_profile: "${{ github.run_attempt == 1 && 'bounded-suite-setup' || 'legacy' }}"}
       - name: Provision multilingual fonts for AI review screenshots
         if: ${{ contains(inputs.selected_tests, 'test/ai-management-naming.dom.test.tsx') || contains(inputs.selected_tests, 'test/ai-probe-history-page.dom.test.tsx') || contains(inputs.selected_tests, 'test/feedback-kanban.dom.test.tsx') || contains(inputs.selected_tests, 'test/security-center-sidebar.dom.test.tsx') || contains(inputs.selected_tests, 'test/system-label-exchange-browser.test.ts') }}
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+        run: node ../automation/.github/ci/fixed-noto-bootstrap.mjs "$RUNNER_TEMP/aihr-focused/noto-font-setup.json"
       - name: Classify and execute only selected files
         run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"
         env:
