@@ -12,6 +12,11 @@ on:
         description: Exact 40-character candidate SHA (refuse if the branch moved)
         required: true
         type: string
+      migration_base:
+        description: Optional full expected baseline SHA for prequalification; deployment still requires that exact installed baseline
+        required: false
+        default: ''
+        type: string
       test_parallelism:
         description: Standard runner concurrency; complete test coverage stays unchanged
         type: choice
@@ -107,7 +112,7 @@ jobs:
         if: ${{ inputs.controller_only }}
         env:
           AIHR_CI_HEAD: ${{ steps.candidate.outputs.sha }}
-          AIHR_CI_MIGRATION_BASE: ${{ vars.STAGING_DEPLOYED_SHA }}
+          AIHR_CI_MIGRATION_BASE: ${{ steps.candidate.outputs.base }}
           AIHR_CI_CLASSIFIER_RUNTIME: native
         run: |
           node --experimental-strip-types .github/ci/plan.mjs > "$RUNNER_TEMP/controller-plan.json"
