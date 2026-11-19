@@ -8,6 +8,8 @@
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
 import {movementWorkbookLayout,movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
+import { MOVEMENT_FORM_IDS, MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS, movementHistoryDateFields } from './movement-form-contract';
+import { personnelFormLabel } from './personnel-form-contract';
 import {movementRecordLimits} from './movement-type-csv';
 import {personnelImportOptionLookup} from './personnel-import-lookup';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
@@ -23,8 +25,8 @@ export type MovementColumn=typeof MOVEMENT_COLUMNS[number];
 const CAPTIONS:Record<MovementColumn,string>={companyId:'Company ID',employeeId:'Employee ID',employeeName:'Employee Name',effectiveDate:'Effective Date',eventType:'Event Type',systemField:'System Fields',before:'Before',after:'After',action:'Action',movementId:'Movement Event ID',reason:'Reason'};
 export const movementColumnCaption=(column:MovementColumn,resolve:PersonnelLabelResolver)=>resolve('people.import.movement.sheet.col.'+column,CAPTIONS[column]);
 export const movementColumnCaptions=(resolve:PersonnelLabelResolver,version:MovementTemplateVersion=4)=>movementColumnsFor(version).map(column=>movementColumnCaption(column,resolve));
-export const MOVEMENT_ACTIONS=['create','update','delete'] as const;
-const ACTION_CAPTIONS={create:'Create',update:'Update',delete:'Delete'} as const;
+export const MOVEMENT_ACTIONS=['create','update','delete','history'] as const;
+const ACTION_CAPTIONS={create:'Create',update:'Update',delete:'Delete',history:'Record history'} as const;
 /** The Action drop-down value: the translated word; the English word and the code are always accepted too. */
 export const movementActionLabel=(action:typeof MOVEMENT_ACTIONS[number],resolve:PersonnelLabelResolver)=>resolve('people.import.movement.sheet.action.'+action,ACTION_CAPTIONS[action]);
 /** One sheet row in column order; `row` is the spreadsheet row number shown to the user. */
@@ -33,6 +35,9 @@ export type MovementSystemField={key:string;label:string};
 /** The System Fields an event type may change: the per-behaviour inputs, except the row's own date. */
 export function movementSystemFields(type:MovementWorkbookType,resolve:PersonnelLabelResolver):MovementSystemField[]{
  return movementWorkbookLayout(type,resolve).filter(column=>column.role==='input'&&column.key!=='effectiveDate').map(column=>({key:column.key,label:column.label}));
+}
+export function movementHistorySystemFields(resolve: PersonnelLabelResolver, behaviour?: string): MovementSystemField[] {
+ return [...MOVEMENT_HISTORY_FIELDS, ...(behaviour ? movementHistoryDateFields(behaviour) : MOVEMENT_HISTORY_DATE_FIELDS), 'remarks' as const].map(key=>({key,label:personnelFormLabel(MOVEMENT_FORM_IDS[key],resolve)}));
 }
 /** Display value for an event type in the drop-down: its label, or its code where labels repeat. */
 export function movementTypeDisplay(types:MovementWorkbookType[],type:MovementWorkbookType,resolve:PersonnelLabelResolver){
@@ -75,11 +80,11 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   const employeeCode=normalizeEmployeeCode(employeeRaw),date=movementImportDate(dateRaw)??dateRaw;
   const typeCode=typeRaw&&!typeLookup.isAmbiguous(typeRaw)?typeLookup.get(typeRaw):undefined,type=types.find(t=>t.code===typeCode);
   const action=actionOf(actionRaw,resolvers),correction=action==='update'||action==='delete';
-  const groupKey=action===null?'?action|'+sheetRow.row:correction?[companyCode.toUpperCase(),employeeCode,action,idRaw.toLowerCase()||'?id|'+sheetRow.row].join('|'):[companyCode.toUpperCase(),employeeCode,date,typeCode??key(typeRaw)].join('|');
+  const groupKey=action===null?'?action|'+sheetRow.row:correction?[companyCode.toUpperCase(),employeeCode,action,idRaw.toLowerCase()||'?id|'+sheetRow.row].join('|'):[companyCode.toUpperCase(),employeeCode,date,typeCode??key(typeRaw),action==='history'?'history':'create'].join('|');
   const typeError=typeLookup.isAmbiguous(typeRaw)?'ambiguous_reference:event_type':'unknown_or_inactive_event_type';
   let record=records.get(groupKey);
   if(!record){
-   record={row:sheetRow.row,employeeCode,companyCode,employeeName:employeeName||undefined,cells:{...(typeRaw||!correction?{kind:typeCode??typeRaw}:{}),...(dateRaw?{effectiveDate:dateRaw}:{})},errors:[],importVersion:2,source:{sheet:MOVEMENT_SHEET,row:sheetRow.row},sourceRows:[],before:{},
+   record={row:sheetRow.row,employeeCode,companyCode,employeeName:employeeName||undefined,cells:{...(typeRaw||!correction?{kind:typeCode??typeRaw}:{}),...(dateRaw?{effectiveDate:dateRaw}:{})},errors:[],importVersion:2,source:{sheet:MOVEMENT_SHEET,row:sheetRow.row},sourceRows:[],before:{},...(action==='history'?{requestedHistory:true}:{}),
     ...(correction?{action,...(idRaw?{movementId:idRaw.toLowerCase()}:{})}:{})};
    if(!companyCode)record.errors.push('company_required');
    if(!isValidEmployeeCode(employeeCode))record.errors.push('invalid_employee_code');
@@ -91,7 +96,7 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
     if(dateRaw&&!movementImportDate(dateRaw))record.errors.push('invalid_effective_date');
    }else{
     if(!typeRaw)record.errors.push('event_type_required');else if(!type)record.errors.push(typeError);
-    if(type?.behaviour!=='blacklist'&&!movementImportDate(dateRaw))record.errors.push('invalid_effective_date');
+    if((action==='history'||type?.behaviour!=='blacklist')&&!movementImportDate(dateRaw))record.errors.push('invalid_effective_date');
    }
    records.set(groupKey,record);
   }else if(correction){
@@ -118,7 +123,8 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   if(fieldType===null)continue;
   // An Update that keeps its event type names any System Field of any type; the server then refuses one the
   // movement's own type cannot change (not_applicable), exactly as it does for a Create.
-  const fields=resolvers.flatMap(resolve=>fieldType?movementSystemFields(fieldType,resolve):types.flatMap(t=>movementSystemFields(t,resolve)));
+  const fields=resolvers.flatMap(resolve=>action==='history'?movementHistorySystemFields(resolve,type?.behaviour):
+   fieldType?movementSystemFields(fieldType,resolve):types.flatMap(t=>movementSystemFields(t,resolve)));
   const field=fields.find(f=>key(f.key)===key(fieldRaw)||key(f.label)===key(fieldRaw));
   if(!field&&['business unit','businessunitid','business_unit'].includes(key(fieldRaw))){if(record.ignoredOrganisation?.businessUnit!==undefined)record.errors.push('duplicate_system_field:businessUnitId');else record.ignoredOrganisation={...record.ignoredOrganisation,businessUnit:afterRaw};continue;}
   if(!field){record.errors.push('unknown_system_field:'+fieldRaw.slice(0,100));continue;}
@@ -126,6 +132,7 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   if(action==='update'&&field.key==='incrementAmount'){record.errors.push('increment_amount_not_for_update');continue;}
   // Update: a blank After keeps the recorded value (Before, when filled, is still checked).
   if(!afterRaw&&action!=='update')record.errors.push('required:'+field.key);
+  if(action==='history'&&field.key!=='remarks'&&!beforeRaw)record.errors.push('movement_history_before_required');
   if(beforeRaw)record.before![field.key]=beforeRaw;
   if(!afterRaw)continue;
   if(field.key==='incrementAmount'){record.incrementAmount=afterRaw;continue;}

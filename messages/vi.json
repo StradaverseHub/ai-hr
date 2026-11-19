@@ -2698,8 +2698,10 @@
           "action": {
             "create": "Tạo",
             "update": "Cập nhật",
-            "delete": "Xóa"
+            "delete": "Xóa",
+            "history": "Ghi lịch sử"
           },
+          "guideHistory": "Dùng Ghi lịch sử cho bất kỳ loại sự kiện nào. Nhập giá trị trước đó vào Trước và giá trị tại ngày hiệu lực vào Sau.",
           "guideAction": "Thao tác: để trống hoặc chọn Tạo để ghi nhận biến động mới. Chọn Cập nhật để sửa một biến động hiện có hoặc Xóa để hoàn tác nó. Cập nhật và Xóa cần Mã sự kiện biến động và Lý do.",
           "guideMovementId": "Mã sự kiện biến động: sao chép từ cột Mã sự kiện biến động trong tệp tải xuống Lịch sử công việc của nhân viên (Tải Excel trên thẻ Biến động). Mã phải thuộc về nhân viên ở dòng đó.",
           "guideUpdate": "Cập nhật: nhập một dòng cho mỗi trường cần sửa, với giá trị mới ở cột Sau. Ô trống giữ nguyên giá trị đã ghi nhận, kể cả Ngày hiệu lực hoặc Loại sự kiện để trống; không có gì bị xóa trắng. Xóa: một dòng để trống Trường hệ thống, Trước và Sau.",

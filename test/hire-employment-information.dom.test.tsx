@@ -6,7 +6,7 @@ vi.mock('../app/admin/personnel/[employmentId]/actions',()=>({correctHireDetails
 vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation:()=>({data:{status:'legacy',managed:false},loading:false}),DerivedOrganisationFields:()=>null}));
 import {HireCorrectionForm} from '../app/admin/personnel/[employmentId]/hire-correction-form';
 afterEach(cleanup);
-function mount(){return render(<NextIntlClientProvider locale="en" messages={messages}><HireCorrectionForm employmentId="fictional" heading="Hired · 1 January 2026" fields={[]} readOnly={[]} cancelHref="/history" information={[
+function mount(){return render(<NextIntlClientProvider locale="en" messages={messages}><HireCorrectionForm employmentId="fictional" heading="Hired · 1 January 2026" fields={[]} cancelHref="/history" information={[
  {field:'companyId',label:'Company',value:'original',display:'Fictional Original Company',type:'select',required:true,options:[{id:'original',name:'Fictional Original Company'},{id:'corrected',name:'Fictional Corrected Company'}]},
  {field:'hiredOn',label:'Group Join Date',value:'2026-01-01',display:'1 January 2026',type:'date',required:true},
  {field:'employmentType',label:'Employment Type',value:'full_time',display:'Full time',type:'select',required:true,options:[{id:'full_time',name:'Full time'},{id:'contract',name:'Contract'}]},
@@ -26,7 +26,7 @@ describe('Correct Hire employment information controls',()=>{
   expect(screen.queryByRole('checkbox')).toBeNull();
  });
  it('keeps value/unit changes together under explicit original-hire field names',()=>{
-  const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><HireCorrectionForm employmentId="fictional" heading="Hired" fields={[]} readOnly={[]} cancelHref="/history" information={[
+  const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><HireCorrectionForm employmentId="fictional" heading="Hired" fields={[]} cancelHref="/history" information={[
    {field:'probationValue',label:'Probation value',value:'3',display:'3',type:'number'},
    {field:'probationUnit',label:'Probation unit',value:'month',display:'Month',type:'select',options:[{id:'month',name:'Month'},{id:'week',name:'Week'}]},
   ]}/></NextIntlClientProvider>);

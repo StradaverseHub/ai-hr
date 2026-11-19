@@ -20,7 +20,7 @@ import {MovementActionShell} from './movement-action-shell';
 import {MovementHistoryActions} from './movement-history-actions';
 import {movementScreenAccess} from '../../../../lib/movement-screen-access';
 import {informationCorrectionHistory} from '@/core/information-correction';
-import {HireCorrectionModes,InformationCorrectionAudit} from '../information-correction-form';
+import {InformationCorrectionAudit} from '../information-correction-form';
 import { getEmploymentCostAllocations,CostAllocationError } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
@@ -140,6 +140,9 @@ import { employmentPeriods, rehireFormDefaults } from '@/core/rehire';
 import { rollBackRehireAction } from './rehire-actions';
 import { EmploymentPeriodsCard } from './employment-periods-card';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
+import { historyMovementEditValues } from '@/core/movement-history-command';
+import { WorkforceAccessError } from '@/core/workforce-access';
+import { HistoryMovementEditForm } from './history-movement-edit-form';
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
 import { HireCorrectionForm, type HireCorrectionFormField,type HireInformationControl } from './hire-correction-form';
 import { serviceYearsMonthsDaysAt } from '@/core/leave';
@@ -3527,6 +3530,22 @@ export default async function EmployeePage({
           </ul>
         </div>
       )}
+      {!!movementDetailData.historyEdits?.length && (
+        <details className="border-t border-border px-4 py-3 text-sm">
+          <summary className="cursor-pointer font-medium">{t('movement.hireCorrection.details')}</summary>
+          <ul className="mt-2 space-y-3">
+            {movementDetailData.historyEdits.map((edit) => (
+              <li key={edit.id} className="border-t border-border pt-2">
+                <p className="text-muted-foreground">{formatDmyTime(new Date(edit.recordedAt))} · {edit.reason}</p>
+                <p>{t('movement.columns.effectiveDate')}: {formatDmy(edit.previousDate)} → {formatDmy(edit.correctedDate)}</p>
+                {(edit.previousCompany || edit.correctedCompany) && (
+                  <p>{t('movement.field.company')}: {edit.previousCompany ?? '—'} → {edit.correctedCompany ?? '—'}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       {movementInformationAudit.length>0&&<div className="border-t border-border p-4"><InformationCorrectionAudit history={movementInformationAudit}/></div>}
       {movementDocuments.length > 0 && (
         // 1d58019a Step 2 — the supporting documents recorded with this movement.
@@ -3717,11 +3736,32 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = canCorrectMovement && movementEditRow
+  const historyEditValues = canCorrectMovement && movementEditRow?.history
+    ? await historyMovementEditValues(s, employmentId, movementEditRow.id).catch((error) => {
+        if (error instanceof WorkforceAccessError) return null;
+        throw error;
+      })
+    : null;
+  const movementEditInput = canCorrectMovement && movementEditRow && !movementEditRow.history
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
-  const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
+  const editEventCard = canCorrectMovement && movementEditRow && movementFormProps &&
+    (!movementEditRow.history || historyEditValues) ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
+      {historyEditValues ? (
+        <HistoryMovementEditForm
+          key={historyEditValues.revisionId}
+          {...historyEditValues}
+          employmentId={employmentId}
+          movementId={movementEditRow.id}
+          companies={movementFormProps.companies}
+          orgByCompany={movementFormProps.orgByCompany}
+          selectedCompanyId={movementFormProps.current.companyId}
+          fallbackOrganisation={movementFormProps}
+          cancelHref={historyHref}
+          context={movementContext}
+        />
+      ) : (
       <MovementNewEvent
         key={movementEditRow.id}
         {...movementFormProps}
@@ -3743,6 +3783,7 @@ export default async function EmployeePage({
           availableClosedPayrollPeriods: closedPayrollPeriods,
         }}
       />
+      )}
     </Card>
   ) : null;
 
@@ -3778,51 +3819,6 @@ export default async function EmployeePage({
             stoppedBy: f.stoppedBy ? recordLabel(f.stoppedBy) : null,
             reachesCurrent: f.reachesCurrent,
           }));
-          const readOnly = [
-            // Board 4604dccc — this correction always applies as at the hire date: that is its Effective Date.
-            {
-              key: 'effectiveFrom',
-              label: t('movement.hireCorrection.effectiveFrom'),
-              value: formatDmy(hireCorrection.hiredOn),
-              pointer: t('movement.hireCorrection.effectiveFromPointer'),
-            },
-            {
-              key: 'company',
-              label: t('movement.field.company'),
-              value: hireCorrection.companyName ?? '—',
-              // The pointer that APPLIES, not both: the inline Company correction is open only while the
-              // pre-transaction gate (employmentCompanyBlockedTx) says nothing has been recorded yet.
-              pointer: companyEditable
-                ? t('movement.hireCorrection.companyEditableNow', { tab: t('tabs.job') })
-                : t('movement.hireCorrection.companyLocked', { type: movementKindLabel('entityTransfer') }),
-            },
-            {
-              key: 'groupJoinDate',
-              label: t('employmentInfo.groupJoinDate'),
-              value: formatDmy(hireCorrection.groupJoinDate),
-              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('groupJoinDateCorrection') }),
-              note: t('movement.hireCorrection.payslipRefusal'),
-            },
-            {
-              key: 'joinDate',
-              label: t('employmentInfo.joinDate'),
-              value: formatDmy(hireCorrection.joinDate),
-              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('joinDateChange') }),
-              note: t('movement.hireCorrection.payslipRefusal'),
-            },
-            {
-              key: 'grade',
-              label: t('movement.field.grade'),
-              value: hireCorrection.gradeName ?? '—',
-              pointer: t('movement.hireCorrection.notYet'),
-            },
-            {
-              key: 'employmentType',
-              label: t('movement.field.employmentType'),
-              value: movementEmpTypeLabel(hireCorrection.employmentType) ?? '—',
-              pointer: t('movement.hireCorrection.notYet'),
-            },
-          ];
           return (
             <Card id="section-hire-correction" className="overflow-hidden">
               <SectionHeader title={t('movement.hireCorrection.title')} />
@@ -3830,7 +3826,7 @@ export default async function EmployeePage({
                 <p>{t('movement.detail.companyReviewNeeded')}</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5">{hireCorrection.companyReviewFields.map(field=><li key={field}><Link className="underline" href={`/admin/personnel/${employmentId}?tab=${field==='payrollPolicyId'?'payroll':'job'}${field==='costAllocation'?'#section-cost-center-allocations':''}`}>{field==='gradeId'?t('movement.field.grade'):field==='costAllocation'?tPersonnel('costAllocations.title'):field==='payrollPolicyId'?tp('title'):movementInformationLabel(field as MovementInformationField)}</Link></li>)}</ul>
               </div>}
-              <HireCorrectionModes employmentId={employmentId} returnHref={movementPage?historyHref:undefined}><HireCorrectionForm
+              <HireCorrectionForm
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
@@ -3851,10 +3847,9 @@ export default async function EmployeePage({
                 paymentMethodAtHire={hireCorrection.paymentMethodAtHire}
                 contextFields={MOVEMENT_INFORMATION_FIELDS.filter(field=>!['hiredOn','joinDate',...HIRE_SCALAR_INFORMATION_FIELDS].includes(field)).map(field=>({field,label:movementInformationLabel(field),value:recordedInformationDisplay(field,hireCorrection.information?.[field]?.known===true,hireCorrection.information?.[field]?.value)}))}
                 endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
-                readOnly={readOnly.filter(row=>row.key==='effectiveFrom')}
                 cancelHref={historyHref}
                 pageContext={movementPage?movementContext:undefined}
-              /></HireCorrectionModes>
+              />
             </Card>
           );
         })()

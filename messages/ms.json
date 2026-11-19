@@ -2698,8 +2698,10 @@
           "action": {
             "create": "Cipta",
             "update": "Kemas kini",
-            "delete": "Padam"
+            "delete": "Padam",
+            "history": "Rekod sejarah"
           },
+          "guideHistory": "Gunakan Rekod sejarah untuk sebarang jenis peristiwa. Isi nilai terdahulu dalam Sebelum dan nilai pada tarikh berkuat kuasa dalam Selepas.",
           "guideAction": "Tindakan: biarkan kosong atau pilih Cipta untuk merekod pergerakan baharu. Pilih Kemas kini untuk membetulkan pergerakan sedia ada atau Padam untuk membatalkannya. Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan dan Sebab.",
           "guideMovementId": "ID Peristiwa Pergerakan: salin daripada lajur ID Peristiwa Pergerakan dalam muat turun Sejarah Pekerjaan pekerja (Muat Turun Excel pada tab Pergerakan). Ia mesti milik pekerja dalam baris tersebut.",
           "guideUpdate": "Kemas kini: masukkan satu baris bagi setiap medan yang hendak dibetulkan, dengan nilai baharu dalam Selepas. Sel kosong mengekalkan nilai yang direkodkan, termasuk Tarikh Berkuat Kuasa atau Jenis Peristiwa yang kosong; tiada apa yang dikosongkan. Padam: satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",

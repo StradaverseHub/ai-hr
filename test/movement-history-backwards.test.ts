@@ -11,11 +11,11 @@ import * as schema from '../db/schema';
 import {withTenant} from '../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee} from '../core/org';
-import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
+import {createMovementEvent,movementDetail,movementHistory,reverseMovementEvent} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {classifyHistoryRows,recordHistoryMovementTx} from '../core/movement-history';
 import {previewInformationCorrection,correctInformation} from '../core/information-correction';
-import {recordHistoryMovement} from '../core/movement-history-command';
+import {editEntityHistoryMovement,historyMovementEditValues,recordHistoryMovement} from '../core/movement-history-command';
 import type {MovementImportRecord} from '../lib/movement-import-contract';
 
 let b:Base;let coB:string;let coC:string;
@@ -70,11 +70,62 @@ describe('recording history before a date',()=>{
   expect(emp.companyId).toBe(b.companyId);
   const rows=await movementHistory(adminCtx(b),id);
   const move=rows.find(r=>r.kind==='entityTransfer')!;
-  expect(move).toMatchObject({effectiveDate:TRANSFER,history:true,canEdit:false,canReverse:true,company:'Acme Sdn Bhd'});
+  expect(move).toMatchObject({effectiveDate:TRANSFER,history:true,canEdit:true,canReverse:true,company:'Acme Sdn Bhd'});
   expect(rows.find(r=>r.kind==='hired')?.company).toBe('Beta Fictional Sdn Bhd');
   await reverseMovementEvent(adminCtx(b),{employmentId:id,movementId:move.id,reason:'Fictional undo'});
   expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
   expect((await movementHistory(adminCtx(b),id)).find(r=>r.id===move.id)?.reversed).toBeTruthy();
+ });
+
+ it('revises one entity history row and refuses stale revisions without changing later state',async()=>{
+  const id=await hire('HB-EDIT');
+  const ctx=adminCtx(b);
+  const original=await record(id,{effectiveDate:TRANSFER,after:{companyId:b.companyId},before:{companyId:coB}});
+  const edit={employmentId:id,movementId:original.eventId,revisionId:original.eventId,
+   effectiveDate:'2026-03-01',before:{companyId:coC},reason:'Correct the historical employer and date'};
+  expect(await historyMovementEditValues(ctx,id,original.eventId)).toMatchObject({
+   revisionId:original.eventId,effectiveDate:TRANSFER,before:{companyId:coB},
+  });
+  await editEntityHistoryMovement(ctx,edit);
+  const expected=[{validFrom:HIRED,validTo:edit.effectiveDate,companyId:coC},{validFrom:edit.effectiveDate,validTo:null,companyId:b.companyId}];
+  expect(await versions(id)).toEqual(expected);
+  const rows=await movementHistory(ctx,id);
+  expect(rows.filter(row=>row.history)).toMatchObject([{id:original.eventId,effectiveDate:edit.effectiveDate,canEdit:true}]);
+  const detail=await movementDetail(ctx,id,original.eventId);
+  expect(detail?.before?.company).toBe('Gamma Fictional Sdn Bhd');
+  expect(detail?.after.company).toBe('Acme Sdn Bhd');
+  expect(detail?.historyEdits).toMatchObject([{
+   previousDate:TRANSFER,correctedDate:edit.effectiveDate,previousCompany:'Beta Fictional Sdn Bhd',correctedCompany:'Gamma Fictional Sdn Bhd',
+  }]);
+  await expect(editEntityHistoryMovement(ctx,{...edit,before:{companyId:coB}})).rejects.toThrow('movement_history_overtaken');
+  expect(await versions(id)).toEqual(expected);
+  await reverseMovementEvent(ctx,{employmentId:id,movementId:original.eventId,reason:'Delete the amended history'});
+  expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
+ });
+
+ it('records historical employment type on a termination-labelled entry without ending employment',async()=>{
+  const id=await hire('HB-HIST-ONLY'),ctx=adminCtx(b);
+  const result=await recordHistoryMovement(ctx,{employmentId:id,typeCode:'termination',effectiveDate:TRANSFER,
+   before:{employmentType:'part_time'},remarks:'Historical contract context'});
+  expect(result.fields).toEqual(['employmentType']);
+  const assignments=await owner.db.select({type:schema.assignment.employmentType,from:schema.assignment.validFrom})
+   .from(schema.assignment).where(and(eq(schema.assignment.employmentId,id),isNull(schema.assignment.supersededAt))).orderBy(asc(schema.assignment.validFrom));
+  expect(assignments).toEqual([{type:'part_time',from:HIRED},{type:'full_time',from:TRANSFER}]);
+  const [employee]=await owner.db.select({terminated:schema.employment.terminatedOn}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.terminated).toBeNull();
+  expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'termination',history:true,effectiveDate:TRANSFER}));
+ });
+
+ it('keeps recorded employment dates in history evidence without changing the live confirmation date',async()=>{
+  const id=await hire('HB-HIST-DATE'),ctx=adminCtx(b);
+  const result=await recordHistoryMovement(ctx,{employmentId:id,typeCode:'confirmation',effectiveDate:TRANSFER,
+   before:{},dates:{confirmationDate:{before:'2026-01-01',after:'2026-03-10'}}});
+  const detail=await movementDetail(ctx,id,result.eventId);
+  expect(detail?.before?.informationEvidence?.confirmationDate).toMatchObject({known:true,value:'2026-01-01'});
+  expect(detail?.after.informationEvidence?.confirmationDate).toMatchObject({known:true,value:'2026-03-10'});
+  expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
+  const [employee]=await owner.db.select({confirmed:schema.employment.confirmationDate}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.confirmed).toBeNull();
  });
 
  it('refuses what history cannot mean, with a named reason',async()=>{
@@ -123,6 +174,20 @@ describe('the Movement import',()=>{
   expect(result.imported).toBe(2);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[HIRED,coC],['2025-12-01',coB],[TRANSFER,b.companyId]]);
  });
+ it('uses explicit history mode for a lifecycle workbook row and never runs the lifecycle action',async()=>{
+  const id=await hire('HB-IMP'),ctx=adminCtx(b);
+  const records:MovementImportRecord[]=[{row:2,employeeCode:'HB-IMP',requestedHistory:true,importVersion:2,
+   cells:{kind:'blacklist',effectiveDate:TRANSFER,employmentType:'full_time'},before:{employmentType:'part_time'},errors:[]}];
+  const preview=await previewMovementImport(ctx,{companyId:b.companyId,csv:'',records});
+  expect(preview.employees[0].rows[0]).toMatchObject({status:'valid',history:{from:HIRED,to:'2026-03-31'}});
+  const result=await commitMovementImport(ctx,{companyId:b.companyId,csv:'',records,selection:preview.selection,
+   inputHash:preview.inputHash,fingerprints:Object.fromEntries(preview.employees.map(e=>[e.employeeCode,e.fingerprint!])),acknowledgeExcluded:false});
+  expect(result.imported).toBe(1);
+  const [employee]=await owner.db.select({blacklisted:schema.employment.blacklistedAt}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.blacklisted).toBeNull();
+  expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'blacklist',history:true,effectiveDate:TRANSFER}));
+ });
+
  it('names the correction a company change cannot be placed before (board 4604dccc; no database error)',async()=>{
   const id=await hire('HB-IMP');const ctx=adminCtx(b);
   // A transfer to a third company dated before a correction whose recorded "before" company is the original one.

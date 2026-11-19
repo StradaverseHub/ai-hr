@@ -14,7 +14,7 @@ import {readSpreadsheetArchive,decodeSpreadsheetXml,SpreadsheetArchiveError,type
 import {movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
 import {signMovementTemplate,verifyMovementTemplate} from './movement-workbook-metadata.server';
 import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
-import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
+import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementHistorySystemFields,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
 import type {MovementFormField} from './movement-form-contract';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
 import {personnelImportLabelResolvers} from './personnel-import-labels.server';
@@ -86,6 +86,7 @@ export function movementReferenceSheet(p:{types:MovementWorkbookType[];companies
  const words=(key:string,fallback:string)=>p.resolve('people.import.movement.sheet.'+key,fallback);
  const reference:string[][]=[[words('referenceTypes','Event types and the System Fields each may change')],[words('colEventType','Event Type'),words('colCode','Code'),words('colFields','System Fields')]];
  const fieldLabels=new Map<string,string>();
+ for(const field of movementHistorySystemFields(p.resolve))fieldLabels.set(field.key,field.label);
  for(const type of p.types){const fields=movementSystemFields(type,p.resolve);for(const f of fields)if(!fieldLabels.has(f.key))fieldLabels.set(f.key,f.label);reference.push([movementTypeDisplay(p.types,type,p.resolve),type.code,fields.map(f=>f.label).join(' · ')||words('noFields','No field change (leave System Fields blank)')].map(business));}
  reference.push([],[words('referenceCompanies','Company ID to enter for each company')],[p.captions[0],words('colCompany','Company')]);
  for(const company of p.companies)reference.push([company.code,company.name].map(business));
@@ -140,6 +141,7 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
   [words('guideLimits','At most 200 rows and 50 employees per file, and 20 movements per employee. Each employee’s movements are saved together or not at all; other employees still go through.')],
   [words('guideNoRow','A movement with no field change (for example a Confirmation with no salary change) is one row with System Fields, Before and After left blank.')],
   [words('guideAction','Action: leave it blank or choose Create to record a new movement. Choose Update to correct an existing movement or Delete to roll it back. Update and Delete need the Movement Event ID and a Reason.')],
+  [words('guideHistory','Use Record history to enter a historical assignment for any event type. Enter the earlier value in Before and the value that applies on the effective date in After. This action records only the period before that date.')],
   [words('guideMovementId','Movement Event ID: copy it from the Movement Event ID column of the employee’s Employment History download (Download Excel on the Movement tab). It must belong to the employee in that row.')],
   [words('guideUpdate','Update: enter one row for each field to correct, with the new value in After. Blank cells keep the recorded value, including a blank Effective Date or Event Type; nothing is cleared. Delete: one row with System Fields, Before and After left blank.')],
   [words('guideReason','Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.')],
