@@ -291,7 +291,7 @@ async function loadLiveFixedRows(ctx: SessionContext, employmentIds: string[]) {
   );
   for (const r of rows) {
     const list = out.get(r.employmentId) ?? [];
-    list.push({ componentId: r.componentId, validFrom: r.validFrom, validTo: r.validTo, code: r.code });
+    list.push(r);
     out.set(r.employmentId, list);
   }
   return out;
