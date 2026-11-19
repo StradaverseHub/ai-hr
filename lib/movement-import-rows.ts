@@ -8,7 +8,7 @@
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
 import {movementWorkbookLayout,movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
-import { MOVEMENT_FORM_IDS, MOVEMENT_HISTORY_FIELDS } from './movement-form-contract';
+import { MOVEMENT_FORM_IDS, MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS, movementHistoryDateFields } from './movement-form-contract';
 import { personnelFormLabel } from './personnel-form-contract';
 import {movementRecordLimits} from './movement-type-csv';
 import {personnelImportOptionLookup} from './personnel-import-lookup';
@@ -36,8 +36,8 @@ export type MovementSystemField={key:string;label:string};
 export function movementSystemFields(type:MovementWorkbookType,resolve:PersonnelLabelResolver):MovementSystemField[]{
  return movementWorkbookLayout(type,resolve).filter(column=>column.role==='input'&&column.key!=='effectiveDate').map(column=>({key:column.key,label:column.label}));
 }
-export function movementHistorySystemFields(resolve: PersonnelLabelResolver): MovementSystemField[] {
- return [...MOVEMENT_HISTORY_FIELDS, 'remarks' as const].map(key=>({key,label:personnelFormLabel(MOVEMENT_FORM_IDS[key],resolve)}));
+export function movementHistorySystemFields(resolve: PersonnelLabelResolver, behaviour?: string): MovementSystemField[] {
+ return [...MOVEMENT_HISTORY_FIELDS, ...(behaviour ? movementHistoryDateFields(behaviour) : MOVEMENT_HISTORY_DATE_FIELDS), 'remarks' as const].map(key=>({key,label:personnelFormLabel(MOVEMENT_FORM_IDS[key],resolve)}));
 }
 /** Display value for an event type in the drop-down: its label, or its code where labels repeat. */
 export function movementTypeDisplay(types:MovementWorkbookType[],type:MovementWorkbookType,resolve:PersonnelLabelResolver){
@@ -123,7 +123,7 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   if(fieldType===null)continue;
   // An Update that keeps its event type names any System Field of any type; the server then refuses one the
   // movement's own type cannot change (not_applicable), exactly as it does for a Create.
-  const fields=resolvers.flatMap(resolve=>action==='history'?movementHistorySystemFields(resolve):
+  const fields=resolvers.flatMap(resolve=>action==='history'?movementHistorySystemFields(resolve,type?.behaviour):
    fieldType?movementSystemFields(fieldType,resolve):types.flatMap(t=>movementSystemFields(t,resolve)));
   const field=fields.find(f=>key(f.key)===key(fieldRaw)||key(f.label)===key(fieldRaw));
   if(!field&&['business unit','businessunitid','business_unit'].includes(key(fieldRaw))){if(record.ignoredOrganisation?.businessUnit!==undefined)record.errors.push('duplicate_system_field:businessUnitId');else record.ignoredOrganisation={...record.ignoredOrganisation,businessUnit:afterRaw};continue;}

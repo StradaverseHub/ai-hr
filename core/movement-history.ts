@@ -32,7 +32,7 @@ import {appendEvent,actorOf} from '../db/events';
 import {assignment,compensation,domainEvent,employment,employmentTypeEnum,location,payrollBatch,payslip,reportingLine} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {isCalendarDate} from '../lib/calendar-date';
-import {MOVEMENT_HISTORY_FIELDS} from '../lib/movement-form-contract';
+import {isMovementHistoryDateField, movementHistoryDateFields, MOVEMENT_HISTORY_FIELDS, type MovementHistoryDateField} from '../lib/movement-form-contract';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {lockEmploymentStatutoryOwnerTx} from './org';
@@ -101,20 +101,26 @@ export async function closedPayrollInSpanTx(tx:Tx,employmentId:string,from:strin
  return rows.filter(r=>r.period>=first&&r.period<=last).sort((a,b)=>a.period.localeCompare(b.period));
 }
 
-export type HistoryMovementFacts={effectiveDate:string;before:HistoryValues;after:HistoryValues;remarks?:string|null};
+export type HistoryDateFacts = Partial<Record<MovementHistoryDateField, { before: string; after?: string | null }>>;
+export type HistoryMovementFacts={
+ effectiveDate:string;before:HistoryValues;after:HistoryValues;remarks?:string|null;dates?:HistoryDateFacts;
+};
 export type RecordHistoryInput=HistoryMovementFacts & {
   employmentId:string;
   kind:string;
   typeCode?:string|null;
   correction?:{movementId:string;reason:string;previous:HistoryMovementFacts};
 };
-export type RecordHistoryResult={eventId:string;spanFrom:string;spanTo:string;fields:HistoryField[];closedPayrollPeriods:string[]};
+export type RecordHistoryResult={eventId:string;spanFrom:string;spanTo:string;fields:(HistoryField|MovementHistoryDateField)[];closedPayrollPeriods:string[]};
 
 /** Writes one history movement. The caller has already classified it (classifyHistoryRows); every rule is checked again here. */
 export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordHistoryInput):Promise<RecordHistoryResult>{
  const roles=ctx.roles??[];if(!(roles.includes('super_admin')||roles.includes('hr_admin')))throw new Error('Only an admin can record a movement.');
  const fields=Object.keys(p.after);
- if(!fields.length||!fields.every(isHistoryField))throw new MovementHistoryError('movement_history_fields');
+ const dates=Object.entries(p.dates??{});
+ if((!fields.length&&!dates.length)||!fields.every(isHistoryField)||
+  dates.some(([field,dates])=>!isMovementHistoryDateField(field)||!movementHistoryDateFields(p.kind).includes(field)||!isCalendarDate(dates.before)||
+   dates.after!=null&&!isCalendarDate(dates.after)))throw new MovementHistoryError('movement_history_fields');
  if(!fields.every(f=>f in p.before))throw new MovementHistoryError('movement_history_before_required');
  if(fields.includes('employmentType')&&(!p.before.employmentType||!(employmentTypeEnum.enumValues as readonly string[]).includes(p.before.employmentType)))throw new MovementHistoryError('movement_history_fields');
  const d=p.effectiveDate;
@@ -126,7 +132,7 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  await tx.execute(sql`select id from assignment where employment_id=${p.employmentId}::uuid and superseded_at is null for update`);
  const versions=await historyVersionsTx(tx,p.employmentId);
  const span=versions.filter(v=>v.validFrom<d);
- if(!span.length)throw new MovementHistoryError('movement_history_no_period');
+ if(!span.length||!versions.some(v=>covers(v,d)))throw new MovementHistoryError('movement_history_no_period');
  const spanFrom=span[0].validFrom;
  for(const f of fields as HistoryField[]){
   if(valueAt(versions,d,f)!==p.after[f])throw new MovementHistoryError('movement_history_after_mismatch:'+f);
@@ -135,9 +141,9 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
   // The field must be uniform over [start, D): a change inside it belongs to an earlier record.
   for(let i=1;i<span.length;i++)if(span[i][f]!==span[i-1][f])throw new MovementHistoryError('movement_history_earlier_change:'+span[i].validFrom);
  }
- if(!(fields as HistoryField[]).some(f=>valueAt(versions,prior,f)!==p.before[f]))throw new MovementHistoryError('movement_history_no_change');
+ if(!dates.some(([,fact])=>fact.before!==fact.after)&&!(fields as HistoryField[]).some(f=>valueAt(versions,prior,f)!==p.before[f]))throw new MovementHistoryError('movement_history_no_change');
  const spanning=span.find(v=>covers(v,d));
- if(spanning){
+ if(spanning&&fields.length){
   const [created]=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,p.employmentId),eq(domainEvent.aggregateId,spanning.id),inArray(domainEvent.eventType,['employment.assignment.changed','assignment.transferred']),sql`${domainEvent.payload}->'movement' is not null`)).limit(1);
   if(created)throw new MovementHistoryError('movement_history_splits_movement:'+spanning.validFrom);
  }
@@ -156,7 +162,7 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
   const row=byId.get(v.id)!;const company=(p.before.companyId!==undefined?p.before.companyId:row.companyId)??null;
   if(company)companies.add(company);
   if(row.companyId)companies.add(row.companyId);
-  if(!company)continue;
+  if(!company||!fields.length)continue;
   const department=p.before.departmentId!==undefined?p.before.departmentId:row.departmentId;
   const position=p.before.positionId!==undefined?p.before.positionId:row.positionId;
   const unit=p.before.businessUnitId!==undefined?p.before.businessUnitId:row.businessUnitId;
@@ -167,8 +173,8 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  }
  for(const company of companies)await assertWorkforceCompanyTx(tx,ctx,company,'maintain');
  const now=new Date(),replaced:{supersededId:string;replacementId:string}[]=[],inserted:string[]=[];
- await tx.update(assignment).set({supersededAt:now}).where(inArray(assignment.id,span.map(v=>v.id)));
- for(const v of span){
+ if(fields.length)await tx.update(assignment).set({supersededAt:now}).where(inArray(assignment.id,span.map(v=>v.id)));
+ for(const v of fields.length ? span : []){
   const {id:_id,createdAt:_c,recordedAt:_r,supersededAt:_s,...prior}=byId.get(v.id)!;
   const set=Object.fromEntries((fields as HistoryField[]).map(f=>[f,p.before[f]??null]));
   if(v.validTo===null||v.validTo>d){
@@ -183,9 +189,10 @@ export async function recordHistoryMovementTx(tx:Tx,ctx:SessionContext,p:RecordH
  const before=Object.fromEntries((fields as HistoryField[]).map(f=>[f,p.before[f]??null])),after=Object.fromEntries((fields as HistoryField[]).map(f=>[f,p.after[f]??null]));
  const event=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:p.correction?MOVEMENT_HISTORY_EDITED_EVENT:MOVEMENT_HISTORY_EVENT,actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
   payload:{employmentId:p.employmentId,type:p.typeCode??p.kind,kind:p.kind,effectiveDate:d,spanFrom,fields,before,after,remarks:p.remarks?.trim()||null,
+   ...(dates.length?{dates:p.dates}:{}),
    ...(p.correction?{movementId:p.correction.movementId,reason:p.correction.reason,previous:p.correction.previous}:{}),
    assignment:replaced,inserted,closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]}},{returnId:true});
- return{eventId:typeof event==='string'?event:'',spanFrom,spanTo:prior,fields:fields as HistoryField[],closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]};
+ return{eventId:typeof event==='string'?event:'',spanFrom,spanTo:prior,fields:[...fields as HistoryField[],...dates.map(([field])=>field as MovementHistoryDateField)],closedPayrollPeriods:[...new Set(closed.map(r=>r.period))]};
 }
 
 /** Rolls a history movement back: refused once a later write replaced any row it inserted. */

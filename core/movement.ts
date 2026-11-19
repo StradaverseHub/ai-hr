@@ -2,6 +2,8 @@ import {movementGradeEvidence} from '../lib/movement-grade-evidence';
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
 import {resolveOrganisationProjectionAssignmentTx} from './organisation-projection-lineage';
 import {withMovementPayrollWindowsTx,withContractPostingPayrollDeferralTx} from './workforce-payroll-invalidation';
+import {historyInformationField, isMovementHistoryDateField} from '../lib/movement-form-contract';
+import type {HistoryDateFacts} from './movement-history';
 import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
@@ -2212,6 +2214,16 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
       }
     }
     if(before)before.informationEvidence=movementInformationEvidence(events,beforeDate,beforeBound,false);
+    if (row.history && before?.informationEvidence) {
+      const revision=await latestHistoryMovementRevisionTx(tx,employmentId,row.id);
+      const dateFacts=(revision?.payload as {dates?: HistoryDateFacts}|undefined)?.dates??{};
+      for(const [key,fact] of Object.entries(dateFacts)){
+        if(!isMovementHistoryDateField(key))continue;
+        const field=historyInformationField(key);
+        before.informationEvidence[field]={known:true,value:fact.before,eventId:revision?.id??row.id};
+        if(fact.after!==undefined)after.informationEvidence[field]={known:true,value:fact.after,eventId:revision?.id??row.id};
+      }
+    }
     const revisions = row.history ? events.flatMap((event) => {
       if (event.eventType !== MOVEMENT_HISTORY_EDITED_EVENT) return [];
       const payload = event.payload as {

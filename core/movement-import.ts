@@ -30,6 +30,8 @@ import {createMovementEventTx,MovementBeforeGroupJoinDateError,movementCurrentSt
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
 import {recordImportItemTx} from './import-history';
+import {isMovementHistoryDateField} from '../lib/movement-form-contract';
+import type {HistoryDateFacts} from './movement-history';
 import {isComparisonKind,movementNeedsEntitlementReprojection} from './movement-kinds';
 import {resolveMovementEventTypeTx,activeMovementEventTypeChoicesTx,lockMovementTypeCatalogueTx} from './movement-type';
 import {HISTORY_FIELDS,classifyHistoryRows,dayBefore,historyVersionsTx,recordHistoryMovementTx,MovementHistoryError,type HistoryField,type HistoryValues} from './movement-history';
@@ -420,12 +422,22 @@ async function historyValuesTx(tx:Tx,ctx:SessionContext,record:MovementImportRec
  const day=movementImportDate(record.cells.effectiveDate??'');if(!day)throw new Error('invalid_effective_date');
  const [emp]=await tx.select({companyId:employment.companyId}).from(employment).where(eq(employment.id,id)).limit(1);
  const at=(date:string)=>versions.find(v=>v.validFrom<=date&&(v.validTo===null||v.validTo>date))?.companyId??emp?.companyId??'';
- const fields=historyFieldsOf(record) as HistoryField[];
+ const submittedFields=historyFieldsOf(record);
+ const dates:HistoryDateFacts={};
+ for(const field of submittedFields){
+  if(!record.requestedHistory||!isMovementHistoryDateField(field))continue;
+  const before=movementImportDate(record.before?.[field]??'');
+  const after=movementImportDate(record.cells[field]??'');
+  if(!before||!after)throw new MovementHistoryError('movement_history_before_required');
+  dates[field]={before,after};
+ }
+ const fields=submittedFields.filter(field=>(HISTORY_FIELDS as readonly string[]).includes(field)) as HistoryField[];
+ if(submittedFields.length!==fields.length+Object.keys(dates).length)throw new MovementHistoryError('movement_history_fields');
  const after=await inputTx(tx,ctx,record,id,at(day),false,reads,undefined,record.requestedHistory);
  const beforeRecord:MovementImportRecord={...record,cells:{kind:record.cells.kind,effectiveDate:record.cells.effectiveDate,...Object.fromEntries(fields.map(field=>[field,record.before![field]]))}};
  const before=await inputTx(tx,ctx,beforeRecord,id,at(dayBefore(day)),false,reads,undefined,record.requestedHistory);
  const pickIds=(input:CreateMovementInput)=>Object.fromEntries(fields.map(field=>[field,(input[field as keyof CreateMovementInput] as string|null|undefined)??null])) as HistoryValues;
- return{effectiveDate:day,fields,after:pickIds(after.input),before:pickIds(before.input),behaviour:after.behaviour,typeCode:after.input.kind,catalog:after.catalog,source:after.source};
+ return{effectiveDate:day,fields,dates,after:pickIds(after.input),before:pickIds(before.input),behaviour:after.behaviour,typeCode:after.input.kind,catalog:after.catalog,source:after.source};
 }
 /** Marks this employee's history rows (newest first against the live versions); every other row is unchanged. */
 async function classifyHistoryTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string):Promise<MovementImportRecord[]>{
@@ -512,12 +524,13 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
 /** Board 154511c4 — one history row: the Before values fill the period before its date (core/movement-history.ts). */
 async function applyHistoryRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,reads?:MovementChunkReads):Promise<RehearsedRow>{
  const v=await historyValuesTx(tx,ctx,record,id,await historyVersionsTx(tx,id),reads);
- const result=await recordHistoryMovementTx(tx,ctx,{employmentId:id,kind:v.behaviour,typeCode:v.typeCode,effectiveDate:v.effectiveDate,after:v.after,before:v.before,remarks:record.cells.remarks??null});
+ const result=await recordHistoryMovementTx(tx,ctx,{employmentId:id,kind:v.behaviour,typeCode:v.typeCode,effectiveDate:v.effectiveDate,after:v.after,before:v.before,dates:v.dates,remarks:record.cells.remarks??null});
  const labels={...v.source,companies:v.source.companies,fields:{...v.source.fields,...Object.fromEntries(Object.entries(v.catalog.fields).map(([key,options])=>[key,[...(v.source.fields[key as MovementFormField]??[]),...(options??[])]]))}} as MovementImportCatalog;
  const view:MovementImportRow={...rowView(record),eventType:v.typeCode,effectiveDate:v.effectiveDate,status:'valid',errors:[],
   warnings:result.closedPayrollPeriods.length&&!v.fields.includes('companyId')?['history_closed_payroll:'+result.closedPayrollPeriods.join(', ')]:[],
-  before:readable(v.before as Record<string,string|null>,labels),proposed:readable(v.after as Record<string,string|null>,labels),history:{from:result.spanFrom,to:result.spanTo}};
- return{view,input:{employmentId:id,kind:v.typeCode,effectiveDate:v.effectiveDate},changedFields:v.fields.map(field=>'history:'+field),references:[],rawAfter:{}};
+  before:{...readable(v.before as Record<string,string|null>,labels),...Object.fromEntries(Object.entries(v.dates).map(([key,fact])=>[key,fact.before]))},
+  proposed:{...readable(v.after as Record<string,string|null>,labels),...Object.fromEntries(Object.entries(v.dates).map(([key,fact])=>[key,fact.after??null]))},history:{from:result.spanFrom,to:result.spanTo}};
+ return{view,input:{employmentId:id,kind:v.typeCode,effectiveDate:v.effectiveDate},changedFields:result.fields.map(field=>'history:'+field),references:[],rawAfter:{}};
 }
 async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImportRecord[],id:string,deadline:number){
  return rehearseMovementSequenceTx(tx,ctx,async(rehearsalTx,create)=>{

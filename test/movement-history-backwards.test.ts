@@ -116,6 +116,18 @@ describe('recording history before a date',()=>{
   expect(await movementHistory(ctx,id)).toContainEqual(expect.objectContaining({kind:'termination',history:true,effectiveDate:TRANSFER}));
  });
 
+ it('keeps recorded employment dates in history evidence without changing the live confirmation date',async()=>{
+  const id=await hire('HB-HIST-DATE'),ctx=adminCtx(b);
+  const result=await recordHistoryMovement(ctx,{employmentId:id,typeCode:'confirmation',effectiveDate:TRANSFER,
+   before:{},dates:{confirmationDate:{before:'2026-01-01',after:'2026-03-10'}}});
+  const detail=await movementDetail(ctx,id,result.eventId);
+  expect(detail?.before?.informationEvidence?.confirmationDate).toMatchObject({known:true,value:'2026-01-01'});
+  expect(detail?.after.informationEvidence?.confirmationDate).toMatchObject({known:true,value:'2026-03-10'});
+  expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
+  const [employee]=await owner.db.select({confirmed:schema.employment.confirmationDate}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(employee.confirmed).toBeNull();
+ });
+
  it('refuses what history cannot mean, with a named reason',async()=>{
   const id=await hire('HB-2');
   await expect(record(id,{effectiveDate:'2099-01-01',after:{companyId:b.companyId},before:{companyId:coB}})).rejects.toThrow('movement_history_future');

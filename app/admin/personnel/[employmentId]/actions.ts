@@ -1,10 +1,10 @@
 'use server';
 
-import { MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
+import { MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
 import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
 
 import { editEntityHistoryMovement, recordHistoryMovement } from '@/core/movement-history-command';
-import { MovementHistoryError } from '@/core/movement-history';
+import { MovementHistoryError, type HistoryDateFacts } from '@/core/movement-history';
 import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
@@ -507,6 +507,17 @@ function parseHistoryBefore(formData: FormData, editing = false): Record<string,
   return before;
 }
 
+function parseHistoryDates(form: FormData): HistoryDateFacts {
+  const dates: HistoryDateFacts = {};
+  for (const field of MOVEMENT_HISTORY_DATE_FIELDS) {
+    const before = String(form.get('historyDate.before.' + field) ?? '').trim();
+    const after = String(form.get('historyDate.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) dates[field] = { before, ...(after ? { after } : {}) };
+  }
+  return dates;
+}
+
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -518,6 +529,7 @@ export async function createMovementEventAction(formData: FormData) {
         typeCode: String(formData.get('kind') ?? ''),
         effectiveDate: String(formData.get('effectiveDate') ?? ''),
         before: historyBefore,
+        dates: parseHistoryDates(formData),
         remarks: String(formData.get('remarks') ?? '').trim() || null,
       });
     } catch (e) {
@@ -624,6 +636,7 @@ export async function editMovementEventAction(formData: FormData) {
         revisionId: String(formData.get('revisionId') ?? '').trim(),
         effectiveDate: String(formData.get('effectiveDate') ?? ''),
         before: parseHistoryBefore(formData, true) ?? {},
+        dates: parseHistoryDates(formData),
         remarks: orNull(formData.get('remarks')),
         reason: String(formData.get('reason') ?? ''),
       });

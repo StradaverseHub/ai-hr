@@ -29,6 +29,7 @@ import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction,saveMovementPageAction } from './actions';
 
+import { HistoryMovementDateFields } from './history-movement-date-fields';
 import type {MovementPageContext} from '@/lib/personnel-movement-navigation';
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
 import {isComparisonKind} from '@/core/movement-kinds';
@@ -961,6 +962,7 @@ export function MovementNewEvent({
           {historySelect('employmentType', personnelFormChoices(movementField('employmentType')).map(choice => ({
             id: choice.value, name: tRoot(choice.labelKey),
           })))}
+          <HistoryMovementDateFields behaviour={behaviour} />
         </div>
       )}
 

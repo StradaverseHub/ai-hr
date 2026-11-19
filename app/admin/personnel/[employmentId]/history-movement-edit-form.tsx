@@ -7,13 +7,14 @@ import { Button, Field, inputCls } from '@/components/ui';
 import { personnelFormChoices, personnelFormLabel, personnelWorkflowControl, personnelWorkflowInput } from '@/lib/personnel-form-contract';
 import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
 import { DateField } from '@/components/ui/date-field';
-import type { HistoryValues } from '@/core/movement-history';
+import type { HistoryDateFacts, HistoryValues } from '@/core/movement-history';
 import type { MovementOrgScope, MovementOption } from './movement-new-event';
 import type { MovementPageContext } from '@/lib/personnel-movement-navigation';
+import { HistoryMovementDateFields } from './history-movement-date-fields';
 import { saveMovementPageAction } from './actions';
 
 export function HistoryMovementEditForm({
-  employmentId, movementId, revisionId, before, effectiveDate, remarks, companies, orgByCompany,
+  employmentId, movementId, revisionId, before, effectiveDate, remarks, dates, companies, orgByCompany,
   selectedCompanyId, fallbackOrganisation, cancelHref, context,
 }: {
   employmentId: string;
@@ -22,6 +23,7 @@ export function HistoryMovementEditForm({
   before: HistoryValues;
   effectiveDate: string;
   remarks?: string | null;
+  dates?: HistoryDateFacts;
   companies: MovementOption[];
   orgByCompany: Record<string, MovementOrgScope>;
   selectedCompanyId: string;
@@ -83,6 +85,7 @@ export function HistoryMovementEditForm({
             </select>
           </Field>
         ))}
+        <HistoryMovementDateFields behaviour="entityTransfer" dates={dates} />
         <label className="space-y-1 text-sm"><span>{t('columns.remarks')}</span>
           <input {...personnelWorkflowInput(MOVEMENT_FORM_IDS.remarks, 'movement', 'edit')} maxLength={200} defaultValue={remarks ?? ''} className={inputCls} />
         </label>

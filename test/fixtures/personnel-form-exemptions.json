@@ -1053,5 +1053,23 @@
       "reason": "Historical Before placement goes through the protected history writer and is validated against the effective-dated assignment.",
       "nameExpression": "`history.${field}`"
     }
+  ],
+  "app/admin/personnel/[employmentId]/history-movement-date-fields.tsx": [
+    {
+      "tag": "DateField",
+      "context": "HistoryMovementDateFields",
+      "nameExpression": "`historyDate.before.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Movement records this explicit historical date as evidence through the finite Employment field list and protected historical command."
+    },
+    {
+      "tag": "DateField",
+      "context": "HistoryMovementDateFields",
+      "nameExpression": "`historyDate.after.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Movement records this explicit historical date as evidence through the finite Employment field list and protected historical command."
+    }
   ]
 }
