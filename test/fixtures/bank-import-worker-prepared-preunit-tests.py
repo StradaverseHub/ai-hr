@@ -19,6 +19,7 @@ class Fixture(owner.Fixture):
    if 'prior last-ok is invalid'not in str(error):raise
   else:raise AssertionError('Original normal prepared activation accepted a failed-result baseline')
   historical=self.root/'live-prepared-activation.json';started=self.operation/'ci-runtime-started.json'
+  self.additional_root_private_files.add(started)
   os.utime(started,(self.clock+1,self.clock+1))
   self.current.update(result='failed',exit_code='1',finished_at='1794874210');self.write_records();shutil.rmtree(self.proc/self.current['pid'])
   log=Path(self.current['log']);log.write_text('actual final worker readiness check failed after the compiled runtime was verified\n')
@@ -71,7 +72,7 @@ class PreparedPreunitTests(unittest.TestCase):
     elif fault=='proof-selection':a['preparedWorker']['sha256']='0'*64
     elif fault=='old-mode':a['kind']=prepared.KINDS['recover-ci-runtime']
     else:
-     p=Path(a['recovery']['originalActivationApproval']);old=json.loads(p.read_bytes());old['kind']='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER';p.write_bytes(encoded(old));a['recovery']['originalActivationApprovalSha256']=ci.sha(p.read_bytes());(f.operation/'ci-runtime-started.json').write_bytes(encoded({'authorizationSha256':ci.sha(p.read_bytes()),'journeyVerified':False}));a['recovery']['originalStartedSha256']=ci.sha((f.operation/'ci-runtime-started.json').read_bytes())
+     p=Path(a['recovery']['originalActivationApproval']);old=json.loads(p.read_bytes());old['kind']='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER';p.write_bytes(encoded(old));a['recovery']['originalActivationApprovalSha256']=ci.sha(p.read_bytes());marker=f.operation/'ci-runtime-started.json';before=marker.stat();marker.chmod(0o600);marker.write_bytes(encoded({'authorizationSha256':ci.sha(p.read_bytes()),'journeyVerified':False}));marker.chmod(before.st_mode&0o777);os.utime(marker,ns=(before.st_atime_ns,before.st_mtime_ns));a['recovery']['originalStartedSha256']=ci.sha(marker.read_bytes())
     self.assertRaises((ValueError,FileNotFoundError),f.invoke_preunit,a);self.no_mutation(f)
  def test_published_release_prior_native_audit_or_prepared_tree_drift_refuses(self):
   for fault in('release','release-link','activated','start-request','audit','fence','content','inode','unit','worker'):
