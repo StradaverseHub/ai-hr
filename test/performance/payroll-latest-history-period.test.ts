@@ -1,4 +1,5 @@
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
@@ -102,6 +103,39 @@ it('finds the same latest visible Payroll history period without joining the his
   }
   console.info(JSON.stringify({kind:'PAYROLL_LATEST_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },480_000);
+
+it('rehearses the capped History page with the point-visibility migration applied',async()=>{
+  const {base,tenant,cases}=await seedHistory();
+  await seedRetainedHistory(tenant,base.adminUserId);
+  const fixture=readFileSync(new URL('./fixtures/payroll-history-point-read-plan-7010.sql',import.meta.url),'utf8');
+  expect(createHash('sha256').update(fixture).digest('hex')).toBe('aab79f0fad212e57e740e38f1667c2b811889287a409fb2a95adc69676e4eebc');
+  const [original]=await owner.client<{body:string}[]>`
+    select pg_get_functiondef('app.payroll_history_effective(uuid)'::regprocedure) as body`;
+  async function measure() {
+    const result=[];
+    for(const {label,ctx,scope,employmentId} of cases){
+      const started=performance.now();
+      const rows=await listProcessedPayslipsAcross(ctx,{companyIds:scope,employmentId,year:2026,month:3,limit:201});
+      result.push({label,rows,ms:Math.round(performance.now()-started)});
+    }
+    return result;
+  }
+  const baseline=await measure();
+  try{
+    await owner.client.begin(async tx=>{
+      for(const statement of fixture.split('--> statement-breakpoint'))await tx.unsafe(statement);
+    });
+    const next=await measure();
+    const evidence=next.map(({label,rows,ms},index)=>{
+      expect(rows,label).toEqual(baseline[index].rows);
+      return {label,rows:rows.length,beforeMs:baseline[index].ms,afterMs:ms};
+    });
+    expect(evidence[0].rows).toBe(201);
+    console.info(JSON.stringify({kind:'PAYROLL_TABLE_WITH_POINT_VISIBILITY_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
+  }finally{
+    await owner.client.unsafe(original.body);
+  }
+},360_000);
 
 async function seedRetainedHistory(tenant:string,actor:string) {
   await owner.client`insert into information_payslip_snapshot
