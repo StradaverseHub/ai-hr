@@ -19,7 +19,7 @@ import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,parsePayrollHistorySource,markBatchNeedsRecalc} from '../packs/payroll/service';
-import {taxBasisSourceRowsTx,hashTaxBasisSource as importedSourceHash,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
+import {taxBasisSourceRowsTx,hashTaxBasisSource as importedSourceHash,createTaxBasisPreviewReadTx,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
 const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -180,7 +180,6 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  for(let offset=0;employees.length;offset+=500){
   const page=await tx.execute<SourceSlip&{employmentId:string}>(sql`select p.id,p.employment_id as "employmentId",b.pay_period as period,(row_number() over(partition by p.employment_id,b.pay_period order by b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id))::integer as "runOrder",p.gross_pay as gross,p.basic_salary as basic,p.allowance,p.overtime_pay as overtime,p.bonus,p.other_deductions as deductions,p.statutory,case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId",b.payroll_cycle_id as "cycleId" from payslip p join payroll_batch b on b.id=p.batch_id where p.employment_id=any(${uuidArray(employees.map(employee=>employee.id))}) and b.company_id=${selection.companyId}::uuid and b.pay_period like ${selection.year+'-%'} and b.status in ('processed','closed') order by p.employment_id,b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id limit 500 offset ${offset}`);
   for(const slip of page){cache.slips.get(slip.employmentId)!.push(slip);allSlips.push(slip);}
-  for(const source of await taxBasisSourceRowsTx(tx,page.map(slip=>slip.id)))cache.sourceHashes.set(source.id,importedSourceHash(source));
   if(page.length<500)break;
  }
  const attempts=[...new Set(allSlips.map(slip=>slip.historyAttemptId).filter((id):id is string=>!!id))];
@@ -193,8 +192,10 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
   }
  }
  cache.rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(allSlips.map(slip=>slip.period))]);
+ const sourceRead=await createTaxBasisPreviewReadTx(tx,ctx,allSlips.map(slip=>slip.id));
+ cache.sourceHashes=sourceRead.sourceHashes;
  cache.effective=null;
- try{cache.effective=await readEffectiveTaxBasesTx(tx,ctx,allSlips.map(slip=>slip.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
+ try{cache.effective=await sourceRead.readEffective();}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
  cache.superseded=await supersededTaxBasisRowsTx(tx,allSlips.map(slip=>slip.id));
  for(const who of employees){if(Date.now()-started>25000)fail('This preview is too large. Select a smaller employee group and preview again.');results.push(await employeeTx(tx,ctx,selection,who,settings,settingsHash,cache));}
  const ready=results.filter(r=>r.status==='ready');

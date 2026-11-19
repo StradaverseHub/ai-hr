@@ -5,6 +5,7 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import type {SQL} from 'drizzle-orm';
 import {owner,resetDb,seedBase,setModule,entitledCtx,closeAll} from './harness';
 import {createBatch} from '../core/payroll';
+import {createTaxBasisPreviewReadTx} from '../core/payroll-tax-basis-read';
 import {previewTaxBasisRecalculation,taxBasisOptions} from '../core/payroll-tax-basis';
 afterAll(closeAll);
 it('pages 930 original-company sources within 70 companies and 1000 employments with exact ordered counts and no scope expansion',async()=>{
@@ -27,7 +28,9 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  }})),options);
  const spy=vi.spyOn(database,'withTenant').mockImplementation(measured),started=performance.now();
  let preview:Awaited<ReturnType<typeof previewTaxBasisRecalculation>>;
- try{preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null});}
+ try{preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null});
+  expect(queries.filter(query=>query.phase==='source-identity')).toHaveLength(1);
+ }
  finally{spy.mockRestore();console.info('PCB_SCALE_PHASE_DIAGNOSTIC',JSON.stringify({elapsedMs:performance.now()-started,queryCount:queries.length,queries}));}
 
  expect(preview.employees.map(employee=>employee.employeeNo)).toEqual(expected);expect(preview.eligibleCount).toBe(930);expect(preview.blockedCount).toBe(0);expect(preview.recordCount).toBe(930);expect(preview.totals).toMatchObject({beforeTaxable:4650000,taxable:5115000,difference:465000});
@@ -35,5 +38,6 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  const options=await taxBasisOptions(ctx);expect(options.companies).toHaveLength(70);expect(options.employees.map(employee=>employee.employeeNo)).toEqual(expected);
  const selected=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:preview.employees.slice(490,510).map(employee=>employee.id)});
  expect(selected.employees.map(employee=>employee.employeeNo)).toEqual(expected.slice(490,510));expect(selected.totals.taxable).toBe(110000);
- const foreign=await seedBase();await setModule(foreign.tenantId,'payroll','active');await expect(previewTaxBasisRecalculation(await entitledCtx(foreign),{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null})).rejects.toThrow(/access|authority|unavailable/);
+ await expect(database.withTenant(ctx,tx=>createTaxBasisPreviewReadTx(tx,ctx,['00000000-0000-4000-8000-000000000000']))).rejects.toThrow(/Original payroll source is unavailable/);
+ const foreign=await seedBase();await setModule(foreign.tenantId,'payroll','active');const foreignCtx=await entitledCtx(foreign);await expect(database.withTenant(foreignCtx,tx=>createTaxBasisPreviewReadTx(tx,foreignCtx,[preview.employees[0].months[0].payslipId]))).rejects.toThrow(/Original payroll source is unavailable/);await expect(previewTaxBasisRecalculation(await entitledCtx(foreign),{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null})).rejects.toThrow(/access|authority|unavailable/);
 },180000);
