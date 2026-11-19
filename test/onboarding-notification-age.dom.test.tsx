@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
@@ -28,5 +27,4 @@ it('omits invented onboarding ages, orders undated work deterministically and re
  expect(entries[3]!.textContent).toBe('Onboarding workUndated checklist · Fictional hire');
  view.rerender(<NextIntlClientProvider locale="en" messages={messages}><NotificationCenter unread={1} items={[]} tasks={[...tasks].reverse()} taskCount={4}/></NextIntlClientProvider>);
  expect(screen.getAllByRole('listitem').map(e=>e.textContent)).toEqual(entries.map(e=>e.textContent));
- expect(readFileSync('app/layout.tsx','utf8')).toContain('...onboardingQueue.map(onboardingNotificationTask)');
 });

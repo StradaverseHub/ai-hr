@@ -154,16 +154,11 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     expect(callSites, 'exactly one task read in the root layout').toEqual(['pendingTaskSummary(']);
   });
 
-  it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
-    // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
-    // approval records. The nav badge is strictly approval items.
-    const bellSlot=readFileSync(new URL('../app/shell-notification-center.tsx',import.meta.url),'utf8');
-    expect(bellSlot).toContain('taskCount={taskCount + bell.taskCount}');
+  it('does not use action-severity notification totals to derive approval counts', () => {
+    // The integration case in identity-email-layout exercises the distinct rail and bell counts
+    // through the authenticated layout, with both onboarding items and action notifications.
     expect(layout).not.toMatch(/approvalCount[:=][^\n]+taskNotifCount/);
-    // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
-    expect(layout).toContain('const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];');
-    expect(layout).toContain('const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;');
-    expect(layout).toContain('taskCount={lifecycleTaskCount}');
+    expect(layout).toContain('lifecycleWork={lifecycleWork}');
   });
 
   it('each work row renders its own count only when positive', () => {
