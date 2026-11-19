@@ -207,6 +207,7 @@ export function MovementNewEvent({
   posting,
   postingAction,
   rehire,
+  historyOnly = false,
 }: {
   employmentId: string;
   today: string;
@@ -239,6 +240,7 @@ export function MovementNewEvent({
     code: string;
     label: string | null;
     behaviourKind: string;
+    historyOnly?: boolean;
     description?: string | null;
     /** 1d58019a Step 2 — a Termination type's ticked reasons; null/absent = every active reason. */
     reasonCodes?: string[] | null;
@@ -265,6 +267,7 @@ export function MovementNewEvent({
   /** Board 511aa74a — present only when this employee may be rehired (Resigned, nothing current). The
    *  Rehired type then renders its own form (a new employment, core/rehire.ts), never the movement writer. */
   rehire?: Omit<RehireFormProps, 'kindCode'>;
+  historyOnly?: boolean;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
@@ -276,7 +279,9 @@ export function MovementNewEvent({
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
-  const [kind, setKind] = useState<string>(posting?.kind ?? edit?.kind ?? catalog[0]?.code ?? 'transfer');
+  const forwardTypes = catalog.filter(option => !option.historyOnly);
+  const [kind, setKind] = useState<string>(posting?.kind ?? edit?.kind ??
+    (historyOnly ? catalog[0]?.code : forwardTypes[0]?.code) ?? 'transfer');
   const behaviour = behaviourOf(kind);
   const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
   const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
@@ -423,7 +428,11 @@ export function MovementNewEvent({
   const [ruleError, setRuleError] = useState<string | null>(null);
   // Board 154511c4 — "Record history": HR enters what the employee had BEFORE the effective date; the record on
   // the date stays as it is (core/movement-history-command.ts). New comparison movements only.
-  const [historyMode, setHistoryMode] = useState(false);
+  const [historyMode, setHistoryMode] = useState(historyOnly);
+  const changeHistoryMode = (enabled: boolean) => {
+    setHistoryMode(enabled);
+    if (!enabled && byCode.get(kind)?.historyOnly) setKind(forwardTypes[0]?.code ?? 'transfer');
+  };
   const [historyCompany, setHistoryCompany] = useState('');
   const historyScope = orgByCompany?.[historyCompany || current.companyId] ?? { departments, positions, businessUnits, locations };
   const historyOrganisation = useDerivedOrganisation({ companyId: historyCompany || current.companyId, asOf: correctionDate });
@@ -664,7 +673,7 @@ export function MovementNewEvent({
       </select>),
   ];
 
-  const kindOptions: readonly string[] = posting ? [posting.kind] : edit ? edit.allowedKinds : catalog.map((c) => c.code);
+  const kindOptions: readonly string[] = posting ? [posting.kind] : edit ? edit.allowedKinds : (historyMode ? catalog : forwardTypes).map((c) => c.code);
   const savedScope=isEntityTransfer?saved?.companyId??current.companyId:current.companyId;
   const savedOrg=orgByCompany?.[savedScope]??{departments,positions,businessUnits,locations};
   const referenceChoices={companyId:companies??[{id:current.companyId,name:current.companyName??''}],
@@ -700,7 +709,7 @@ export function MovementNewEvent({
             )}
           </label>
         </div>
-        <button type="button" className={`${btnGhost} mx-4 mb-3`} onClick={() => setHistoryMode(true)}>
+        <button type="button" className={`${btnGhost} mx-4 mb-3`} onClick={() => changeHistoryMode(true)}>
           {t('form.recordHistory')}
         </button>
         {rehire ? (
@@ -832,7 +841,8 @@ export function MovementNewEvent({
         {!edit && !saved && !posting && (
           <label className="flex items-start gap-2 text-sm sm:col-span-2">
             <input name="recordHistory" type="checkbox" value="1" className="mt-1" checked={historyMode}
-              onChange={(event) => setHistoryMode(event.target.checked)} />
+              disabled={historyOnly} onChange={(event) => changeHistoryMode(event.target.checked)} />
+            {historyOnly && <input type="hidden" name="historicalPageMode" value="1" />}
             <span>{t('form.recordHistory')}
               {historyMode && <span className="mt-1 block text-xs text-muted-foreground">{t('form.recordHistoryHint')}</span>}
             </span>
