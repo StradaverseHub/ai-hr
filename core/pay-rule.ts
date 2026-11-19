@@ -34,8 +34,7 @@
  *
  * ── 61bf109d: Input Type redesign + Formula Setting ────────────────────────────────────────────────
  * NO EXPRESSION STRINGS. A formula is an AST-shaped VALUE (a seed operand folded left-to-right through a
- * term list), so there is no `eval`, no `new Function`, no dynamic import { isTxnUnit } from '../lib/payroll-transaction-units';
-import of expression text, and no parser
+ * term list), so there is no `eval`, no `new Function`, no dynamic import of expression text, and no parser
  * that could accept something the validator has not seen. The FIXED, NAMED input set is the contract:
  * a literal number, `basic`, `days`, `hours`, and `component:<CODE>`. Anything outside it is unrepresentable
  * in the type and rejected at SAVE time — never a run-time surprise on a payslip.
@@ -45,6 +44,7 @@ import of expression text, and no parser
  * pay_component.resolution_order (migration 0330) and resolvePayComponentSet() replays that recorded order,
  * so the order that was validated is the order that pays and two runs of the same payroll cannot disagree.
  */
+import { isTxnUnit } from '../lib/payroll-transaction-units';
 import type { FormulaOp, FormulaOperand, FormulaTerm, PayRule } from '../db/schema';
 
 export { type PayRule, type FormulaOperand, type FormulaOp, type FormulaTerm } from '../db/schema';
