@@ -60,11 +60,38 @@ async function admin(tx: SqlExecutor, companyId?: string): Promise<void> {
   const [result] = await tx.execute<{ ok: boolean }>(companyId ? sql`select app.is_admin_for(${companyId}::uuid) as ok` : sql`select app.is_group_admin() as ok`);
   if (!result?.ok) throw new M.V9Error('You do not have permission to change this lifecycle record.', 'forbidden');
 }
-async function companySignersTx(tx:Tx,tenantId:string,companyId:string,module?:M.Module):Promise<string[]> {
+async function companySignerCandidatesTx(tx:Tx,tenantId:string,companyIds:readonly string[]) {
+  const emptyByCompany=():Record<string,string[]>=>Object.fromEntries(companyIds.map(id=>[id,[]]));
+  const candidates={combined:emptyByCompany(),onb:emptyByCompany(),off:emptyByCompany()};
+  if(companyIds.length===0)return candidates;
   const [configuration]=await tx.execute<{data:NativeConfig}>(sql`select data from lc_onboarding_config where tenant_id=${tenantId}::uuid`);
-  if(!configuration)return [];
-  const users=await tx.execute<{id:string}>(sql`select u.id from app_user u where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and exists(select 1 from role_assignment r where r.tenant_id=u.tenant_id and r.app_user_id=u.id and r.role in ('super_admin','hr_admin') and (r.company_id is null or r.company_id=${companyId}::uuid)) order by u.id`);
-  return users.filter(user=>{const sections=joinerPageSections(configuration.data,user.id),onb=configuration.data.access.onboarding.includes(user.id)||sections?.actions==='allowed'&&sections.hr==='view',off=configuration.data.access.offboarding.includes(user.id);return module==='onb'?onb:module==='off'?off:onb||off;}).map(user=>user.id);
+  if(!configuration)return candidates;
+  const requested=sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]`;
+  const users=await tx.execute<{id:string;group_access:boolean;companies:string[]|null}>(sql`
+    select u.id, bool_or(r.company_id is null) as group_access,
+      array_agg(distinct r.company_id) filter (where r.company_id is not null) as companies
+    from app_user u
+    join role_assignment r on r.tenant_id=u.tenant_id and r.app_user_id=u.id
+    where u.tenant_id=${tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)
+      and r.role in ('super_admin','hr_admin')
+      and (r.company_id is null or r.company_id=any(${requested}))
+    group by u.id order by u.id`);
+  const config=configuration.data;
+  for(const user of users){
+    const sections=joinerPageSections(config,user.id);
+    const onboarding=config.access.onboarding.includes(user.id)||(sections?.actions==='allowed'&&sections.hr==='view');
+    const offboarding=config.access.offboarding.includes(user.id);
+    if(!onboarding&&!offboarding)continue;
+    for(const companyId of user.group_access?companyIds:user.companies??[]){
+      candidates.combined[companyId].push(user.id);
+      if(onboarding)candidates.onb[companyId].push(user.id);
+      if(offboarding)candidates.off[companyId].push(user.id);
+    }
+  }
+  return candidates;
+}
+async function companySignersTx(tx:Tx,tenantId:string,companyId:string,module?:M.Module):Promise<string[]> {
+  return (await companySignerCandidatesTx(tx,tenantId,[companyId]))[module??'combined'][companyId];
 }
 
 /** Full case view: onboarding module access or a group with the "Full case view" preset; offboarding module access.
@@ -394,8 +421,9 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
     if (!permission?.ok && !permission?.offboarding && !permission?.onboarding && !permission?.records) throw new M.V9Error('Onboarding or Offboarding module access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
-    const signatoryCandidates=Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id)] as const)));
-    const signatoryCandidatesByModule={onb:Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id,'onb')] as const))),off:Object.fromEntries(await Promise.all(companies.map(async company=>[company.id,await companySignersTx(tx,ctx.tenantId,company.id,'off')] as const)))};
+    const signers=permission?.onboardingModule||permission?.offboarding
+      ? await companySignerCandidatesTx(tx,ctx.tenantId,companies.map(company=>company.id))
+      : null;
     const checklistOwners = permission?.ok ? await tx.execute<{id:string}>(sql`select distinct u.id from app_user u join role_assignment r on r.app_user_id=u.id and r.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) and (r.role='super_admin' or r.role='hr_admin' and r.company_id is null)`) : [];
     const employees = await tx.execute<{ id: string; name: string; employeeNo: string; companyId: string }>(sql`select e.id,p.full_name as name,e.employee_code as "employeeNo",e.company_id as "companyId" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) order by p.full_name,e.id`);
     const rows = config ? await tx.execute<{ data: M.Case }>(sql`select data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`) : [];
@@ -410,7 +438,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
     const [nativeRoutes]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { ...(terminationReasonLabels?{terminationReasonLabels}:{}),nativeDocumentRoutingChoices:{routings:(nativeRoutes?.routings??[]).map(route=>({id:route.id,name:route.name})),groups:config?.groups.map(group=>({id:group.id,name:group.name}))??[],people:[...users]},checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { ...(terminationReasonLabels?{terminationReasonLabels}:{}),nativeDocumentRoutingChoices:{routings:(nativeRoutes?.routings??[]).map(route=>({id:route.id,name:route.name})),groups:config?.groups.map(group=>({id:group.id,name:group.name}))??[],people:[...users]},checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:signers?.combined??{}, signatoryCandidatesByModule:signers?{onb:signers.onb,off:signers.off}:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
