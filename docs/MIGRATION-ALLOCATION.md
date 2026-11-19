@@ -1,11 +1,14 @@
-# Fixed Transaction import log — 19 November 2026 (candidate only)
+# Approved payroll candidates — 19 November 2026 (draft allocation)
 
-The working branch uses `6920_fixed_transaction_import_job`, idx `10320`, when `1795028006920`, SQL SHA-256 `3558cdcdcbc94d8998d0ac1b4050e6abe0f1e751ecb0e2f6120553ae60660833`.
-The source scan covered 8,573 local and cached origin refs, 778 distinct journals and 580 registered
-worktrees. It found no tag, index or timestamp collision and the maximum observed timestamp was
-`1794998006701`. A read-only staging query found 924 migrations and watermark `1794841006104`.
-The release coordinator must recheck the live production and staging ledgers and active reservations before
-allocating this draft for integration. This entry registers only a kind on the shared worker.
+| Candidate migration | Journal index | Timestamp | SQL SHA-256 |
+| --- | ---: | ---: | --- |
+| `6920_fixed_transaction_import_job` | 10320 | 1795028006920 | `92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed` |
+| `6930_payroll_transaction_export` | 10330 | 1795028006930 | `517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88` |
+| `6940_individual_import_template_version` | 10340 | 1795028006940 | `1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d` |
+
+The source survey covered 8,573 local and cached origin refs, 778 distinct journals and 580 registered worktrees before the candidates were created. The largest timestamp was `1794998006701`. The read-only staging ledger had 924 migrations and a watermark of `1794841006104`.
+
+Confirm both live ledgers and all active reservations with the release coordinator before assigning these draft numbers for integration.
 
 # Contract company scope and private digest retention — 18 November 2026 (registered, unapplied)
 

@@ -52,6 +52,7 @@
  * and sends text. That is r185's shape and it is kept for the reason r185 kept it: no server-side
  * spreadsheet parser means no server-side spreadsheet attack surface.
  */
+import { resolveDailyImportInput } from './pay-rule';
 import { createHash } from 'node:crypto';
 
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -83,8 +84,6 @@ import {
   updateEmploymentPayComponent,
   type FixedTransactionCycle,
   payRuleInputUnit,
-  payRuleAllowsDayByDay,
-  payRuleDerivesAmount,
   isTxnUnit,
   PayRuleEvalError,
   type PayRule,
@@ -332,6 +331,8 @@ type ResolvedIndividual = {
   sourceRef: string;
   intendedCycleId?: string | null;
   method?: string;
+  explicitDailyInput?: string;
+  explicitDailyRuleHash?: string;
 };
 
 /** The rows already in the ledger for the employments a file names, read ONCE for the whole file. The
@@ -787,18 +788,26 @@ async function analyzeIndividual(
     // is the same resolver the entry form asks, so a file and the form cannot disagree about it.
     const ruleInputUnit = payRuleInputUnit(comp.rule);
     let inputUnit:string|null = ruleInputUnit;
-    if(rec.__method==='daily'&&(!payRuleAllowsDayByDay(comp.rule)||!payRuleDerivesAmount(comp.rule)||inputUnit==null)){
-      push(fail(base,'dailyItemUnsupported'));continue;
+    const explicitDaily = rec.__method === 'daily' && rec.__explicit_daily_input === '1';
+    const typedUnit = (rec.__input_unit ?? '').trim().toLowerCase();
+    if (rec.__method === 'daily') {
+      const daily = resolveDailyImportInput(comp.rule, explicitDaily ? typedUnit : undefined);
+      if ('reason' in daily) {
+        push(fail(base, daily.reason, 'expected' in daily ? { value: daily.expected } : undefined));
+        continue;
+      }
+      inputUnit = daily.unit;
     }
-    const typedUnit=(rec.__input_unit??'').trim().toLowerCase();
     if(rec.__method==='monthly'&&typedUnit){
       if(!isTxnUnit(typedUnit)||inputUnit!=null&&typedUnit!==inputUnit){push(fail(base,'inputTypeInvalid'));continue;}
       inputUnit=typedUnit;
     }
 
     const quantityRaw = (rec.quantity ?? '').trim();
-    const quantity = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
-    if (quantityRaw !== '' && quantity == null) {
+    const enteredValue = quantityRaw === '' ? null : parseAmountCell(quantityRaw);
+    const directDaily = explicitDaily && inputUnit === 'amount';
+    const quantity = directDaily ? null : enteredValue;
+    if (quantityRaw !== '' && enteredValue == null) {
       push(fail(base, 'quantityInvalid', { value: quantityRaw }));
       continue;
     }
@@ -807,7 +816,7 @@ async function analyzeIndividual(
       continue;
     }
 
-    const typed = parseAmountCell(rec.amount ?? '');
+    const typed = directDaily ? enteredValue : parseAmountCell(rec.amount ?? '');
     // THE AMOUNT THE PREVIEW SHOWS IS THE AMOUNT THAT WILL BE STORED. On a calculating pay item that is
     // the SERVER's figure, from the same evaluator the payslip uses — never the typed one. Previewing
     // the typed figure and storing a different one would be a preview that lies.
@@ -836,7 +845,7 @@ async function analyzeIndividual(
       }
     }
     if (!(amount > 0)) {
-      push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: rec.amount ?? '' }));
+      push(fail(base, typed == null && comp.rule == null ? 'amountInvalid' : 'amountNotPositive', { value: directDaily ? quantityRaw : rec.amount ?? '' }));
       continue;
     }
 
@@ -859,7 +868,8 @@ async function analyzeIndividual(
 
     stage.push({
       rowNum,
-      base: { ...base, payItem: comp.name, amount: amount.toFixed(2) },
+      base: { ...base, payItem: comp.name, amount: amount.toFixed(2),
+        ...(explicitDaily && unit && enteredValue != null ? {inputType:unit,inputValue:enteredValue} : {}) },
       failure: null,
       displayCategory: comp.displayCategory,
       cycleStated: cycleRaw !== '',
@@ -878,6 +888,7 @@ async function analyzeIndividual(
         targetCycle,
         sourceRef: fileRowRef(digest, rowNum),
         intendedCycleId, method:rec.__method,
+        ...(explicitDaily ? {explicitDailyInput: typedUnit, explicitDailyRuleHash: createHash('sha256').update(JSON.stringify(comp.rule ?? null)).digest('hex')} : {}),
       },
     });
   }

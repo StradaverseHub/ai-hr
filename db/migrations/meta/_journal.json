@@ -7848,6 +7848,13 @@
       "when": 1795028006930,
       "tag": "6930_payroll_transaction_export",
       "breakpoints": true
+    },
+    {
+      "idx": 10340,
+      "version": "7",
+      "when": 1795028006940,
+      "tag": "6940_individual_import_template_version",
+      "breakpoints": true
     }
   ]
 }
