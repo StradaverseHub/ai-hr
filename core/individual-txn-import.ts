@@ -8,7 +8,8 @@ import {domainEvent,payComponent,payrollBatch,payrollIndividualTxn,payrollTxnImp
 import {adminCompaniesTx} from './read';
 import {isAdmin} from '../lib/authz-model';
 import {analyzeTxnImport,txnImportReason} from './payroll-txn-import';
-import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,payRuleAllowsDayByDay,payRuleDerivesAmount,payRuleInputUnit,type PayRule} from '../packs/payroll/service';
+import {createIndividualTxnsBulkTx,deleteIndividualTxnTx,loadWritableBatch,lockNativePayrollPeriodsTx,deriveIndividualTxnAmountTx,type PayRule} from '../packs/payroll/service';
+import {resolveDailyImportInput} from './pay-rule';
 import {parseIndividualImport} from '../lib/individual-txn-import-contract';
 import type {IndividualImportMethod,TxnImportPreview} from '../lib/payroll-txn-import-schema';
 import type {IndividualImportAttempt,IndividualImportOutcome} from '../lib/individual-txn-import-model';
@@ -42,6 +43,7 @@ function canonicalBinding(r:ResolvedRow):PayrollTxnImportBinding{return {
  employmentId:r.employmentId,companyId:r.companyId,departmentId:r.departmentId,componentId:r.componentId,
  intendedCycleId:r.intendedCycleId??null,targetBatchId:r.targetBatchId,targetCycle:r.targetCycle,payPeriod:r.payPeriod,
  txnDate:r.txnDate,kind:r.kind,quantity:r.quantity,unit:r.unit,sourceRef:r.sourceRef,notes:r.notes,
+ ...(r.explicitDailyRuleHash ? {dailyRuleHash:r.explicitDailyRuleHash} : {}),
 };}
 async function eventIds(tx:Tx,id:string){return (await tx.select({id:domainEvent.id}).from(domainEvent).where(and(eq(domainEvent.aggregateId,id),eq(domainEvent.aggregateType,'payroll-individual-txn'))).orderBy(asc(domainEvent.id))).map(e=>e.id);}
 function project(r:typeof attempt.$inferSelect):IndividualImportAttempt{return {id:r.id,sourceName:r.sourceName,method:r.method,createdBy:r.createdBy,createdAt:r.createdAt.toISOString(),state:r.state,records:r.records,preview:safePreview(r.preview),outcomes:r.outcomes,written:r.written,recalcBatchIds:r.recalcBatchIds,revertedAt:r.revertedAt?.toISOString()??null,revertedBy:r.revertedBy};}
@@ -55,13 +57,13 @@ async function stamp(tx:Tx,ctx:SessionContext,id:string,event:string,extra:Recor
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-txn-import',aggregateId:id,eventType:`payroll.txn-import.${event}`,actor:actorOf(ctx),payload:extra});
 }
 /** Persist the exact validated source. Repeated upload operation IDs cannot overwrite its meaning. */
-export async function validateIndividualImport(ctx:SessionContext,p:{operationId:string;sourceName:string;csv:string;method:IndividualImportMethod;scopeIds:string[]}):Promise<IndividualImportAttempt>{
+export async function validateIndividualImport(ctx:SessionContext,p:{operationId:string;sourceName:string;csv:string;method:IndividualImportMethod;scopeIds:string[];allowPreviousDaily?:boolean}):Promise<IndividualImportAttempt>{
  uuid.parse(p.operationId);if(p.method!=='monthly'&&p.method!=='daily')throw new IndividualImportError('templateMismatch');
  if(typeof p.csv!=='string'||new TextEncoder().encode(p.csv).byteLength>900000)throw new IndividualImportError('fileTooLarge');
  const ids=await scope(ctx,p.scopeIds);
  const name=p.sourceName.trim();if(!name.toLowerCase().endsWith('.xlsx')||name.length>255)throw new IndividualImportError('invalidFormat');
  let records:Record<string,string>[]=[],fileError:string|undefined;
- try{records=parseIndividualImport(p.csv,p.method);}catch(e){fileError=e instanceof Error?e.message:'templateMismatch';}
+ try{records=parseIndividualImport(p.csv,p.method,{allowPreviousDaily:p.allowPreviousDaily});}catch(e){fileError=e instanceof Error?e.message:'templateMismatch';}
  const analysis=fileError?null:await analyzeTxnImport(ctx,{kind:'individual',scopeIds:ids,records});
  const bindings:Record<string,PayrollTxnImportBinding>=analysis?.kind==='individual'?Object.fromEntries([...analysis.resolved].map(([number,row])=>[String(number),canonicalBinding(row)])):{};
  const preview=fileError?{kind:'individual' as const,total:0,valid:0,invalid:0,rows:[],fileError}:analysis!.preview;
@@ -109,7 +111,11 @@ export async function confirmIndividualImport(ctx:SessionContext,p:{id:string;sc
      const [item]=await savepoint.select({rule:payComponent.rule}).from(payComponent).where(eq(payComponent.id,resolved.componentId)).for('share');
      if(!item)throw new IndividualImportError('previewChanged');
      const rule=item.rule as PayRule|null;
-     if(r.method==='daily'&&(!payRuleAllowsDayByDay(rule)||!payRuleDerivesAmount(rule)||payRuleInputUnit(rule)==null))throw new IndividualImportError('previewChanged');
+     if (r.method === 'daily') {
+      const daily = resolveDailyImportInput(rule, resolved.explicitDailyInput);
+      if ('reason' in daily || daily.unit !== resolved.unit ||
+          resolved.explicitDailyRuleHash && resolved.explicitDailyRuleHash !== digest(JSON.stringify(rule ?? null))) throw new IndividualImportError('previewChanged');
+     }
      const priced=await deriveIndividualTxnAmountTx(savepoint,ctx,{componentId:resolved.componentId,employmentId:resolved.employmentId,companyId:resolved.companyId,payPeriod:resolved.payPeriod,quantity:resolved.quantity,unit:resolved.unit,effectiveDate:resolved.txnDate});
      if(priced.derived&&priced.amount.toFixed(2)!==row.amount)throw new IndividualImportError('previewChanged');
      const result=await createIndividualTxnsBulkTx(savepoint,ctx,{

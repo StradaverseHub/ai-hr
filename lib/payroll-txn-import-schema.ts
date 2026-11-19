@@ -185,6 +185,8 @@ export type TxnImportRow = {
   /** What will actually be written. On a calculating pay item this is the DERIVED figure, not the typed
    *  one — the preview must show the number that will be stored, or it is not a preview. */
   amount: string;
+  inputType?: string;
+  inputValue?: number;
   ok: boolean;
   /** i18n key under `payroll.txnImport.reason.*`. Empty when `ok`. */
   reason: string;
@@ -298,6 +300,7 @@ export const TXN_IMPORT_REQUIRED_COLUMNS: Record<TxnImportKind, readonly string[
 export type IndividualImportMethod = 'monthly' | 'daily';
 export const INDIVIDUAL_IMPORT_HEADERS = {
  monthly: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Input Type','Quantity','Amount','Remark'],
- daily: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Quantity','Remarks'],
+ daily: ['Employee ID','Employee Name (Optional)','Month with Year','Pay Cycle','Pay Item','Effective Date','Input Type','Quantity','Remarks'],
 } as const;
+export const PREVIOUS_DAILY_IMPORT_HEADERS = INDIVIDUAL_IMPORT_HEADERS.daily.filter(header => header !== 'Input Type');
 export const INDIVIDUAL_IMPORT_SHEET = {monthly:'Monthly Transactions',daily:'Daily Transactions'} as const;

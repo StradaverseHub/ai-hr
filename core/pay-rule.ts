@@ -34,7 +34,8 @@
  *
  * ── 61bf109d: Input Type redesign + Formula Setting ────────────────────────────────────────────────
  * NO EXPRESSION STRINGS. A formula is an AST-shaped VALUE (a seed operand folded left-to-right through a
- * term list), so there is no `eval`, no `new Function`, no dynamic import of expression text, and no parser
+ * term list), so there is no `eval`, no `new Function`, no dynamic import { isTxnUnit } from '../lib/payroll-transaction-units';
+import of expression text, and no parser
  * that could accept something the validator has not seen. The FIXED, NAMED input set is the contract:
  * a literal number, `basic`, `days`, `hours`, and `component:<CODE>`. Anything outside it is unrepresentable
  * in the type and rejected at SAVE time — never a run-time surprise on a payslip.
@@ -469,6 +470,23 @@ export function payRuleAllowsDayByDay(rule: PayRule | null | undefined): boolean
   if (rule.kind === 'per_hour' || rule.kind === 'per_day') return true;
   if (rule.kind === 'formula') return payRuleInputUnit(rule) != null;
   return false;
+}
+
+/** Shared by preview and locked confirmation. Older admitted daily files had implicit quantity types. */
+export function resolveDailyImportInput(rule: PayRule | null | undefined, submitted?: string) {
+  const expected = payRuleInputUnit(rule);
+  if (submitted === undefined) {
+    return payRuleAllowsDayByDay(rule) && payRuleDerivesAmount(rule) && expected
+      ? { unit: expected } as const : { reason: 'dailyItemUnsupported' } as const;
+  }
+  const typed = submitted.trim().toLowerCase();
+  if (!typed) return { reason: 'inputTypeRequired' } as const;
+  if (!isTxnUnit(typed)) return { reason: 'inputTypeInvalid' } as const;
+  if (!payRuleAllowsDayByDay(rule)) return { reason: 'dailyItemUnsupported' } as const;
+  const required = payRuleDerivesAmount(rule) ? expected : 'amount';
+  if (!required) return { reason: 'dailyItemUnsupported' } as const;
+  return typed === required ? { unit: typed } as const
+    : { reason: 'dailyInputTypeMismatch', expected: required } as const;
 }
 
 /**
