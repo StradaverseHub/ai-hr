@@ -1,0 +1,55 @@
+name: delivery-presentation-shadow
+run-name: Presentation pilot · ${{ inputs.candidate }}
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Exact integration commit before the isolated presentation change
+        required: true
+        type: string
+      candidate:
+        description: Exact combined candidate commit
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  journey:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      HOME: /root
+      BASE: ${{ inputs.base }}
+      CANDIDATE: ${{ inputs.candidate }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.candidate }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - name: Resolve the narrow policy from committed source
+        run: node automation/scripts/delivery/presentation-pilot.mjs source "$BASE" "$CANDIDATE" "$RUNNER_TEMP/presentation-plan.json"
+      - uses: ./source/.github/actions/setup-browser-image
+      - name: Run the candidate journey
+        working-directory: source
+        run: pnpm exec vitest run --config vitest.browser.config.ts test/chart-card-export-wrap.browser.test.tsx --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/presentation-candidate.json"
+      - name: Verify the selected assertion actually ran
+        run: |
+          node -e 'const a=require("node:assert/strict"),p=require(process.argv[1]);a.equal(p.success,true);a.equal(p.numPassedTests,1);a.equal(p.numTotalTests,1);a.equal(p.numPendingTests,0);a.equal(p.testResults.length,1);a.match(p.testResults[0].name,/\/test\/chart-card-export-wrap\.browser\.test\.tsx$/)' "$RUNNER_TEMP/presentation-candidate.json"
+      - name: Confirm the exact same journey catches the old layout
+        working-directory: source
+        run: |
+          git show "$BASE:components/charts/ChartCard.tsx" > components/charts/ChartCard.tsx
+          rc=0
+          pnpm exec vitest run --config vitest.browser.config.ts test/chart-card-export-wrap.browser.test.tsx --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/presentation-before.json" || rc=$?
+          test "$rc" -eq 1
+          node -e 'const a=require("node:assert/strict"),p=require(process.argv[1]);a.equal(p.numFailedTests,1);a.equal(p.numTotalTests,1);a.match(p.testResults[0].assertionResults[0].failureMessages.join(" "),/to be greater than or equal/i)' "$RUNNER_TEMP/presentation-before.json"
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: presentation-shadow
+          path: ${{ runner.temp }}/presentation-*.json
+          if-no-files-found: error
+          retention-days: 14
