@@ -268,6 +268,45 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   await types.getByText('Performance claim',{exact:true}).waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
+ if(path==='/org'){
+  const chart=main.locator('[data-tour="org-chart"]');
+  await chart.locator('[data-org-tree] [data-org-node]').or(
+   chart.getByText('No employees found for the selected filter',{exact:true})).first()
+   .waitFor({state:'visible',timeout:timeout()});
+  await main.locator('a[href="/org?view=explorer"]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/approvals/history'){
+  const form=main.locator('form').filter({has:page.locator('select[name="decider"]')});
+  await form.locator('select[name="module"]').waitFor({state:'visible',timeout:timeout()});
+  await form.locator('input[name="from"][type="date"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('table tbody tr').or(main.getByText('No approval activity yet.',{exact:true})).first()
+   .waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/admin/notice-board'){
+  const board=main.locator('[data-tour="notices-administration"]');
+  await board.locator('input[name="q"][type="search"]').waitFor({state:'visible',timeout:timeout()});
+  await board.locator('table thead a[href*="sort=title"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('a[href="/admin/notice-board/new"]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/knowledge-base'){
+  const library=main.locator('[data-tour="knowledge-base-library"]');
+  await library.locator('form input[name="q"]').waitFor({state:'visible',timeout:timeout()});
+  await library.locator('section a[href^="/knowledge-base/"]').or(
+   library.getByText('No documents yet. Add the first one below.',{exact:true})).first()
+   .waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/letters/register'){
+  const filter=main.locator('form').filter({has:page.locator('select[name="companyId"]')});
+  await filter.locator('input[name="q"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('a[href^="/letters/register/"]').or(main.getByText('No matching letters.',{exact:true}))
+   .first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await main.locator('[role="alert"]').count(),0);
+  return 'usable-content';
+ }
  if(path==='/me/cases'){
   await main.locator('section[aria-labelledby="own-private-cases"]:visible').waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
