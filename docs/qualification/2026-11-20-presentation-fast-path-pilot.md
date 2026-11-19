@@ -25,3 +25,9 @@ The full comparator was dispatched with the repository default migration base be
 The scoped workflow passed. Candidate check verified at 01:09:57 MYT, 116 seconds after dispatch. The negative control failed on the expected geometry assertion, placing an export button at pixel 41 while the bottom of the heading was at pixel 113. The final artifact was retained. The original workflow definition failure is preserved in run [44573623536](https://github.com/StradaverseHub/ai-hr/actions/runs/44573623536).
 
 This is a shadow qualification of one presentation change. The full gate and staging lease remain authoritative while the lane is evaluated.
+
+## Staging queue observation
+
+The host was healthy at the integration-base source and the shared lease was vacant at the first read-only sample. The preceding release occupied the lease for 86m 30s. Its claim-to-installing interval was 43m 43s, installing-to-arrived was 35m 47s, and arrival-to-handback was 6m 59s. The events establish phase durations. They do not identify which individual operation consumed the pre-install interval or how much the new path can eliminate.
+
+The candidate's browser regression passed all three engines in the full gate. The canonical build job failed the existing memory-headroom floor (1,309,964 KiB observed, 1,572,864 KiB required). The base's independent full workflow build passed at 3,492,680 KiB minimum available. Peak process RSS differed by about 67 MiB. This indicates sensitivity to runner headroom but cannot assign causation to host variability or the candidate from one pair. A canonical artifact is a requirement of both lanes. The scoped journey passing alone would have missed this operational blocker.
