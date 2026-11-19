@@ -199,11 +199,14 @@ export function NavFlyoutPanel({
   const common = useTranslations('common');
   const label = t(labelKey);
   const firstLinkRef = useRef<HTMLAnchorElement | null>(null);
+  const movingFocusIntoPanel = useRef(false);
 
   // The panel is a DOM sibling of the aside, so programmatic focus keeps the keyboard flow
   // coherent: focus lands on the first sub-item on open; Escape returns it to the trigger.
   useEffect(() => {
+    movingFocusIntoPanel.current = true;
     firstLinkRef.current?.focus();
+    movingFocusIntoPanel.current = false;
   }, []);
 
   // Close on Escape (filter-panel.tsx pattern: the component is mounted only while open, so the
@@ -244,6 +247,11 @@ export function NavFlyoutPanel({
               <Link
                 key={child.href}
                 ref={i === 0 ? firstLinkRef : undefined}
+                prefetchOnIntentOnly
+                onFocus={i === 0 ? (event) => {
+                  // Entering the menu moves focus for accessibility. It does not select a destination.
+                  if (movingFocusIntoPanel.current) event.preventDefault();
+                } : undefined}
                 href={child.navigationHref ?? child.href}
                 data-tour={child.tour}
                 aria-label={child.pendingCount ? `${childLabel}, ${t('approvalsCount',{count:child.pendingCount})}` : childLabel}
