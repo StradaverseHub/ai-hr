@@ -26,6 +26,8 @@ describe('exact effective tax basis reads',()=>{
   await expect(context.readEffective()).rejects.toThrow(/Saved payroll changed/);
   await expect(createTaxBasisPreviewReadTx(txRows([[]]),ctx,[source.id])).rejects.toThrow(/Original payroll source is unavailable/);
   await expect(createTaxBasisPreviewReadTx(txRows([[fixture(2)]]),ctx,[source.id])).rejects.toThrow(/Original payroll source is unavailable/);
+  // Equal row counts cannot hide one missing ID behind a duplicate of another requested ID.
+  await expect(createTaxBasisPreviewReadTx(txRows([[source,source]]),ctx,[source.id,fixture(2).id])).rejects.toThrow(/Original payroll source is unavailable/);
  });
  it('reads each corrected cycle separately and the combined month without treating an unrequested valid cycle as stale',async()=>{
   const one=fixture(1),two=fixture(2),a=await correction(1),b=await correction(2);

@@ -88,8 +88,8 @@ type EffectiveReadOptions={includeImported?:boolean;sameMonth?:boolean};
  * No caller-supplied rows, alternate hashing, cached cross-transaction authority or correction rules.
  */
 async function sourceReadContextTx(tx:Tx,ctx:SessionContext,payslipIds:string[],requireComplete=false){
- const ids=[...new Set(payslipIds)],sources=await taxBasisSourceRowsTx(tx,ids);
- if(requireComplete&&(sources.length!==ids.length||sources.some(source=>!ids.includes(source.id))))throw new PayrollTaxBasisError('Original payroll source is unavailable.');
+ const requestedIds=new Set(payslipIds),ids=[...requestedIds],sources=await taxBasisSourceRowsTx(tx,ids),sourceIds=new Set(sources.map(source=>source.id));
+ if(requireComplete&&(sources.length!==requestedIds.size||sourceIds.size!==sources.length||sources.some(source=>!requestedIds.has(source.id))))throw new PayrollTaxBasisError('Original payroll source is unavailable.');
  return {sourceHashes:new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)])),readEffective:(options:EffectiveReadOptions={})=>effectiveTaxBasesForSourcesTx(tx,ctx,ids,sources,options)};
 }
 /** Preview-only strict selection: a missing/foreign source must not become a partial preview. */
