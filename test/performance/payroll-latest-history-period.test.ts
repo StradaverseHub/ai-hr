@@ -128,13 +128,22 @@ it('selects the latest visible retained period before building document payloads
         offset 0
       ) batches
       where exists (
-        select 1 from public.payslip p
-        join public.information_payslip_snapshot f on f.payslip_id=p.id
-          and f.tenant_id=p.tenant_id and f.employment_id=p.employment_id and f.company_id=batches.company_id
-        join public.employment e on e.id=p.employment_id and e.tenant_id=f.tenant_id
-        where p.tenant_id=batches.tenant_id and p.batch_id=batches.id
-          and (p_employment is null or p.employment_id=p_employment)
-          and (app.payroll_history_effective(p.id) or app.payroll_history_self_issued(p.id))
+        select 1
+        from (
+          select p.id,p.employment_id
+          from public.payslip p
+          join lateral (
+            select f.payslip_id from public.information_payslip_snapshot f
+            where f.payslip_id=p.id and f.tenant_id=p.tenant_id
+              and f.employment_id=p.employment_id and f.company_id=batches.company_id
+            offset 0
+          ) snapshot on true
+          where p.tenant_id=batches.tenant_id and p.batch_id=batches.id
+            and (p_employment is null or p.employment_id=p_employment)
+          offset 0
+        ) retained
+        join public.employment e on e.id=retained.employment_id and e.tenant_id=batches.tenant_id
+        where app.payroll_history_effective(retained.id) or app.payroll_history_self_issued(retained.id)
         offset 0
       )
       order by batches.pay_period desc limit 1
