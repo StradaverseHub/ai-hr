@@ -1,6 +1,8 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
 import {withPayrollTenant} from '../../core/module-gate';
 import {latestProcessedPayslipPeriod} from '../../core/payroll-view';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -112,66 +114,36 @@ it('selects the latest visible retained period before building document payloads
     from payslip p join payroll_batch b on b.id=p.batch_id
     where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
   await owner.client.begin(async tx=>{
-    await tx`create function app.test_latest_retained_payroll_period(p_companies uuid[],p_employment uuid)
-      returns text language sql stable security definer set search_path=pg_catalog,public,pg_temp as $$
-      with administered as materialized (
-        select c.id from (select distinct unnest(p_companies) id) c
-        where cardinality(p_companies)<=100 and app.principal_snapshot_current()
-          and app.can_admin_payroll_for(c.id)
-      )
-      select batches.pay_period
-      from (
-        select b.id,b.tenant_id,b.company_id,b.pay_period
-        from public.payroll_batch b join administered a on a.id=b.company_id
-        where b.tenant_id=app.current_tenant_id()
-        order by b.pay_period desc
-        offset 0
-      ) batches
-      where exists (
-        select 1
-        from (
-          select p.id,p.employment_id
-          from public.payslip p
-          join lateral (
-            select f.payslip_id from public.information_payslip_snapshot f
-            where f.payslip_id=p.id and f.tenant_id=p.tenant_id
-              and f.employment_id=p.employment_id and f.company_id=batches.company_id
-            offset 0
-          ) snapshot on true
-          where p.tenant_id=batches.tenant_id and p.batch_id=batches.id
-            and (p_employment is null or p.employment_id=p_employment)
-          offset 0
-        ) retained
-        join public.employment e on e.id=retained.employment_id and e.tenant_id=batches.tenant_id
-        where app.payroll_history_effective(retained.id) or app.payroll_history_self_issued(retained.id)
-        offset 0
-      )
-      order by batches.pay_period desc limit 1
-      $$`;
-    await tx`revoke all on function app.test_latest_retained_payroll_period(uuid[],uuid) from public`;
-    await tx`grant execute on function app.test_latest_retained_payroll_period(uuid[],uuid) to ai_hr_app`;
+    const source=readFileSync('test/performance/fixtures/latest-retained-payroll-period.sql','utf8');
+    for(const statement of source.split('--> statement-breakpoint'))await tx.unsafe(statement);
   });
   try {
+    const group=cases[1];
+    const variants=[
+      ...cases.map(({label,ctx,scope,employmentId,expected})=>({
+        label,ctx,filters:{companyIds:scope,employmentId},expected:expected===null?null:'2026-03',
+      })),
+      {label:'month-and-cycle',ctx:group.ctx,filters:{companyIds:group.scope,year:2025,month:11,cycle:'regular'},expected:'2025-11'},
+      {label:'out-of-period',ctx:group.ctx,filters:{companyIds:group.scope,year:2024},expected:null},
+      {label:'scope-over-100',ctx:group.ctx,filters:{companyIds:[...Array.from({length:100},()=>randomUUID()),...group.scope]},expected:'2026-03'},
+    ];
     const retainedEvidence=[];
-    for(const {label,ctx,scope,employmentId,expected} of cases){
+    for(const {label,ctx,filters,expected} of variants){
       console.info('PAYROLL_RETAINED_PERIOD_STARTED',label);
-      const companyList=sql`ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
       const outcome=await withPayrollTenant(ctx,async tx=>{
         const start=performance.now();
-        const [baseline]=await tx.execute<{period:string}>(sql`select d.doc->'batch'->>'pay_period' period
-          from app.information_payslip_documents(${companyList},null,null,null,${employmentId??null}::uuid,true)
-          with ordinality as d(doc,ordinal) order by d.ordinal limit 1`);
+        const docs=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit:1});
+        const baseline=docs.map(doc=>informationDocumentRow(doc).payPeriod).sort().at(-1)??null;
         const baselineMs=Math.round(performance.now()-start),candidateStart=performance.now();
-        const [candidate]=await tx.execute<{period:string|null}>(sql`select
-          app.test_latest_retained_payroll_period(${companyList},${employmentId??null}::uuid) period`);
-        return {baseline:baseline?.period??null,candidate:candidate.period,baselineMs,candidateMs:Math.round(performance.now()-candidateStart)};
+        const candidate=await latestInformationPayslipPeriod(tx,filters);
+        return {baseline,candidate,baselineMs,candidateMs:Math.round(performance.now()-candidateStart)};
       });
-      expect(outcome.baseline,label).toBe(expected===null?null:'2026-03');
+      expect(outcome.baseline,label).toBe(expected);
       expect(outcome.candidate,label).toBe(outcome.baseline);
       retainedEvidence.push({label,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
     }
     console.info(JSON.stringify({kind:'PAYROLL_RETAINED_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence:retainedEvidence}));
   } finally {
-    await owner.client`drop function app.test_latest_retained_payroll_period(uuid[],uuid)`;
+    await owner.client`drop function app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)`;
   }
 },360_000);

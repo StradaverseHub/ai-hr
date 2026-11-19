@@ -40,6 +40,35 @@ export async function informationPayslipDocument(tx:Tx,id:string):Promise<Histor
 /** Safety ceiling for an UNCAPPED read (exports, one employee's runs). The database function returns at most one row
  * more than this per company chunk. */
 export const RETAINED_DOCUMENT_CEILING=5000;
+type InformationPayslipFilters={companyIds:string[];year?:number;month?:number;cycle?:string;payrollCycleId?:string;employmentId?:string};
+
+/** Discover the landing period without creating the document payload on databases with the native scalar reader. */
+export async function latestInformationPayslipPeriod(tx:Tx,p:InformationPayslipFilters):Promise<string|null>{
+ if(!p.companyIds.length)return null;
+ // For an explicit cycle ID the legacy reader applies the ID filter after its ordered 5,001-document
+ // ceiling. Preserve that membership until a scalar path can enforce the same boundary.
+ if(!p.payrollCycleId){
+  const [native]=await tx.execute<{available:boolean}>(sql`
+   select to_regprocedure('app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)') is not null as available`);
+  if(native.available){
+   const companies=[...new Set(p.companyIds)];
+   const companyList=sql`ARRAY[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+   const [row]=await tx.execute<{period:string|null}>(sql`
+    select max(app.information_latest_retained_payslip_period(
+     scopes.ids,${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid
+    )) as period
+    from (
+     select array_agg(id order by ordinal) as ids
+     from unnest(${companyList}) with ordinality as company(id,ordinal)
+     group by (ordinal-1)/100
+    ) scopes`);
+   return row.period;
+  }
+ }
+ const documents=await informationPayslipDocuments(tx,{...p,intendedCycle:true,limit:1});
+ return documents.map(document=>informationDocumentRow(document).payPeriod).filter(Boolean).sort().at(-1)??null;
+}
+
 /**
  * `limit` — a capped caller (Transaction View's History landing tab) wants only the newest `limit` documents, the
  * same cap its live rows already have. Each company chunk then returns at most `limit` rows in the function's
@@ -48,7 +77,7 @@ export const RETAINED_DOCUMENT_CEILING=5000;
  * companies" with no period passed 5,000 retained documents and the landing tab became an error page.
  * Without `limit` the ceiling still refuses rather than silently returning a partial set.
  */
-export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;payrollCycleId?:string;employmentId?:string;intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
+export async function informationPayslipDocuments(tx:Tx,p:InformationPayslipFilters & {intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
  const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
  const limit=Number.isInteger(p.limit)&&p.limit!>0?Math.min(p.limit!,RETAINED_DOCUMENT_CEILING):undefined;
  for(let offset=0;offset<companies.length;offset+=100){

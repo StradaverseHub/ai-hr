@@ -1,7 +1,7 @@
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {recordedPayrollReconciliationItems} from '../lib/payroll-comparison-source';
 import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
-import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
+import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,latestInformationPayslipPeriod,overlayInformationDocument} from './information-correction-history';
 import {payrollComparisonAvailability} from '../lib/payroll-comparison-result';
 import {recordedPayrollComparisonAmount, recordedPayrollComparisonCurrency, recordedPayrollProrationCoverage} from '../lib/payroll-comparison-source';
 import {payPeriodBounds, payslipCoverage} from './payslip-segment';
@@ -1181,10 +1181,10 @@ export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: Proce
       )
       order by batches.pay_period desc
       limit 1`);
-    const retained = await informationPayslipDocuments(tx, {
-      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
+    const retained = await latestInformationPayslipPeriod(tx, {
+      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle),
     });
-    const periods = [live?.payPeriod, ...retained.map((doc) => informationDocumentRow(doc).payPeriod)];
+    const periods = [live?.payPeriod, retained];
     return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
   });
 }
