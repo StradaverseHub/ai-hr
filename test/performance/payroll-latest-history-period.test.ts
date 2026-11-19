@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
@@ -102,18 +103,20 @@ it('finds the same latest visible Payroll history period without joining the his
   console.info(JSON.stringify({kind:'PAYROLL_LATEST_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },480_000);
 
+async function seedRetainedHistory(tenant:string,actor:string) {
+  await owner.client`insert into information_payslip_snapshot
+    (payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
+    select p.id,p.tenant_id,p.employment_id,b.company_id,'2020-01-01',
+      jsonb_build_object('employeeName','Fictional historical name'),${actor}::uuid
+    from payslip p join payroll_batch b on b.id=p.batch_id
+    where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
+}
+
 it('selects the latest visible retained period before building document payloads',async()=>{
   const {base,tenant,cases}=await seedHistory();
   expect(await owner.client`select to_regprocedure('app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)') is not null as installed`)
     .toEqual([{installed:true}]);
-  // Compare the existing document reader and the migrated scalar path through the same
-  // authorized caller and tenant transaction on the disposable scale fixture.
-  await owner.client`insert into information_payslip_snapshot
-    (payslip_id,tenant_id,employment_id,company_id,hired_on,document_metadata,recorded_by)
-    select p.id,p.tenant_id,p.employment_id,b.company_id,'2020-01-01',
-      jsonb_build_object('employeeName','Fictional historical name'),${base.adminUserId}::uuid
-    from payslip p join payroll_batch b on b.id=p.batch_id
-    where p.tenant_id=${tenant}::uuid and b.pay_period<>'2026-04'`;
+  await seedRetainedHistory(tenant,base.adminUserId);
   const group=cases[1];
   const variants=[
     ...cases.map(({label,ctx,scope,employmentId,expected})=>({
@@ -139,4 +142,50 @@ it('selects the latest visible retained period before building document payloads
     retainedEvidence.push({label,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
   }
   console.info(JSON.stringify({kind:'PAYROLL_RETAINED_PERIOD_COMPONENT_ONLY',companies:72,employments:1440,evidence:retainedEvidence}));
+},360_000);
+
+it('bounds retained document projection to the requested page with identical order and visibility',async()=>{
+  const {base,tenant,cases}=await seedHistory();
+  await seedRetainedHistory(tenant,base.adminUserId);
+  const fixture=readFileSync(new URL('./fixtures/bounded-retained-payroll-documents.sql',import.meta.url),'utf8');
+  await owner.client.begin(async tx=>{
+    for(const statement of fixture.split('--> statement-breakpoint')) {
+      await tx.unsafe(statement);
+    }
+  });
+
+  const expectedCounts:Record<string,number>={
+    'group-all':201,'group-single':20,'single-employment':1,'company-hr':5,
+    'payroll-partner':20,'employee-outside-scope':0,
+  };
+  const evidence=[];
+  try {
+    for(const {label,ctx,scope,employmentId} of cases) {
+      const limit=label==='company-hr'?5:201;
+      const cycle=label==='group-single'?'regular':null;
+      const filters={companyIds:scope,employmentId,year:2026,month:3,cycle:cycle??undefined};
+      const companyList=sql`ARRAY[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+      const outcome=await withPayrollTenant(ctx,async tx=>{
+        const baselineStarted=performance.now();
+        const baseline=await informationPayslipDocuments(tx,{...filters,intendedCycle:true,limit});
+        const baselineMs=Math.round(performance.now()-baselineStarted);
+        const candidateStarted=performance.now();
+        const rows=await tx.execute<{document:unknown}>(sql`
+          select d.document from app.test_bounded_retained_payroll_documents(
+            ${companyList}, ${filters.year}::integer, ${filters.month}::integer,
+            ${cycle}::text, ${employmentId??null}::uuid, ${limit}::integer
+          ) with ordinality as d(document, ordinal)
+          order by d.ordinal
+        `);
+        return {baseline,candidate:rows.map(row=>row.document),baselineMs,
+          candidateMs:Math.round(performance.now()-candidateStarted)};
+      });
+      expect(outcome.baseline,label).toHaveLength(expectedCounts[label]);
+      expect(outcome.candidate,label).toEqual(outcome.baseline);
+      evidence.push({label,rows:outcome.candidate.length,baselineMs:outcome.baselineMs,candidateMs:outcome.candidateMs});
+    }
+  } finally {
+    await owner.client`drop function app.test_bounded_retained_payroll_documents(uuid[],integer,integer,text,uuid,integer)`;
+  }
+  console.info(JSON.stringify({kind:'PAYROLL_RETAINED_DOCUMENT_PAGE_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },360_000);
