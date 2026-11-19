@@ -26,6 +26,23 @@ export const payrollComparisonSpec=(definition=DEFAULT_PAYROLL_COMPARISON):Custo
   datasetId:PAYROLL_COMPARISON_DATASET,payrollComparison:structuredClone(definition),
   columns:[...definition.columns,'previous','current','variance','reason','currency'],
 });
+async function comparisonPayItems(ctx:SessionContext){
+  const items=await listPayComponents(ctx,{readyOnly:true});
+  return [
+    {code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},
+    {code:'BASIC',name:'Basic Salary actually paid'},
+    ...Object.entries(RECORDED_PAYROLL_TOTALS).map(([code,name])=>({code,name})),
+    ...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name})),
+  ];
+}
+
+/** The Reports dialog needs the pay-item list under the same comparison access rule as the full report. */
+export async function payrollComparisonPayItems(ctx:SessionContext,scope:readonly string[]){
+  await withTenant(ctx,tx=>payrollComparisonAccessTx(tx,ctx,payrollComparisonSpec(),'view',scope),
+    {readOnlySnapshot:true});
+  return comparisonPayItems(ctx);
+}
+
 export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly string[]){
   const spec=payrollComparisonSpec();
   const choices=await withTenant(ctx,async tx=>{
@@ -43,8 +60,7 @@ export async function payrollComparisonOptions(ctx:SessionContext,scope:readonly
       .from(payrollCycle).where(inArray(payrollCycle.companyId, ids)).orderBy(asc(payrollCycle.name), asc(payrollCycle.id));
     return {companies,departments,businessUnits,positions,cycles,periods:periods.map(row=>row.period)};
   },{readOnlySnapshot:true});
-  const items=await listPayComponents(ctx,{readyOnly:true});
-  return {...choices,payItems:[{code:ALL_RECORDED_PAY_ITEMS,name:'All recorded pay items'},{code:'BASIC',name:'Basic Salary actually paid'},...Object.entries(RECORDED_PAYROLL_TOTALS).map(([code,name])=>({code,name})),...items.filter(item=>item.code!=='BASIC').map(item=>({code:item.code,name:item.name}))]};
+  return {...choices,payItems:await comparisonPayItems(ctx)};
 }
 export type PayrollComparisonExecution={filters:ReturnType<typeof payrollComparisonFilters>;definition:ReturnType<typeof validatePayrollComparisonDefinition>;
   result:ComparisonResult;companyIds:string[];sourceRevisions:{id:string;version:number;runId:string}[];contextUnavailable:boolean;

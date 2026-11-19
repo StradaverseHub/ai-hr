@@ -4,7 +4,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {ensurePayrollBasicVarianceSample,getCustomReport,listCustomReports,updateCustomReport} from '../core/custom-reports';
-import {payrollComparisonSpec} from '../core/report-payroll-comparison';
+import {payrollComparisonOptions,payrollComparisonPayItems,payrollComparisonSpec} from '../core/report-payroll-comparison';
+import {MasterReportAccessError} from '../core/employee-master-access';
 import {DEFAULT_PAYROLL_COMPARISON} from '../lib/payroll-period-comparison';
 import {setPayrollPermissionGrant} from '../packs/payroll/service';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -41,6 +42,13 @@ describe('explicit Payroll Basic Variance example',()=>{
   await ensurePayrollBasicVarianceSample(ctx,[b.companyId]);
   await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});
   await expect(ensurePayrollBasicVarianceSample(ctx,[b.companyId])).rejects.toThrow();expect(await definitions()).toHaveLength(1);
+ });
+ it('gives the landing dialog the same ordered pay items under current company permissions',async()=>{
+  const full=await payrollComparisonOptions(ctx,[b.companyId]);
+  expect(full.payItems.length).toBeGreaterThan(2);
+  expect(await payrollComparisonPayItems(ctx,[b.companyId])).toEqual(full.payItems);
+  await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});
+  await expect(payrollComparisonPayItems(ctx,[b.companyId])).rejects.toBeInstanceOf(MasterReportAccessError);
  });
  it('denies revoked identity grants, a forged role, missing user, inactive Payroll and foreign scope',async()=>{
   const other=await seedBase();
