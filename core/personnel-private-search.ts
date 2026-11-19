@@ -3,6 +3,7 @@ import {matchesPersonnelColumnFilters,normalizePersonnelPrivateCriteria,type Per
 import {deriveEmploymentStatus} from './employment-status';
 import {foldEmployeeCode,matchesEmployeeSearch} from '../lib/employee-search';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {isGroupAdmin} from '../lib/authz-model';
 /** Five-minute principal-bound private filters. Criteria stay in the protected row, never URLs or logs. */
 import {createHash,randomBytes} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -14,7 +15,9 @@ export class PersonnelSearchLimitError extends Error{constructor(){super('Narrow
 type SearchRow={employmentId:string;companyId:string;name:string;email:string;employeeCode:string|null;personRevision:string;employmentRevision:string;identityRevision:string|null;icNumber:string|null;passportNumber:string|null};
 /** Migration 5121's candidate reader: app.personnel_search_rows, its bounded population count, and only the rows the
  * criteria below may match (db/migrations/5121_personnel_search_set_mapping.sql), with the 5020 resolver it reads. */
-const SEARCH_CANDIDATES=['app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app._personnel_employment_tags(uuid[],date)'];
+const SEARCH_CANDIDATES=['app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])','app._personnel_employment_tags(uuid[],date)','app.personnel_list_rows_for_ids(date,uuid[],uuid[])'];
+// Match the fingerprint validation trigger's bounded projection ceiling.
+const FILTER_PROJECTION_LIMIT=2_000;
 /** The database narrows by ASCII lower case (A-Z to a-z). JavaScript's toLowerCase always lowers ASCII that way;
  * toLocaleLowerCase does too unless the process locale has its own I/i rule (Turkish, Azeri). There every row is
  * still confirmed here, as before. */
@@ -64,17 +67,24 @@ export async function createPersonnelPrivateSearch(ctx:SessionContext,p:{text:st
   const source=candidates.flatMap(({row})=>row?[{row}]:[]);
   // Re-evaluate the COMPLETE criteria against the authorised population. Prior result membership
   // is deliberately not intersected: replacing Company A with Company B must broaden correctly.
-  // The list owner still reads (and bounds) the whole population; only the kept rows' fields leave the database.
-  const kept=source.length===population?null:JSON.stringify(source.map(({row})=>row.employmentId));
-  const structured=filters.length?(await tx.execute<{population:number;row:Record<string,unknown>|null}>(kept===null
-   ?sql`select value as row from app.personnel_list_rows(${todayInKualaLumpur()}::date,${scope}) as filtered(value) limit 100001`
-   :sql`with listed as materialized (select value from app.personnel_list_rows(${todayInKualaLumpur()}::date,${scope}) as filtered(value) limit 100001)
+  const today=todayInKualaLumpur();
+  const subset=source.length<population;
+  // Both readers produce the same full-row fingerprint. Reuse the trigger's bounded owner for
+  // selective group-admin results. Keep the full reader for other authorities, which can deny a
+  // projection on other rows in scope, and for broad searches that exceed the bounded workload.
+  const useBoundedProjection=narrowed&&isGroupAdmin(ctx)&&subset&&source.length>0&&source.length<=FILTER_PROJECTION_LIMIT;
+  const kept=subset?JSON.stringify(source.map(({row})=>row.employmentId)):null;
+  const structured=filters.length?(await tx.execute<{population:number;row:Record<string,unknown>|null}>(useBoundedProjection
+   ?sql`select ${population}::integer as population,value as row from app.personnel_list_rows_for_ids(${today}::date,${scope},ARRAY(select jsonb_array_elements_text(${kept}::jsonb)::uuid)) as filtered(value)`
+   :kept===null
+   ?sql`select value as row from app.personnel_list_rows(${today}::date,${scope}) as filtered(value) limit 100001`
+   :sql`with listed as materialized (select value from app.personnel_list_rows(${today}::date,${scope}) as filtered(value) limit 100001)
     select (select count(*)::integer from listed) as population,listed.value as row from (select 1) as one
     left join listed on listed.value->>'employmentId' in (select jsonb_array_elements_text(${kept}::jsonb))`))
    .map((row,_,rows)=>({population:kept===null?rows.length:row.population,row:row.row})):[];
   if((structured[0]?.population??0)>100000)throw new PersonnelSearchLimitError();
-  const service=(from:unknown)=>{if(typeof from!=='string')return null;const length=serviceYearsMonthsDaysAt(from,todayInKualaLumpur());return `${length.years}y ${length.months}m ${length.days}d`;};
-  const byId=new Map<string,Record<string,unknown>>(structured.flatMap(({row})=>row?[row]:[]).map(row=>[String(row.employmentId),{...row,groupService:service(row.hiredOn),companyService:service(row.joinDate??row.hiredOn),yearOfService:service(row.joinDate??row.hiredOn),status:deriveEmploymentStatus(row as unknown as Parameters<typeof deriveEmploymentStatus>[0],todayInKualaLumpur())}]));
+  const service=(from:unknown)=>{if(typeof from!=='string')return null;const length=serviceYearsMonthsDaysAt(from,today);return `${length.years}y ${length.months}m ${length.days}d`;};
+  const byId=new Map<string,Record<string,unknown>>(structured.flatMap(({row})=>row?[row]:[]).map(row=>[String(row.employmentId),{...row,groupService:service(row.hiredOn),companyService:service(row.joinDate??row.hiredOn),yearOfService:service(row.joinDate??row.hiredOn),status:deriveEmploymentStatus(row as unknown as Parameters<typeof deriveEmploymentStatus>[0],today)}]));
   const matches=source.flatMap(({row})=>{
    const fields=byId.get(row.employmentId);
    if(filters.length&&(!fields||!matchesPersonnelColumnFilters(fields,filters.filter(f=>f.field!=='identity'))))return [];
