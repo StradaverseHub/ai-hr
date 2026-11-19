@@ -44,7 +44,8 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const sha=ref.object?.sha;
   if(!/^[0-9a-f]{40}$/.test(sha)||requested.expected&&sha!==requested.expected)throw Error('Branch moved or invalid candidate');
   if(baseline.explicit){
-    const comparison=JSON.parse(execFileSync('gh',['api',`repos/${repository}/compare/${requested.base}...${sha}`],{encoding:'utf8'}));
+    // Compare responses include commit/file patches; project in gh before Node's bounded stdout buffer.
+    const comparison=JSON.parse(execFileSync('gh',['api',`repos/${repository}/compare/${requested.base}...${sha}`,'--jq','{status: .status, base_commit: {sha: .base_commit.sha}, merge_base_commit: {sha: .merge_base_commit.sha}}'],{encoding:'utf8'}));
     validateMigrationBaseComparison(comparison,{base:requested.base,candidate:sha});
   }
   appendFileSync(process.env.GITHUB_OUTPUT,`sha=${sha}\nbranch=${requested.branch}\nbase=${requested.base}\n`);
