@@ -154,7 +154,12 @@ async function signedInContext(actor){
 }
 async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
  const main=page.locator('main:visible').first();
- await main.getByRole('heading',{level:1}).first().waitFor({state:'visible',timeout:timeout()});
+ const heading=main.locator('h1:visible').first();
+ const degraded=page.locator('[role="alert"]:visible').getByRole('heading',{
+  name:/^(This page could not be displayed|This is taking longer than usual)$/,
+ });
+ await heading.or(degraded).first().waitFor({state:'visible',timeout:timeout()});
+ assert.equal(await degraded.count(),0,'A degraded page is not usable');
  await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
  onHeading();
  if(path==='/'){
@@ -180,6 +185,25 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
   assert(await filter.isEnabled({timeout:timeout()})&&await create.isEnabled({timeout:timeout()}));
   assert(await main.locator('table thead th:visible').count()>=7);
   assert.equal(await main.locator('[role="alert"]').count(),0);
+  return 'usable-content';
+ }
+ if(path==='/tasks'){
+  const filters=main.locator('.onb-workspace nav button[aria-pressed]');
+  await filters.and(main.locator('button[aria-pressed="true"]')).waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await filters.count(),5);
+  return 'usable-content';
+ }
+ if(path==='/approvals'){
+  const sort=main.locator('[data-approvals-header-actions] select');
+  await sort.waitFor({state:'visible',timeout:timeout()});
+  assert(await sort.isEnabled({timeout:timeout()}));
+  assert.equal(await sort.locator('option').count(),4);
+  return 'usable-content';
+ }
+ if(path==='/attendance/daily'){
+  const form=main.locator('[data-tour="attendance-day"] form');
+  await form.locator('input[name="q"]').waitFor({state:'visible',timeout:timeout()});
+  await form.locator('input[name="date"]').waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
  if(path===payrollHistoryPath){
@@ -257,6 +281,23 @@ async function visit(page,actor,route,pass,fixture) {
  finally{
   observation.elapsedMs=Math.round(performance.now()-started);
   if(observation.destination==='expected'){
+   if(observation.status==='failed'){
+    observation.visibleState=await page.evaluate(()=>{
+     const visible=selector=>Array.from(document.querySelectorAll(selector))
+      .some(node=>node.getClientRects().length>0);
+     const alerts=Array.from(document.querySelectorAll('[role="alert"] h2'))
+      .filter(node=>node.getClientRects().length>0);
+     return {
+      heading:visible('main h1'),signedInShell:visible('button[data-tour="account"]'),
+      pending:visible('main [aria-busy="true"],main [data-page-busy],main [data-personnel-busy]'),
+      unavailable:visible('main [data-read-unavailable]'),
+      renderError:alerts.some(node=>node.textContent==='This page could not be displayed'),
+      capacityError:alerts.some(node=>node.textContent==='This is taking longer than usual'),
+     };
+    }).catch(()=>null);
+    if(observation.visibleState?.capacityError)observation.failure='capacity';
+    if(observation.visibleState?.renderError)observation.failure='render-error';
+   }
    observation.documentTiming=await page.evaluate(()=>{
     const [entry]=performance.getEntriesByType('navigation');
     if(!entry||entry.responseStart<=0)return null;
@@ -409,6 +450,15 @@ try{
   try{
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
    await stopApp();
+   const appLog=join(privateDir,'application.log');
+   if(existsSync(appLog)){
+    const log=readFileSync(appLog,'utf8');
+    const counts={};
+    for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
+     counts[code]=(counts[code]??0)+1;
+    }
+    report.serverFailureCounts=counts;
+   }
   }finally{
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
    save();
