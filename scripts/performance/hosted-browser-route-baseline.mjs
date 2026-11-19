@@ -10,13 +10,14 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {chromium} from 'playwright';
 import {nativePreflightRoutePlan} from './system-route-manifest.mjs';
+import {admittedBuildNodeOptions} from '../../../automation/.github/ci/build-heap.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
 const env=process.env;
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
-assert(env.GITHUB_JOB==='browser-route-baseline'&&process.platform==='linux');
+assert(env.GITHUB_JOB==='linux-build'&&process.platform==='linux');
 assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'External auth configuration refused');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
@@ -38,7 +39,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',NEXT_TELEMETRY_DISABLED:'1'};
-const buildEnv={...dbEnv,NODE_ENV:'production'};
+const buildEnv={...dbEnv,NODE_ENV:'production',NODE_OPTIONS:admittedBuildNodeOptions(env)};
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]=env[key];
 const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
 

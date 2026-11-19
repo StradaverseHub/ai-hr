@@ -195,10 +195,10 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build }}
+    if: ${{ inputs.run_build || inputs.browser_route_baseline }}
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ inputs.browser_route_baseline && 50 || 30 }}
     defaults:
       run:
         working-directory: source
@@ -215,7 +215,8 @@ jobs:
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
         with:
-          node: '20'
+          node: ${{ inputs.browser_route_baseline && '22.23.3' || '20' }}
+          mobile: ${{ !inputs.browser_route_baseline }}
       # Bounded next build heap: exactly 8192 MB, only this step, only on a GitHub-hosted 16 GB Linux
       # runner (build-heap.mjs refuses anything else and any value above 8192). Raising the ceiling needs
       # owner review: docs/reviews/build-capacity-8192-proposal.md. Rollback: revert restores 6144.
@@ -225,6 +226,7 @@ jobs:
         env:
           AIHR_CI_BUILD_HEAP_MB: '8192'
       - name: Production build with peak memory telemetry
+        if: ${{ !inputs.browser_route_baseline }}
         run: node ../automation/.github/ci/build-heap.mjs measure "$RUNNER_TEMP/next-build-memory" -- pnpm build
         env:
           AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
@@ -232,7 +234,7 @@ jobs:
           AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
           AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Publish next build memory telemetry
-        if: ${{ always() && steps.build-heap.outcome == 'success' }}
+        if: ${{ always() && !inputs.browser_route_baseline && steps.build-heap.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: next-build-memory
@@ -240,44 +242,17 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  browser-route-baseline:
-    if: ${{ inputs.browser_route_baseline }}
-    needs: resolve
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    defaults:
-      run:
-        working-directory: source
-    env:
-      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: automation
-          persist-credentials: false
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          path: source
-          persist-credentials: false
-      - uses: ./automation/.github/actions/setup-alpha
-        with:
-          mobile: 'false'
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Admit bounded build heap
-        id: browser-build-heap
-        run: node ../automation/.github/ci/build-heap.mjs admit
-        env:
-          AIHR_CI_BUILD_HEAP_MB: '8192'
+        if: ${{ inputs.browser_route_baseline }}
       - name: Measure the fictional production build in Chromium
+        if: ${{ inputs.browser_route_baseline }}
         run: node scripts/performance/hosted-browser-route-baseline.mjs
         env:
-          NODE_OPTIONS: ${{ steps.browser-build-heap.outputs.node_options }}
-          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.browser-build-heap.outputs.heap_profile }}
-          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.browser-build-heap.outputs.memtotal_kib }}
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Retain route timings without fixture sessions or raw logs
-        if: ${{ always() }}
+        if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: browser-route-baseline
