@@ -403,7 +403,49 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
-  await restrictedContext.close();await context.close();
+  await restrictedContext.close();
+  // Read-only UI acceptance on the same isolated authenticated fixture. These are actual route renders,
+  // not HTML replicas; no Roster or Rewards action is submitted.
+  await context.addCookies([{name:LOCALE_COOKIE,value:'en',url:origin}]);
+  const visualResults:unknown[]=[];
+  for(const route of ['/admin/settings/system-labels','/roster','/rewards']){
+   for(const [name,width,height] of [['desktop',1440,1050],['mobile',390,844]] as const){
+    await page.setViewportSize({width,height});
+    const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:180000});
+    expect(response?.status()).toBe(200);
+    expect(new URL(page.url()).pathname).toBe(route);
+    await page.locator('main h1').first().waitFor();
+    expect(await page.locator('main').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
+    const metrics=await page.evaluate(()=>({width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:document.querySelector('main')!.getBoundingClientRect().width}));
+    expect(metrics.documentWidth).toBeLessThanOrEqual(width+1);
+    expect(metrics.mainWidth).toBeGreaterThan(250);
+    const key=route.split('/').filter(Boolean).join('-');
+    await page.screenshot({path:join(evidence,`operational-${key}-${name}.png`),fullPage:true});
+    if(route.endsWith('system-labels')){
+     const help=page.locator('[data-label-import] details');
+     expect(await help.getAttribute('open')).toBeNull();
+     await help.locator('summary').click();
+     await help.getByText(en.admin.systemLabels.criteriaHelp,{exact:true}).waitFor();
+     await help.getByText(en.systemLabelExchange.scopeHelp,{exact:true}).waitFor();
+     await page.screenshot({path:join(evidence,`operational-label-guidance-${name}.png`),fullPage:true});
+    }
+    if(route==='/roster'){
+     const help=page.locator('[data-roster-guidance]');
+     expect(await help.getAttribute('open')).toBeNull();
+     await help.locator('summary').click();
+     await help.getByText(en.roster.manageShiftsHint,{exact:true}).waitFor();
+     expect(await help.getByRole('link',{name:en.roster.manageShiftsLink+' →'}).getAttribute('href')).toBe('/admin/attendance');
+    }
+    if(route==='/rewards'){
+     const allReviews=page.getByRole('link',{name:en.nav.rewardsAllReviews,exact:true}).filter({visible:true});
+     expect(await allReviews.count()).toBeGreaterThan(0);
+     expect(await allReviews.last().getAttribute('href')).toBe('/rewards/reviews');
+    }
+    visualResults.push({route,viewport:name,...metrics});
+   }
+  }
+  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated group administrator',checks:visualResults},null,2));
+  await context.close();
   signal.throwIfAborted();
   sampleCapacity?.('functional-checks-complete');
   publishResult=()=>{
@@ -411,5 +453,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
    if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
    writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   };
- },600000);
+ // Includes first-time Roster and Rewards route compilation in addition to the original Excel journey.
+ },900000);
 });

@@ -18,7 +18,7 @@ const subscribeHydration=()=>()=>{};
 const clientSnapshot=()=>true;
 const serverSnapshot=()=>false;
 
-export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
+export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[];criteriaHelp?:string}={}) {
   const exchange=useTranslations('systemLabelExchange');
   const w=useTranslations('labelsImportWizard'),t=useTranslations('admin.systemLabels.excel'),tx=useTranslations('labelExcelRoundTrip'),tc=useTranslations('admin.systemLabels'),router=useRouter();
   // Board c074c6b8: every problem the wizard shows is a line from the same adapter the Error Log is built from.
@@ -89,9 +89,16 @@ export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];s
       const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='system-labels-errors.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
     }catch(error){setError(error instanceof Error?error.message:w('reportFailed'));}
   });
-  return <section className="space-y-3" data-label-import>
-    <p className="text-sm text-muted-foreground">{exchange('scopeHelp')}</p>
-    <div className="flex flex-wrap justify-end gap-2">
+  return <section className="flex min-w-0 flex-wrap items-start gap-3" data-label-import>
+    <details className="min-w-0 flex-1 basis-48 text-sm">
+      <summary className="min-h-9 cursor-pointer py-2 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('file')}</summary>
+      <div className="max-w-3xl space-y-2 pb-2 text-muted-foreground">
+        {_props.criteriaHelp&&<p>{_props.criteriaHelp}</p>}
+        <p>{t('help')}</p>
+        <p>{exchange('scopeHelp')}</p>
+      </div>
+    </details>
+    <div className="flex min-w-0 max-w-full flex-wrap gap-2">
       <ExportDownloadLink href="/admin/settings/system-labels/template" className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-medium">{tx('template')}</ExportDownloadLink>
       {job&&!open&&<div className="w-full"><SystemLabelImportJobPanel key={job.id} job={job} onFinished={finished}/></div>}
       <Button ref={importTrigger} type="button" disabled={!hydrated} data-label-import-ready={hydrated?'true':'false'} onClick={()=>{if(summary){setSummary(null);setPreview(null);setFile(null);setError('');setOutcome(null);setOutcomeError(false);jobKey.current='';}setOpen(true);}}>{t('import')}</Button>

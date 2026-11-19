@@ -454,30 +454,14 @@ export default async function RosterPage({
           )}
           <button className={btnPrimary}>{t('query')}</button>
           <span className="text-xs text-muted-foreground sm:col-span-full">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
+          <details className="min-w-0 text-sm sm:col-span-full" data-roster-guidance>
+            <summary className="cursor-pointer py-1 font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manageShiftsLink')}</summary>
+            <div className="space-y-2 pt-2 text-muted-foreground">
+              <p>{t('manageShiftsHint')}</p>
+              {admin&&<Link href="/admin/attendance" className="inline-flex min-h-9 items-center font-medium text-primary hover:underline">{t('manageShiftsLink')} →</Link>}
+            </div>
+          </details>
         </form>
-      </Card>
-
-      {/* Configurable Multi-Shift Attendance Management: shift setup moved to Shift settings (admin-only).
-          This screen is now purely for assigning shifts onto the calendar; the hint points anyone who looks
-          for shift setup here to its new home. The screen was called Attendance Policy when this card was
-          written; f21d6eee split the policy config out to /admin/attendance-policy and a324a4b3 renamed
-          what is left to Shift settings, so both this comment and roster.manageShiftsHint named the wrong
-          screen from mid-July until 2ec1e3d2.
-
-          2ec1e3d2: the SENTENCE is for everybody — a supervisor who cannot open the screen still benefits
-          from knowing where the setting lives before asking an administrator for it. The LINK is
-          administrators only, because /admin/attendance calls requireAdmin (app/admin/attendance/page.tsx)
-          and would bounce a supervisor straight back to '/' with no explanation. Same reasoning, and the
-          same shape, as the Upload / Download Template gate above. */}
-      <Card>
-        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
-          <span className="text-muted-foreground">{t('manageShiftsHint')}</span>
-          {admin && (
-            <Link href="/admin/attendance" className="font-medium text-primary hover:underline">
-              {t('manageShiftsLink')} →
-            </Link>
-          )}
-        </div>
       </Card>
 
       <Card>
