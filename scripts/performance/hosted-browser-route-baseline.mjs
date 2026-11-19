@@ -671,6 +671,11 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
 }
 
 async function measureActions(fixture){
+ const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+ const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
+ assert(declaredActions.size>0,'The measured build must have registered Server Actions');
+ const exercisedActions=new Set();
+ report.serverActionInventory={registered:declaredActions.size,seenInPassedJourneys:0};
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
@@ -731,11 +736,21 @@ async function measureActions(fixture){
    const row={journey:action.name,role:user.role,status:'incomplete',timings:[]};
    report.journeys.push(row);
    const retain=()=>{row.timings=action.timings(result)??[];save();};
+   const matchedActions=new Set();
+   const observeAction=request=>{
+    if(request.method()!=='POST'||new URL(request.url()).origin!==origin)return;
+    const id=request.headers()['next-action'];
+    if(declaredActions.has(id))matchedActions.add(id);
+   };
    try{
     const page=await context.newPage();
+    page.on('request',observeAction);
     await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
+    row.serverActionsSeen=matchedActions.size;
+    for(const actionId of matchedActions)exercisedActions.add(actionId);
+    report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
     const step=result.orgExplorerJourneys?.[0]?.failure?.stage;
