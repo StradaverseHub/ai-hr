@@ -1,6 +1,6 @@
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {PayrollNewReportDialog} from './payroll-comparison/PayrollComparisonEditor';
-import {payrollComparisonOptions} from '@/core/report-payroll-comparison';
+import {payrollComparisonPayItems} from '@/core/report-payroll-comparison';
 import {MasterReportAccessError} from '@/core/employee-master-access';
 /**
  * Reports hub (ADR-0074, c440b365) — the single "Report" surface. Groups every reporting destination by
@@ -52,14 +52,18 @@ export default async function ReportsPage({
   const { s, scopeIds } = await scopedAdmin();
   const mt=await getTranslations('employeeMasterReports');
   const sp = await searchParams;
-  const {reports:masterReports,total:masterReportCount,savedReport:savedMasterReport}=await readEmployeeMasterReportHub(s,scopeIds,sp.saved);
   const t = await getTranslations('reports');
   const only = sp.cat as ReportCategory | undefined;
-  const categories = only && REPORT_CATEGORIES.includes(only) ? [only] : REPORT_CATEGORIES;
+  const category = only && REPORT_CATEGORIES.includes(only) ? only : undefined;
+  const categories = category ? [category] : REPORT_CATEGORIES;
+  const {reports:masterReports,total:masterReportCount,savedReport:savedMasterReport}=
+    categories.includes('master')||sp.saved
+      ? await readEmployeeMasterReportHub(s,scopeIds,sp.saved)
+      : {reports:[],total:0,savedReport:undefined};
 
-  const saved = await listCustomReports(s,{companyIds:scopeIds});
+  const saved = await listCustomReports(s,{companyIds:scopeIds,category});
   const pt=await getTranslations('payrollComparison');
-  const payrollOptions=categories.includes('payroll')?await payrollComparisonOptions(s,scopeIds).catch(error=>{if(error instanceof MasterReportAccessError)return null;throw error;}):null;
+  const payItems=categories.includes('payroll')?await payrollComparisonPayItems(s,scopeIds).catch(error=>{if(error instanceof MasterReportAccessError)return null;throw error;}):null;
 
   return (
     <div data-tour="intelligence-reports" className="space-y-6">
@@ -84,7 +88,7 @@ export default async function ReportsPage({
                   <h2 className="text-base font-semibold tracking-tight">{t(`category.${cat}`)}</h2>
                   <p className="mt-0.5 text-sm text-muted-foreground">{t(`categoryDesc.${cat}`)}</p>
                 </div>
-                {cat==='payroll'&&payrollOptions?<PayrollNewReportDialog payItems={payrollOptions.payItems}/>:datasets.length > 0 && (
+                {cat==='payroll'&&payItems?<PayrollNewReportDialog payItems={payItems}/>:datasets.length > 0 && (
                   <Link
                     href={`/reports/builder/new?dataset=${encodeURIComponent(datasets[0].id)}`}
                     className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"

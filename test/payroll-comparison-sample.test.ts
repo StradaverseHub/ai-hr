@@ -4,7 +4,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {ensurePayrollBasicVarianceSample,getCustomReport,listCustomReports,updateCustomReport} from '../core/custom-reports';
-import {payrollComparisonSpec} from '../core/report-payroll-comparison';
+import {payrollComparisonOptions,payrollComparisonPayItems,payrollComparisonSpec} from '../core/report-payroll-comparison';
+import {MasterReportAccessError} from '../core/employee-master-access';
 import {DEFAULT_PAYROLL_COMPARISON} from '../lib/payroll-period-comparison';
 import {setPayrollPermissionGrant} from '../packs/payroll/service';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -42,6 +43,40 @@ describe('explicit Payroll Basic Variance example',()=>{
   await setPayrollPermissionGrant(ctx,{companyId:b.companyId,permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});
   await expect(ensurePayrollBasicVarianceSample(ctx,[b.companyId])).rejects.toThrow();expect(await definitions()).toHaveLength(1);
  });
+ it('gives the landing dialog the same ordered pay items under current company permissions',async()=>{
+  const companies=await owner.client<{id:string}[]>`
+   insert into company(tenant_id,legal_name)
+   select ${b.tenantId}::uuid,'Fictional reporting company '||n from generate_series(1,71) n returning id`;
+  const group=[b.companyId,...companies.map(company=>company.id)];
+  const employees=await owner.client<{company_id:string}[]>`
+   with people as (
+    insert into person(tenant_id,full_name,primary_email)
+    select ${b.tenantId}::uuid,'Fictional reporting employee '||n,'report-options-'||n||'@example.invalid'
+    from generate_series(1,1152) n returning id
+   )
+   insert into employment(tenant_id,person_id,company_id,hired_on)
+   select ${b.tenantId}::uuid,p.id,c.id,'2024-01-01'::date
+   from (select id,row_number() over(order by id)n from people)p
+   join unnest(${group}::uuid[]) with ordinality c(id,n) on c.n=1+(p.n-1)%72
+   returning company_id`;
+  expect(employees).toHaveLength(1152);
+  expect(new Set(employees.map(employee=>employee.company_id))).toEqual(new Set(group));
+  for(const scope of [group,[b.companyId]]){
+   const fullStarted=performance.now();
+   const full=await payrollComparisonOptions(ctx,scope);
+   const fullMs=Math.round(performance.now()-fullStarted);
+   const optionsStarted=performance.now();
+   const payItems=await payrollComparisonPayItems(ctx,scope);
+   const pickerMs=Math.round(performance.now()-optionsStarted);
+   expect(full.companies).toHaveLength(scope.length);
+   expect(full.payItems.length).toBeGreaterThan(2);
+   expect(payItems).toEqual(full.payItems);
+   console.info('Reports pay-item comparison',{companies:scope.length,fullMs,pickerMs});
+  }
+  await setPayrollPermissionGrant(ctx,{companyId:group[1],permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});
+  await expect(payrollComparisonPayItems(ctx,group)).rejects.toBeInstanceOf(MasterReportAccessError);
+  await expect(payrollComparisonPayItems(ctx,[b.companyId])).resolves.toEqual((await payrollComparisonOptions(ctx,[b.companyId])).payItems);
+ },90000);
  it('denies revoked identity grants, a forged role, missing user, inactive Payroll and foreign scope',async()=>{
   const other=await seedBase();
   await expect(ensurePayrollBasicVarianceSample(ctx,[other.companyId])).rejects.toThrow();
