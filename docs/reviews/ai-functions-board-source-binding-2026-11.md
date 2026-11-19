@@ -1522,3 +1522,12 @@ The owner explicitly approved carrying the same 28 AI-provider approvals to sour
 Independent composition review found no new AI payload fields, purposes, serializers, transports, executable tools or financial-effect authority. The repair handles a native email recovery hold before consuming its sealed prerequisite. Rich email remains an intentional non-AI SMTP disclosure to its authorized recipients. The previously reviewed formula authoring metadata boundaries remain unchanged.
 
 This source binding does not renew stored evaluations, promote an agent release or claim staging installation. Original failed verification evidence remains failed; targeted recovery and the final authenticated release checks retain their actual producing source identities.
+
+
+## Repaired combined board release — exact owner approval, 19 November 2026 MYT
+
+The owner explicitly instructed: “Approve carrying the same 28 AI approvals to fingerprint b4110e6a80e560ce2488726988354d9b796c655a74f209fa6403e61668d00f6e and proceed with staging once the remaining checks pass.” This authorizes the exact source binding and conditional staging release; it supplies no passing verification or production authority.
+
+The reviewed pre-binding aggregate is `96f99184dc5e94c829b5b44e29300c800d5529c3`. Its provider closure contains 1,827 files and the exact approved fingerprint. Exactly 28 active approval digest literals move from `24b3d0d966b7ee5f1deea4f8857480573b41aed90da17cf69260bd73aee0c315` to the approved `b4110e6a…` fingerprint. Reversing those substitutions reproduces the entire prior registry byte for byte, preserving every reviewer, review date, evidence, status and pending/retired record. Independent source reviews found no new provider payload fields, purposes, transports or model-executable financial authority.
+
+The agent manifest becomes `d526020eeb7770cc332fed5a7ba91bb5ff1a1c55a15e13940bbb00f5b55540f9` across 497 files. Stored evaluations and promotions retain their original bindings. Original failed checks remain failed at their actual source identities; final release, worker qualification and staging arrival checks must pass separately.
