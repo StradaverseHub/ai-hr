@@ -43,6 +43,8 @@ export function comparePresentationPilot({shadow, full, plan, fullPlan, staging,
     scopedCheckSeconds: scopedSeconds,
     sharedPrerequisiteSeconds: commonReadySeconds,
     // Normalize separate dispatch clocks. This is a CI estimate, not observed release time.
+    observedCommonAndScopedSeconds: negativeControl && scopedSeconds !== null && commonReadySeconds !== null
+      ? Math.max(scopedSeconds, commonReadySeconds) : null,
     modeledParallelCiSeconds: referenceBaseMatches && negativeControl && scopedSeconds !== null && commonReadySeconds !== null
       ? Math.max(scopedSeconds, commonReadySeconds) : null,
     shadowWorkflowSeconds: roundSeconds(time(journey.completedAt) - startShadow),
