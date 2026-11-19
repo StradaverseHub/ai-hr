@@ -37,6 +37,9 @@ export const KIT_DECLARATIONS:readonly KitDeclaration[]=Object.freeze([
  declare('correction_controls_guidance','core/explainers/capabilities.ts#correctionControlsGuidance',{module:'payroll',admin:true}),
  declare('organisation_tagging_guidance','core/explainers/capabilities.ts#organisationTaggingGuidance',{module:null,admin:true}),
  declare('reward_reviews_guidance','core/explainers/capabilities.ts#rewardReviewsGuidance',{module:'rewards',admin:true}),
+ declare('offboarding_requisitions_guidance','core/explainers/capabilities.ts#offboardingRequisitionGuidance',{module:'lifecycle',admin:true}),
+ declare('document_signing_guidance','core/explainers/capabilities.ts#documentSigningGuidance',{module:'lifecycle',admin:true}),
+ declare('payroll_history_records_guidance','core/explainers/capabilities.ts#payrollHistoryRecordsGuidance',{module:'payroll',admin:true}),
  // AI Centre issue 13b: governed pay averages (core/semantic-model/entities-metrics.ts), offered under payroll access.
  declare('pay_aggregates','packs/payroll/pay-averages.ts#payAverages',{module:'payroll',admin:false,access:'payroll'}),
  // AI v2 W7: governed workforce metrics (core/semantic-model/entities-metrics.ts), offered to managers and administrators.

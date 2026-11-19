@@ -18,7 +18,7 @@ it('merges main v25 and preserves the parallel deployed v24 digest',()=>{
 });
 it('registers one literal public topic with no input handles or additional provider binding',()=>{
  expect(GUIDANCE_TOPICS).toEqual(HARNESS_SPEC.offer.guidanceTopics);
- expect(CONTEXT_TOOL_SPECS.product_guidance.inputSchema).toMatchObject({properties:{topic:{enum:['password_policy','correction_controls','organisation_tagging','reward_reviews']}}});
+ expect(CONTEXT_TOOL_SPECS.product_guidance.inputSchema).toMatchObject({properties:{topic:{enum:['password_policy','correction_controls','organisation_tagging','reward_reviews','offboarding_requisitions','document_signing','payroll_history_records']}}});
  const read=TERAS_READS.find(row=>row.name==='organisation_tagging_guidance')!;expect(read.input).toEqual([]);
  const entity=terasEntity(read.entity);expect(entity).toMatchObject({module:null,audience:'admin',page:'/admin/organization/organisation-tagging',owners:['core/explainers/capabilities.ts#organisationTaggingGuidance']});
  expect(entity.fields.map(field=>field.name)).toEqual(['page','purpose','navigation','humanBoundary','provenance']);

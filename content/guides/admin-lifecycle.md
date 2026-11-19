@@ -48,3 +48,9 @@ Use [Asset requests](/lifecycle/asset-requests) for employee requests. Assigned 
 ## Exceptions
 
 Cancelling an onboarding case does not mean its existing requisition has also been cancelled. Inspect related records. Use the live worklist for outstanding tasks; a due task is not evidence that a reminder email was sent. A checkbox for an external action is a recorded human confirmation, not proof of an automatic external integration.
+
+## Work on offboarding requisitions
+
+Open [Offboarding requisitions](/lifecycle/requisitions/offboarding), then open the request shown by the native list. HR with Full case view can review the authorised case scope; a fulfilment team sees only its own Return or Revoke items, never the private case. Review the issuing team/person and date where recorded; an absent historical source is shown as not recorded.
+
+Update only the offered item controls, enter the required reason and save. The request records item progress and its completion time. Completing an item does not clear the whole case, sign a document or terminate employment. If access or the revision changes, reopen the current native request before deciding.

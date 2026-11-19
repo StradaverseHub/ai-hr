@@ -183,7 +183,7 @@ describe('setup co-pilot',()=>{
 describe('public administrative page guidance',()=>{
  it('keeps the new board guidance public, module-gated and free of business records',async()=>{
   const {hr,employee}=await people(),scope={companyId:base.companyId};
-  for(const [name,page,module] of [["reward_reviews_guidance", "/rewards/reviews", "rewards"]] as const){
+  for(const [name,page,module] of [["reward_reviews_guidance", "/rewards/reviews", "rewards"],["offboarding_requisitions_guidance","/lifecycle/requisitions/offboarding","lifecycle"],["document_signing_guidance","/me/document-signing","lifecycle"],["payroll_history_records_guidance","/payroll/history-import/records","payroll"]] as const){
    const capability=TERAS_CAPABILITIES.find(row=>row.name===name)!;expect(capability).toBeDefined();
    expect(await capability.run(employee,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
    await setModule(base.tenantId,module,'active');const enabled=await entitledCtx(base,hr.roles);Object.assign(enabled,{userId:hr.userId,personId:hr.personId,grants:hr.grants});
@@ -191,6 +191,9 @@ describe('public administrative page guidance',()=>{
    expect(value).toMatchObject({ok:true,page,provenance:{owner:expect.stringContaining('core/explainers/capabilities.ts#')}});
    expect(Object.keys(value).sort()).toEqual(['humanBoundary','navigation','ok','page','provenance','purpose']);
    expect(JSON.stringify(value)).not.toMatch(/FICTIONAL_PRIVATE_PERSON|987654321/);
+   const provider=await nativeToolProvider(enabled,scope,false);expect(provider.bindings.map(binding=>binding.name)).not.toContain(name);
+   const guidance=provider.bindings.find(binding=>binding.name==='product_guidance')!;expect(guidance).toBeDefined();
+   expect(await guidance.run({query:'Where is this page?',topic:capability.topic})).toMatchObject({ok:true,content:{ok:true,page}});
    await setModule(base.tenantId,module,'disabled');
    const disabled={...enabled,entitlements:(await entitledCtx(base,hr.roles)).entitlements};
    expect(await capability.run(disabled,{},scope)).toMatchObject({ok:false,refusal:'not_permitted'});
