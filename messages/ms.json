@@ -8048,6 +8048,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Eksport Excel",
+          "title": "Buku kerja transaksi",
+          "back": "Kembali ke Paparan Transaksi",
+          "unavailable": "Buku kerja ini tidak tersedia.",
+          "empty": "Belum ada buku kerja.",
+          "fixed": "Transaksi Tetap",
+          "individual": "Transaksi Individu",
+          "workbook": "Buku kerja transaksi",
+          "failed": "Buku kerja tidak dapat disediakan.",
+          "download": "Muat turun Excel",
+          "preparing": "Sedang menyediakan buku kerja",
+          "expired": "Muat turun telah tamat tempoh"
+        },
         "title": "Paparan Transaksi",
         "subtitle": "Semakan berpusat baca sahaja untuk transaksi gaji.",
         "readOnly": "Semakan sahaja — rekod tidak boleh dicipta atau diubah di sini.",
@@ -9020,6 +9034,7 @@
       "noSelection": "Pilih satu slip gaji untuk melihat cara potongan statutorinya dikira.",
       "notFound": "Tiada slip gaji sepadan dengan pautan itu.",
       "notRecordedShort": "Tidak direkodkan",
+      "historicalRuns": "Rekod sejarah tanpa kitaran gaji yang dikonfigurasikan",
       "otherRuns": "Larian gaji dalam pilihan ini",
       "otherRunsHint": "Lebih daripada satu larian gaji sepadan dengan syarikat, tahun, bulan dan kitaran ini — contohnya larian bonus di samping larian biasa. Pilih yang hendak diterangkan.",
       "payslipHint": "Upah yang dikenakan oleh setiap badan, peraturan yang digunakan, serta jumlah pekerja dan majikan — dibaca daripada apa yang direkodkan oleh larian gaji ini, bukan dikira semula.",

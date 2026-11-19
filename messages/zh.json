@@ -8048,6 +8048,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "导出 Excel",
+          "title": "交易工作簿",
+          "back": "返回交易视图",
+          "unavailable": "此工作簿不可用。",
+          "empty": "暂无工作簿。",
+          "fixed": "固定交易",
+          "individual": "个人交易",
+          "workbook": "交易工作簿",
+          "failed": "无法生成工作簿。",
+          "download": "下载 Excel",
+          "preparing": "正在生成工作簿",
+          "expired": "下载已过期"
+        },
         "title": "交易查询",
         "subtitle": "集中式只读薪资交易查询。",
         "readOnly": "仅供查询——此处无法新增或修改记录。",
@@ -9020,6 +9034,7 @@
       "noSelection": "请选择一张薪资单，以查看其法定扣除的计算方式。",
       "notFound": "没有薪资单与该链接相符。",
       "notRecordedShort": "未记录",
+      "historicalRuns": "未关联已配置薪资周期的历史记录",
       "otherRuns": "此选择范围内的薪资批次",
       "otherRunsHint": "有多个薪资批次同时符合此公司、年份、月份和周期，例如常规批次之外的花红批次。请选择要说明的批次。",
       "payslipHint": "各机构所依据的工资、所适用的规则，以及雇员与雇主的金额——取自本次薪资运算当时记录的数据，而非重新计算。",

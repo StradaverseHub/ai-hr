@@ -8048,6 +8048,20 @@
         }
       },
       "view": {
+        "workbooks": {
+          "export": "Export Excel",
+          "title": "Transaction workbooks",
+          "back": "Back to Transaction View",
+          "unavailable": "This workbook is unavailable.",
+          "empty": "No workbooks yet.",
+          "fixed": "Fixed Transaction",
+          "individual": "Individual Transaction",
+          "workbook": "Transaction workbook",
+          "failed": "The workbook could not be prepared.",
+          "download": "Download Excel",
+          "preparing": "Preparing workbook",
+          "expired": "Download expired"
+        },
         "title": "Transaction View",
         "subtitle": "Centralized read-only inquiry of payroll transactions.",
         "readOnly": "Inquiry only — records cannot be created or changed here.",
@@ -9020,6 +9034,7 @@
       "noSelection": "Choose a payslip to see how its statutory deductions were worked out.",
       "notFound": "No payslip matches that link.",
       "notRecordedShort": "Not recorded",
+      "historicalRuns": "Historical records without a configured payroll cycle",
       "otherRuns": "Payroll runs in this selection",
       "otherRunsHint": "More than one payroll run matches this company, year, month and cycle — for example a bonus run beside the regular one. Choose the one to explain.",
       "payslipHint": "The wage each body was charged on, the rule applied, and the employee and employer amounts — read from what this payroll run recorded, not recalculated.",
