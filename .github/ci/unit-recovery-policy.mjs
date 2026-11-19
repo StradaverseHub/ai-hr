@@ -21,7 +21,9 @@ export function validateInterruptedSource({run,jobs,artifacts,plan,now=Date.now(
  assert(run.id===c.runId&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&run.head_sha===c.controller&&run.path===WORKFLOW_PATH&&run.workflow_id===WORKFLOW_ID&&run.event==='workflow_dispatch'&&run.head_branch==='main','Exact original execution required');
  assert(run.status==='completed'&&['failure','cancelled'].includes(run.conclusion)&&run.run_attempt===1,'Wait for the original terminal unsuccessful first attempt');
  assert(Date.parse(run.created_at)<=Date.parse(run.updated_at)&&Date.parse(run.updated_at)<=now+60000&&now-Date.parse(run.created_at)<=86400000,'Original execution expired');
- const required=requiredEvidence(plan).jobs;assert(jobs.length===required.length+1&&new Set(jobs.map(j=>j.name)).size===jobs.length&&new Set(jobs.map(j=>j.id)).size===jobs.length,'Complete original jobs required');
+ const required=requiredEvidence(plan).jobs,dependent=['verify','deployment-hold'];
+ assert(new Set(jobs.map(j=>j.name)).size===jobs.length&&new Set(jobs.map(j=>j.id)).size===jobs.length,'Complete distinct original jobs required');
+ for(const name of [...required.filter(n=>!dependent.includes(n)),'runner-diagnostics'])assert(jobs.some(j=>j.name===name),'Original executed prerequisite/unit missing');
  for(const j of jobs){
   assert(id(j.id)&&j.run_id===run.id&&j.head_sha===run.head_sha&&j.head_branch===run.head_branch&&j.run_attempt===1&&j.status==='completed','Original job is pending, foreign or rerun');
   if(j.name==='runner-diagnostics'){assert(j.conclusion==='skipped');continue;}
@@ -33,6 +35,7 @@ export function validateInterruptedSource({run,jobs,artifacts,plan,now=Date.now(
    assert(j.steps?.some(s=>s.name.includes('upload-artifact@')&&s.conclusion==='skipped'),'Missing original upload observation required');continue;
   }
   if(j.name==='verify'){assert(['failure','cancelled','skipped'].includes(j.conclusion));continue;}
+  if(j.name==='deployment-hold'){assert(['success','cancelled','skipped'].includes(j.conclusion));continue;}
   assert(j.conclusion==='success','Cannot recover another failed prerequisite/unit');
  }
  assert(!artifacts.some(a=>a.name==='unit-'+c.unit)&&!artifacts.some(a=>a.name==='gate-evidence'),'Original missing report/receipt must remain absent');
@@ -51,6 +54,7 @@ export function validateUnitProducer({run,jobs,artifacts,controller,branch,candi
  const allowed=['gate-plan','unit-'+UNIT_RECOVERY.unit];assert(artifacts.length===2&&new Set(artifacts.map(a=>a.name)).size===2&&artifacts.every(a=>allowed.includes(a.name)),'No replacement build or gate PASS allowed');
  const producer=jobs.find(j=>j.name===`test (${UNIT_RECOVERY.unit})`);
  for(const fragment of ['run-unit.mjs','Source-bound fixed HTTPS fonts'])assert(producer.steps?.some(s=>s.name.includes(fragment)&&s.conclusion==='success'),'Complete runner/font prerequisite step missing');
+ assert(jobs.find(j=>j.name==='deployment-hold').steps?.some(s=>s.name==='Deployment remains disabled'&&s.conclusion==='success'),'Fresh deployment-disabled proof required');
  return producer;
 }
 export function assertionInventory(report){
@@ -73,13 +77,16 @@ export function verifyUnitRecovery({plan,freshPlan,source,reports,fresh,expectat
  assert(!fresh.report.error&&!fresh.report.databaseTelemetryError,'Fresh unit contains execution/telemetry error');
  const verified=verifyUnitReport(freshPlan,fresh.report);same(assertionInventory(fresh.report),assertionInventory(expectation.report),'Fresh unit dropped/renamed/added independent assertions');
  for(const h of [fresh.report.healthBefore,fresh.report.healthAfter])assert(h?.ok===true&&h.platform==='linux'&&Date.parse(h.at)>=Date.parse(fresh.producer.started_at)&&Date.parse(h.at)<=Date.parse(fresh.producer.completed_at),'Fresh host health/chronology missing');
- for(const e of [fresh.report.databaseTerminalEvidence,...fresh.report.batches.map(b=>b.databaseEvidence)])assert(e.name===`aihr-ci-${fresh.run.id}-1-${unit.id}`&&Date.parse(e.capturedAt)>=Date.parse(fresh.producer.started_at)&&Date.parse(e.capturedAt)<=Date.parse(fresh.producer.completed_at)&&e.settings.serverVersionNum===expectation.report.databaseTerminalEvidence.settings.serverVersionNum,'Fresh PostgreSQL ownership/version/chronology differs');
+ // The unchanged normal policy admits PG16 security patch updates. Require one
+ // consistent actual fresh server version, not equality with a historical patch.
+ for(const e of [fresh.report.databaseTerminalEvidence,...fresh.report.batches.map(b=>b.databaseEvidence)])assert(e.name===`aihr-ci-${fresh.run.id}-1-${unit.id}`&&Date.parse(e.capturedAt)>=Date.parse(fresh.producer.started_at)&&Date.parse(e.capturedAt)<=Date.parse(fresh.producer.completed_at)&&e.settings.serverVersionNum===fresh.report.databaseTerminalEvidence.settings.serverVersionNum,'Fresh PostgreSQL ownership/version/chronology differs');
  const font=fresh.font;assert(font?.kind==='FIXED_NOTO_BOOTSTRAP_NOT_TEST_OR_RELEASE_PASS'&&font.candidate===plan.sha&&font.controller===freshPlan.controller&&font.releaseAuthorized===false&&font.transport?.afterBytesVerified===true&&font.transport.phase==='verified'&&font.transport.variant==='primary-https'&&font.transport.signaturePolicyUnchanged===true&&font.transport.packageSelectionUnchanged===true&&/^[a-f0-9]{64}$/.test(font.transport.beforeSha256??'')&&/^[a-f0-9]{64}$/.test(font.transport.afterSha256??'')&&font.transport.beforeSha256!==font.transport.afterSha256&&font.steps?.length>0&&font.steps.every(s=>[0,100].includes(s.status)&&!s.errorCode&&!s.signal)&&font.steps.at(-1).status===0,'Actual successful source-bound HTTPS font prerequisite required');
  same(font.packages,['fonts-noto-core','fonts-noto-cjk'],'Font packages changed');
  assert(reports.length===plan.units.length-1&&new Set(reports.map(r=>r.id)).size===reports.length&&!reports.some(r=>r.id===unit.id),'No synthetic original failed-unit report');
  const units=plan.units.map(u=>{if(u.id===unit.id)return {id:u.id,kind:'complete-unit-recovery',originalReport:null,tests:verified.tests,reportHash:hash(fresh.report),source:{runId:fresh.run.id,controller:freshPlan.controller,jobId:fresh.producer.id,artifacts:fresh.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))},expectation:{runId:expectation.run.id,sha:expectation.plan.sha,reportHash:hash(expectation.report),assertions:assertionInventory(expectation.report)}};
   const r=reports.find(r=>r.id===u.id),v=verifyUnitReport(plan,r),j=source.jobs.find(j=>j.name===jobName(u)),artifact=source.artifacts.find(a=>a.name==='unit-'+u.id);assert(j.conclusion==='success'&&artifact);return {id:u.id,kind:'retained',tests:v.tests,reportHash:hash(r),source:{runId:source.run.id,jobId:j.id,artifactId:artifact.id,digest:artifact.digest}};});
- return {kind:'AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY',recoveryPolicy:UNIT_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,baseline:plan.migrationBase,runId:source.run.id,originalConclusion:source.run.conclusion,originalReportAbsent:true,sourceFingerprint:plan.fingerprint,replacementFingerprint:freshPlan.fingerprint,unitRunId:fresh.run.id,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests:units.reduce((n,u)=>n+u.tests,0),releaseAuthorized:false};
+ const originalDependentJobs=['verify','deployment-hold'].map(name=>{const job=source.jobs.find(j=>j.name===name);return job?{name,id:job.id,conclusion:job.conclusion}:{name,observation:'NOT_PRESENT_IN_TERMINAL_API_INVENTORY'};});
+ return {kind:'AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY',recoveryPolicy:UNIT_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,baseline:plan.migrationBase,runId:source.run.id,originalConclusion:source.run.conclusion,originalReportAbsent:true,originalDependentJobs,postgresRuntime:{requiredMajor:16,independentExpectationVersion:expectation.report.databaseTerminalEvidence.settings.serverVersionNum,replacementVersion:fresh.report.databaseTerminalEvidence.settings.serverVersionNum},sourceFingerprint:plan.fingerprint,replacementFingerprint:freshPlan.fingerprint,unitRunId:fresh.run.id,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests:units.reduce((n,u)=>n+u.tests,0),releaseAuthorized:false};
 }
 export function validateUnitRecoveryGrantEvidence(evidence,run){
  const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_COMPLETE_DB_UNIT_RECOVERY'&&c.recoveryPolicy===UNIT_RECOVERY_POLICY&&c.reviewedController===c.verificationController&&c.originalReportAbsent===true&&c.releaseAuthorized===false&&evidence.fingerprint===hash(c),'Reviewed complete-unit certificate required');

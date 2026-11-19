@@ -12,8 +12,8 @@ import {UNIT_RECOVERY,validateUnitRecoveryRequest,validateInterruptedSource} fro
 const api=p=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${p}`],{encoding:'utf8',timeout:60000,maxBuffer:64*1024**2}));
 function pages(path,key){const rows=[];for(let p=1;p<=10;p++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${p}`);rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Original inventory exceeds bound');}
 export function selectRecoveryMatrix({plan,originalPlan,run,jobs,artifacts,inputs,event}){
- validateUnitRecoveryRequest(inputs,event);const {fingerprint,controller,...body}=plan;
- assert(fingerprint===hash({...body,controller}),'Fresh plan fingerprint altered');
+ validateUnitRecoveryRequest(inputs,event);const {fingerprint,...body}=plan;
+ assert(fingerprint===hash(body),'Fresh plan fingerprint altered');
  const oldBody={...body,controller:UNIT_RECOVERY.controller},expected={...oldBody,fingerprint:hash(oldBody)};
  assert(isDeepStrictEqual(originalPlan,expected),'Complete original plan/source/runtime/coverage differs');
  const unit=validateInterruptedSource({run,jobs,artifacts,plan:originalPlan});return {unit:[unit.id]};
