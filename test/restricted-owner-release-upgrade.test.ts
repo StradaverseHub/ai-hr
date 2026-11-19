@@ -401,6 +401,25 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   // 7. A second run of the engine as the owner is a no-op.
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});
   expect(await ledger(restricted)).toEqual(expectedLedger);
+
+  // Exercise the unallocated retained-Payroll SQL under the literal installation owner
+  // on this disposable populated database. Keep its draft separate from the journal checks above.
+  const retainedPeriod=readFileSync('test/performance/fixtures/latest-retained-payroll-period.sql','utf8');
+  await restricted.begin(async tx=>{
+   for(const statement of retainedPeriod.split('--> statement-breakpoint'))await tx.unsafe(statement);
+  });
+  const [retainedPeriodGrant]=await observer<{
+   owner:string;definer:boolean;appCanExecute:boolean;publicCanExecute:boolean;
+  }[]>`select pg_get_userbyid(p.proowner)::text as owner,p.prosecdef as definer,
+   has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as "appCanExecute",
+   exists(select 1 from aclexplode(p.proacl) a where a.grantee=0 and a.privilege_type='EXECUTE') as "publicCanExecute"
+   from pg_proc p where p.oid='app.information_latest_retained_payslip_period(uuid[],integer,integer,text,uuid)'::regprocedure`;
+  expect(retainedPeriodGrant).toEqual({owner:OWNER,definer:true,appCanExecute:true,publicCanExecute:false});
+  const app=connect(at(names.restricted,'ai_hr_app'));
+  expect(await app`select app.information_latest_retained_payslip_period(array[]::uuid[],null,null,null,null) as period`)
+   .toEqual([{period:null}]);
+  await close(app);
+  expect(await ledger(restricted)).toEqual(expectedLedger);
  }finally{
   for(const sql of [...open])await sql.end({timeout:5});
   for(const name of Object.values(names))await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
