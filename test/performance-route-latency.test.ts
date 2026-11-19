@@ -28,8 +28,23 @@ it('refuses missing steady-window coverage and excludes warmup and post-hold sam
 it('retains strict existing read/navigation and write ceilings and exposes sample counts',()=>{
  const fixture=input();fixture.samples.push({...read('employee','/claims',500),method:'POST'});
  let result=routeLatency(fixture);expect(result.targetMet).toBe(false);expect(result.slow[0]).toMatchObject({kind:'write',samples:1,p95Ms:500,targetMs:500});
- fixture.samples[1].durationMs=499;result=routeLatency(fixture);expect(result.targetMet).toBe(true);expect(result.sparse).toHaveLength(3);
- fixture.pageInteractions[0].durationMs=1000;expect(routeLatency(fixture).targetMet).toBe(false);
+ fixture.samples[1].durationMs=499;result=routeLatency(fixture);expect(result.targetMet).toBe(false);expect(result.sparse).toHaveLength(3);
+ expect(result.slow).toEqual([]);
+ const [get,post]=fixture.samples;
+ for(let index=1;index<19;index++){
+  fixture.samples.push({...get},{...post});
+  fixture.pageInteractions.push(navigation('employee','/',150));
+ }
+ fixture.samples.push({...get,startedMs:9},{...post,startedMs:100});
+ expect(routeLatency(fixture)).toMatchObject({minimumSteadySamples:20,targetMet:false,sparse:[
+  {kind:'read',samples:19},{kind:'navigation',samples:19},{kind:'write',samples:19},
+ ]});
+ fixture.samples.push({...get},{...post});
+ fixture.pageInteractions.push(navigation('employee','/',150));
+ expect(routeLatency(fixture)).toMatchObject({targetMet:true,sparse:[]});
+ fixture.pageInteractions[0].durationMs=1000;
+ fixture.pageInteractions[1].durationMs=1000;
+ expect(routeLatency(fixture)).toMatchObject({targetMet:false,slow:[{kind:'navigation',p95Ms:1000}]});
 });
 it('reports distinct write actions on the same route and requires observed actions in the steady window',()=>{
  const fixture=input();
