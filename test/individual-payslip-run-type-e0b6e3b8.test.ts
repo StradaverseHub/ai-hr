@@ -292,7 +292,7 @@ describe('e0b6e3b8 — on the rendered screen, the chooser uses the configured P
       const select = nodes(tree).find(el=>el.type==='select'&&el.props?.name==='payrollCycleId');
       expect(select.props.defaultValue).toBe(cycleId);
       const option=nodes(select.props.children).find(el=>el.type==='option'&&el.props?.value===cycleId);
-      expect(textOf(option).join('')).toBe('Monthly');
+      expect(textOf(option.props.children).join('')).toBe('Monthly');
       expect(textOf(tree).filter(word=>word.includes('[retired r'))).toEqual([]);
     });
   }

@@ -559,7 +559,7 @@ describe('5a29686c — an employee with no payslips is told so, not offered choi
     expect(real(selectNamed(tree, 'month'))).toEqual([]);
     expect(real(selectNamed(tree, 'payrollCycleId'))).toEqual([]);
     expect(real(selectNamed(tree, 'companyId'))).toEqual([]);
-    for (const name of ['companyId', 'year', 'month', 'cycle']) {
+    for (const name of ['companyId', 'year', 'month', 'payrollCycleId']) {
       expect(selectNamed(tree, name).value, `${name} must show "All", not a fabricated value`).toBe('');
     }
 
@@ -616,7 +616,7 @@ describe('5a29686c — a tampered URL still NARROWS; the filled-in boxes are not
     expect(renderedPayslipId(tampered), 'a cross-company employee must reach nothing').toBeNull();
     // Not one of their companies, years, months or runs leaks into a list. Compared against the untouched
     // screen rather than against a literal, so this stays true if the "nobody chosen" defaults ever move.
-    for (const name of ['companyId', 'year', 'month', 'cycle']) {
+    for (const name of ['companyId', 'year', 'month', 'payrollCycleId']) {
       expect(selectNamed(tampered, name).value, `${name} must show "All"`).toBe('');
       expect(
         real(selectNamed(tampered, name)).map((o) => o.value),
