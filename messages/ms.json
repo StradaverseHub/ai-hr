@@ -9246,6 +9246,7 @@
         "quantityInvalid": "Kuantiti {value} bukan nombor",
         "quantityRequiredHours": "Item gaji ini mengira daripada jam — masukkan jam",
         "quantityRequiredDays": "Item gaji ini mengira daripada hari — masukkan hari",
+        "startDateCorrection": "Masukkan Tarikh Mula yang lebih awal dan Tarikh Mula Sebelumnya yang tepat bagi item sedia ada. Kekalkan nilai lain.",
         "startDateInvalid": "Tarikh mula {value} bukan tarikh sah (guna YYYY-MM-DD)",
         "endDateInvalid": "Tarikh tamat {value} bukan tarikh sah (guna YYYY-MM-DD)",
         "txnDateInvalid": "Tarikh transaksi {value} bukan tarikh sah (guna YYYY-MM-DD)",

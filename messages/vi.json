@@ -9246,6 +9246,7 @@
         "quantityInvalid": "Số lượng {value} không phải là số",
         "quantityRequiredHours": "Mục lương này tính theo giờ — hãy nhập số giờ",
         "quantityRequiredDays": "Mục lương này tính theo ngày — hãy nhập số ngày",
+        "startDateCorrection": "Nhập Ngày bắt đầu sớm hơn và Ngày bắt đầu trước đó chính xác của mục hiện có. Giữ nguyên các giá trị khác.",
         "startDateInvalid": "Ngày bắt đầu {value} không hợp lệ (dùng YYYY-MM-DD)",
         "endDateInvalid": "Ngày kết thúc {value} không hợp lệ (dùng YYYY-MM-DD)",
         "txnDateInvalid": "Ngày giao dịch {value} không hợp lệ (dùng YYYY-MM-DD)",

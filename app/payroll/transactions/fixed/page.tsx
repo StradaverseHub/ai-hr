@@ -104,7 +104,7 @@ export default async function FixedTransactionPage({
   // 5c65367d — the Excel import's reference sheets. Read WITHOUT a selected employee on purpose: an
   // import is multi-employee by nature (the reporter's whole point is loading a month for forty people),
   // so requiring somebody to be picked first would be the friction it exists to remove.
-  const importReference = await buildTxnTemplateReference(s, scopeIds);
+  const importReference = await buildTxnTemplateReference(s, scopeIds, { preferredCompanyId: selectedEmp?.companyId });
 
   // ENDED is derived against the TENANT timezone, on the server. Deriving it in the browser would call an
   // item ended a day early or late for anyone whose device clock sits either side of MYT midnight.
