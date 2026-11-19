@@ -83,7 +83,7 @@ it('sorts only the visible tasks and preserves document completion, return prove
  const table=within(screen.getByRole('table',{name:'Return and revoke'}));
  expect(table.getByRole('link',{name:/IT-FICTIONAL/})).toHaveAttribute('href','/lifecycle/requisitions/onboarding/native-case');
  expect(table.getByText(/Reception receipt/)).toHaveTextContent('Waiting for the providing team to confirm.');
- expect(screen.getByRole('heading',{name:'Sent emails'}).closest('section')).toHaveClass('lifecycle-case-section');
+ expect(screen.getByRole('tab',{name:/Sent log/})).toBeVisible();expect(screen.getByRole('region',{name:'Communications & documents'})).toBeVisible();
  expect(screen.queryByRole('heading',{name:'Notes'})).not.toBeInTheDocument();
  const details=screen.getByRole('heading',{name:'Case details'}).closest('section')!;
  expect(within(details.nextElementSibling as HTMLElement).getByRole('heading',{name:'Offboarding checklist'})).toBeVisible();

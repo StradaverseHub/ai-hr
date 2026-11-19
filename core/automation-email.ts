@@ -21,12 +21,21 @@ import type {AutomationRecipient} from '../lib/automation/workflow';
 import {automationEmailMergeWarnings,automationEmailTemplateProblems,type AutomationEmailTemplate} from '../lib/automation/email';
 import {AutomationError} from './automation-store';
 import {automationReferencesTx} from './automation-builder';
+import {parseProbationEmailDefinition} from '../lib/automation/probation-email-definition';
 
 export const MAX_LISTED_EMAIL_TEMPLATES = 500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type StoredAutomationEmailTemplate = { template: AutomationEmailTemplate; revision: number; retired: boolean; savedAt: string; savedBy: string };
-type Row = { templateId: string; revision: number; module: AutomationModule; name: string; active: boolean; subject: string; body: string; bodyDoc:EmailBodyDoc|null;assets:AutomationEmailAsset[]|null;slots:AutomationEmailSlot[]|null;documentIds:string[]|null; cc: AutomationRecipient[]; retired: boolean; savedAt: string; savedBy: string };
+type Row = { templateId: string; revision: number; module: AutomationModule; name: string; active: boolean; subject: string; body: string; bodyDoc:EmailBodyDoc|null;assets:AutomationEmailAsset[]|null;slots:AutomationEmailSlot[]|null;documentIds:string[]|null; definition:AutomationEmailTemplate['definition']|null; cc: AutomationRecipient[]; retired: boolean; savedAt: string; savedBy: string };
+/** The original append-only revisions remain the history visible in the moved editor. */
+export function automationEmailTemplateHistory(ctx:SessionContext,templateId:string):Promise<StoredAutomationEmailTemplate[]>{
+ if(!UUID.test(templateId))throw new AutomationError('invalid','Unknown email template.');
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const rows=await tx.execute<Row>(sql`select template_id as "templateId",revision,module,name,active,subject,body,body_doc as "bodyDoc",assets,file_slots as slots,document_ids as "documentIds",cc,retired,definition,saved_at as "savedAt",saved_by as "savedBy" from automation_email_template_version where tenant_id=app.current_tenant_id() and template_id=${templateId}::uuid order by revision desc limit 100`);
+  return rows.map(row=>({template:{id:row.templateId,module:row.module,name:row.name,active:row.active,subject:row.subject,body:row.body,...(row.bodyDoc?{bodyDoc:row.bodyDoc}:{}),assets:row.assets??[],slots:row.slots??[],documentIds:row.documentIds??[],cc:row.cc,...(row.definition?{definition:row.definition}:{})},revision:row.revision,retired:row.retired,savedAt:row.savedAt,savedBy:row.savedBy}));
+ });
+}
 
 function mapDatabaseError(e: unknown): never {
   const state = pgSqlState(e), message = e instanceof Error ? e.message : 'The save was refused.';
@@ -41,12 +50,12 @@ export async function listAutomationEmailTemplates(ctx: SessionContext, filter: 
   if (filter.module && !AUTOMATION_MODULES.includes(filter.module)) throw new AutomationError('invalid', 'Unknown module.');
   return withScopedLifecycleTenant(ctx, async tx => {
     const rows = await tx.execute<Row>(sql`
-      select distinct on (template_id) template_id as "templateId", revision, module, name, active, subject, body, body_doc as "bodyDoc",assets,file_slots as slots,document_ids as "documentIds", cc, retired, saved_at as "savedAt", saved_by as "savedBy"
+      select distinct on (template_id) template_id as "templateId", revision, module, name, active, subject, body, definition,body_doc as "bodyDoc",assets,file_slots as slots,document_ids as "documentIds", cc, retired, saved_at as "savedAt", saved_by as "savedBy"
       from automation_email_template_version
       where tenant_id = app.current_tenant_id() and (${filter.module ?? null}::text is null or module = ${filter.module ?? null}::text)
       order by template_id, revision desc
       limit ${MAX_LISTED_EMAIL_TEMPLATES}`);
-    return rows.map(r => ({ template: { id: r.templateId, module: r.module, name: r.name, active: r.active, subject: r.subject, body: r.body, ...(r.bodyDoc?{bodyDoc:r.bodyDoc}:{}),assets:r.assets??[],slots:r.slots??[],documentIds:r.documentIds??[], cc: r.cc }, revision: r.revision, retired: r.retired, savedAt: r.savedAt, savedBy: r.savedBy }))
+    return rows.map(r => ({ template: { id: r.templateId, module: r.module, name: r.name, active: r.active, subject: r.subject, body: r.body, ...(r.bodyDoc?{bodyDoc:r.bodyDoc}:{}),assets:r.assets??[],slots:r.slots??[],documentIds:r.documentIds??[], cc: r.cc,...(r.definition?{definition:r.definition}:{}) }, revision: r.revision, retired: r.retired, savedAt: r.savedAt, savedBy: r.savedBy }))
       .sort((a, b) => a.template.name.localeCompare(b.template.name) || a.template.id.localeCompare(b.template.id));
   });
 }
@@ -65,8 +74,14 @@ export async function saveAutomationEmailTemplate(ctx: SessionContext, input: { 
       const problems = automationEmailTemplateProblems(template, catalogue, await automationReferencesTx(tx, people));
       if (problems.length) throw new AutomationError('invalid', 'Fix the email template before saving it.', problems);
     }
+    if(template.definition) {
+      const warnings=automationEmailMergeWarnings(template,catalogue);if(warnings.length)throw new AutomationError('invalid','Convert the named fields before saving this rich email.',warnings);
+      const documents=await tx.execute<{id:string}>(sql`select distinct definition_key as id from probation_builder_definition where tenant_id=app.current_tenant_id() and kind='template' and state in ('draft','published') order by definition_key limit 500`);
+      try { template.definition=parseProbationEmailDefinition(template.definition,documents.map(row=>row.id)); }
+      catch(error) { throw new AutomationError('invalid',error instanceof Error?error.message:'Invalid email definition.'); }
+    }
     try {
-      const [row] = await tx.execute<{ revision: number }>(sql`select app.automation_email_template_save_full(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, ${input.retired}, ${input.expectedRevision}, ${input.reason},${template.bodyDoc?JSON.stringify(template.bodyDoc):null}::jsonb,${JSON.stringify(template.assets??[])}::jsonb,${JSON.stringify(template.slots??[])}::jsonb,${JSON.stringify(template.documentIds??[])}::jsonb) as revision`);
+      const [row] = template.definition ? await tx.execute<{ revision: number }>(sql`select app.automation_rich_email_template_save(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, ${input.retired}, ${input.expectedRevision}, ${input.reason}, ${template.definition ? JSON.stringify(template.definition) : null}::jsonb) as revision`) : await tx.execute<{ revision: number }>(sql`select app.automation_email_template_save_full(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, ${input.retired}, ${input.expectedRevision}, ${input.reason},${template.bodyDoc?JSON.stringify(template.bodyDoc):null}::jsonb,${JSON.stringify(template.assets??[])}::jsonb,${JSON.stringify(template.slots??[])}::jsonb,${JSON.stringify(template.documentIds??[])}::jsonb) as revision`);
       return { revision: row.revision, warnings: automationEmailMergeWarnings(template, catalogue) };
     } catch (e) { mapDatabaseError(e); }
   });

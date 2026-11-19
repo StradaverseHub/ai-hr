@@ -5,9 +5,9 @@ import {searchPeopleAction} from './actions';
 import type {NamedOption} from './recipients';
 
 /** Finds active people the viewer may see (server search, at most 20) and makes them choosable as named people. */
-export function PeopleSearch({known,onAdd,disabled=false,searchPeople=searchPeopleAction}:{known:readonly NamedOption[];onAdd:(person:NamedOption)=>void;disabled?:boolean;searchPeople?:typeof searchPeopleAction}){
+export function PeopleSearch({known,onAdd,disabled=false,searchPeople=searchPeopleAction,available}:{known:readonly NamedOption[];onAdd:(person:NamedOption)=>void;disabled?:boolean;searchPeople?:typeof searchPeopleAction;available?:readonly NamedOption[]}){
  const t=useTranslations('automation'),[query,setQuery]=useState(''),[found,setFound]=useState<NamedOption[]|null>(null),[error,setError]=useState(''),[busy,start]=useTransition();
- const search=()=>{setError('');start(async()=>{const result=await searchPeople(query);if(!result.ok){setError(result.detail??t('errors.unavailable'));setFound(null);return;}setFound(result.result);});};
+ const search=()=>{setError('');if(available){setFound(available.filter(person=>person.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).slice(0,20));return;}start(async()=>{const result=await searchPeople(query);if(!result.ok){setError(result.detail??t('errors.unavailable'));setFound(null);return;}setFound(result.result);});};
  return <div className="automation-people-search v9-stack">
   <div className="automation-row">
    <input className="v9-input" aria-label={t('people.search')} placeholder={t('people.placeholder')} value={query} disabled={disabled} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();search();}}}/>

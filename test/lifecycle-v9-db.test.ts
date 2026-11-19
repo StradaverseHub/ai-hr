@@ -1,13 +1,14 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import * as database from '../db/client';
+import { withTenant, type Tx, type SessionContext } from '../db/client';
 import { hireEmployee, setEmploymentInfo, setReportingLine, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays, type Workflow } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9PreviewWorkflow, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9PreviewWorkflow, v9PreviewPersonnelValues, v9PlanWorkflow, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -24,6 +25,13 @@ beforeEach(async () => {
   await v9Setup(admin);
 });
 afterAll(closeAll);
+/** These recipient/provider journeys need a real HR directory identity; other tests retain seedBase's deliberate no-Person actor. */
+async function bindAdminFixturePerson(){
+ const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${base.tenantId}::uuid,'Fictional recipient HR','recipient-hr@test.invalid') returning id`);
+ await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`);
+ admin={...admin,personId:person.id};
+}
+
 it('reports retained V9 company history without granting private case access to organisation HR',async()=>{
   const c=await prepared(),userId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
   await owner.client`update role_assignment set company_id=${base.companyId}::uuid where tenant_id=${base.tenantId}::uuid and app_user_id=${userId}::uuid and role='hr_admin'`;
@@ -148,6 +156,7 @@ it('preserves an intervening Personnel correction instead of overwriting it with
 it('stores private file bytes, resumes the waiting workflow and deduplicates a successful retry', async () => {
   const c = await prepared(), bytes = Buffer.from('%PDF-1.4\nV9 fixture bytes\n%%EOF');
   expect(c.runs[0].status).toBe('waiting');
+  expect((await v9CaseDetail(admin,c.id)).canUploadFiles).toBe(true);await expect(v9CaseDetail(other,c.id)).rejects.toThrow();
   const input = { caseId: c.id, revision: c.revision, slot: 'fixture-support', name: 'support.pdf', content: bytes };
   await expect(v9UploadFile(other, input)).rejects.toThrow();
   const id = await v9UploadFile(admin, input);
@@ -157,6 +166,7 @@ it('stores private file bytes, resumes the waiting workflow and deduplicates a s
   expect((await v9DownloadFile(admin, c.id, id)).content.equals(bytes)).toBe(true);
   await expect(v9DownloadFile(other, c.id, id)).rejects.toThrow();
   await expect(v9UploadFile(admin, { ...input, revision: next.revision, name: 'spoof.pdf', content: Buffer.from('not a PDF') })).rejects.toThrow('contents');
+  await v9Command(admin,next.id,next.revision,{type:'cancel',reason:'Close fictional upload case'});expect((await v9CaseDetail(admin,next.id)).canUploadFiles).toBe(false);
 });
 it('enforces revision, status and private configuration boundaries inside the SQL commands', async () => {
   const c = await prepared();
@@ -431,7 +441,7 @@ it('lets only the linked activated joiner complete a released native document an
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 0, failed: 0 });
   const detail = await v9CaseDetail(admin, own.id);
   expect(detail.case.runs).toHaveLength(3); expect(detail.case.runs[0]).toMatchObject({ status: 'waiting', reason: 'Waiting for email delivery confirmation.' });
-  expect(detail.case.mails).toHaveLength(3); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
+  expect(detail.case.mails).toHaveLength(3); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: ['address:subject@test.invalid'] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
   const pdf = await v9DownloadDocument(joiner, own.id, own.documents[0].id); expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
@@ -647,9 +657,9 @@ it('guards version deletion using deduplicated current and historical instances'
   const c = await prepared(), config = (await v9Workspace(admin)).config!, template = config.templates.find(template => template.id === 'fixture-form')!;
   template.versions.push({ ...structuredClone(template.versions[0]), version: 2 }); template.currentVersion = 2;
   await v9SaveConfig(admin, config.revision, config);
-  // A real service command preserves the prior document instance before an owner-only loss injection.
+  // Current and revision snapshots deduplicate to one use, and retained live history cannot be removed.
   await v9Command(admin, c.id, c.revision, { type: 'runWorkflows' });
-  await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`;
+  await expect(owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Released, prepared and signed completion history cannot be removed'})});
   const workspace = await v9Workspace(admin);
   expect(workspace.templateUsage?.find(row => row.templateId === template.id && row.version === 1)).toEqual({ templateId: template.id, version: 1, documents: 1 });
   const removeUsed = structuredClone(workspace.config!); removeUsed.templates.find(row => row.id === template.id)!.versions = [structuredClone(template.versions[1])];
@@ -800,6 +810,7 @@ it('saves per-person text through the case owner, retains it in PDF content and 
   await v9Command(admin,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{}});expect((await v9CaseDetail(admin,c.id)).case.documents.find(document=>document.id===doc.id)!.edits).toEqual({});
 });
 it('fires the HR-signature workflow from an actual sign command and starts a manual workflow only through HR scope',async()=>{
+  await bindAdminFixturePerson();
   const before=await prepared(),config=(await v9Workspace(admin)).config!;
   config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Fictional HR'}];
   config.templates.push({id:'event-letter',name:'Fictional event letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Fictional letter',section:''}],fields:[]}]});
@@ -816,6 +827,7 @@ it('fires the HR-signature workflow from an actual sign command and starts a man
 });
 
 it('accepts tenant directory recipients and rejects foreign people and deleted recipient groups', async () => {
+  await bindAdminFixturePerson();
   const c = await prepared(); const config = (await v9Workspace(admin)).config!;
   config.groups.push({ id: 'review-recipient-group', name: 'Fictional reviewers', members: [admin.userId!, other.userId!], limit: 0 });
   config.workflows.push({ id: 'directory-review', name: 'Directory review', module: 'off', status: 'published', trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'group:review-recipient-group', cc: [`person:${other.userId}`], subject: 'Directory review', body: 'Fictional' }], description: '' });
@@ -949,6 +961,7 @@ it('uses approved categories from real Personnel confirmation dates in both matc
 
 
 it('snapshots handed Native items by employment and records recovery on their original owner atomically', async () => {
+  await bindAdminFixturePerson();
   const context = await onboardingContext(admin), native = structuredClone(context.config);
   native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!];
   native.catalogue = [
@@ -1001,7 +1014,10 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(currentReq(receiptOwner.case)!.handedAt).toBe(receiptItem.handedAt);
   expect(currentReq(receiptOwner.case)!.items.find(item=>item.id===receiptItem.id)).toMatchObject({state:'handed',employeeReceipt:{status:'received',by:holder.userId}});
   expect(await withTenant(admin,tx=>onboardingHoldingsTx(admin,tx,active.employmentId,base.companyId))).toHaveLength(2);
-  const first = await exit();
+  let first = await exit();
+  // Freeze an explicit provider baseline before exercising one reassignment. RR may legitimately choose the employee for either item.
+  for(const item of first.items){await v9Command(admin,first.id,first.revision,{type:'assignItem',id:item.id,userId:admin.userId!});first=(await v9CaseDetail(admin,first.id)).case;}
+  expect(first.items.every(item=>item.assignee===admin.userId)).toBe(true);
   await expect(exit()).rejects.toThrow('already has an open offboarding case');
   expect(first.items).toHaveLength(2);
   await expect(v9Command(admin, first.id, first.revision, {type:'assignItem',id:first.items[0].id,userId:other.userId!})).rejects.toThrow('providing group');
@@ -1150,6 +1166,15 @@ it('limits unsigned signer choices to fresh company HR and lets an authorized HR
   await v9SaveConfig(admin,config.revision,config);
   const workspace=await v9Workspace(admin);expect(workspace.options.signatoryCandidates![base.companyId]).toContain(alternateId);expect(workspace.options.signatoryCandidates![base.companyId]).not.toContain(employee.userId);
   await v9Command(admin,c.id,c.revision,{type:'generate',template:'signer-letter'});c=(await v9CaseDetail(admin,c.id)).case;const doc=c.documents.find(doc=>doc.templateId==='signer-letter')!;
+  expect(doc.personnelCompletion).toBeUndefined(); // Existing case-owned signatory aliases are not missing Personnel fields.
+  const forgedAlias=async(kind:'value'|'merge'|'user')=>{
+    const forged=structuredClone(c),target=forged.documents.find(document=>document.id===doc.id)!;
+    if(kind==='value')target.values['printed-title']='Forged field-only title';
+    if(kind==='merge'){target.values['printed-title']='Forged canonical title';target.mergeValues!['signatory.title']='Forged canonical title';}
+    if(kind==='user'){target.signatoryUserId=employee.userId!;target.values['printed-signer']='V9 subject';target.mergeValues!['signatory.name']='V9 subject';}
+    await withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(forged)}::jsonb where id=${c.id}::uuid and tenant_id=${base.tenantId}::uuid`));
+  };
+  for(const kind of ['value','merge','user'] as const)await expect(forgedAlias(kind)).rejects.toThrow();
   await expect(v9Command(employee,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow();
   await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow('permitted');
   await v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:alternateId});c=(await v9CaseDetail(admin,c.id)).case;
@@ -1272,7 +1297,9 @@ it('requires a definite receipt and current reviewed sources for a changed-copy 
  await v9DeliverEmails(system,owner,async()=>{transportCalls++;throw Error('Unexpected transport for a completed failure');});expect(transportCalls).toBe(0);
  c=(await v9CaseDetail(admin,c.id)).case;expect(c.mails.find(mail=>mail.id===original.id)?.status).toBe('failed');const [receipt]=await owner.db.execute<{payload:unknown;started_at:string}>(sql`select payload,started_at from lc_v9_email_delivery where case_id=${c.id}::uuid and mail_id=${original.id}`);
  await v9Command(admin,c.id,c.revision,{type:'emailEdit',emailId:'updated-copy',subject:'Reviewed new subject',body:'Reviewed new body'});c=(await v9CaseDetail(admin,c.id)).case;
- const first=await v9PreviewUpdatedEmail(admin,c.id,original.id);expect(first).toMatchObject({subject:'Reviewed new subject',body:'Reviewed new body',to:['V9 subject']});await expect(v9PreviewUpdatedEmail(other,c.id,original.id)).rejects.toThrow();
+ const receiptBefore=await previewPhysicalSnapshot(c.id);
+ const first=await whilePreviewCaseLocked(c.id,false,()=>v9PreviewUpdatedEmail(admin,c.id,original.id),1);
+ expect(await previewPhysicalSnapshot(c.id)).toEqual(receiptBefore);expect(first).toMatchObject({subject:'Reviewed new subject',body:'Reviewed new body',to:['V9 subject']});await expect(v9PreviewUpdatedEmail(other,c.id,original.id)).rejects.toThrow();
  await v9Command(admin,c.id,c.revision,{type:'emailEdit',emailId:'updated-copy',subject:'Final reviewed subject',body:'Final reviewed body'});c=(await v9CaseDetail(admin,c.id)).case;
  await expect(v9Command(admin,c.id,c.revision,{type:'emailReplace',id:original.id,reason:'Stale review',sourceRevision:first.sourceRevision})).rejects.toThrow('changed');
  const preview=await v9PreviewUpdatedEmail(admin,c.id,original.id);
@@ -1345,7 +1372,7 @@ it('previews only the first notification or first document without creating live
  const notification=await v9PreviewWorkflow(admin,id,'preview-notice');expect(notification.messages).toEqual([expect.objectContaining({subject:'First notification',to:'Employee (login account)',cc:'Line manager'})]);expect(notification.documents).toEqual([]);
  const document=await v9PreviewWorkflow(admin,id,'preview-document');expect(document.messages).toEqual([]);expect(document.documents).toHaveLength(1);expect(document.documents[0].templateId).toBe(templates[0].id);expect((await v9CaseDetail(admin,id)).case).toEqual(before);
  const older={...document.documents[0],id:'fictional-existing-document',version:0,name:'Old saved document',edits:{},hrSignature:null,employeeSignature:null};
- await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`);
+ await owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`));
  const current=await v9PreviewWorkflow(admin,id,'preview-document');expect(current.documents[0].version).not.toBe(0);expect(current.documents[0].name).not.toBe('Old saved document');expect(current.documents[0].hrSignature).toBeNull();expect((await v9CaseDetail(admin,id)).case.documents).toEqual([older]);
 });
 
@@ -1416,7 +1443,7 @@ it('regenerates native documents through the canonical private writer and keeps 
  config.templates.push(template);await v9SaveConfig(admin,config.revision,config);
  let c=(await v9CaseDetail(admin,row.case.id)).case;await v9Command(admin,c.id,c.revision,{type:'generate',template:template.id});c=(await v9CaseDetail(admin,c.id)).case;
  const old=c.documents.find(document=>document.templateId===template.id)!;await v9Command(admin,c.id,c.revision,{type:'documentRegenerate',id:old.id});
- const after=(await v9CaseDetail(admin,c.id)).case;expect(after.revision).toBe(c.revision+1);expect(after.documents.some(document=>document.id===old.id)).toBe(false);expect(after.documents.filter(document=>document.templateId===template.id)).toHaveLength(1);expect(after.log.at(-1)?.action).toBe('document.regenerated');
+ const after=(await v9CaseDetail(admin,c.id)).case;expect(after.revision).toBe(c.revision+1);const active=after.documents.filter(document=>document.templateId===template.id&&!['superseded','withdrawn'].includes(document.status));expect(active).toHaveLength(1);expect(active[0].id).not.toBe(old.id);expect(after.documents.find(document=>document.id===old.id)).toMatchObject({status:'superseded',supersededBy:active[0].id});expect(after.log.at(-1)?.action).toBe('document.regenerated');
  const [stored]=await owner.db.execute<{public_data:Record<string,unknown>;private_data:Record<string,unknown>;copies:number}>(sql`select c.data as public_data,p.data as private_data,(select count(*)::int from lc_v9_case where id=c.id) as copies from lc_onboarding_case c join lc_onboarding_private p on p.case_id=c.id where c.id=${c.id}::uuid`);
  expect(stored.public_data).not.toHaveProperty('documents');expect(stored.private_data).toHaveProperty('lifecycleV9.documents');expect(stored.copies).toBe(0);
 });
@@ -1472,7 +1499,7 @@ it('resolves an offboarding email manager from current PM reporting lines withou
   await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[1].employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
   await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
   await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:workflow.id});current=(await v9CaseDetail(admin,caseId)).case;
-  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:[managers[1].userId],body:'For Fictional New manager'}]);
+  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:['address:new.manager@test.invalid'],body:'For Fictional New manager'}]);
   expect(current.facts.supervisorUserId).toBe(managers[0].userId);
 });
 
@@ -1495,4 +1522,148 @@ it('masks personal mailboxes across email previews and history until identity pe
   expect((await v9CaseDetail(admin,caseId)).case.mails.find(mail=>mail.workflowId)?.body).toBe('Contact '+mailbox);
   expect((await v9PreviewEmail(admin,caseId,'privacy-preview')).body).toBe('Contact '+mailbox);
   expect((await owner.client`select data from lc_v9_case where id=${caseId}::uuid`)[0].data.mails).toEqual(raw.data.mails);
+});
+
+// Board 50ec5e36: exercise the actual upload and configuration writer, including a failed-save retry.
+it('saves image alt separately from immutable receipts and still names invalid files', async () => {
+  let config = (await v9Workspace(admin)).config!;
+  const images = [];
+  for (let index = 0; index < 3; index++) images.push(await v9UploadEmailAsset(admin, {
+    revision: config.revision, emailId: 'e1', kind: 'image', name: `Fictional logo ${index + 1}.png`, content: assetPng,
+  }));
+  const first = { ...images[0], alt: 'First image' };
+  const invalid = structuredClone(config);
+  invalid.emails.find(email => email.id === 'e1')!.images = [{ ...first, contentHash: '0'.repeat(64) }];
+  await expect(v9SaveConfig(admin, config.revision, invalid)).rejects.toThrow(first.name);
+  // The same draft that was refused now saves once its receipt is correct, without reuploading.
+  config.emails.find(email => email.id === 'e1')!.images = [first];
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual([first]);
+  const alt = `Logo "quoted" & O'Reilly <script>alert(1)</script> 中文 🌿`;
+  const all = images.map((image, index) => ({ ...image, alt: index === 1 ? alt : `Image ${index + 1}` }));
+  const email = config.emails.find(email => email.id === 'e1')!;
+  email.images = all;
+  email.bodyDoc = { type: 'doc', content: [{ type: 'paragraph', content: all.map(image => ({ type: 'image', attrs: { assetId: image.id, alt: image.alt } })) }] };
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual(all);
+  const edited = config.emails.find(email => email.id === 'e1')!;
+  edited.images![1].alt = 'Updated 中文 🌿';
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual([all[0], { ...all[1], alt: 'Updated 中文 🌿' }, all[2]]);
+  for (const mismatch of [{ ...all[0], contentHash: '0'.repeat(64) }, { ...all[0], id: randomUUID() }]) {
+    const bad = structuredClone(config); bad.emails.find(email => email.id === 'e1')!.images![0] = mismatch;
+    // Keep rich-body references valid so the receipt check owns the failure.
+    delete bad.emails.find(email => email.id === 'e1')!.bodyDoc;
+    await expect(v9SaveConfig(admin, config.revision, bad)).rejects.toThrow(all[0].name);
+  }
+  const wrongParent = structuredClone(config); wrongParent.emails.find(email => email.id === 'e2')!.images = [all[0]];
+  await expect(v9SaveConfig(admin, config.revision, wrongParent)).rejects.toThrow(all[0].name);
+  const blankAlt = structuredClone(config); blankAlt.emails.find(email => email.id === 'e1')!.images![0].alt = '';
+  await expect(v9SaveConfig(admin, config.revision, blankAlt)).rejects.toThrow('alt text');
+});
+it('previews only the selected saved workflow step after current settings change, without queuing or generating anything',async()=>{
+ const reviewer=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional preview reviewer',primaryEmail:'preview-reviewer@example.test'}});
+ await owner.db.execute(sql`update app_user set person_id=${reviewer.personId}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`);admin={...admin,personId:reviewer.personId};
+ let c=await prepared(),config=(await v9Workspace(admin)).config!;
+ config.emails.push({id:'source-preview-email',name:'Fictional source preview',module:'off',active:true,sender:'noreply',subject:'For {owner.name}',body:'Saved preview copy',cc:[],links:[],attachments:[],slots:[]});
+ const workflow:Workflow={id:'source-preview',name:'Frozen preview source',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'hold',type:'waitFile',slot:'source-preview-hold',label:'Preview evidence'},{id:'target-email',type:'email',template:'source-preview-email',to:[`person:${admin.userId!}`],cc:[]},{id:'tail-notify',type:'notify',subject:'Saved tail only',body:'Saved selected step',to:['employee'],cc:[]}],description:''};
+ config.workflows.push(workflow);await v9SaveConfig(admin,config.revision,config);c=(await v9CaseDetail(admin,c.id)).case;await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:workflow.id});
+ c=(await v9CaseDetail(admin,c.id)).case;const run=c.runs.find(run=>run.workflowId===workflow.id)!;expect(run.definition?.steps[1].id).toBe('target-email');
+ config=(await v9Workspace(admin)).config!;const current=config.workflows.find(current=>current.id===workflow.id)!;current.name='Changed current source';current.steps=[{id:'target-email',type:'email',template:'source-preview-email',to:['employee'],cc:[]},{id:'tail-notify',type:'notify',subject:'Unrelated current tail',body:'New settings',to:['employee'],cc:[]}];await v9SaveConfig(admin,config.revision,config);
+ const before=(await v9CaseDetail(admin,c.id)).case,preview=await v9PreviewEmail(admin,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'});
+ expect(preview.to.map(recipient=>recipient.id)).toEqual([admin.userId]);expect((await v9PreviewEmail(admin,c.id,'source-preview-email')).to.map(recipient=>recipient.id)).toEqual([employee.userId]);
+ const selected=await v9PreviewWorkflow(admin,c.id,workflow.id,{runId:run.id,stepId:'tail-notify'});expect(selected.workflow.name).toBe('Frozen preview source');expect(selected.messages.map(message=>message.subject)).toEqual(['Saved tail only']);expect(selected.documents).toEqual([]);
+ await expect(v9PreviewEmail(other,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'})).rejects.toThrow();await expect(v9PreviewEmail(admin,c.id,'source-preview-email',{workflowId:workflow.id,runId:'not-this-case',stepId:'target-email'})).rejects.toThrow();
+ // Unrelated group size must not change this case-scoped read, recipient order, counts or authorization.
+ await owner.db.execute(sql`insert into company(tenant_id,legal_name,country,currency) select ${base.tenantId}::uuid,'Fictional preview scale company '||n,'MY','MYR' from generate_series(1,70) n`);
+ await owner.db.execute(sql`insert into person(tenant_id,full_name,primary_email) select ${base.tenantId}::uuid,'Fictional preview scale person '||lpad(n::text,4,'0'),'preview-scale-'||n||'@example.test' from generate_series(1,1000) n`);
+ await owner.db.execute(sql`with people as (select id,row_number() over(order by full_name) n from person where tenant_id=${base.tenantId}::uuid and full_name like 'Fictional preview scale person %'),companies as (select id,row_number() over(order by legal_name)-1 k from company where tenant_id=${base.tenantId}::uuid and legal_name like 'Fictional preview scale company %') insert into employment(tenant_id,person_id,company_id,hired_on) select ${base.tenantId}::uuid,p.id,co.id,'2026-01-01' from people p join companies co on co.k=(p.n-1)%70`);
+ const [shape]=await owner.db.execute<{companies:number;employments:number}>(sql`select (select count(*)::int from company where tenant_id=${base.tenantId}::uuid and legal_name like 'Fictional preview scale company %') companies,(select count(*)::int from employment e join person p on p.id=e.person_id where e.tenant_id=${base.tenantId}::uuid and p.full_name like 'Fictional preview scale person %') employments`);expect(shape).toEqual({companies:70,employments:1000});
+ for(const context of [admin,{...admin,grants:[{role:'hr_admin',companyId:base.companyId}]}]){
+  expect(await v9PreviewEmail(context,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'})).toEqual(preview);
+  expect(await v9PreviewWorkflow(context,c.id,workflow.id,{runId:run.id,stepId:'tail-notify'})).toEqual(selected);
+  expect((await v9CaseDetail(context,c.id)).canUploadFiles).toBe(true);
+ }
+ await expect(v9CaseDetail(other,c.id)).rejects.toThrow();
+ expect((await v9CaseDetail(admin,c.id)).case).toEqual(before);
+});
+
+
+// Independent physical receipts: previews must not rewrite either native/private owner,
+// append history/events, enqueue mail or alter a frozen delivery receipt.
+async function previewPhysicalSnapshot(id:string){
+ const [row]=await owner.client`select jsonb_build_object(
+ 'native',(select to_jsonb(c) from lc_onboarding_case c where c.id=${id}::uuid),
+ 'private',(select to_jsonb(p) from lc_onboarding_private p where p.case_id=${id}::uuid),
+ 'off',(select to_jsonb(c) from lc_v9_case c where c.id=${id}::uuid),
+ 'nativeRevisions',(select coalesce(jsonb_agg(to_jsonb(r) order by revision),'[]') from lc_onboarding_case_revision r where case_id=${id}::uuid),
+ 'privateRevisions',(select coalesce(jsonb_agg(to_jsonb(r) order by revision),'[]') from lc_onboarding_private_revision r where case_id=${id}::uuid),
+ 'offRevisions',(select coalesce(jsonb_agg(to_jsonb(r) order by revision),'[]') from lc_v9_case_revision r where case_id=${id}::uuid),
+ 'deliveries',(select coalesce(jsonb_agg(to_jsonb(r) order by mail_id),'[]') from lc_v9_email_delivery r where case_id=${id}::uuid),
+ 'events',(select coalesce(jsonb_agg(to_jsonb(e) order by sequence),'[]') from domain_event e where tenant_id=${base.tenantId}::uuid)
+ ) as value`;
+ return row.value;
+}
+async function whilePreviewCaseLocked<T>(id:string,native:boolean,read:()=>Promise<T>,expectedReads:number):Promise<T>{
+ const actual=database.withTenant,modes:{isolation:string;readOnly:string}[]=[];
+ const result=await owner.client.begin(async holder=>{
+  if(native)await holder`select id from lc_onboarding_case where id=${id}::uuid for update`;
+  else await holder`select id from lc_v9_case where id=${id}::uuid for update`;
+  const spy=vi.spyOn(database,'withTenant').mockImplementation(<R>(ctx:SessionContext,fn:(tx:Tx)=>Promise<R>,options?:Parameters<typeof database.withTenant>[2])=>actual(ctx,async tx=>{
+   await tx.execute(sql`set local lock_timeout='300ms'`);
+   const [mode]=await tx.execute<{isolation:string;readOnly:string}>(sql`select current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only') as "readOnly"`);modes.push(mode);
+   return fn(tx);
+  },options));
+  try{return await read();}finally{spy.mockRestore();}
+ });
+ expect(modes).toHaveLength(expectedReads);expect(modes.every(m=>m.isolation==='repeatable read'&&m.readOnly==='on')).toBe(true);
+ return result as T;
+}
+async function withFictionalPreviewAuthOrigin<T>(work:()=>Promise<T>):Promise<T>{
+ const previous={AUTH_PUBLIC_ORIGIN:process.env.AUTH_PUBLIC_ORIGIN,AUTH_SESSION_KEY:process.env.AUTH_SESSION_KEY};
+ // Fictional auth-adapter fixture only; never infer a trusted origin from a request or persist it outside this journey.
+ process.env.AUTH_PUBLIC_ORIGIN='https://fictional-preview.example.test';process.env.AUTH_SESSION_KEY='11'.repeat(32);
+ try{return await work();}finally{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+}
+it.each(['onb','off'] as const)('previews populated %s communications in PostgreSQL read-only mode while the actual owner case is locked, without mutation',async module=>{
+ return withFictionalPreviewAuthOrigin(async()=>{
+ let id:string;
+ if(module==='off')id=(await prepared()).id;
+ else{
+  const draft=await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional read-only joiner',primaryEmail:'readonly-joiner@example.test'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,hiredOn:todayInKualaLumpur()}}});
+  id=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!.case.id;
+ }
+ const config=(await v9Workspace(admin)).config!;
+ config.emails.push({id:'readonly-preview',name:'Read-only preview',module,active:true,sender:'hr',subject:'Hello {employee.name}',body:'Saved preview body',cc:[],links:[],attachments:[],slots:[]});
+ const workflow:Workflow={id:'readonly-workflow',name:'Read-only workflow',module,status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notice',type:'notify',subject:'Read-only notice',body:'No scheduler execution',to:['employee'],cc:[]}],description:''};
+ config.workflows.push(workflow);await v9SaveConfig(admin,config.revision,config);
+ const before=await previewPhysicalSnapshot(id);
+ await whilePreviewCaseLocked(id,module==='onb',async()=>{
+  expect((await v9PreviewEmail(admin,id,'readonly-preview')).body).toBe('Saved preview body');
+  expect((await v9PreviewWorkflow(admin,id,workflow.id)).messages.map(m=>m.subject)).toEqual(['Read-only notice']);
+  expect(await v9PreviewPersonnelValues(admin,id,module)).toMatchObject({'employee.name':module==='off'?'V9 subject':'Fictional read-only joiner'});
+  expect(await v9PlanWorkflow(admin,id,workflow)).toEqual({matches:true,lines:[{text:'Conditions match.',ok:true},expect.objectContaining({text:expect.stringContaining('\"Read-only notice\"')})]});
+ },4);
+ expect(await previewPhysicalSnapshot(id)).toEqual(before);
+ });
+},30000);
+it('refuses a native Personnel company rebind during preview, then lets the existing case-detail owner persist it',async()=>{
+ const draft=await saveEmployeeDraft(admin,{currentStep:5,data:{profile:{fullName:'Fictional company correction',employeeCode:'RO-CORRECTION',primaryEmail:'correction@example.test'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}}});
+ const active=await completeEmployeeDraft(admin,draft.id),row=(await onboardingList(admin)).find(candidate=>candidate.case.sourceDraftId===draft.id)!;
+ const [destination]=await owner.client`insert into company(tenant_id,legal_name) values(${base.tenantId}::uuid,'Fictional corrected company') returning id`;
+ const [dept]=await owner.client`insert into department(tenant_id,company_id,name) values(${base.tenantId}::uuid,${destination.id}::uuid,'Fictional corrected department') returning id`;
+ await owner.client`update employment set company_id=${destination.id}::uuid where id=${active.employmentId}::uuid`;
+ await owner.client`update assignment set company_id=${destination.id}::uuid,department_id=${dept.id}::uuid,position_id=null,cost_center_id=null where employment_id=${active.employmentId}::uuid and superseded_at is null`;
+ const before=await previewPhysicalSnapshot(row.case.id);
+ await expect(v9PreviewPersonnelValues(admin,row.case.id,'onb')).rejects.toThrow('Open the case to refresh its Personnel company before previewing.');
+ expect(await previewPhysicalSnapshot(row.case.id)).toEqual(before);
+ const refreshed=await v9CaseDetail(admin,row.case.id);
+ expect(refreshed.case.facts.company).toBe(destination.id);
+ const [stored]=await owner.client`select company_id,revision from lc_onboarding_case where id=${row.case.id}::uuid`;
+ expect(stored.company_id).toBe(destination.id);expect(stored.revision).toBe(row.revision+1);
+ expect((await previewPhysicalSnapshot(row.case.id))).not.toEqual(before);
+ expect((await v9PreviewPersonnelValues(admin,row.case.id,'onb'))['employee.name']).toBe('Fictional company correction');
 });

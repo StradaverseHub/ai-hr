@@ -1,6 +1,7 @@
 /** Exact public F8/Board924 historical replay +145 forward bodies, populated BEFORE either upgrade.
  * Separate from the existing729 rehearsal. Disposable source-derived evidence, never an installed-ledger export.
  * Board business records are produced by the frozen native child, not copied/forged managed state.
+ * A second phase then applies the independently pinned Board50 tail to both actual1069 databases.
  */
 import {createHash,randomUUID} from 'node:crypto';
 import {execFile,execFileSync} from 'node:child_process';
@@ -21,6 +22,7 @@ import {setCompensation} from '../core/comp';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {seedCatalogsAt} from '../scripts/seed-catalogs';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
+import {assertApprovedUpgradeTail} from './helpers/approved-upgrade';
 import {copyTenantRowsAtPrefix} from './helpers/prefix-seed';
 import {PROJECT_INSTALLED_OWNERSHIP} from './helpers/installed-owner-projection';
 import {pgSqlState} from '../lib/db-error';
@@ -37,7 +39,7 @@ type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:stri
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
 const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
-const PREFIX=924,TAIL=145,OWNER='ai_hr_owner';
+const PREFIX=924,TAIL=145,BOARD_TAIL=50,OWNER='ai_hr_owner';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
 const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
 const TAIL_DIGEST='63c7c63e258e3a05b2e75b964e0a00b7858638c63a7a524beef60a73077a6277';
@@ -58,7 +60,7 @@ const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex'
 const exec=promisify(execFile);
 afterAll(closeAll);
 
-it('replays exact frozen924 +145 as literal ai_hr_owner, preserving native Board data and matching a superuser twin',async()=>{
+it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, preserving native data and matching a superuser twin',async()=>{
  const root=process.cwd(),base=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  // Before any connection: only this generated namespace on the existing disposable hosted cluster.
  expect(['postgres:','postgresql:']).toContain(base.protocol);expect(base.hostname).toBe('127.0.0.1');expect(base.port).toBe('5433');
@@ -81,13 +83,41 @@ it('replays exact frozen924 +145 as literal ai_hr_owner, preserving native Board
   }
   for(const file of ['package.json','pnpm-lock.yaml','scripts/seed-catalogs.ts','packs/catalog.ts']){
    expect(readFileSync(join(source,file)).equals(readFileSync(join(forwardSource,file))),file+' same frozen dependency/catalogue source').toBe(true);
-   expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' current prepared dependency/catalogue source').toBe(true);
+   if(file!=='package.json'&&file!=='pnpm-lock.yaml')expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' current prepared catalogue source').toBe(true);
+  }
+  // Approved additive leaf only. Remove these exact bytes ONCE from the current manifest/lock
+  // and require byte-for-byte equality with BOTH frozen archives above. Every pre-existing
+  // dependency, version, peer binding, integrity and snapshot therefore remains unchanged.
+  // The historical source files and runtime are never overlaid with candidate application code.
+  const leafAdditions:Record<string,string[]>={
+   'package.json':['    "libphonenumber-js": "1.13.16",\n'],
+   'pnpm-lock.yaml':[
+    '      libphonenumber-js:\n        specifier: 1.13.16\n        version: 1.13.16\n',
+    '  libphonenumber-js@1.13.16:\n    resolution: {integrity: sha512-tIOCM9yx2Go6d5/ZANe0K+G4AZek1Ymx81HxQpf19Sri4zMP95eQbKdnUGHAvFQ4nx0PeLhFqvAfisTADXj3tQ==}\n\n',
+    '  libphonenumber-js@1.13.16: {}\n\n',
+   ],
+  };
+  for(const [file,additions]of Object.entries(leafAdditions)){
+   const archived=readFileSync(join(source,file),'utf8');let prepared=readFileSync(join(root,file),'utf8');
+   for(const addition of additions){
+    expect(archived.includes(addition),file+' leaf is absent from the frozen runtime').toBe(false);
+    expect(prepared.split(addition)).toHaveLength(2);prepared=prepared.replace(addition,'');
+   }
+   expect(prepared,file+' only the exact approved additive leaf differs').toBe(archived);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');
-  const journal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as Journal;
+  const currentJournal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as Journal;
   const frozen=JSON.parse(readFileSync(join(source,'db/migrations/meta/_journal.json'),'utf8')) as Journal;
   const candidate=JSON.parse(readFileSync(join(forwardSource,'db/migrations/meta/_journal.json'),'utf8')) as Journal;
-  expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);expect(journal).toEqual(candidate);
+  // The original phase still uses ONLY the exact historical candidate archive. A later source
+  // cannot redefine its145 bodies, digest, order or rehearsal merely by appending a migration.
+  const journal=candidate;
+  expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);
+  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL);
+  expect({...currentJournal,entries:currentJournal.entries.slice(0,PREFIX+TAIL)}).toEqual(candidate);
+  // This existing independent owner pins the exact current journal and literal SHA256 of each
+  // reviewed forward SQL body. It runs before any connection and again before phase two.
+  assertApprovedUpgradeTail(currentJournal.entries);
   expect(frozen.entries[PREFIX-1]).toEqual(LAST);expect(journal.entries.slice(0,PREFIX)).toEqual(frozen.entries);
   // Reuse audited archive owner through a separate public-source module, without importing a legacy test.
   const historicalModule=await import(/* @vite-ignore */ new URL('../.github/ci/migration-history.mjs',import.meta.url).href) as {
@@ -249,6 +279,62 @@ it('replays exact frozen924 +145 as literal ai_hr_owner, preserving native Board
   const finalRows=await snapshotPublicRows(observer),noopCatalogue=await snapshotCatalogue(observer,superuser);
   await migrate(drizzle(restricted),{migrationsFolder:migrations});
   expect(await ledger(restricted)).toEqual(expectedLedger);expect(await snapshotPublicRows(observer)).toEqual(finalRows);expect(await snapshotCatalogue(observer,superuser)).toEqual(noopCatalogue);expect(await ownerRoleGraph(observer)).toEqual(graphBefore);
+
+  // Phase two begins on the ACTUAL restricted1069 installation and its verified reference twin.
+  // Snapshot every public row and its original1069 columns before the50; never re-seed or reconstruct.
+  const combinedRows=await snapshotPublicRows(observer),combinedColumns=Object.fromEntries(Object.entries(combinedRows).map(([key,value])=>[key,value.columns]));
+  expect(await snapshotPublicRows(reference)).toEqual(combinedRows);
+  const combinedPurpose=await purposeOwned(observer,superuser),combinedGraph=await ownerRoleGraph(observer);
+  expect(combinedPurpose).toEqual(purposeBefore);expect(combinedGraph).toEqual(graphBefore);
+  const [secondLogin]=await restricted.unsafe<{session:string;current:string;role:string}[]>(`select session_user::text as session,current_user::text as current,current_setting('role') as role`);
+  expect(secondLogin).toEqual({session:OWNER,current:OWNER,role:'none'});expect(await ownerAttributes(restricted)).toEqual(ATTRIBUTES);
+  expect(await leftovers(observer)).toEqual([]);
+  assertApprovedUpgradeTail(currentJournal.entries);
+  const boardTail=currentJournal.entries.slice(PREFIX+TAIL);expect(boardTail).toHaveLength(BOARD_TAIL);
+  expect(boardTail[0].tag).toBe('6600_probation_reconciliation');
+  const boardIdentities=boardTail.map((entry,index)=>{
+   expect(entry.when).toBeGreaterThan(index?boardTail[index-1].when:journal.entries.at(-1)!.when);
+   const bytes=readFileSync(join(root,'db/migrations',entry.tag+'.sql'));
+   // Identity was admitted above against literal reviewed pins, not a candidate-derived expected catalogue.
+   writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
+   return {hash:sha(bytes),created_at:String(entry.when)};
+  });
+  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL);
+  const referenceNoticeOffset=referenceNotices.length,ownerNoticeOffset=ownerNotices.length;
+  writeFileSync(join(migrations,'meta/_journal.json'),JSON.stringify(currentJournal));
+  await migrate(drizzle(reference),{migrationsFolder:migrations});
+  await migrate(drizzle(restricted),{migrationsFolder:migrations}); // A restricted refusal fails; never repair from the twin.
+  for(const client of [reference,restricted])expect(await ledger(client)).toEqual(expectedCurrentLedger);
+  const referenceBoardNotices=referenceNotices.slice(referenceNoticeOffset),ownerBoardNotices=ownerNotices.slice(ownerNoticeOffset);
+  expect(warnings(referenceBoardNotices)).toEqual([]);expect(warnings(ownerBoardNotices)).toEqual([]);
+  expect(ownerBoardNotices.filter(n=>n.code==='01006'||n.code==='01007')).toEqual([]);
+  expect(await purposeOwned(observer,superuser)).toEqual(combinedPurpose);
+  expect(await ownerRoleGraph(observer)).toEqual(combinedGraph);expect(await ownerAttributes(observer)).toEqual(ATTRIBUTES);expect(await leftovers(observer)).toEqual([]);
+  expect(catalogueDifferences(await snapshotCatalogue(reference,superuser),await snapshotCatalogue(observer,superuser))).toEqual([]);
+  for(const [client,name]of [[reference,names.ref],[observer,names.owner]] as const){
+   const retained=await snapshotPublicRows(client,combinedColumns);
+   for(const [table,original]of Object.entries(combinedRows)){
+    expect(retained[table].columns,table+' retains every1069 original column').toEqual(original.columns);
+    const counts=new Map<string,number>();for(const row of retained[table].rows)counts.set(row,(counts.get(row)??0)+1);
+    for(const row of original.rows){expect(counts.get(row)??0,table+' retains each1069 PostgreSQL row image with multiplicity').toBeGreaterThan(0);counts.set(row,counts.get(row)!-1);}
+   }
+   await verifyNativeFacts(client);await child('read',name,receipt);
+   // Both canonical module membership and archived RPC privacy remain exactly as the frozen145 phase.
+   const [boundary]=await client.unsafe<{archiveApp:boolean;archivePublic:boolean;expression:string;validated:boolean}[]>(`select has_function_privilege('ai_hr_app','app.contract_configuration_directory_before_combined(uuid[],text,uuid[])','EXECUTE') as "archiveApp",exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='app.contract_configuration_directory_before_combined(uuid[],text,uuid[])'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE') as "archivePublic",regexp_replace(pg_get_expr(c.conbin,c.conrelid),'[[:space:]]','','g') as expression,c.convalidated as validated from pg_constraint c where c.conrelid='public.automation_email_delivery'::regclass and c.conname='automation_email_delivery_module_check'`);
+   expect(boundary).toEqual({archiveApp:false,archivePublic:false,expression:"(module=ANY(ARRAY['probation'::text,'contract_staff'::text,'off'::text]))",validated:true});
+   const app=connect(at(name,'ai_hr_app'));let archiveRefusal:unknown;
+   try{await app.unsafe(`select * from app.contract_configuration_directory_before_combined('{}'::uuid[],'','{}'::uuid[])`);}catch(error){archiveRefusal=error;}
+   expect(pgSqlState(archiveRefusal),'archived directory still refuses app after Board50').toBe('42501');await close(app);
+  }
+  expect(await snapshotPublicRows(reference)).toEqual(await snapshotPublicRows(observer));
+  const currentRows=await snapshotPublicRows(observer),currentCatalogue=await snapshotCatalogue(observer,superuser);
+  for(const client of [reference,restricted])await migrate(drizzle(client),{migrationsFolder:migrations});
+  for(const client of [reference,restricted])expect(await ledger(client)).toEqual(expectedCurrentLedger);
+  expect(await snapshotPublicRows(reference)).toEqual(currentRows);expect(await snapshotPublicRows(observer)).toEqual(currentRows);
+  expect(catalogueDifferences(await snapshotCatalogue(reference,superuser),currentCatalogue)).toEqual([]);
+  expect(await snapshotCatalogue(observer,superuser)).toEqual(currentCatalogue);
+  expect(await purposeOwned(observer,superuser)).toEqual(combinedPurpose);expect(await ownerRoleGraph(observer)).toEqual(combinedGraph);
+  expect(await ownerAttributes(restricted)).toEqual(ATTRIBUTES);expect(await leftovers(observer)).toEqual([]);
  }finally{
   for(const client of [...pools].filter(client=>client!==admin))await close(client);
   if(admin){for(const name of Object.values(names))await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);await close(admin);}

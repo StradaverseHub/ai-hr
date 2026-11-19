@@ -3,7 +3,10 @@ import {PERSONNEL_FIELDS} from './personnel-field-registry';
 import type {FormulaType} from './pay-formula-registry';
 export const PAY_FORMULA_PERSONNEL_REGISTRY_VERSION='personnel-formula-fields-2';
 export const PAY_FORMULA_PERSONNEL_PROVIDER_VERSION='personnel-period-sources-2';
-export type PersonnelFormulaAdapter={key:string;fieldId:string;group:'profile'|'employee';type:FormulaType;adapter:'person'|'employment'|'statutory'|'company'|'assignment'|'derived';column:string;dateBasis:'current-only'|'effective-date'};
+/** Additive source boundary: existing adapters and frozen v2 evidence keep their original meaning. */
+export const PAY_FORMULA_BUSINESS_CODE_PROVIDER_VERSION='personnel-business-codes-1';
+export const PAY_FORMULA_BUSINESS_CODE_REGISTRY_VERSION='personnel-business-code-fields-1';
+export type PersonnelFormulaAdapter={key:string;fieldId:string;group:'profile'|'employee';type:FormulaType;adapter:'person'|'employment'|'statutory'|'company'|'assignment'|'derived'|'business-code';column:string;dateBasis:'current-only'|'effective-date'};
 export const PAY_FORMULA_PERSONNEL_ADAPTERS:readonly PersonnelFormulaAdapter[] = [
   {
     "key": "profile.personal_details.salutation",
@@ -607,13 +610,19 @@ export const PAY_FORMULA_PERSONNEL_ADAPTERS:readonly PersonnelFormulaAdapter[] =
     "adapter": "employment",
     "column": "grade_id",
     "dateBasis": "current-only"
-  }
+  },
+  // Department/Position Code use System Labels' Code columns (name/title), never its display label.
+  {key:'departmentBusinessCode',fieldId:'employment.organisation_assignment.departmentname',group:'profile',type:'string',adapter:'business-code',column:'department_id',dateBasis:'effective-date'},
+  {key:'positionBusinessCode',fieldId:'employment.organisation_assignment.positionname',group:'profile',type:'string',adapter:'business-code',column:'position_id',dateBasis:'effective-date'},
+  {key:'businessUnitCode',fieldId:'employment.organisation_assignment.businessunitname',group:'profile',type:'string',adapter:'business-code',column:'business_unit_id',dateBasis:'effective-date'},
+  {key:'jobGradeCode',fieldId:'employment.organisation_assignment.gradename',group:'profile',type:'string',adapter:'business-code',column:'grade_id',dateBasis:'effective-date'},
 ];
+export function personnelFormulaProviderVersion(adapter:PersonnelFormulaAdapter){return adapter.adapter==='business-code'?PAY_FORMULA_BUSINESS_CODE_PROVIDER_VERSION:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION;}
 /** English fallbacks for adapters that share one Personnel field; translations live at payFormula.fields.<key>. */
-export const PAY_FORMULA_SHARED_FIELD_LABELS:Readonly<Record<string,string>>={companyId:'Company internal ID',companyName:'Company legal name',companyCode:'Company code'};
+export const PAY_FORMULA_SHARED_FIELD_LABELS:Readonly<Record<string,string>>={companyId:'Company internal ID',companyName:'Company legal name',companyCode:'Company code',departmentId:'Department internal ID',positionId:'Position internal ID',businessUnitId:'Business Unit internal ID',gradeId:'Job Grade internal ID',departmentBusinessCode:'Department code',positionBusinessCode:'Position code',businessUnitCode:'Business Unit code',jobGradeCode:'Job Grade code'};
 /** Adapters whose value is a software-generated internal ID (a UUID), never a code or name an author
  * types. Derived from the closed adapter metadata: the company `id` column and the `*_id` columns. */
-export function personnelFormulaInternalId(adapter:Pick<PersonnelFormulaAdapter,'column'>){return adapter.column==='id'||adapter.column.endsWith('_id');}
+export function personnelFormulaInternalId(adapter:Pick<PersonnelFormulaAdapter,'column'>&Partial<Pick<PersonnelFormulaAdapter,'adapter'>>){return adapter.adapter!=='business-code'&&(adapter.column==='id'||adapter.column.endsWith('_id'));}
 export function personnelFormulaAdapter(code:string,key:string){if(code!=='EmployeeProfile'&&code!=='EmployeeInformation')return undefined;return PAY_FORMULA_PERSONNEL_ADAPTERS.find(a=>a.key===key&&(code==='EmployeeProfile'?'profile':'employee')===a.group);}
 export type PersonnelFormulaRegistration={id:string;sourceKey:string;label:string;description:string;ordinal:number;enabled:boolean};
 export const PAY_FORMULA_PERSONNEL_INVENTORY=PERSONNEL_FIELDS.filter(field=>field.tab==='Profile'||field.tab==='Employment').map(field=>({fieldId:field.id,label:field.label,labelKey:field.labelKey,section:field.section,group:field.tab==='Profile'?'employee' as const:'profile' as const,type:field.type,history:field.history,sensitivity:field.sensitivity,grain:field.grain,unavailableReason:field.grain==='many'?'repeating':field.type==='file'?'file':field.owner==='draft'?'draft':null}));
@@ -621,11 +630,11 @@ export const PAY_FORMULA_LEGACY_PERSONNEL_FIELDS={
  profile:{joinDate:'employment.employment_dates_and_service.joindate',groupJoinDate:'employment.employment_dates_and_service.hiredon',resignationDate:'employment.employment_dates_and_service.resignationdate',confirmationDate:'employment.employment_dates_and_service.confirmationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate',employmentType:'employment.organisation_assignment.employmenttype',employeeNo:'profile.personal_details.employeecode',departmentCode:'employment.organisation_assignment.departmentname',positionCode:'employment.organisation_assignment.positionname',gradeCode:'employment.organisation_assignment.gradename'},
  employee:{dateOfBirth:'profile.personal_details.dateofbirth',gender:'profile.personal_details.gender',nationality:'profile.personal_details.nationality',maritalStatus:'profile.personal_details.maritalstatus'},
 };
-export type PersonnelFormulaLibraryField={fieldId:string;key:string;label:string;labelKey:string;section:string;group:'profile'|'employee';type:string;history:string;sensitivity:string;grain:string;unavailableReason:string|null;description:string;formulaType:FormulaType;functionCode:string;dateBasis:string;enabled:boolean;listValues:{value:string;label:string}[]};
+export type PersonnelFormulaLibraryField={fieldId:string;key:string;label:string;labelKey:string;section:string;group:'profile'|'employee';type:string;history:string;sensitivity:string;grain:string;unavailableReason:string|null;description:string;formulaType:FormulaType;functionCode:string;dateBasis:string;enabled:boolean;listValues:{value:string;label:string}[];compatibility?:boolean;codeValuesTotal?:number};
 
 /** Code-owned display descriptor shared by editors; no catalogue or employee values. */
 export function personnelFormulaFieldDescriptor(code:string,key:string){
  if(code!=='EmployeeProfile'&&code!=='EmployeeInformation')return undefined;
  const group=code==='EmployeeProfile'?'profile':'employee',fieldId=personnelFormulaAdapter(code,key)?.fieldId??(PAY_FORMULA_LEGACY_PERSONNEL_FIELDS[group] as Record<string,string>)[key];
- return PERSONNEL_FIELDS.find(field=>field.id===fieldId);
+ const field=PERSONNEL_FIELDS.find(field=>field.id===fieldId);return field&&PAY_FORMULA_SHARED_FIELD_LABELS[key]?{...field,label:PAY_FORMULA_SHARED_FIELD_LABELS[key],labelKey:'payFormula.fields.'+key}:field;
 }

@@ -11605,7 +11605,7 @@ export const payrollHistoryImportSnapshot=pgTable('payroll_history_import_snapsh
 export const payrollHistoryImportRevision=pgTable('payroll_history_import_revision',{
  id:id(),tenantId:tenantId(),recordId:uuid('record_id').notNull().references(()=>payrollHistoryImportRecord.id),ordinal:integer('ordinal').notNull(),
  attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),snapshotId:uuid('snapshot_id').references(()=>payrollHistoryImportSnapshot.id),
- previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'|'adopted'>(),cycleName:text('cycle_name').notNull(),createdAt:createdAt(),
+ previousRevisionId:uuid('previous_revision_id'),kind:text('kind').notNull().$type<'import'|'correction'|'revert'|'adopted'>(),cycleName:text('cycle_name').notNull(),nativeSource:jsonb('native_source').$type<import('../lib/payroll-history-native-baseline').NativeHistoryBaselineProof>(),maintenance:jsonb('maintenance').$type<{version:1;state:import('../lib/payroll-history-maintenance-lineage').HistoryContributionState;operation:string;reason:string}>(),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_history_revision_ordinal_uq').on(t.recordId,t.ordinal),index('payroll_history_revision_attempt_idx').on(t.tenantId,t.attemptId)]);
 export const payrollHistoryImportEvent=pgTable('payroll_history_import_event',{
  id:id(),tenantId:tenantId(),attemptId:uuid('attempt_id').notNull().references(()=>payrollHistoryImportAttempt.id),
@@ -11916,3 +11916,11 @@ export const attendanceFormulaOtBindingResult=pgTable('attendance_formula_ot_bin
 export const attendanceFormulaOtBindingDay=pgTable('attendance_formula_ot_binding_day',{
  bindingId:uuid('binding_id').notNull().references(()=>attendanceFormulaOtBinding.id),sourceId:uuid('source_id').notNull().references(()=>attendanceOvertimeSource.id),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),coverage:int8multirange('coverage').notNull(),payload:jsonb('payload').$type<Record<string,unknown>>().notNull(),
 },t=>[primaryKey({columns:[t.bindingId,t.sourceId]})]);
+
+/** Private transaction-bound evidence for canonical Personnel-completion changes; application has no table grants. */
+const completionXid8=customType<{data:string;driver:string}>({dataType(){return 'xid8';}});
+export const lifecyclePersonnelCompletionCustody=pgTable('lifecycle_personnel_completion_custody',{
+ id:uuid('id').primaryKey().defaultRandom(),tenantId:uuid('tenant_id').notNull().references(()=>tenant.id),caseId:uuid('case_id').notNull(),
+ documentId:text('document_id').notNull(),caseRevision:integer('case_revision').notNull(),actorUserId:uuid('actor_user_id').references(()=>appUser.id),
+ transactionId:completionXid8('transaction_id').notNull(),operation:text('operation').notNull(),beforeHash:text('before_hash').notNull(),afterHash:text('after_hash').notNull(),createdAt:timestamp('created_at',{withTimezone:true}).notNull().defaultNow(),
+},table=>[index('personnel_completion_custody_lookup').on(table.tenantId,table.caseId,table.documentId,table.caseRevision,table.transactionId),check('lifecycle_personnel_completion_custody_operation_check',sql`${table.operation} in ('save','submit','refresh','override','adopt')`)]);

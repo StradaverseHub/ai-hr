@@ -59,3 +59,14 @@ export async function prepareResignationEmailTx(tx:import('../../db/client').Tx,
 
 /** One-purpose date synchronization; ordinary Offboarding authority is never granted to the letter owner. */
 export async function synchronizeResignationOffboardingLastDayTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,input:{journeyId:string;oldLastDay:string;newLastDay:string}):Promise<void>{const{v9SynchronizeResignationLastDayTx}=await import('./v9/service');await v9SynchronizeResignationLastDayTx(tx,ctx,input);}
+
+export {v9DocumentSigningWork,v9DocumentSigningWorkspace,v9ReadDocumentSigningWork,v9DocumentRouteAct,v9DocumentRouteEdit} from './v9/document-routing';
+export type {V9DocumentSigningWork,V9DocumentRouteAction} from './v9/document-routing';
+export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';
+export {offboardingRequisition,updateOffboardingRequisitionItem} from './v9/offboarding-requisition';
+export {offboardingRequisitions} from './v9/offboarding-requisition';
+
+export {v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9ReadPersonnelCompletion} from './v9/personnel-completion';
+export async function recoverPersonnelCompletionRunsTx(...args:Parameters<typeof import('./v9/service').recoverPersonnelCompletionRunsTx>){
+ return (await import('./v9/service')).recoverPersonnelCompletionRunsTx(...args);
+}
