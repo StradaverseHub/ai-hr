@@ -245,6 +245,29 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   await main.locator('li a[href="/recruitment/candidates"] .tabular-nums:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
+ if(path==='/reports'){
+  const hub=main.locator('[data-tour="intelligence-reports"]');
+  await hub.locator('a[href="/reports/employee-master"]').first().waitFor({state:'visible',timeout:timeout()});
+  await hub.locator('a[href="/payroll/statutory-forms"]').waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await hub.getByRole('heading',{level:2}).count(),6);
+  return 'usable-content';
+ }
+ if(path==='/reports/employee-master'){
+  await main.locator('form input[name="q"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('a[href="/reports/employee-master/new"]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/notices'){
+  await main.locator('form[action="/notices"] input[type="search"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('[data-tour="notices-mine"] ul li:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/admin/claims'){
+  const types=main.locator('[data-tour="claims-types"]');
+  await types.locator('summary:visible').first().waitFor({state:'visible',timeout:timeout()});
+  await types.getByText('Performance claim',{exact:true}).waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
  if(path==='/me/cases'){
   await main.locator('section[aria-labelledby="own-private-cases"]:visible').waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
@@ -285,7 +308,7 @@ async function visit(page,actor,route,pass,fixture) {
    },timeout);
    observation.readiness=route.witness==='ai-runs-company-scope'?'scope-denial':'usable-content';
   }else{
-   observation.readiness=await readyContent(page,actor,route.requested,timeout,()=>{
+   observation.readiness=await readyContent(page,actor,route.final,timeout,()=>{
     observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
    },fixture);
    if(route.witness){
