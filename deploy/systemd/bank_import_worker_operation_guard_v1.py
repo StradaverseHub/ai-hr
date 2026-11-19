@@ -78,6 +78,7 @@ class GuardedInvocation:
         self.a=json.loads(self.bytes)
         fields=ci.FIRST_APPROVAL_FIELDS if stage=='drain' else ci.ACTIVATION_FIELDS if stage=='activate-ci-runtime' else ci.RECOVERY.PREP_FIELDS if stage=='prepare-ci-worker' else ci.RECOVERY.NORMAL_FIELDS if stage=='activate-prepared-ci-runtime' else ci.RECOVERY.FIELDS
         if stage in published_kinds(ci):fields=ci.PUBLISHED.SEAL_FIELDS if stage==ci.PUBLISHED.SEAL_STAGE else ci.PUBLISHED.LIVE_FIELDS
+        if stage=='recover-prepared-preunit-ci-runtime':fields=ci.RECOVERY.PREUNIT_FIELDS
         kind=published_kinds(ci)[stage]if stage in published_kinds(ci) else 'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' if stage=='drain' else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if stage=='activate-ci-runtime' else ci.RECOVERY.KINDS[stage]
         base.check(set(self.a)==fields and self.a['kind']==kind and self.a['policy']==ci.POLICY and self.a['format']==1 and
                    self.a['target']=='alpha-staging' and self.a['releaseAuthorized'] is False,'fixed root invocation approval differs')
@@ -141,7 +142,7 @@ class GuardedInvocation:
         fd=self.verify()
         held=self.ci.child(['/usr/bin/python3',str(self.ci.COORDINATOR)],self.owner,self.environment,
                            input=json.dumps({'protocol':'aihr-staging-queue/v1','action':'assert','actor':'root-worker-operation',**self.lease}),timeout=15,operation_fd=fd)
-        allowed=('claimed',)if self.stage=='drain' or self.stage=='prepare-ci-worker' and self.a['preparation'].get('mode')=='normal' else ('installing',) if self.stage in ('prepare-ci-worker','recover-ci-runtime',*published_kinds(self.ci)) else ('installing','arrived')
+        allowed=('claimed',)if self.stage=='drain' or self.stage=='prepare-ci-worker' and self.a['preparation'].get('mode')=='normal' else ('installing',) if self.stage in ('prepare-ci-worker','recover-ci-runtime','recover-prepared-preunit-ci-runtime',*published_kinds(self.ci)) else ('installing','arrived')
         self.base.check(held.get('releaseAuthorized') is False and all(held.get(k)==self.a['lease'][k]for k in self.a['lease']) and held.get('phase')in allowed,'fixed root operation native lease differs')
         self.base.check(self.last_phase!='arrived' or held['phase']=='arrived','native lease backslid')
         self.last_phase=held['phase'];return held
@@ -185,14 +186,14 @@ def preparation_initial_seconds(base,ci,path,pinned):
 
 def launch(argv,fmt,base,ci,update):
     parser=argparse.ArgumentParser()
-    parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime'])
+    parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime','guarded-recover-prepared-preunit-ci-runtime'])
     parser.add_argument('--approval',required=True);parser.add_argument('--approval-sha256',required=True)
     args=parser.parse_args(argv);base.check(os.geteuid()==0,'fixed root launcher must run after the privilege boundary')
     stage=args.mode.removeprefix('guarded-')
     guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',());previous_guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
     previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None);previous_overall=getattr(base,'RECOVERY_OVERALL_DEADLINE',None)
-    if stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
-    if stage in ('activate-ci-runtime','prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime',*published_kinds(ci)):
+    if stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-prepared-preunit-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
+    if stage in ('activate-ci-runtime','prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime','recover-prepared-preunit-ci-runtime',*published_kinds(ci)):
         initial_started=time.monotonic()
         initial_seconds=preparation_initial_seconds(base,ci,args.approval,args.approval_sha256)if stage=='prepare-ci-worker'else 300 if stage=='seal-published-ci-worker'else 30
         initial_deadline=min([initial_started+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
@@ -209,7 +210,7 @@ def launch(argv,fmt,base,ci,update):
                 if guard.quarantine:
                     base.check(guard.observer is not None,'owned quarantine proof missing');guard.observer.quarantine_fence()
                 else:guard.before_mutation()
-            if command==['/usr/bin/systemctl','start','aihr-bank-import.service'] and stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'):guard.start_sent=True;guard.observer.start_requested()
+            if command==['/usr/bin/systemctl','start','aihr-bank-import.service'] and stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-prepared-preunit-ci-runtime'):guard.start_sent=True;guard.observer.start_requested()
             return previous(command,**options)
         base.command=fenced_command
         # A fixed target phase and original managed arguments, never a user-supplied executable or command.
@@ -219,7 +220,7 @@ def launch(argv,fmt,base,ci,update):
         managed=[stage,*[part for name in names for part in ('--'+name,guard.identity[name.replace('-','_')])]]
         if 'previous_worker_env_sha256'in guard.identity:managed+=['--previous-worker-env-sha256',guard.identity['previous_worker_env_sha256']]
         if stage=='activate-ci-runtime':managed+=['--ci-runtime-authorization',str(guard.path),'--ci-runtime-authorization-sha256',args.approval_sha256]
-        if stage in ('prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime',*published_kinds(ci)):
+        if stage in ('prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime','recover-prepared-preunit-ci-runtime',*published_kinds(ci)):
             ci.RECOVERY.run(stage,guard,fmt,base,ci,update)
         else:update.upgrade(managed,fmt,base,ci)
     finally:

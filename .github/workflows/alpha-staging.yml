@@ -97,6 +97,14 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/focused-recovery-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/repair-recovery-extract.test.py
+      - name: Native administrator worker regression checks
+        if: ${{ inputs.controller_only }}
+        run: |
+          python3 test/fixtures/bank-import-worker-upgrade-tests.py
+          python3 test/fixtures/bank-import-worker-ci-runtime-tests.py
+          python3 test/fixtures/bank-import-worker-prepared-tests.py
+          python3 test/fixtures/bank-import-worker-prepared-preunit-tests.py
+          python3 test/fixtures/bank-import-worker-published-tests.py
       - name: Resolve frozen candidate
         id: candidate
         env:

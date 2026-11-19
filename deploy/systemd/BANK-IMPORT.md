@@ -952,3 +952,30 @@ stopped/disabled observation and absence of any success member are revalidated.
 The directory stays in place. Unknown attempts, changed records, uncertain state,
 success receipts and any unselected prior attempt still refuse. This explicit
 review is required before minting a new seal/UUID; no old clock or proof is renewed.
+
+
+### Exact normally prepared pre-unit recovery
+
+`guarded-recover-prepared-preunit-ci-runtime` is a separate administrator-only
+variant for a normally prepared activation that refused before its first
+metadata fence because the unchanged historical `last-ok` retained a failed
+result with a genuine successful exit. It never edits that record or retries the
+normal activation. A complete original installer worker-check failure, original
+process exit, unchanged clean stopped prior unit, original start marker, and
+exact original normal preparation proof are required. Any prior publication,
+start intent, metadata fence, full audit, or another recovery attempt refuses.
+
+The closed `ADMIN_AUTHORIZED_PREPARED_PREUNIT_CI_WORKER_RECOVERY` authority adds
+`preparedPreunit: {policy: "aihr-worker-prepared-preunit-recovery/v1", id: UUIDv4}`
+to the existing recovery selection. It reuses the original immutable normal
+preparation; it cannot relabel it as a failed-preunit extraction. A new exclusive
+`prepared-preunit-recovery-UUID` audit directory retains the recovery while all
+original failure, approval, grant, runtime and preparation bytes remain intact.
+
+Original installation authority and readiness clocks are never renewed. Fresh
+read-only native observations establish that the same compiled web installation
+and complete ledger remain active. The new administrator authority is bounded to
+900 seconds and the whole operation to 827 seconds. All ten metadata fences,
+both source-content proofs and both native audits remain required; prepared F4
+has 60 seconds and admission retains the corresponding extra 40-second reserve.
+Arrival/finish is a separate authenticated operator operation after recovery.

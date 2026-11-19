@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'),'fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','recover-prepared-preunit-ci-runtime'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 
@@ -389,6 +389,7 @@ class RuntimeObservation:
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
         published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
+        if getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-prepared-preunit-ci-runtime':fields=RECOVERY.PREUNIT_FIELDS
         kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
@@ -974,7 +975,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime') and self.fence_count==4 else 20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime','recover-prepared-preunit-ci-runtime') and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -1058,7 +1059,8 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {'mode':'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        preunit=self.guard.stage=='recover-prepared-preunit-ci-runtime'
+        return {'mode':RECOVERY.PREUNIT_STAGE if preunit else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':RECOVERY.PREUNIT_POLICY if preunit else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],

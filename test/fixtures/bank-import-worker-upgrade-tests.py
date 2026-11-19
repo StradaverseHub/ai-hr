@@ -148,7 +148,7 @@ class WorkerUpgradeTests(unittest.TestCase):
             output=Path(tmp)/'helper.py'
             result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime'])
+            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime','guarded-recover-prepared-preunit-ci-runtime'])
             body=output.read_text();self.assertNotIn('spec_from_file_location',body)
             self.assertIn('types.ModuleType',body);self.assertEqual(output.stat().st_mode&0o777,0o600)
             result=subprocess.run([sys.executable,'-I','-B',str(output),'--help'],capture_output=True,text=True)

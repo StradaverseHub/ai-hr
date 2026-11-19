@@ -9,14 +9,14 @@ import sys
 
 root=Path(__file__).resolve().parents[1]
 output=Path(sys.argv[1]).absolute()
-PHASES=['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime']
+PHASES=['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime','guarded-recover-prepared-preunit-ci-runtime']
 modules=[('fmt','deploy/systemd/bank_import_worker_format.py'),('base','deploy/systemd/bank_import_worker_installer_v2.py'),('fences','deploy/systemd/bank_import_worker_fences_v1.py'),('ci','deploy/systemd/bank_import_worker_ci_runtime_v1.py'),('guard','deploy/systemd/bank_import_worker_operation_guard_v1.py'),('update','deploy/systemd/bank_import_worker_upgrade_v1.py'),('prepared','deploy/systemd/bank_import_worker_prepared_v1.py'),('published','deploy/systemd/bank_import_worker_published_v1.py')]
 body='import sys,types\nsys.dont_write_bytecode=True\n'
 for name,path in modules:
     text=(root/path).read_text()
     body+=name+'=types.ModuleType('+repr(name)+')\nexec('+repr(text)+','+name+'.__dict__)\n'
 body+="ci.FENCES=fences\nci.RECOVERY=prepared\nci.PUBLISHED=published\nprepared.configure(ci)\npublished.configure(ci,prepared)\n"
-body+="guard.launch(sys.argv[1:],fmt,base,ci,update) if sys.argv[1:2] in (['guarded-drain'],['guarded-activate-ci-runtime'],['guarded-prepare-ci-worker'],['guarded-activate-prepared-ci-runtime'],['guarded-recover-ci-runtime'],['guarded-seal-published-ci-worker'],['guarded-recover-published-ci-runtime']) else update.upgrade(sys.argv[1:],fmt,base,ci)\n"
+body+="guard.launch(sys.argv[1:],fmt,base,ci,update) if sys.argv[1:2] in (['guarded-drain'],['guarded-activate-ci-runtime'],['guarded-prepare-ci-worker'],['guarded-activate-prepared-ci-runtime'],['guarded-recover-ci-runtime'],['guarded-seal-published-ci-worker'],['guarded-recover-published-ci-runtime'],['guarded-recover-prepared-preunit-ci-runtime']) else update.upgrade(sys.argv[1:],fmt,base,ci)\n"
 with output.open('x') as stream: stream.write(body)
 output.chmod(0o600)
 print(json.dumps({'helperSha256':hashlib.sha256(body.encode()).hexdigest(),'bytes':len(body),'sourceFiles':{path:hashlib.sha256((root/path).read_bytes()).hexdigest() for _,path in modules},'phases':PHASES,'releaseAuthorized':False}))

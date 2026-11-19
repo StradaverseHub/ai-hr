@@ -14,7 +14,9 @@ from types import SimpleNamespace
 
 POLICY='aihr-worker-prepared-handoff/v1'
 NORMAL_V2_POLICY='aihr-worker-prepared-handoff/v2'
-KINDS={'prepare-ci-worker':'ADMIN_REVIEWED_CI_WORKER_PREPARATION','activate-prepared-ci-runtime':'ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER','recover-ci-runtime':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_RECOVERY'}
+PREUNIT_STAGE='recover-prepared-preunit-ci-runtime'
+PREUNIT_POLICY='aihr-worker-prepared-preunit-recovery/v1'
+KINDS={PREUNIT_STAGE:'ADMIN_AUTHORIZED_PREPARED_PREUNIT_CI_WORKER_RECOVERY','prepare-ci-worker':'ADMIN_REVIEWED_CI_WORKER_PREPARATION','activate-prepared-ci-runtime':'ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER','recover-ci-runtime':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_RECOVERY'}
 PREP_KEYS={'policy','mode','id','firstStageApproval','firstStageApprovalSha256','drainSha256','directory','directoryIdentity','proof','failure'}
 FAILURE_KEYS={'originalOperation','originalActivationApproval','originalActivationApprovalSha256','originalStartedSha256','failureCurrentSha256','failureLastOkSha256','failureLog','failureLogSha256','failureFinishedAt'}
 OVERALL_SECONDS=827
@@ -98,7 +100,12 @@ FAILED_NATIVE_PROBE="""import assert from'node:assert/strict';import{readFileSyn
 def historical_activation(base,ci,a,f):
     path=Path(f['originalActivationApproval']);ci.protected_private(base,path)
     raw=base.read_bounded(path,65536);base.check(ci.sha(raw)==f['originalActivationApprovalSha256'],'original activation approval differs');old=json.loads(raw)
-    base.check(set(old)==ci.ACTIVATION_FIELDS and old['kind']=='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER','original closed activation authority required')
+    preunit=a.get('kind')==KINDS[PREUNIT_STAGE]
+    expected_fields=NORMAL_FIELDS if preunit else ci.ACTIVATION_FIELDS
+    expected_kind=KINDS['activate-prepared-ci-runtime'] if preunit else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER'
+    base.check(set(old)==expected_fields and old['kind']==expected_kind,'original closed activation authority required')
+    if preunit:
+        base.check(old['preparedWorker']==a['preparedWorker'] and old['nativeActivation']==a['nativeActivation'],'original prepared activation selection differs')
     shared=('identity','nodeSha256','python','nodeOptions','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock')
     base.check(all(old[k]==a[k]for k in shared),'original activation shared pins differ')
     started=base.ROOT/'upgrades'/a['identity']['source']/'ci-runtime-started.json';ci.protected_private(base,started)
@@ -114,6 +121,7 @@ def check_history(o):
     b.check(all(old[k]==a[k]for k in('install','grantSha256','activatedSha256','runtimeSha256','drainSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','priorLastOkSha256','launch','firstStageApproval','firstStageApprovalSha256')),'original exact installation/failure pins differ')
     first=json.loads(o.first_bytes);b.check(first['helperSha256']==old['helperSha256'],'original helper provenance differs')
     failure_snapshot(b,c,f,a['identity'],a['launch'])
+    if o.guard.stage==PREUNIT_STAGE:prepared_preunit_history(b,c,a,f,old)
     if o.guard.stage=='recover-published-ci-runtime':c.PUBLISHED.load_seal(o.guard,o.fmt,b,c,c.RECOVERY)
 
 
@@ -123,10 +131,33 @@ def failed_snapshot(o):return failure_snapshot(o.base,o.guard.ci,o.recovery,o.au
 def admit_mutation(o):
     b=o.base;remaining=min(o.overall_deadline-time.monotonic(),o.guard.ci.epoch(o.auth['expiresAt'])-time.time())
     b.check(o.fence_count==3 and len(o.audits)==1 and len(o.content_proofs)==1,'full recovery pre-mutation proof graph required')
-    extra=40 if o.guard.stage=='recover-published-ci-runtime'else 0
+    extra=40 if o.guard.stage in('recover-published-ci-runtime',PREUNIT_STAGE)else 0
     b.check(o.guard.ci.epoch(o.auth['expiresAt'])-time.time()>=527+extra and remaining>=497+extra,'insufficient independently authorized recovery/global opportunity')
     failed_snapshot(o)
     return {'recoveryOnly':True,'originalReadinessWindowRevived':False,'expiredGrantWriteAuthority':False}
+
+
+def prepared_preunit_history(base,ci,a,f,old,*,admission=False):
+    """An unchanged normally sealed tree, never published, after the genuine installer failed.
+    This variant does not normalize the historical failed-result last-ok or revive its grant.
+    """
+    selection=a['preparedPreunit']
+    base.check(set(selection)=={'policy','id'} and selection['policy']==PREUNIT_POLICY and
+               isinstance(selection['id'],str) and re.fullmatch('[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',selection['id']),
+               'closed prepared-preunit recovery selection required')
+    base.check(set(old)==NORMAL_FIELDS and old['kind']==KINDS['activate-prepared-ci-runtime'] and
+               old['preparedWorker']==a['preparedWorker'] and old['nativeActivation']==a['nativeActivation'],
+               'exact original normally prepared activation required')
+    original=base.ROOT/'upgrades'/a['identity']['source']
+    if admission:base.check(not os.path.lexists(base.ROOT/'releases'/a['identity']['source']),'prepared-preunit worker release already exists')
+    forbidden=('activated.json','ci-worker-start-request.json','ci-worker-started.json','ci-worker-quarantine-authority.json','activation-failure-observation.json')
+    base.check(not any(os.path.lexists(original/name) for name in forbidden) and not list(original.glob('ci-runtime-full-audit-*.json')) and not list(original.glob('ci-runtime-fence-*.json')),
+               'prepared-preunit recovery refuses published or audited original activation')
+    prior=ci.record(base.read_bounded(ci.STATE/'last-ok',65536))
+    base.check(ci.sha(base.read_bounded(ci.STATE/'last-ok',65536))==old['priorLastOkSha256']==f['failureLastOkSha256'] and
+               prior.get('result')=='failed' and prior.get('exit_code')=='0' and bool(prior.get('finished_at')),
+               'exact preserved historical failed-result successful-exit baseline required')
+    return selection
 
 
 def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,published_root=None):
@@ -217,14 +248,21 @@ def run(stage,guard,fmt,base,ci,update):
         recovery=a.get('recovery');selected=a['preparedWorker']
         proof,directory,manifest=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE)
         base.check(ci.epoch(proof['preparedAt'])<=ci.epoch(a['issuedAt']),'live approval predates sealed preparation')
-        base.check(proof['preparation']['mode']==('failed-preunit'if recovery is not None else'normal'),'prepared state does not match activation mode')
+        preunit=stage==PREUNIT_STAGE
+        expected_mode='normal' if recovery is None or preunit else 'failed-preunit'
+        base.check(proof['preparation']['mode']==expected_mode,'prepared state does not match activation mode')
         base.check(proof['preparation']['firstStageApproval']==a['firstStageApproval'] and proof['preparation']['firstStageApprovalSha256']==a['firstStageApprovalSha256'] and proof['preparation']['drainSha256']==a['drainSha256'],'preparation and live historical drain pins differ')
-        if recovery is not None:base.check(recovery==proof['preparation']['failure'],'failed state differs from sealed preparation')
-        operation=original if recovery is None else original/('recovery-'+proof['preparation']['id'])
+        if preunit:
+            base.check(proof['preparation']['failure'] is None and proof['preparation']['directoryIdentity'] is None,'normal prepared-preunit proof must retain original closed provenance')
+            old=historical_activation(base,ci,a,recovery);prepared_preunit_history(base,ci,a,recovery,old,admission=True)
+        elif recovery is not None:base.check(recovery==proof['preparation']['failure'],'failed state differs from sealed preparation')
+        prefix='prepared-preunit-recovery-' if preunit else 'recovery-'
+        attempt=a['preparedPreunit']['id'] if preunit else proof['preparation']['id']
+        operation=original if recovery is None else original/(prefix+attempt)
         if recovery is None:base.check(not (operation/'ci-runtime-started.json').exists(),'existing activation attempt requires exact recovery')
         else:
-            base.check(not any(x.name.startswith('recovery-')for x in original.iterdir()),'previous recovery attempt requires separate review')
-            base.check(not operation.exists(),'recovery attempt already exists')
+            base.check(not any(x.name.startswith(('recovery-','prepared-preunit-recovery-'))for x in original.iterdir()),'previous recovery attempt requires separate review')
+            base.check(not os.path.lexists(operation),'recovery attempt already exists')
         args=SimpleNamespace(**identity,ci_runtime_authorization=str(guard.path),ci_runtime_authorization_sha256=ci.sha(guard.bytes))
         observer=ci.RuntimeObservation(base,fmt,args,operation,base.read_bounded(original/'drained.json',65536),recovery=recovery,prepared=selected)
         observer.ci=ci
@@ -246,7 +284,8 @@ def run(stage,guard,fmt,base,ci,update):
 
 
 def configure(ci):
-    global PREP_FIELDS,NORMAL_FIELDS,FIELDS
+    global PREP_FIELDS,NORMAL_FIELDS,FIELDS,PREUNIT_FIELDS
     PREP_FIELDS=ci.FIRST_APPROVAL_FIELDS|{'preparation'}
     NORMAL_FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker','nativeActivation'}
     FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker','recovery','nativeActivation'}
+    PREUNIT_FIELDS=FIELDS|{'preparedPreunit'}
