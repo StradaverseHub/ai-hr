@@ -186,8 +186,7 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
  const tree=await Layout({children:null});
  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
- await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
- expect(sidebarProps(tree)?.taskCount).toBe(7);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000,lifecycleTaskCount:7});
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
  const bell=await bellElement(tree);
  expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
@@ -217,6 +216,22 @@ it('returns the interactive shell while the passive Lifecycle inbox is still pen
  expect(sidebarProps(tree)).toBeDefined();
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',lifecycleTaskCount:7});
  expect(propsOf(await bellElement(tree),NotificationCenter)?.taskCount).toBe(7);
+});
+
+it('keeps account notifications available if the passive Lifecycle inbox fails',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+ m.operator.mockResolvedValue(false);
+ m.module.mockImplementation((_session,module)=>module==='notifications');
+ m.lifecycleRead.mockRejectedValueOnce(Error('Private Lifecycle failure'));
+ m.notificationBell.mockResolvedValue({unread:4,taskCount:2,items:[],tasks:[],read:[]});
+ const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const tree=await Layout({children:<main>Available despite Lifecycle failure</main>});
+  expect(sidebarProps(tree)).toBeDefined();
+  await expect(approvalSource(tree)).resolves.toEqual({state:'unavailable'});
+  expect(propsOf(await bellElement(tree),NotificationCenter)).toMatchObject({unread:4,taskCount:2});
+  expect(log).toHaveBeenCalledExactlyOnceWith('Shared shell approval facts unavailable');
+ }finally{log.mockRestore();}
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
