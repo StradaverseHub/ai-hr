@@ -508,7 +508,7 @@ class RuntimeObservation:
         unstarted=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-unstarted-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
         if unstarted:fields=UNSTARTED.LIVE_FIELDS
-        fields=baseline_publication_fields(fields,a,allow=unstarted or recovery is None and not published)
+        fields=baseline_publication_fields(fields,a,allow=unstarted or published and PUBLISHED.unstarted_origin(ACTIVE_OPERATION_GUARD.ci,a) or recovery is None and not published)
         kind=UNSTARTED.KINDS[ACTIVE_OPERATION_GUARD.stage]if unstarted else PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,

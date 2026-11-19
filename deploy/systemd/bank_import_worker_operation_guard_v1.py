@@ -81,6 +81,7 @@ class GuardedInvocation:
         if stage in published_kinds(ci):fields=ci.PUBLISHED.SEAL_FIELDS if stage==ci.PUBLISHED.SEAL_STAGE else ci.PUBLISHED.LIVE_FIELDS
         if stage in unstarted_kinds(ci):fields=ci.UNSTARTED.LIVE_FIELDS
         baseline_allowed=stage in('drain','activate-ci-runtime','activate-prepared-ci-runtime',*unstarted_kinds(ci))
+        if stage in published_kinds(ci) and ci.PUBLISHED.unstarted_origin(ci,self.a):baseline_allowed=True
         if stage=='prepare-ci-worker'and 'baselinePublication'in self.a:
             p=self.a.get('preparation');baseline_allowed=type(p)is dict and p.get('mode')=='normal'
         fields=ci.baseline_publication_fields(fields,self.a,allow=baseline_allowed)

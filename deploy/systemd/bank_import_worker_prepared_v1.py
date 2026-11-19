@@ -111,6 +111,10 @@ def historical_activation(base,ci,a,f):
 def check_history(o):
     b,c,a,f=o.base,o.guard.ci,o.auth,o.recovery
     if o.guard.stage=='recover-unstarted-ci-runtime':return c.UNSTARTED.check_history(o)
+    if o.guard.stage=='recover-published-ci-runtime' and c.PUBLISHED.unstarted_origin(c,a):
+        c.UNSTARTED.historical_preparation(b,c,c.RECOVERY,a)
+        c.UNSTARTED.failure_snapshot(b,c,f,a['identity'],a['launch'])
+        return c.PUBLISHED.load_seal(o.guard,o.fmt,b,c,c.RECOVERY)
     old=historical_activation(b,c,a,f)
     b.check(all(old[k]==a[k]for k in('install','grantSha256','activatedSha256','runtimeSha256','drainSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','priorLastOkSha256','launch','firstStageApproval','firstStageApprovalSha256')),'original exact installation/failure pins differ')
     first=json.loads(o.first_bytes);b.check(first['helperSha256']==old['helperSha256'],'original helper provenance differs')
@@ -119,7 +123,7 @@ def check_history(o):
 
 
 def failed_snapshot(o):
-    if o.guard.stage=='recover-unstarted-ci-runtime':return o.guard.ci.UNSTARTED.failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
+    if o.guard.stage=='recover-unstarted-ci-runtime' or o.guard.stage=='recover-published-ci-runtime' and o.guard.ci.PUBLISHED.unstarted_origin(o.guard.ci,o.auth):return o.guard.ci.UNSTARTED.failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
     return failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
 
 
@@ -139,7 +143,7 @@ def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,publis
     approval=Path(proof['preparationApproval']);ci.protected_private(base,approval);araw=base.read_bounded(approval,65536)
     base.check(ci.sha(araw)==proof['preparationApprovalSha256'],'preparation authority differs');a=json.loads(araw)
     preparation=a.get('preparation')
-    fields=ci.baseline_publication_fields(PREP_FIELDS,a,allow=baseline_publication is not None and type(preparation)is dict and preparation.get('mode')=='normal'and published_root is None)
+    fields=ci.baseline_publication_fields(PREP_FIELDS,a,allow=baseline_publication is not None and type(preparation)is dict and preparation.get('mode')=='normal')
     base.check(a.get(ci.BASELINE_PUBLICATION_KEY)==baseline_publication,'preparation and activation qualified legacy baseline selections differ')
     base.check(set(a)==fields and a['kind']==KINDS['prepare-ci-worker'] and a['policy']==ci.POLICY and a['format']==1 and a['target']=='alpha-staging' and a['releaseAuthorized']is False and a['identity']==identity and a['preparation']==proof['preparation'],'original closed preparation required')
     p,operation=closed_preparation(base,ci,a)
