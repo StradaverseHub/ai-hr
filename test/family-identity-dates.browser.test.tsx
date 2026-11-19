@@ -42,7 +42,9 @@ it.each([
     expect(left).toBeGreaterThanOrEqual(0);
     expect(right).toBeLessThanOrEqual(width);
   }
-  await page.screenshot({ element: form, animations: 'disabled', path: `../.vitest-attachments/family-identity-${width}.png` });
+  const evidence = await page.screenshot({ element: form, animations: 'disabled', scale: 'css', base64: true,
+    path: `../.vitest-attachments/family-identity-${width}.png` });
+  console.info('FAMILY_IDENTITY_PREVIEW ' + JSON.stringify({ width, png: evidence.base64 }));
   await userEvent.tab();
   expect(document.activeElement).toBe(dob);
 });
