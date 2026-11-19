@@ -51,7 +51,7 @@ it('offers historical Employment Dates for a lifecycle type without its forward 
   await page.viewport(390, 800);
   const form = mount(<MovementNewEvent {...organisation} employmentId="example" today="2026-11-19"
     isBlacklisted={false} current={current} companies={companies} grades={[]} managers={[]} employmentTypes={[]}
-    profileOptions={{}} terminationReasons={[]} cancelHref="/history"
+    profileOptions={{division:[],category:[],region:[],branch:[],team:[],section:[],line:[],base:[]}} terminationReasons={[]} cancelHref="/history"
     types={[{code:'termination',label:'Termination',behaviourKind:'termination'}]} />);
   const mode = form.querySelector<HTMLInputElement>('input[name="recordHistory"]')!;
   fireEvent.click(mode);
