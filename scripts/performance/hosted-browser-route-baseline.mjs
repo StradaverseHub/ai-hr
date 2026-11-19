@@ -16,6 +16,7 @@ import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
+import {exerciseMovement} from './movement-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 
 const origin='https://localhost:3443';
@@ -384,6 +385,13 @@ async function measureActions(fixture){
    .map(row=>({step:row.action,elapsedMs:row.elapsedMs}))},
   {name:'saved-report-draft',actorIndex:0,run:exerciseSavedReport,timings:result=>result.browserSavedReportJourneys?.[0]?.timings
    .map(row=>({step:row.operation,elapsedMs:row.visibleByMs}))},
+  {name:'personnel-movement',actorIndex:0,run:async options=>{
+   const subject=options.fixture.users[4];
+   assert(subject.role==='employee'&&subject.tenant===options.user.tenant);
+   await exerciseMovement({...options,actor:options.user,subject,recordEvent:true});
+   assert.equal(options.report.browserMovementJourneys?.[0]?.auditVerified,true);
+  },timings:result=>Object.entries(result.browserMovementJourneys?.[0]?.steps??{})
+   .map(([step,row])=>({step,status:row.status,elapsedMs:row.elapsedMs}))},
  ];
  try{
   for(const action of actions){
