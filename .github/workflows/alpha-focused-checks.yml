@@ -48,6 +48,10 @@ on:
         description: Linux Node 20 production build in a separate standard runner
         default: false
         type: boolean
+      browser_route_baseline:
+        description: Time first and repeat browser opens against an isolated fictional installation
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -233,6 +237,51 @@ jobs:
         with:
           name: next-build-memory
           path: ${{ runner.temp }}/next-build-memory/
+          if-no-files-found: warn
+          retention-days: 14
+
+  browser-route-baseline:
+    if: ${{ inputs.browser_route_baseline }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          mobile: 'false'
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Admit bounded build heap
+        id: browser-build-heap
+        run: node ../automation/.github/ci/build-heap.mjs admit
+        env:
+          AIHR_CI_BUILD_HEAP_MB: '8192'
+      - name: Measure the fictional production build in Chromium
+        run: node scripts/performance/hosted-browser-route-baseline.mjs
+        env:
+          NODE_OPTIONS: ${{ steps.browser-build-heap.outputs.node_options }}
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.browser-build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.browser-build-heap.outputs.memtotal_kib }}
+      - name: Retain route timings without fixture sessions or raw logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-route-baseline
+          path: ${{ runner.temp }}/browser-route-baseline.json
           if-no-files-found: warn
           retention-days: 14
 
