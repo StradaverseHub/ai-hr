@@ -8,6 +8,7 @@ import * as schema from '../db/schema';
 import {hireEmployee,setEmployeeCode} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {seedPayComponentCatalog} from '../core/pay-components';
+import {getIndividualTxn,updateIndividualTxn} from '../core/payroll-individual-txn';
 import {createBatch} from '../core/payroll';
 import {upsertPayrollCycle} from '../packs/payroll/service';
 import {validateIndividualImport,confirmIndividualImport,revertIndividualImport,readIndividualImport,listIndividualImports} from '../core/individual-txn-import';
@@ -90,6 +91,27 @@ describe('durable Individual Transaction import',()=>{
   expect(await readIndividualImportJob(ctx,id,scopeIds)).toMatchObject({state:'completed',processed:2,written:1});
   expect(await owner.db.select().from(schema.payrollIndividualTxn)).toHaveLength(1);
  });
+ it('processes a new Daily Excel workbook through the queue and reopens its typed amount for editing',async()=>{
+  const ctx=adminCtx(base),scopeIds=[base.companyId],id=randomUUID();
+  await owner.db.update(schema.payComponent).set({rule:null}).where(eq(schema.payComponent.id,componentId));
+  const content=Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.daily],
+   [[employeeCode,'Import Example','2026-08','IMP','BONUS','2026-08-01','amount','45.50','daily typed']]));
+  await submitIndividualImportJob(ctx,{id,name:'daily.xlsx',content,method:'daily',scopeIds});
+  const tick=()=>runIndividualImportTick(owner.client,async session=>({...session,entitlements:ctx.entitlements}));
+  await tick();
+  const ready=await readIndividualImportJob(ctx,id,scopeIds);
+  expect(ready).toMatchObject({state:'ready',total:1});
+  const pending=await readIndividualImport(ctx,ready!.attempt_id!,scopeIds);
+  expect(pending.preview.rows[0]).toMatchObject({inputType:'amount',inputValue:45.50,amount:'45.50'});
+  await queueIndividualImportConfirmation(ctx,id,scopeIds);
+  await tick();
+  const saved=await readIndividualImport(ctx,ready!.attempt_id!,scopeIds);
+  const transactionId=saved.outcomes[0].transactionId!;
+  expect(await getIndividualTxn(ctx,{id:transactionId})).toMatchObject({amount:'45.50',quantity:null,unit:'amount'});
+  await updateIndividualTxn(ctx,{id:transactionId,amount:50});
+  expect(await getIndividualTxn(ctx,{id:transactionId})).toMatchObject({amount:'50.00',quantity:null,unit:'amount'});
+ });
+
  it('finishes a queued former daily template under its admitted contract and refuses a new upload of it',async()=>{
   const ctx=adminCtx(base), scopeIds=[base.companyId], legacyId=randomUUID(), newId=randomUUID();
   await owner.db.update(schema.payComponent).set({rule:{kind:'per_hour',rate:10}}).where(eq(schema.payComponent.id,componentId));
