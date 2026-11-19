@@ -1,3 +1,19 @@
+# Payroll Transaction View loading repair, 20 November 2026
+
+Reserve `7010_payroll_history_point_read_plan`, journal index `10410`, timestamp
+`1795028007010`. SQL SHA-256
+`aab79f0fad212e57e740e38f1667c2b811889287a409fb2a95adc69676e4eebc`.
+
+Production and staging source was `d6bfd00891e4db5d25d5f0027d0b14b0383ef6fd`.
+The production ledger held 1,124 entries through `1795028007000`. The survey
+found no competing tag, journal index or timestamp in 786 distinct tracked
+journals, 523 tracked allocation documents and the readable registered
+worktrees. Recheck target ledgers and competing reservations at admission.
+
+The migration makes the existing point visibility predicate call the set-based
+visibility function. Its SQL body and the existing predicate's body and owner
+are checked before replacement. Existing migration files are immutable.
+
 # Approved board candidates — 19 November 2026 (draft allocation)
 
 | Candidate migration | Journal index | Timestamp | SQL SHA-256 |
