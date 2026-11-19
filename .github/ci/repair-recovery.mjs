@@ -36,14 +36,42 @@ function planAt(path,{controller,baseline,runtime}){
  try{const local=createPlan(path),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime};return {...body,fingerprint:hash(body)};}
  finally{if(previous===undefined)delete process.env.AIHR_CI_CLASSIFIER_RUNTIME;else process.env.AIHR_CI_CLASSIFIER_RUNTIME=previous;}
 }
+// Closed reviewed exception, not a caller-supplied fixture allowlist. Every other test/setup owner refuses.
+const FIXTURE_ONLY_REPAIR_PATHS=Object.freeze(['test/ai-retention-extended-custody.test.ts','test/assistant-own-leave-store.test.ts']);
 export function validateRepairDelta({cwd,original,candidate}){
+ assert([original,candidate].every(value=>typeof value==='string'&&/^[a-f0-9]{40}$/.test(value)),'Exact repair commits required');
+ assert(git(cwd,'rev-parse','HEAD')===candidate&&git(cwd,'status','--porcelain','--untracked-files=all')==='','Clean exact candidate checkout required');
+ for(const sha of [original,candidate])assert(git(cwd,'rev-parse',sha+'^{commit}')===sha,'Exact immutable commit required');
  execFileSync('git',['merge-base','--is-ancestor',original,candidate],{cwd,stdio:'ignore'});
  const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
  assert(records.length>0&&records.length<=64,'Bounded nonempty repair delta required');
- const changed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0&&/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
-  assert(!/^lib\/(identity\/|permissions\.|authz\.|session\.|scope\.|request-origin\.)/.test(path)&&!/^core\/(auth|admin|permissions|tenant)(\.|-|s\/)/.test(path),'Security-owner repair needs broader independent coverage');return path;}).sort();
- // Explicitly bind all unchanged non-product inputs, including tests, SQL, workflows and package locks.
- return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
+ const parsed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&typeof path==='string'&&extra.length===0,'Only existing modified repair paths supported');return path;});
+ const changed=parsed.slice().sort();assert(new Set(changed).size===changed.length,'Duplicate repair path');
+ const identity={changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
+ if(changed.every(path=>FIXTURE_ONLY_REPAIR_PATHS.includes(path))){
+  assert(changed.length>=1&&changed.length<=2,'Closed bounded fixture-only delta required');
+  // Full trees bind every path, type, mode and blob, not merely the names claimed by a patch.
+  const tree=sha=>git(cwd,'ls-tree','-r','-z','--full-tree',sha).split('\0').filter(Boolean).map(record=>{
+   const match=record.match(/^([0-7]{6}) (blob|commit) ([a-f0-9]{40})\t([\s\S]+)$/);assert(match,'Malformed immutable Git tree inventory');
+   return {path:match[4],mode:match[1],type:match[2],blob:match[3]};
+  });
+  const before=tree(original),after=tree(candidate);
+  for(const inventory of [before,after])assert(new Set(inventory.map(row=>row.path)).size===inventory.length,'Duplicate immutable tree path');
+  const unchangedBefore=before.filter(row=>!changed.includes(row.path)),unchangedAfter=after.filter(row=>!changed.includes(row.path));
+  assert(isDeepStrictEqual(unchangedBefore,unchangedAfter),'Every other tracked path/blob/type/mode must remain unchanged');
+  const fixtures=changed.map(path=>{
+   const a=before.find(row=>row.path===path),b=after.find(row=>row.path===path);
+   assert(a&&b&&a.type==='blob'&&b.type==='blob'&&a.mode==='100644'&&b.mode==='100644'&&a.blob!==b.blob,'Fixture repair must modify existing regular 100644 blob content only');
+   return {path,mode:'100644',beforeBlob:a.blob,afterBlob:b.blob};
+  });
+  return {...identity,kind:'fixture-only',fixtures,unchangedTrackedPaths:unchangedBefore.length,unchangedTreeFingerprint:hash(unchangedBefore)};
+ }
+ // Preserve the existing bounded product branch; fixture+product mixtures fail these same rules.
+ for(const path of changed){
+  assert(/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
+  assert(!/^lib\/(identity\/|permissions\.|authz\.|session\.|scope\.|request-origin\.)/.test(path)&&!/^core\/(auth|admin|permissions|tenant)(\.|-|s\/)/.test(path),'Security-owner repair needs broader independent coverage');
+ }
+ return identity;
 }
 export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
  const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
@@ -81,7 +109,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  execFileSync('git',['merge-base','--is-ancestor',baseline,original],{cwd:candidatePath,stdio:'ignore'});
  const delta=validateRepairDelta({cwd:candidatePath,original,candidate});
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(Number.isSafeInteger(diagnosticId)&&diagnosticId>0,'Reviewed verifier controller diagnostic required');
- assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v2 refusal controls');
+ assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute versioned recovery refusal controls');
  const dm=metadata(diagnosticId),verificationDiagnostic=validateRecoveryControllerDiagnostic({...dm,controller:verificationController});
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for all planned original jobs to finish');

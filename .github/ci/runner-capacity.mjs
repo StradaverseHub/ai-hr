@@ -20,9 +20,14 @@ export function validateCapacityScope(profile,e){
   const prefix='StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/';
   const normal=['test','browser','controller-tests'].includes(e.GITHUB_JOB)&&e.GITHUB_WORKFLOW_REF?.startsWith(prefix)&&['workflow_dispatch','push','pull_request'].includes(e.GITHUB_EVENT_NAME);
   const pilot=e.GITHUB_JOB==='runner-diagnostics'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF===prefix+'heads/codex/test-suite-efficiency-review-20261025'&&e.AIHR_SUITE_CAPACITY_PILOT==='true';
+  const impactRef=typeof e.GITHUB_WORKFLOW_REF==='string'&&e.GITHUB_WORKFLOW_REF.match(/^StradaverseHub\/ai-hr\/\.github\/workflows\/alpha-staging\.yml@refs\/heads\/(codex\/[A-Za-z0-9][A-Za-z0-9/_-]{0,180})$/);
+  const impact=e.GITHUB_JOB==='runner-diagnostics'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&impactRef
+   &&e.GITHUB_REF==='refs/heads/'+impactRef[1]&&e.AIHR_DIAGNOSTICS_ONLY==='true'&&e.AIHR_CONTROLLER_ONLY==='false'&&e.AIHR_BUILD_ONLY==='false'
+   &&/^[a-f0-9]{40}$/.test(e.AIHR_REPAIR_IMPACT_BASE??'')&&/^[a-f0-9]{40}$/.test(e.AIHR_CI_HEAD??'')&&e.AIHR_REPAIR_IMPACT_BASE!==e.AIHR_CI_HEAD;
   const focused=e.GITHUB_JOB==='selected-tests'&&e.GITHUB_EVENT_NAME==='workflow_dispatch'&&e.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-focused-checks.yml@refs/')&&e.AIHR_FOCUSED_SUITE_CAPACITY==='true';
-  assert(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_RUN_ATTEMPT==='1'&&(normal||pilot||focused),'Suite capacity requires exact first-attempt managed suite or explicit standard-runner pilot');
+  assert(e.GITHUB_ACTIONS==='true'&&e.CI==='true'&&e.RUNNER_ENVIRONMENT==='github-hosted'&&e.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&e.GITHUB_REPOSITORY_ID==='1333414856'&&e.GITHUB_RUN_ATTEMPT==='1'&&(normal||pilot||focused||impact),'Suite capacity requires exact first-attempt managed suite or explicit standard-runner pilot');
   if(focused)for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])assert(e[key]==='postgres://nobody:nothing@127.0.0.1:1/no_database','Focused capacity preparation must precede any database access');
+  if(impact)for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])assert(e[key]==='postgres://nobody:nothing@127.0.0.1:1/no_database','Repair impact selection cannot reach a database');
   assert(/^[a-f0-9]{40}$/.test(e.GITHUB_SHA??'')&&e.AIHR_CI_CONTROL_HEAD===e.GITHUB_SHA,'Suite capacity controller differs');
   return true;
  }

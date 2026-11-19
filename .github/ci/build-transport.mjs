@@ -205,7 +205,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const packet=join(output,'packet'),p=JSON.parse(readFileSync(join(packet,'build-provenance.json')));
   const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync(join(source,'node_modules/next/package.json'))).version};
   const runner={name:env.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
-  if(ci)validateCiTransportProvenance(p,env,runtime,runner,producer);else validateTransportProvenance(p,env,runtime,runner);
+  if(ci)validateCiTransportProvenance(p,env,runtime,runner,producer,run);else validateTransportProvenance(p,env,runtime,runner);
   const producerRunner=ci?p.producerRunner:p.diagnosticRunner;
   const binding=[['pnpm-lock.yaml',p.lockSha256,source],['package.json',p.packageSha256,source],['system-testing.json',p.preparedSha256,packet],['successful-build.json',p.successfulObservationSha256,packet],['bytes/build-bundle-files.json',p.manifestSha256,packet]];
   for(const [name,digest,base]of binding)requireValue(hash(readFileSync(join(base,name)))===digest,'bound input changed: '+name);

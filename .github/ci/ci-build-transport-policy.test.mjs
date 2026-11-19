@@ -12,7 +12,7 @@ const run={id:123,workflow_id:395777276,run_attempt:1,event:'workflow_dispatch',
 const job={id:124365556166,runner_id:100000001,runner_name:'producer fixture',head_branch:'codex/producer-frozen',name:'build',run_id:123,run_attempt:1,head_sha:origin,status:'completed',conclusion:'success',started_at:'2026-10-31T00:00:05Z',completed_at:'2026-10-31T00:03:00Z'};
 const artifact={id:456,name:'production-build-v1',expired:false,workflow_run:{id:123,head_sha:origin,repository_id:1333414856,head_repository_id:1333414856,head_branch:'codex/producer-frozen'},created_at:'2026-10-31T00:02:59Z',expires_at:'2026-11-02T00:02:58Z',digest:'sha256:'+digest,size_in_bytes:1234};
 const metadata={run,jobs:[job],artifact,artifacts:[artifact]};
-const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job)=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob);
+const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job,actualProducerRun=run)=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob,actualProducerRun);
 const ref=(name,sha)=>({ref:'refs/heads/'+name,object:{type:'commit',sha}});
 const refs={source:ref(env.AIHR_BUILD_SOURCE_BRANCH,source),producer:ref(env.AIHR_BUILD_PRODUCER_BRANCH,origin),consumer:ref(env.GITHUB_REF_NAME,control)};
 const consumerRun={id:999,run_attempt:1,event:'workflow_dispatch',head_sha:control,path:CI_TRANSPORT_WORKFLOW,head_branch:env.GITHUB_REF_NAME,repository,head_repository:repository};
@@ -26,7 +26,7 @@ test('explicit owned CI consumer supports distinct actual source, original contr
 });
 test('foreign workflow, runner, ref, retry, spoofed controller and diagnostic invocation refuse',()=>{
  for(const [key,value]of Object.entries({AIHR_CI_BUILD_TRANSPORT:'diagnostic',GITHUB_ACTIONS:'false',CI:'false',RUNNER_ENVIRONMENT:'self-hosted',RUNNER_OS:'macOS',RUNNER_ARCH:'ARM64',ImageOS:'ubuntu22',GITHUB_REPOSITORY_ID:'1',GITHUB_EVENT_NAME:'push',GITHUB_RUN_ATTEMPT:'2',GITHUB_JOB:'test',GITHUB_SHA:source,GITHUB_WORKFLOW_SHA:source,AIHR_CI_HEAD:'bad',AIHR_BUILD_PRODUCER_CONTROL_HEAD:'bad',GITHUB_REF:'refs/heads/alpha',GITHUB_WORKFLOW_REF:env.GITHUB_WORKFLOW_REF.replace(CI_TRANSPORT_WORKFLOW,'.github/workflows/alpha-staging.yml'),GITHUB_RUN_ID:'9007199254740992',AIHR_BUILD_PRODUCER_RUN_ID:'999',AIHR_BUILD_ARTIFACT_ID:'0',AIHR_BUILD_ARTIFACT_DIGEST:'sha256:'+digest,AIHR_BUILD_DIAGNOSTIC:'transport-consumer-repair',RUNNER_NAME:''}))assert.throws(()=>assertCiTransportInvocation({...env,[key]:value}),undefined,key);
- for(const key of ['AIHR_BUILD_SOURCE_BRANCH','AIHR_BUILD_PRODUCER_BRANCH'])for(const value of ['main',...(key==='AIHR_BUILD_SOURCE_BRANCH'?['alpha']:[]),'codex/../bad','codex/a//b','codex/','codex/a\nb'])assert.throws(()=>assertCiTransportInvocation({...env,[key]:value}));
+ for(const key of ['AIHR_BUILD_SOURCE_BRANCH','AIHR_BUILD_PRODUCER_BRANCH'])for(const value of [...(key==='AIHR_BUILD_SOURCE_BRANCH'?['main','alpha']:[]),'codex/../bad','codex/a//b','codex/','codex/a\nb'])assert.throws(()=>assertCiTransportInvocation({...env,[key]:value}));
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])for(const value of [undefined,'postgres://actual'])assert.throws(()=>assertCiTransportInvocation({...env,[key]:value}));
 });
 test('all three API refs must still identify the frozen commits without following a moved branch',()=>{
@@ -63,11 +63,11 @@ test('actual final alpha-push producer is separately admitted without relabellin
  const pushProvenance={...p,source:origin,producerEvent:'push',producerRef:'refs/heads/alpha',workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
  assert.equal(assertCiTransportInvocation(pushEnv),true);
  assert.equal(validateCiTransportMetadata(pushMetadata,pushEnv),pushJob);
- assert.equal(validateCiTransportProvenance(pushProvenance,pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob),true);
+ assert.equal(validateCiTransportProvenance(pushProvenance,pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob,pushRun),true);
  assert.equal(validateCiTransportRefs({...refs,source:ref(pushEnv.AIHR_BUILD_SOURCE_BRANCH,origin),producer:ref('alpha',origin)},pushEnv),true);
  for(const changed of [{...pushRun,event:'workflow_dispatch'},{...pushRun,event:'pull_request'},{...pushRun,head_branch:'main'},{...pushRun,head_sha:source}])assert.throws(()=>validateCiTransportMetadata({...pushMetadata,run:changed},pushEnv));
  for(const changes of [{AIHR_CI_HEAD:source},{AIHR_BUILD_PRODUCER_CONTROL_HEAD:control},{AIHR_BUILD_PRODUCER_BRANCH:'main'},{AIHR_BUILD_PRODUCER_BRANCH:'codex/producer-frozen'}])assert.throws(()=>validateCiTransportMetadata(pushMetadata,{...pushEnv,...changes}));
- for(const changes of [{source},{producerEvent:'workflow_dispatch'},{producerRef:'refs/heads/main'},{workflowRef:p.workflowRef},{controller:control}])assert.throws(()=>validateCiTransportProvenance({...pushProvenance,...changes},pushEnv,{...STAGING_BUILD_RUNTIME},consumer));
+ for(const changes of [{source},{producerEvent:'workflow_dispatch'},{producerRef:'refs/heads/main'},{workflowRef:p.workflowRef},{controller:control}])assert.throws(()=>validateCiTransportProvenance({...pushProvenance,...changes},pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob,pushRun));
  assert.throws(()=>validateCiTransportMetadata({...metadata,run:{...run,event:'push'}},env),undefined,'Owned codex branch cannot impersonate the alpha push path');
 });
 
@@ -108,4 +108,76 @@ test('packet producer runner name must equal the authenticated successful build 
  assert.throws(()=>validateCiTransportProvenance(forged,env,{...STAGING_BUILD_RUNTIME},consumer,job));
  for(const actualProducerJob of [null,{}, {...job,runner_name:undefined},{...job,runner_name:'another actual runner'}])
   assert.throws(()=>validateCiTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer,actualProducerJob));
+});
+
+function publishedFixture(head_branch='alpha'){
+ const e={...env,AIHR_BUILD_PRODUCER_BRANCH:head_branch};
+ const actualRun={...run,head_branch,status:'completed',conclusion:'success',
+  display_title:'Canonical build only · '+env.AIHR_BUILD_SOURCE_BRANCH,
+  created_at:'2026-10-31T00:00:00Z',updated_at:'2026-10-31T00:03:15Z'};
+ const names=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'];
+ const jobs=names.map((name,index)=>({...job,id:job.id+index,name,head_branch,
+  conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',
+  started_at:name==='resolve'?'2026-10-31T00:00:01Z':name==='deployment-hold'?'2026-10-31T00:03:01Z':job.started_at,
+  completed_at:name==='resolve'?'2026-10-31T00:00:04Z':name==='deployment-hold'?'2026-10-31T00:03:10Z':job.completed_at}));
+ const actualArtifact={...artifact,workflow_run:{...artifact.workflow_run,head_branch}};
+ const value={run:actualRun,jobs,artifact:actualArtifact,artifacts:[actualArtifact]};
+ const packet={...p,producerEvent:'workflow_dispatch',producerRef:'refs/heads/'+head_branch,
+  workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/'+head_branch};
+ return {e,value,packet,actualRun,actualJob:jobs.find(j=>j.name==='build')};
+}
+test('published main and alpha canonical build-only dispatches preserve actual dispatch provenance and distinct repaired source',()=>{
+ for(const branch of ['main','alpha']){
+  const f=publishedFixture(branch);
+  assert.equal(assertCiTransportInvocation(f.e),true);
+  assert.equal(validateCiTransportRefs({...refs,producer:ref(branch,origin)},f.e),true);
+  assert.equal(validateCiTransportMetadata(f.value,f.e),f.actualJob);
+  assert.equal(validateCiTransportProvenance(f.packet,f.e,{...STAGING_BUILD_RUNTIME},consumer,f.actualJob,f.actualRun),true);
+  assert.notEqual(f.packet.source,f.packet.controller);assert.equal(f.packet.producerEvent,'workflow_dispatch');
+ }
+});
+test('published dispatch refuses incomplete, noncanonical, failed, repeated or future run/job topology',()=>{
+ for(const branch of ['main','alpha']){
+  const f=publishedFixture(branch);
+  for(const [key,value]of Object.entries({status:'in_progress',conclusion:'failure',run_attempt:2,event:'pull_request',
+   display_title:'Alpha CI · '+branch,created_at:'invalid',updated_at:'invalid',run_started_at:'2026-10-31T00:03:16Z'}))
+   assert.throws(()=>validateCiTransportMetadata({...f.value,run:{...f.actualRun,[key]:value}},f.e),undefined,key);
+  for(const updated_at of ['2026-10-31T00:02:59Z','2026-10-31T00:04:01Z'])
+   assert.throws(()=>validateCiTransportMetadata({...f.value,run:{...f.actualRun,updated_at}},f.e));
+  for(const jobs of [f.value.jobs.slice(1),[...f.value.jobs,f.value.jobs[0]],
+   f.value.jobs.map(j=>j.name==='typecheck'?{...j,conclusion:'success'}:j),
+   f.value.jobs.map(j=>j.name==='resolve'?{...j,conclusion:'skipped'}:j),
+   f.value.jobs.map(j=>j.name==='verify'?{...j,name:'foreign'}:j),
+   f.value.jobs.map(j=>j.name==='verify'?{...j,id:f.value.jobs[0].id}:j)])
+   assert.throws(()=>validateCiTransportMetadata({...f.value,jobs},f.e));
+  for(const change of [{id:0},{run_id:999},{run_attempt:2},{head_sha:source},{head_branch:'codex/foreign'},
+   {status:'in_progress'},{conclusion:'failure'},{started_at:'invalid'},{completed_at:'invalid'},
+   {started_at:'2026-10-30T23:59:59Z'},{completed_at:'2026-10-31T00:03:16Z'}])
+   assert.throws(()=>validateCiTransportMetadata({...f.value,jobs:f.value.jobs.map(j=>j.name==='resolve'?{...j,...change}:j)},f.e));
+ }
+});
+test('published lane cannot bypass artifact, runner, runtime, immutable refs or closed source and consumer branches',()=>{
+ const f=publishedFixture();
+ for(const change of [{digest:'sha256:'+'e'.repeat(64)},{expired:true},{created_at:'2026-10-31T00:03:01Z'},
+  {workflow_run:{...f.value.artifact.workflow_run,head_sha:source}},{size_in_bytes:BUILD_CAPACITY_PROFILE.zipMaxBytes+1}]){
+  const altered={...f.value.artifact,...change};assert.throws(()=>validateCiTransportMetadata({...f.value,artifact:altered,artifacts:[altered]},f.e));
+ }
+ assert.throws(()=>validateCiTransportProvenance({...f.packet,producerRunner:{...producerRunner,name:'forged'}},f.e,{...STAGING_BUILD_RUNTIME},consumer,f.actualJob,f.actualRun));
+ assert.throws(()=>validateCiTransportProvenance(f.packet,f.e,{...STAGING_BUILD_RUNTIME,node:'20.20.2'},consumer,f.actualJob,f.actualRun));
+ assert.throws(()=>validateCiTransportRefs({...refs,producer:ref('alpha',source)},f.e));
+ for(const branch of ['main','alpha']){
+  assert.throws(()=>assertCiTransportInvocation({...f.e,AIHR_BUILD_SOURCE_BRANCH:branch}));
+  assert.throws(()=>assertCiTransportInvocation({...f.e,GITHUB_REF_NAME:branch,GITHUB_REF:'refs/heads/'+branch,
+   GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/'+CI_TRANSPORT_WORKFLOW+'@refs/heads/'+branch}));
+ }
+});
+test('provenance requires actual authenticated producer event and ref without branch-name inference or fallback',()=>{
+ for(const branch of ['main','alpha']){
+  const f=publishedFixture(branch);
+  for(const change of [{producerEvent:'push'},{producerEvent:undefined},{producerRef:'refs/heads/codex/foreign'}])
+   assert.throws(()=>validateCiTransportProvenance({...f.packet,...change},f.e,{...STAGING_BUILD_RUNTIME},consumer,f.actualJob,f.actualRun));
+  for(const actualRun of [undefined,null,{}, {...f.actualRun,id:999},{...f.actualRun,event:'schedule'},
+   {...f.actualRun,event:'push'},{...f.actualRun,head_branch:'codex/foreign'},{...f.actualRun,head_sha:source}])
+   assert.throws(()=>provenanceWithJob(f.packet,f.e,{...STAGING_BUILD_RUNTIME},consumer,f.actualJob,actualRun));
+ }
 });
