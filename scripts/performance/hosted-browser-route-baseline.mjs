@@ -277,6 +277,7 @@ try{
  try{
   await run('seed-system-fixture',process.execPath,['--import','tsx',
    'scripts/performance/system-fixture.mjs'],{...dbEnv,
+    NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
