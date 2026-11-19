@@ -84,6 +84,12 @@ function retainSeedPhases(){
    code:/^(?:ERR_[A-Z_]{1,60}|[0-9A-Z]{5})$/.test(row.failure.code)?row.failure.code:null,
   }}),
  }));
+ if(report.seedPhases.some(row=>row.status==='failed')){
+  const log=join(privateDir,'seed-system-fixture.log');
+  const frames=readFileSync(log,'utf8').matchAll(
+   /^\s+at [^\r\n]*?\/source\/((?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_.\/-]+:\d+:\d+)\)?$/gm);
+  report.seedFailureLocations=[...new Set(Array.from(frames,frame=>frame[1]))].slice(-12);
+ }
  save();
 }
 
