@@ -3,7 +3,8 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {informationDocumentRow,informationPayslipDocuments,latestInformationPayslipPeriod} from '../../core/information-correction-history';
 import {withPayrollTenant} from '../../core/module-gate';
-import {latestProcessedPayslipPeriod} from '../../core/payroll-view';
+import {latestProcessedPayslipPeriod,listProcessedPayslipsAcross} from '../../core/payroll-view';
+import {client} from '../../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 import type {SessionContext,Tx} from '../../db/client';
 
@@ -225,3 +226,37 @@ it('bounds retained document projection to the requested page with identical ord
   }
   console.info(JSON.stringify({kind:'PAYROLL_RETAINED_DOCUMENT_PAGE_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
 },360_000);
+
+it('profiles the complete capped Transaction View table read after the period is known',async()=>{
+  const {base,tenant,cases}=await seedHistory();
+  const runs=cases.filter(row=>['group-all','group-single','company-hr','employee-outside-scope'].includes(row.label));
+  const expectedCounts:Record<string,number>={
+    'group-all':201,'group-single':20,'company-hr':20,'employee-outside-scope':0,
+  };
+  const evidence=[];
+  for(const retained of [false,true]){
+    if(retained)await seedRetainedHistory(tenant,base.adminUserId);
+    for(const {label,ctx,scope} of runs){
+      const events:{kind:string;started:number}[]=[];
+      const originalDebug=client.options.debug;
+      client.options.debug=(_connection:number,statement:string)=>{
+        const kind=statement.includes('from "payslip"')?'live-rows':
+          statement.includes('from app.information_retained_payslip_documents_page(')?'retained-rows':'other';
+        events.push({kind,started:performance.now()});
+      };
+      const start=performance.now();
+      try{
+        const rows=await listProcessedPayslipsAcross(ctx,{companyIds:scope,year:2026,month:3,limit:201});
+        const end=performance.now();
+        expect(rows,label).toHaveLength(expectedCounts[label]);
+        expect(rows.every(row=>row.payPeriod==='2026-03'),label).toBe(true);
+        if(label==='group-single'||label==='company-hr')expect(rows.every(row=>row.companyId===base.companyId),label).toBe(true);
+        const statementIntervals=events.flatMap((event,index)=>event.kind==='other'?[]:[{
+          kind:event.kind,untilNextCommandMs:Math.round((events[index+1]?.started??end)-event.started),
+        }]);
+        evidence.push({label,retained,elapsedMs:Math.round(end-start),rows:rows.length,statementIntervals});
+      }finally{client.options.debug=originalDebug;}
+    }
+  }
+  console.info(JSON.stringify({kind:'PAYROLL_TRANSACTION_TABLE_COMPONENT_ONLY',companies:72,employments:1440,evidence}));
+},480_000);
