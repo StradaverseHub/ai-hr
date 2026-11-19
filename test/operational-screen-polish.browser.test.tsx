@@ -51,7 +51,7 @@ for(const [locale,messages] of [['en',en],['ta',ta]] as const)for(const width of
  });
  it('keeps the Personnel dialog title and Close visible after its long field list scrolls',async()=>{
   await page.viewport(width,900);document.documentElement.dataset.uiTheme='atelier';document.body.style.margin='0';
-  const view=render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}><PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:messages.people.list.filter,apply:messages.people.list.applyFilters,clearAll:messages.people.list.clearAllFilters,activeCount:'0'}} companySearchLabel={messages.people.list.controls.companySearch} columnFields={Array.from({length:65},(_,index)=>({key:`field-${index}`,label:`Fictional field ${index+1}`,type:'text'}))}/></NextIntlClientProvider>);
+  const view=render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}><PersonnelOrganisationFilters fields={[]} values={{}} companies={[]} labels={{filter:messages.people.list.filter,apply:messages.people.list.applyFilters,clearAll:messages.people.list.clearAllFilters,activeCount:'0'}} companySearchLabel={messages.people.list.company} columnFields={Array.from({length:65},(_,index)=>({key:`field-${index}`,label:`Fictional field ${index+1}`,type:'text'}))}/></NextIntlClientProvider>);
   fireEvent.click(view.getByRole('button',{name:messages.people.list.filter}));
   const dialog=document.querySelector<HTMLElement>('[role="dialog"]')!,close=within(dialog).getByRole('button',{name:messages.common.close}),before=close.getBoundingClientRect().top;
   const form=dialog.querySelector('form')!;expect(form.scrollHeight).toBeGreaterThan(form.clientHeight+100);

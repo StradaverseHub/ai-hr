@@ -29,6 +29,11 @@ describe('operational spacing in the browser',()=>{
   }
   delete document.documentElement.dataset.uiTheme;
  });
+ it('preserves larger field minima and compact one-row composers',()=>{
+  const view=render(<div><textarea aria-label="Long explanation" className={inputCls+' min-h-24'} rows={2}/><textarea aria-label="Composer" className={inputCls} rows={1}/></div>);
+  expect(view.getByLabelText('Long explanation').getBoundingClientRect().height).toBeGreaterThanOrEqual(96);
+  expect(view.getByLabelText('Composer').getBoundingClientRect().height).toBeLessThan(80);
+ });
  it('preserves a visible code/name gap in the bounded employee picker row',()=>{
   const view=render(<div style={{width:260}}><EmployeeName code="EMP-0003" name="Fictional employee with a long name" className="flex truncate font-medium text-foreground"/></div>);
   const name=view.getByText('Fictional employee with a long name'),code=view.getByText('EMP-0003');
