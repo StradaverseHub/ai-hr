@@ -114,13 +114,16 @@ it('selects the latest visible retained period before building document payloads
   await owner.client.begin(async tx=>{
     await tx`create function app.test_latest_retained_payroll_period(p_companies uuid[],p_employment uuid)
       returns text language sql stable security definer set search_path=pg_catalog,public,pg_temp as $$
+      with administered as materialized (
+        select c.id from (select distinct unnest(p_companies) id) c
+        where cardinality(p_companies)<=100 and app.principal_snapshot_current()
+          and app.can_admin_payroll_for(c.id)
+      )
       select batches.pay_period
       from (
         select b.id,b.tenant_id,b.company_id,b.pay_period
-        from public.payroll_batch b
-        where b.tenant_id=app.current_tenant_id() and app.principal_snapshot_current()
-          and cardinality(p_companies)<=100 and b.company_id=any(p_companies)
-          and app.can_admin_payroll_for(b.company_id)
+        from public.payroll_batch b join administered a on a.id=b.company_id
+        where b.tenant_id=app.current_tenant_id()
         order by b.pay_period desc
         offset 0
       ) batches
