@@ -439,6 +439,55 @@ async function measureApprovalCategories({page,user,report,save}){
  }
 }
 
+async function measureClaimApproval({page,user,db,report,save}){
+ assert.equal(user.role,'companyHR');
+ const path='/approvals?category=claim';
+ const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(response?.status(),200);
+ await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+  .waitFor({state:'visible',timeout:15000});
+ const main=page.locator('main:visible').first();
+ const candidates=main.locator('tr[id^="approval-row-"]').filter({
+  has:page.getByRole('cell',{name:'Performance claim',exact:true}),
+ }).filter({has:page.locator('button[data-action-approval]')});
+ const row=candidates.first();
+ await row.waitFor({state:'visible',timeout:15000});
+ const rowId=await row.getAttribute('id');
+ const claimId=rowId?.slice('approval-row-'.length);
+ assert.match(claimId??'',/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/);
+ const before=await db`select claim.employment_id,claim.status from claim_request claim
+  join employment subject on subject.id=claim.employment_id and subject.tenant_id=claim.tenant_id
+  where claim.id=${claimId}::uuid and claim.tenant_id=${user.tenantId}::uuid
+   and claim.claim_type_id=${user.claimTypeId}::uuid and subject.company_id=${user.companyId}::uuid
+   and subject.person_id<>${user.personId}::uuid and claim.amount=1`;
+ assert.equal(before.length,1,'Expected a fictional claim in the actor’s company');
+ assert.equal(before[0].status,'pending');
+
+ const started=performance.now(),deadline=started+15000;
+ const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ const approved=main.locator(`tr[id="${rowId}"]`);
+ await approved.locator('button[data-action-approval]').click({timeout:timeout()});
+ await page.waitForURL(url=>url.pathname==='/approvals'&&url.searchParams.get('category')==='claim'
+  &&url.searchParams.get('toast')==='Claim approved'&&!url.searchParams.has('error'),{timeout:timeout()});
+ await approved.waitFor({state:'hidden',timeout:timeout()});
+ await main.locator('[data-approvals-header-actions] select').waitFor({state:'visible',timeout:timeout()});
+ await assertContentAvailable(page);
+ report.claimSteps=[{step:'approve-claim-and-refresh',elapsedMs:Math.round(performance.now()-started)}];
+ save();
+
+ const result=await db`select claim.status,claim.decided_at is not null as decided,
+  claim.decided_by_employment_id=${user.employmentId}::uuid as expected_decider,
+  (select count(*)::int from domain_event event where event.tenant_id=claim.tenant_id
+   and event.aggregate_type='claim-request' and event.aggregate_id=claim.id
+   and event.event_type='claim-request.approved' and event.actor_id=${user.userId}::uuid
+   and event.subject_employment_id=claim.employment_id and event.payload->>'payoutMethod'='reimbursement'
+   and event.chain_seq is not null and event.hash is not null) as audit_events
+  from claim_request claim where claim.id=${claimId}::uuid and claim.tenant_id=${user.tenantId}::uuid`;
+ assert.equal(result.length,1);
+ assert.deepEqual({...result[0]},{status:'approved',decided:true,expected_decider:true,audit_events:1});
+ report.claimSteps[0].auditVerified=true;
+}
+
 async function measureActions(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
@@ -446,6 +495,7 @@ async function measureActions(fixture){
  const actions=[
   ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,
    timings:result=>result.approvalSteps})),
+  {name:'claim-approval',actorIndex:1,run:measureClaimApproval,timings:result=>result.claimSteps},
   {name:'personnel-switcher',actorIndex:0,run:async options=>{
    await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
    await exercisePersonnelSwitcher(options);
