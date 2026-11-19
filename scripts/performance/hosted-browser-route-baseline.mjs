@@ -477,17 +477,36 @@ async function measureRoutes(fixture){
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 
+function approvalCategoryRequest(request){
+ if(request.method()!=='GET')return null;
+ const url=new URL(request.url());
+ const headers=request.headers();
+ if(url.origin!==origin||url.pathname!=='/approvals'||!url.searchParams.has('category')
+  ||!(url.searchParams.has('_rsc')||headers.rsc==='1'))return null;
+ return {url,prefetch:Boolean(headers['next-router-prefetch']||headers['next-router-segment-prefetch'])};
+}
+
 async function measureApprovalCategories({page,user,report,save}){
- const response=await page.goto(origin+'/approvals',{waitUntil:'domcontentloaded',timeout:15000});
- assert.equal(response?.status(),200);
+ const passive={prefetchRequests:0,otherRequests:0};
+ const observe=request=>{
+  const category=approvalCategoryRequest(request);
+  if(category)passive[category.prefetch?'prefetchRequests':'otherRequests']++;
+ };
  const main=page.locator('main:visible').first();
  const categories=main.locator('aside nav');
  const claims=main.locator('[data-ui-section-header]').filter({hasText:/^Claims\s*\(\d+\)$/});
  const leave=main.locator('#approvals-leave');
- await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
-  .waitFor({state:'visible',timeout:15000});
- await leave.waitFor({state:'visible',timeout:15000});
- report.approvalSteps=[];
+ page.on('request',observe);
+ try{
+  const response=await page.goto(origin+'/approvals',{waitUntil:'domcontentloaded',timeout:15000});
+  assert.equal(response?.status(),200);
+  await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+   .waitFor({state:'visible',timeout:15000});
+  await leave.waitFor({state:'visible',timeout:15000});
+  await pause(300);
+ }finally{page.off('request',observe);}
+ report.approvalSteps=[{step:'initial-category-background-requests',...passive}];
+ save();
  for(const [step,path,leaveState] of [['open-claims-category','/approvals?category=claim','hidden'],['return-to-all-approvals','/approvals','visible']]){
   const link=categories.locator(`a[href="${path}"]`);
   const started=performance.now(),deadline=started+15000;
@@ -531,12 +550,12 @@ async function measureClaimApproval({page,user,db,report,save}){
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  const approved=main.locator(`tr[id="${rowId}"]`);
  const confirmation=page.locator('[data-sonner-toast][data-type="success"]').filter({hasText:'Claim approved'});
- let cleanUrlRouteRequests=0;
+ const cleanUrlRequests={prefetchRequests:0,otherRequests:0};
  const observe=request=>{
-  const url=new URL(request.url());
-  if(request.method()==='GET'&&url.origin===origin&&url.pathname==='/approvals'
-   &&url.searchParams.get('category')==='claim'&&url.searchParams.has('_rsc')
-   &&!['toast','successNotice','error','approvalSeal'].some(key=>url.searchParams.has(key)))cleanUrlRouteRequests++;
+  const category=approvalCategoryRequest(request);
+  if(!category||category.url.searchParams.get('category')!=='claim'
+   ||['toast','successNotice','error','approvalSeal'].some(key=>category.url.searchParams.has(key)))return;
+  cleanUrlRequests[category.prefetch?'prefetchRequests':'otherRequests']++;
  };
  page.on('request',observe);
  try{
@@ -550,7 +569,7 @@ async function measureClaimApproval({page,user,db,report,save}){
   await page.waitForURL(origin+path,{timeout:timeout()});
   await assertContentAvailable(page);
   report.claimSteps=[{step:'approve-claim-and-refresh',elapsedMs:Math.round(performance.now()-started),
-   confirmedMs,cleanUrlRouteRequests}];
+   confirmedMs,cleanUrlRequests}];
  }finally{page.off('request',observe);}
  save();
 
