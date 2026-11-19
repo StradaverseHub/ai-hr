@@ -140,10 +140,21 @@ const nativeContentWitnesses=new Set([
  'own-released-payslip','own-annual-leave-controls','own-individual-attendance-picker',
  'ai-runs-group-history-controls','ai-runs-company-scope','own-profile-identity',
 ]);
-const expectedHomeCards={
- personal:['calendar','celebrations','notices','summary','tasks','team','timeOff','today'],
- hr:['attendanceOverview','companies','headcount','headcountByCompany','latestPayroll',
-  'latestPayrollRun','noticeBoard','pendingLeave','recentActivity','recentlyJoined','upcomingEvents'],
+const todayContent={
+ employee:[
+  '[data-today-panel="today-calendar"] [data-today-month]',
+  '[data-today-panel="today-requests"] [data-today-requests-all]',
+  '[data-today-panel="today-notices"] a[href="/notices"]',
+ ],
+ manager:[
+  '[data-today-panel="today-decide"] :is([data-today-empty],[data-today-decisions],[data-today-other-work])',
+  '[data-today-panel="today-team-coming-up"]',
+ ],
+ administrator:[
+  '[data-today-panel="today-needs"] :is([data-today-empty],[data-today-needs-list])',
+  '[data-today-panel="today-handled"] :is([data-today-empty],[data-today-handled])',
+  '[data-today-panel="today-readiness"]',
+ ],
 };
 async function signedInContext(actor){
  assert(typeof actor?.token==='string'&&actor.token.length>0,'Expected a fictional fixture session');
@@ -164,18 +175,15 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{}) {
  await page.locator('button[data-tour="account"]').getByText(actor.name,{exact:true}).first().waitFor({state:'visible',timeout:timeout()});
  onHeading();
  if(path==='/'){
-  const personal=['employee','manager'].includes(actor.role);
-  const attribute=personal?'data-home-card':'data-dashboard-card';
-  const cards=main.locator(`[${attribute}]`);
-  await main.locator('[data-today-section]:visible').first().waitFor({state:'visible',timeout:timeout()});
-  await page.waitForFunction(()=>{
-   const main=document.querySelector('main');
-   return main&&!main.querySelector('[aria-busy="true"]');
-  },null,{timeout:timeout()});
-  const cardIds=await cards.evaluateAll((cards,attribute)=>
-   cards.map(card=>card.getAttribute(attribute)).sort(),attribute);
-  assert.deepEqual(cardIds,expectedHomeCards[personal?'personal':'hr']);
-  assert.equal(await main.locator('[role="alert"],[data-today-unavailable]').count(),0);
+  const audience=actor.role==='employee'||actor.role==='manager'?actor.role:'administrator';
+  const today=main.locator(`[data-today="${audience}"]`);
+  await today.locator('header [data-today-date]').first().waitFor({state:'visible',timeout:timeout()});
+  for(const selector of todayContent[audience]){
+   await today.locator(selector).first().waitFor({state:'visible',timeout:timeout()});
+  }
+  await today.locator('[data-today-skeleton]:visible, [data-recommendation-pending]:visible')
+   .first().waitFor({state:'hidden',timeout:timeout()});
+  assert.equal(await main.locator('[role="alert"],[data-today-page-unavailable],[data-today-unavailable]').count(),0);
   return 'usable-content';
  }
  if(path==='/admin/job-descriptions'){
@@ -271,7 +279,7 @@ async function visit(page,actor,route,pass,fixture) {
     observation.authenticatedHeadingObservedMs=Math.round(performance.now()-started);
    });
    if(route.witness){
-    if(observation.readiness==='usable-content')observation.witness=route.witness;
+    if(observation.readiness==='usable-content')observation.witness=route.requested==='/'?'today-panel-content':route.witness;
     else observation.unverifiedWitness=route.witness;
    }
   }
