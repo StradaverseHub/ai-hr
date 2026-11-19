@@ -32,8 +32,13 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { closeBatch, createAdditionalRun, createBatch, generatePayslips } from '../core/payroll';
 import { listEmploymentPayComponents, seedPayComponentCatalog, setEmploymentPayComponent } from '../core/pay-components';
+import { upsertPayrollCycle } from '../core/payroll-cycle';
 import { listIndividualTxnsAcross } from '../core/payroll-view';
 import { commitTxnImport, validateTxnImport, type TxnImportRecord } from '../core/payroll-txn-import';
+import { runBulkJobTick } from '../core/bulk-job-worker';
+import {
+  fixedTransactionImportJobHandler, listFixedTransactionImports, queueFixedTransactionImport, readFixedTransactionImport,
+} from '../core/fixed-transaction-import-job';
 import {
   adminCtx,
   closeAll,
@@ -283,22 +288,81 @@ describe('5c65367d — payroll transaction Excel import', () => {
     expect(live.filter((x) => x.code === 'BONUS')).toHaveLength(1);
   });
 
-  it('refuses a row whose window a CLOSED run already paid — the service’s own guard, surfaced', async () => {
+  it('adds and corrects a backdated item without changing the closed payroll snapshot', async () => {
     const a = adminCtx(base);
     const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-08' });
     await generatePayslips(a, { batchId });
     await closeBatch(a, { batchId });
-    const p = await validateFixed([fixedRec({ start_date: '2026-08-01' })]);
-    // The pre-flight does not model closed runs — the SERVICE does, so this row reads Valid and is
-    // refused at commit, BY NAME, with nothing written. That is the honest split: the import never
-    // re-implements a rule it can route to.
-    expect(p.rows[0].ok).toBe(true);
-    const r = await commitFixed([fixedRec({ start_date: '2026-08-01' })]);
-    expect(r.written).toBe(0);
-    expect(r.failed).toHaveLength(1);
-    expect(r.failed[0].reason).toBe('closedRun');
-    expect(r.failed[0].detail?.period).toBe('2026-08');
-    expect(await listEmploymentPayComponents(a, employmentId)).toHaveLength(0);
+    const payslips = () => owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId, batchId));
+    const before = await payslips();
+    expect(before).toHaveLength(1);
+
+    const start = await commitFixed([fixedRec({ start_date: '2026-08-01' })]);
+    expect(start).toMatchObject({ written: 1, failed: [] });
+
+    const correction = fixedRec({ start_date: '2026-07-01', previous_start_date: '2026-08-01' });
+    const changedAmount = await validateFixed([{ ...correction, amount: '900' }]);
+    expect(changedAmount.rows[0]).toMatchObject({ ok: false, reason: 'startDateCorrection' });
+    expect(await commitFixed([correction])).toMatchObject({ written: 1, failed: [] });
+    expect(await commitFixed([correction])).toMatchObject({ written: 0 });
+    expect(await listEmploymentPayComponents(a, employmentId)).toMatchObject([{ validFrom: '2026-07-01', amount: '100.00' }]);
+    expect(await payslips()).toEqual(before);
+  });
+
+  it('matches a configured fixed cycle code ahead of a legacy run type', async () => {
+    const a = adminCtx(base);
+    const cycle = await upsertPayrollCycle(a, { companyId: base.companyId, code: 'REGULAR', name: 'Custom Bonus', runType: 'bonus' });
+    expect(await commitFixed([fixedRec({ payroll_cycle: 'regular' })])).toMatchObject({ written: 1, failed: [] });
+    expect(await listEmploymentPayComponents(a, employmentId)).toMatchObject([
+      { payrollCycleId: cycle.id, runType: 'bonus' },
+    ]);
+  });
+
+  it('retains a validation-only failed upload without applying any rows',async()=>{
+    const a=adminCtx(base);
+    const id=await queueFixedTransactionImport(a,{
+      csv:'Employee ID,Pay Item Code,Amount,Start Date\nUNKNOWN,BONUS,100,2026-08-01\n',
+      fileName:'validation-only.xlsx',companyIds:scopeIds,operationKey:randomUUID(),validationOnly:true,
+    });
+    let job=await readFixedTransactionImport(a,id,scopeIds);
+    for(let tick=0;tick<10&&!['failed','completed'].includes(job.state);tick++){
+      await runBulkJobTick(owner.client,{handlers:[fixedTransactionImportJobHandler]});
+      job=await readFixedTransactionImport(a,id,scopeIds);
+    }
+    expect(job).toMatchObject({state:'failed',error:'noValidRows',counters:{total:1,invalid:1},
+      rows:[{rowNum:2,state:'invalid',reason:'employeeUnknown'}]});
+    expect(await listEmploymentPayComponents(a,employmentId)).toEqual([]);
+  });
+
+  it('keeps fixed workbook results across visits and commits each accepted row only once', async () => {
+    const a = adminCtx(base);
+    const input = {
+      csv: `Employee ID,Pay Item Code,Amount,Start Date\n${employeeCode},BONUS,100,2026-08-01\nNOTFOUND,BONUS,100,2026-08-01\n`,
+      fileName: 'fixed-transactions.xlsx',
+      companyIds: scopeIds,
+      operationKey: randomUUID(),
+    };
+    const id = await queueFixedTransactionImport(a, input);
+    expect(await queueFixedTransactionImport(a, input)).toBe(id);
+    await expect(queueFixedTransactionImport(a, { ...input, csv: input.csv.replace('100', '120') })).rejects.toThrow('operationChanged');
+    expect(await listFixedTransactionImports(a, scopeIds)).toMatchObject([{ id, state: 'queued' }]);
+    await expect(readFixedTransactionImport(a, id, [])).rejects.toThrow('Job unavailable.');
+
+    let job = await readFixedTransactionImport(a, id, scopeIds);
+    for (let tick = 0; tick < 15 && job.state !== 'completed' && job.state !== 'failed'; tick++) {
+      await runBulkJobTick(owner.client, { handlers: [fixedTransactionImportJobHandler] });
+      job = await readFixedTransactionImport(a, id, scopeIds);
+    }
+    expect(job).toMatchObject({
+      state: 'completed', sourceName: input.fileName, counters: { total: 2, invalid: 1, written: 1 },
+      rows: [
+        { rowNum: 2, employeeId: employeeCode, state: 'imported' },
+        { rowNum: 3, employeeId: 'NOTFOUND', state: 'invalid', reason: 'employeeUnknown' },
+      ],
+    });
+    expect(await queueFixedTransactionImport(a, input)).toBe(id);
+    expect(await listEmploymentPayComponents(a, employmentId)).toHaveLength(1);
+    expect(await listFixedTransactionImports(a, scopeIds)).toMatchObject([{ id, state: 'completed' }]);
   });
 
   // ══════════════════════ the happy path ══════════════════════

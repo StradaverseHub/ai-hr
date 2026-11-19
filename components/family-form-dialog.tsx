@@ -1,16 +1,10 @@
 'use client';
 
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui';
 import type { ButtonProps } from '@/components/ui/button';
-// b25e421e — from lib/, never core/: the header below records that core/dependents.ts pulls the pg driver
-// via db/client and must not cross into a client bundle. lib/dependent-vocabulary.ts is the client-safe
-// half core/dependents.ts re-exports, and lib/hr-date.ts is pure Intl.
-import { childAgeYears } from '@/lib/dependent-vocabulary';
-import { todayInKualaLumpur } from '@/lib/hr-date';
-
 /**
  * Item 5988053a — Family tab Add/Edit child dialog shell. The ONLY client file this feature adds, modelled
  * on FixedToolbar (app/payroll/transactions/fixed/add-fixed-dialog.tsx): a trigger Button plus a Radix
@@ -30,12 +24,6 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
  * mistakes client-side). Deliberately NO optimistic close-on-submit here (unlike the FixedToolbar
  * precedent) — the redirect is what dismisses the dialog, so an error redirect is never masked by an
  * eagerly-closed modal.
- *
- * LIVE AGE: while the admin types a date of birth, the read-only Age field (marked `data-child-age` by the
- * server form) updates immediately via a delegated onInput listener. This mirrors, for display only, the
- * authoritative whole-year rule in core/dependents.ts childAgeYears (which this bundle cannot import — see
- * above); the server re-derives the real value on save, and the relief-category note next to the field is
- * static guidance — the category is never auto-filled from an age-based guess.
  */
 export function FamilyFormDialog({
   triggerLabel,
@@ -50,20 +38,6 @@ export function FamilyFormDialog({
 }) {
   const t = useTranslations('components.confirmSubmit');
   const [open, setOpen] = useState(false);
-
-  const onFormInput = (e: FormEvent<HTMLDivElement>) => {
-    const el = e.target as HTMLInputElement | null;
-    if (!el || el.name !== 'dateOfBirth') return;
-    const out = e.currentTarget.querySelector<HTMLInputElement>('input[data-child-age]');
-    if (!out) return;
-    // b25e421e (r352) — THROUGH THE SHARED COUNTER, not a third copy of the arithmetic. This line used to
-    // carry its own `floor(elapsed / 365.25 days)`, the same approximation `childAgeYears` was built on and
-    // the same one that read 17 to a child on their eighteenth birthday. Two copies of an age rule agree
-    // until one is corrected, and this dialog is where HR reads the Age back before saving the date — so it
-    // is the worst possible place to disagree with the eligibility the tax figure is then derived from.
-    const age = childAgeYears(el.value, new Date(`${todayInKualaLumpur()}T00:00:00Z`));
-    out.value = age == null ? '—' : String(age);
-  };
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -86,7 +60,7 @@ export function FamilyFormDialog({
               </Button>
             </Dialog.Close>
           </div>
-          <div className="mt-4" onInput={onFormInput}>
+          <div className="mt-4">
             {children}
           </div>
         </Dialog.Content>

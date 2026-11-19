@@ -137,6 +137,7 @@ export type PayslipRun = {
   companyId: string;
   /** 'YYYY-MM'. */
   payPeriod: string;
+  payrollCycleId?: string | null;
   runType: string;
   runSeq: number;
   /** b240c0ff — set on imported payroll history, so the chooser can name it "Monthly - By Import". */
@@ -153,6 +154,9 @@ export type PayslipRequest = {
   month?: number;
   runType?: string;
   runSeq?: number;
+  /** An empty or absent ID is All; strictFilter records a submission of the configured cycle control. */
+  payrollCycleId?: string;
+  strictFilter?: boolean;
 };
 
 /** What the screen shows: the payslip, and the four values its dropdowns display. Absent ⇒ that box
@@ -232,7 +236,22 @@ const describes = (r: PayslipRun): PayslipSelection => ({
  * @param req  the scope-guarded query. `companyId` is honoured strictly; `payslipId` names one run and
  *             wins outright when it resolves.
  */
+export function matchingPayslipRuns(runs: readonly PayslipRun[], req: Pick<PayslipRequest,'companyId'|'year'|'month'|'payrollCycleId'>): PayslipRun[] {
+  return runs.filter(run => WELL_FORMED.test(run.payPeriod) &&
+    (!req.companyId || run.companyId === req.companyId) &&
+    (req.year == null || yearOf(run) === req.year) &&
+    (req.month == null || monthOf(run) === req.month) &&
+    (!req.payrollCycleId || run.payrollCycleId === req.payrollCycleId))
+    .sort((a,b) => b.payPeriod.localeCompare(a.payPeriod) || b.runSeq-a.runSeq ||
+      a.companyId.localeCompare(b.companyId) || a.payslipId.localeCompare(b.payslipId));
+}
+
 export function resolvePayslipSelection(runs: readonly PayslipRun[], req: PayslipRequest): PayslipSelection {
+  if (req.strictFilter || req.payrollCycleId) {
+    const matching = matchingPayslipRuns(runs, req);
+    const hit = req.payslipId ? matching.find(run => run.payslipId === req.payslipId) : matching[0];
+    return hit ? describes(hit) : { payslipId: null, companyId: req.companyId, year: req.year, month: req.month };
+  }
   // A malformed period would give a NaN year that no narrowing can match and that renders as an empty
   // option — the same defensive filter the r209 rules above apply, for the same reason.
   const all = runs.filter((r) => WELL_FORMED.test(r.payPeriod)).sort(byNewestRun);

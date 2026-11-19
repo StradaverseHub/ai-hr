@@ -7484,6 +7484,34 @@
       "when": 1794988006501,
       "tag": "6501_contract_company_scope_retention",
       "breakpoints": true
+    },
+    {
+      "idx": 10320,
+      "version": "7",
+      "when": 1795028006920,
+      "tag": "6920_fixed_transaction_import_job",
+      "breakpoints": true
+    },
+    {
+      "idx": 10330,
+      "version": "7",
+      "when": 1795028006930,
+      "tag": "6930_payroll_transaction_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 10340,
+      "version": "7",
+      "when": 1795028006940,
+      "tag": "6940_individual_import_template_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 10350,
+      "version": "7",
+      "when": 1795028006950,
+      "tag": "6950_movement_history_pay_evidence",
+      "breakpoints": true
     }
   ]
 }

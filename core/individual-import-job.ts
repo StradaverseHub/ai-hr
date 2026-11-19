@@ -45,10 +45,10 @@ export async function submitIndividualImportJob(ctx: SessionContext, input: {
     if (limit.count >= 3) throw new IndividualImportError('queueFull');
     await tx.execute(sql`
       insert into payroll_individual_import_job
-        (id, tenant_id, created_by, company_ids, context, source_name, source_hash, source, method)
+        (id, tenant_id, created_by, company_ids, context, source_name, source_hash, source, method, template_version)
       values (${input.id}::uuid, ${ctx.tenantId}::uuid, ${ctx.userId}::uuid, ${JSON.stringify(companyIds)}::jsonb,
         ${JSON.stringify({tenantId: ctx.tenantId, userId: ctx.userId, personId: ctx.personId, grants: ctx.grants, roles: ctx.roles})}::jsonb,
-        ${input.name}, ${hash}, ${input.content}, ${input.method})`);
+        ${input.name}, ${hash}, ${input.content}, ${input.method}, 2)`);
     return input.id;
   });
 }
