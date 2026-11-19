@@ -387,7 +387,7 @@ async function measureShellLinks(fixture){
 async function measureRoutes(fixture){
  const plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
-  for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9']){
+  for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9','/approvals']){
    plan.push({role,actorIndex,requested:path,final:path});
   }
  }
@@ -413,11 +413,39 @@ async function measureRoutes(fixture){
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 
+async function measureApprovalCategories({page,user,report,save}){
+ const response=await page.goto(origin+'/approvals',{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(response?.status(),200);
+ const main=page.locator('main:visible').first();
+ const categories=main.locator('aside nav');
+ const claims=main.locator('[data-ui-section-header]').filter({hasText:/^Claims\s*\(\d+\)$/});
+ const leave=main.locator('#approvals-leave');
+ await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+  .waitFor({state:'visible',timeout:15000});
+ await leave.waitFor({state:'visible',timeout:15000});
+ report.approvalSteps=[];
+ for(const [step,path,leaveState] of [['open-claims-category','/approvals?category=claim','hidden'],['return-to-all-approvals','/approvals','visible']]){
+  const link=categories.locator(`a[href="${path}"]`);
+  const started=performance.now(),deadline=started+15000;
+  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+  await link.click({timeout:timeout()});
+  await page.waitForURL(origin+path,{timeout:timeout()});
+  await link.and(categories.locator('a[aria-current="page"]')).waitFor({state:'visible',timeout:timeout()});
+  await claims.waitFor({state:'visible',timeout:timeout()});
+  await leave.waitFor({state:leaveState,timeout:timeout()});
+  await assertContentAvailable(page);
+  report.approvalSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ }
+}
+
 async function measureActions(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,
+   timings:result=>result.approvalSteps})),
   {name:'personnel-switcher',actorIndex:0,run:async options=>{
    await options.page.goto(origin+'/admin/personnel',{waitUntil:'domcontentloaded',timeout:15000});
    await exercisePersonnelSwitcher(options);
