@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
-import {parseProcessStat,parseProcessMemory,buildProcessKind,createBuildProcessObserver} from './build-process-memory.mjs';
+import {parseProcessStat,parseProcessMemory,buildProcessKind,createBuildProcessObserver,createBuildMemoryTimeline,nextBuildStage,forwardBuildOutput} from './build-process-memory.mjs';
+import {PassThrough,Writable} from 'node:stream';
+import {once} from 'node:events';
 import {BUILD_HEAP_CEILING_MB,BUILD_HEAP_DEFAULT_MB,BUILD_HEAP_PROFILE,BUILD_HEAP_NODE_OPTIONS,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB,BUILD_RSS_DEFAULT_FAIL_KIB,BUILD_MEM_AVAILABLE_MIN_KIB,buildMemoryBudget,availableMemoryVerdict,
  parseMemTotalKiB,parseMaxRssKiB,assertBuildHeapRunner,assertRequestedHeapMb,admitBuildHeap,assertBuildHeapEnvironment,admittedBuildNodeOptions,rssVerdict} from './build-heap.mjs';
 
@@ -58,6 +60,50 @@ test('observer records disappearing and unreadable processes and enforces finite
  const limited=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90,scanLimit:1});limited.sample();assert(limited.report().issues.process_scan_limit>0);
  const absent=createBuildProcessObserver(999,{io:f.io,now:f.now,expectedParentPid:90});absent.sample();assert(absent.report().issues.root_identity_unavailable>0);
  const wrongParent=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:91});wrongParent.sample();assert(wrongParent.report().issues.root_identity_unavailable>0);
+});
+test('current snapshot records fresh identity-validated RSS, never a previous high-water value',()=>{
+ const f=processFixture();f.add(100,90,10);f.add(200,100,20);
+ const observer=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90});observer.sample();
+ f.tick();f.rows.get(200).memory='VmRSS:\t12 kB\nVmHWM:\t900 kB\n';
+ const snapshot=observer.sample({captureCurrent:true}),child=snapshot.processes.find(p=>p.pid===200);
+ assert.equal(child.rssKiB,12);assert(!Object.hasOwn(child,'hwmKiB'));assert.equal(snapshot.observationStartedAtMs,500);assert.equal(snapshot.observationEndedAtMs,500);
+ f.tick();f.add(200,1,99);assert(!observer.sample({captureCurrent:true}).processes.some(p=>p.pid===200));
+});
+ const timelineBinding={source:'a'.repeat(40),controller:'b'.repeat(40),runId:'123',attempt:'1',job:'linux-build',imageOS:'ubuntu24',imageVersion:'20261115.1.0'};
+test('bounded timeline retains the minimum timestamp and fresh owned sample even after history truncates',()=>{
+ let clock=100;const t=createBuildMemoryTimeline(timelineBinding,{now:()=>clock,sampleLimit:1,processLimit:1});
+ const row=(at,value)=>({atMs:at,meminfo:`MemTotal: 1000 kB\nMemAvailable: ${value} kB\nCached: 31 kB\nDirty: 3 kB\nWriteback: 2 kB\nSwapTotal: 100 kB\nSwapFree: 99 kB\nSECRET: private\n`,owned:{observationStartedAtMs:at+1,observationEndedAtMs:at+2,rootIdentity:'100:10',issues:{SECRET:3},processes:[{pid:100,parentPid:90,starttime:'10',kind:'next',rssKiB:7},{pid:200,parentPid:100,starttime:'20',kind:'tsc',rssKiB:8}]},diagnostics:{status:'read',stage:'type-checking',modifiedAtMs:90,SECRET:'private'}});
+ t.sample(row(100,40));clock=2100;t.sample(row(2100,20));const report=t.report();
+ assert.equal(report.samples.length,1);assert.equal(report.totalSamples,2);assert.equal(report.minimumSample.atMs,2100);assert.equal(report.minimumSample.hostMemory.MemAvailableKiB,20);
+ assert.equal(report.minimumSample.owned.processes[0].rssKiB,7);assert.equal(report.minimumSample.owned.observationEndedAtMs,2102);assert.equal(report.minimumSample.owned.processes.length,1);
+ assert(report.truncated);assert.equal(report.issues.sample_truncated,1);assert(report.issues.processes_truncated>0);assert.equal(report.maxSampleGapMs,2000);assert.equal(report.bindingComplete,true);
+ assert.equal(report.runtime.node,process.version);assert.equal(report.runtime.arch,process.arch);assert.equal(report.runtime.platform,process.platform);assert.equal(report.runnerImage.ImageVersion,'20261115.1.0');
+ assert.equal(report.minimumSample.hostMemory.DirtyKiB,3);assert.equal(report.minimumSample.hostMemory.WritebackKiB,2);assert.equal(report.minimumSample.hostMemory.SwapFreeKiB,99);
+ assert(!JSON.stringify(report).includes('SECRET'));assert(!JSON.stringify(report).includes('private'));assert.equal(report.attributionComplete,false);
+});
+test('phase parsing crosses byte chunks, exports enums only and bounds lines and markers',()=>{
+ let clock=10;const t=createBuildMemoryTimeline(timelineBinding,{now:()=>clock,phaseLimit:2,lineLimit:80});
+ const bytes=Buffer.from('\x1b[32m✓ Compiled successfully in 2.9min SECRET\x1b[0m\nRunning TypeScript SECRET\n');
+ for(let i=0;i<bytes.length;i+=2)t.consume('stdout',bytes.subarray(i,i+2));
+ clock=20;t.consume('stderr',Buffer.from('Collecting page data using 3 workers SECRET\n'+('SECRET'.repeat(40))+'\n'));t.finish();
+ const r=t.report();assert.deepEqual(r.outputPhaseMarkers.map(m=>m.phase),['compile-finish','typescript-start']);assert.equal(r.outputPhaseMarkers[0].atMs,10);
+ assert.equal(r.issues.phases_truncated,1);assert.equal(r.issues.line_truncated,1);assert(r.truncated);assert(!JSON.stringify(r).includes('SECRET'));
+});
+test('diagnostics expose only known build-stage values and incomplete binding/read gaps remain explicit',()=>{
+ assert.equal(nextBuildStage('{"buildStage":"type-checking","buildOptions":{"SECRET":"private"}}'),'type-checking');
+ assert.equal(nextBuildStage('{"buildStage":"SECRET"}'),null);assert.throws(()=>nextBuildStage('{'));assert.throws(()=>nextBuildStage('x'.repeat(65537)));
+ const t=createBuildMemoryTimeline({...timelineBinding,source:'SECRET',runId:'SECRET',job:'SECRET'});
+ t.noteFailure('host_read');t.noteFailure('diagnostics_read');t.sample({atMs:10,meminfo:'MemAvailable: 1 kB\n',diagnostics:{status:'failed',stage:'SECRET'}});
+ const r=t.report();assert(!r.bindingComplete);assert.equal(r.minimumSample.owned.rootIdentity,null);assert.equal(r.minimumSample.nextDiagnostics.lastReportedBuildStage,null);assert.equal(r.issues.owned_read,1);
+ assert(!JSON.stringify(r).includes('SECRET'));assert.equal(availableMemoryVerdict(BUILD_MEM_AVAILABLE_MIN_KIB-1),'fail');assert.equal(rssVerdict(BUILD_RSS_FAIL_KIB+1),'fail');
+});
+test('output forwarding preserves original stdout/stderr bytes while diagnostics fail',async()=>{
+ for(const channel of ['stdout','stderr']){
+  const stream=new PassThrough(),chunks=[],target=new Writable({write(chunk,encoding,done){chunks.push(Buffer.from(chunk));done();}});
+  let errors=0;forwardBuildOutput(stream,target,{consume(){throw Error('diagnostic only');},noteFailure(key){assert.equal(key,'phase_read');errors++;}},channel);
+  const ended=once(stream,'end'),bytes=Buffer.from([0,27,91,51,50,109,226,156,147,10,255]);stream.end(bytes);await ended;
+  assert.deepEqual(Buffer.concat(chunks),bytes);assert(errors>0);assert.equal(target.writableEnded,false);target.end();
+ }
 });
 import {readdirSync} from 'node:fs';
 const root=fileURLToPath(new URL('../../',import.meta.url));

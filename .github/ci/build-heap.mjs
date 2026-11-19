@@ -11,10 +11,10 @@
  */
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync,openSync,fstatSync,readSync,closeSync,constants} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {createBuildProcessObserver} from './build-process-memory.mjs';
+import {createBuildProcessObserver,createBuildMemoryTimeline,nextBuildStage,forwardBuildOutput} from './build-process-memory.mjs';
 
 export const BUILD_HEAP_DEFAULT_MB=6144;
 export const BUILD_HEAP_CEILING_MB=8192; // Hard ceiling. Changing it needs owner review.
@@ -117,6 +117,19 @@ export function buildMemoryVerdict(heapMb,peakKiB,minAvailableKiB){
 }
 const gib=kib=>(kib/1024**2).toFixed(2)+' GiB';
 
+// Fixed job-local Next metadata only. A partial/concurrent write is diagnostic failure, never a gate waiver.
+function readNextBuildDiagnostics(){
+ let fd;
+ try{
+  fd=openSync(join(process.cwd(),'.next/diagnostics/build-diagnostics.json'),constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  const st=fstatSync(fd);assert(st.isFile()&&st.size>0&&st.size<=65536);
+  const bytes=Buffer.alloc(st.size+1),count=readSync(fd,bytes,0,bytes.length,0);assert(count===st.size);
+  const stage=nextBuildStage(bytes.subarray(0,count).toString('utf8'));
+  return {status:stage?'read':'failed',stage,modifiedAtMs:Math.trunc(st.mtimeMs)};
+ }catch(error){return {status:error?.code==='ENOENT'?'unavailable':'failed',stage:null};}
+ finally{if(fd!==undefined)closeSync(fd);}
+}
+
 async function measure(dir,argv){
  const e=process.env;
  const bounded=assertBuildHeapEnvironment(e)===BUILD_HEAP_CEILING_MB;
@@ -124,18 +137,32 @@ async function measure(dir,argv){
  assert(argv.length>=1,'Measured command required');
  mkdirSync(dir,{recursive:true,mode:0o700});
  const timeFile=join(dir,'time-v.txt');assert(!existsSync(timeFile),'Fresh memory evidence directory required');
- const samples=[];let minAvailable=Infinity;
- const sample=()=>{try{const a=parseMemAvailableKiB(readFileSync('/proc/meminfo','utf8'));minAvailable=Math.min(minAvailable,a);samples.push([Date.now(),a]);}catch{}};
+ let observer,processTimer,exit,observerFailure=false,timeline;
+ try{timeline=createBuildMemoryTimeline({source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD??e.GITHUB_SHA,runId:e.GITHUB_RUN_ID,attempt:e.GITHUB_RUN_ATTEMPT,job:e.GITHUB_JOB,imageOS:e.ImageOS,imageVersion:e.ImageVersion});}catch{}
+ let sampleCount=0,minAvailable=Infinity,minAvailableAtMs=null;
+ const diagnosticFailure=key=>{try{timeline?.noteFailure(key);}catch{}};
+ const sample=()=>{try{
+  const atMs=Date.now(),meminfo=readFileSync('/proc/meminfo','utf8'),hostReadEndedAtMs=Date.now(),a=parseMemAvailableKiB(meminfo);
+  if(a<minAvailable)minAvailableAtMs=atMs;minAvailable=Math.min(minAvailable,a);sampleCount++;
+  // Same callback, sequential host/status reads; the observation interval is retained, not claimed atomic.
+  try{const diagnostics=readNextBuildDiagnostics();if(diagnostics.status==='failed')diagnosticFailure('diagnostics_read');
+   timeline?.sample({atMs,hostReadEndedAtMs,meminfo,owned:observer?.sample({captureCurrent:true}),diagnostics});}catch{diagnosticFailure('owned_read');}
+ }catch{diagnosticFailure('host_read');}};
  sample();const timer=setInterval(sample,2000);
  const startedAt=new Date().toISOString();
- const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:'inherit',env:e});
- let observer,processTimer,exit,observerFailure=false;
+ const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:['inherit','pipe','pipe'],env:e});
+ // Forward both streams byte-for-byte, with pipe backpressure; retain only recognized phase enums.
+ forwardBuildOutput(child.stdout,process.stdout,timeline,'stdout');forwardBuildOutput(child.stderr,process.stderr,timeline,'stderr');
+ const outputClosed=new Promise(done=>child.once('close',done));
  const observe=()=>{try{observer?.sample();}catch{observerFailure=true;try{observer?.noteFailure();}catch{}}};
  try{
   try{observer=createBuildProcessObserver(child.pid);observe();processTimer=setInterval(observe,500);}catch{observerFailure=true;}
   exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
  }finally{
   clearInterval(timer);clearInterval(processTimer);sample();
+  await outputClosed;
+  try{timeline?.finish();if(timeline){const text=JSON.stringify(timeline.report(),null,2)+'\n';assert(Buffer.byteLength(text)<=16*1024**2);writeFileSync(join(dir,'build-memory-timeline.json'),text,{flag:'wx',mode:0o600});}}
+  catch{console.log('::warning::Optional bounded build-memory timeline unavailable; original memory verdict remains authoritative');}
   try{observe();const attribution=observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'};attribution.observerFailure=observerFailure;writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(attribution,null,2)+'\n',{flag:'wx',mode:0o600});}
   catch{console.log('::warning::Optional build-process attribution unavailable; GNU time verdict remains authoritative');}
  }
@@ -143,7 +170,7 @@ async function measure(dir,argv){
   runId:e.GITHUB_RUN_ID??null,job:e.GITHUB_JOB??null,command:argv,nodeOptions:e.NODE_OPTIONS,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',
   memTotalKiB:parseMemTotalKiB(readFileSync('/proc/meminfo','utf8')),startedAt,endedAt:new Date().toISOString(),exitCode:exit.code,signal:exit.signal,
   peakRssKiB:null,peakRssMeasure:'GNU time ru_maxrss: largest single waited descendant process, not the sum of concurrent processes',
-  minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,memAvailableSamples:samples.length,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:rssFailKiB},
+  minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,minMemAvailableAtMs:minAvailableAtMs,memAvailableSamples:sampleCount,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:rssFailKiB},
   minMemAvailableBudgetKiB:bounded?BUILD_MEM_AVAILABLE_MIN_KIB:null,availableMemoryVerdict:bounded?availableMemoryVerdict(Number.isFinite(minAvailable)?minAvailable:null):'not_applicable',verdict:null};
  try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));Object.assign(report,buildMemoryVerdict(bounded?BUILD_HEAP_CEILING_MB:BUILD_HEAP_DEFAULT_MB,report.peakRssKiB,report.minMemAvailableKiB));}catch(error){report.telemetryError=String(error);}
  writeFileSync(join(dir,'build-memory.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
