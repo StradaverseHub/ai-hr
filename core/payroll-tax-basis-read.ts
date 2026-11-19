@@ -80,8 +80,22 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
 export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef|null;basis:TaxBasisValue};
 /** Exact current source only. Returned statutory objects are copies; no payslip row is ever modified. */
 export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:{includeImported?:boolean;sameMonth?:boolean}={}):Promise<Map<string,EffectiveTaxBasis>>{
- const out=new Map<string,EffectiveTaxBasis>();if(!payslipIds.length)return out;
- const sources=await taxBasisSourceRowsTx(tx,[...new Set(payslipIds)]);if(!sources.length)return out;
+ return (await sourceReadContextTx(tx,ctx,payslipIds)).readEffective(options);
+}
+type EffectiveReadOptions={includeImported?:boolean;sameMonth?:boolean};
+/** One authoritative source read, scoped to this transaction. Source rows stay private to the closure.
+ * Preview hashes and effective corrections therefore use the same RLS-visible immutable inputs.
+ * No caller-supplied rows, alternate hashing, cached cross-transaction authority or correction rules.
+ */
+async function sourceReadContextTx(tx:Tx,ctx:SessionContext,payslipIds:string[],requireComplete=false){
+ const requestedIds=new Set(payslipIds),ids=[...requestedIds],sources=await taxBasisSourceRowsTx(tx,ids),sourceIds=new Set(sources.map(source=>source.id));
+ if(requireComplete&&(sources.length!==requestedIds.size||sourceIds.size!==sources.length||sources.some(source=>!requestedIds.has(source.id))))throw new PayrollTaxBasisError('Original payroll source is unavailable.');
+ return {sourceHashes:new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)])),readEffective:(options:EffectiveReadOptions={})=>effectiveTaxBasesForSourcesTx(tx,ctx,ids,sources,options)};
+}
+/** Preview-only strict selection: a missing/foreign source must not become a partial preview. */
+export async function createTaxBasisPreviewReadTx(tx:Tx,ctx:SessionContext,payslipIds:string[]){return sourceReadContextTx(tx,ctx,payslipIds,true);}
+async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],sources:TaxBasisSource[],options:EffectiveReadOptions):Promise<Map<string,EffectiveTaxBasis>>{
+ const out=new Map<string,EffectiveTaxBasis>();if(!sources.length)return out;
  const keys=sources.map(s=>({companyId:s.companyId,employmentId:s.employmentId,period:s.period}));
  const corrections=await tx.execute<{id:string;batchId:string;payslipId:string;sourceHash:string;basis:unknown}>(sql`
   select r.id,r.batch_id as "batchId",r.payslip_id as "payslipId",r.source_hash as "sourceHash",r.basis

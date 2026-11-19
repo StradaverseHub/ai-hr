@@ -13,11 +13,21 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { EA_FIELDS } from '../localization/my/reports';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+// Type-only imports are erased; only runtime facade edges can create the registry cycle.
+const hasPayrollRuntimeImport = (source: string) => ts.createSourceFile('reports.ts', source, ts.ScriptTarget.Latest, true).statements.some(statement =>
+  ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === '../../packs/payroll/service' &&
+  (!statement.importClause || !statement.importClause.isTypeOnly && (!!statement.importClause.name || !statement.importClause.namedBindings || ts.isNamespaceImport(statement.importClause.namedBindings) || statement.importClause.namedBindings.elements.some(element => !element.isTypeOnly))));
+
+it('the registry-cycle guard permits erased types and refuses runtime facade imports', () => {
+  for (const declaration of ["import type {TaxBasisCorrectionRef} from '../../packs/payroll/service';", "import {type TaxBasisCorrectionRef} from '../../packs/payroll/service';"]) expect(hasPayrollRuntimeImport(declaration)).toBe(false);
+  for (const declaration of ["import {tp1CountForYear} from '../../packs/payroll/service';", "import {type TaxBasisCorrectionRef, tp1CountForYear} from '../../packs/payroll/service';", "import * as payroll from '../../packs/payroll/service';", "import '../../packs/payroll/service';"]) expect(hasPayrollRuntimeImport(declaration)).toBe(true);
+});
 
 describe('da4fc817 — Section D carries all six of the official form lines', () => {
   it('the four missing boxes are amendable EA fields, so HR can enter what payroll cannot source', () => {
@@ -137,7 +147,7 @@ describe('da4fc817 — Section D carries all six of the official form lines', ()
     // and a module-scope import cycles through the country registry at run time with a green typecheck.
     expect(reports).toContain("await import('../../packs/payroll/service')");
     expect(reports).not.toMatch(/^import .*from '\.\.\/\.\.\/core\/tax-relief'/m);
-    expect(reports).not.toMatch(/^import .*from '\.\.\/\.\.\/packs\/payroll\/service'/m);
+    expect(hasPayrollRuntimeImport(reports), 'runtime facade imports must remain deferred').toBe(false);
   });
 
   it('adding an EA box without deciding its derived baseline stays a COMPILE error', () => {
