@@ -4,6 +4,9 @@ on:
   push:
     branches: [codex/cicd-redesign-20261119]
     paths: ['.github/workflows/delivery-presentation-shadow.yml']
+  merge_group:
+    types: [checks_requested]
+    branches: [main]
   workflow_dispatch:
     inputs:
       base:
@@ -25,23 +28,33 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       HOME: /root
-      BASE: ${{ inputs.base || 'd6bfd00891e4db5d25d5f0027d0b14b0383ef6fd' }}
-      CANDIDATE: ${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}
+      BASE: ${{ github.event.merge_group.base_sha || inputs.base || 'd6bfd00891e4db5d25d5f0027d0b14b0383ef6fd' }}
+      CANDIDATE: ${{ github.event.merge_group.head_sha || inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+        with: {ref: '${{ github.event.merge_group.base_sha || github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: "${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}", path: source, fetch-depth: 0, persist-credentials: false}
+        with: {ref: "${{ github.event.merge_group.head_sha || inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}", path: source, fetch-depth: 0, persist-credentials: false}
       - name: Resolve the narrow policy from committed source
-        run: node automation/scripts/delivery/presentation-pilot.mjs source "$BASE" "$CANDIDATE" "$RUNNER_TEMP/presentation-plan.json"
-      - uses: ./source/.github/actions/setup-browser-image
+        id: route
+        run: |
+          node automation/scripts/delivery/presentation-pilot.mjs source "$BASE" "$CANDIDATE" "$RUNNER_TEMP/presentation-plan.json"
+          node -e 'const p=require(process.argv[1]); console.log("route="+p.route)' "$RUNNER_TEMP/presentation-plan.json" >> "$GITHUB_OUTPUT"
+      - name: Record broad verification requirement
+        if: steps.route.outputs.route == 'broad'
+        run: echo 'Broad verification required for this candidate. Shadow check supplies no release authority.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: ./automation/.github/actions/setup-browser-image
+        if: steps.route.outputs.route == 'scoped'
       - name: Run the candidate journey
+        if: steps.route.outputs.route == 'scoped'
         working-directory: source
         run: pnpm exec vitest run --config vitest.browser.config.ts test/chart-card-export-wrap.browser.test.tsx --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/presentation-candidate.json"
       - name: Verify the selected assertion actually ran
+        if: steps.route.outputs.route == 'scoped'
         run: |
           node -e 'const a=require("node:assert/strict"),p=require(process.argv[1]);a.equal(p.success,true);a.equal(p.numPassedTests,1);a.equal(p.numTotalTests,1);a.equal(p.numPendingTests,0);a.equal(p.testResults.length,1);a.match(p.testResults[0].name,/\/test\/chart-card-export-wrap\.browser\.test\.tsx$/)' "$RUNNER_TEMP/presentation-candidate.json"
       - name: Confirm the exact same journey catches the old layout
+        if: steps.route.outputs.route == 'scoped'
         working-directory: source
         run: |
           git show "$BASE:components/charts/ChartCard.tsx" > components/charts/ChartCard.tsx
