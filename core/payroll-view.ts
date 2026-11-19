@@ -1140,30 +1140,47 @@ type ProcessedPayslipFilters = {
   payrollCycleId?: string;
 };
 
-function processedPayslipFilters(p: ProcessedPayslipFilters) {
+function processedBatchFilters(p: ProcessedPayslipFilters) {
   const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   return and(
     inArray(payrollBatch.companyId, p.companyIds),
     periodFilter(p.year, p.month),
-    p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined,
     p.payrollCycleId ? eq(payrollBatch.payrollCycleId, p.payrollCycleId) : undefined,
     cycle ? sql`${filterRunTypeSql} = ${cycle}` : undefined,
   );
+}
+
+function processedPayslipFilters(p: ProcessedPayslipFilters) {
+  return and(processedBatchFilters(p), p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined);
 }
 
 /** Resolve the latest visible period before reading payslip rows for the History landing page. */
 export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
   if (!p.companyIds.length) return null;
   return withTenant(ctx, async (tx) => {
-    const [live] = await tx.select({ payPeriod: payrollBatch.payPeriod })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-      .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(processedPayslipFilters(p))
-      .orderBy(desc(payrollBatch.payPeriod))
-      .limit(1);
+    // Order the smaller run set first. Keep the correlated probe so PostgreSQL can use the
+    // batch/employment index and stop at the first visible payslip, without building a global
+    // join of all historical slips. The same row-secured joins establish presence.
+    const [live] = await tx.execute<{ payPeriod: string }>(sql`
+      select batches.pay_period as "payPeriod"
+      from (
+        select ${payrollBatch.id}, ${payrollBatch.payPeriod}
+        from ${payrollBatch}
+        inner join ${company} on ${company.id} = ${payrollBatch.companyId}
+        where ${processedBatchFilters(p)}
+        order by ${payrollBatch.payPeriod} desc
+        offset 0
+      ) batches
+      where exists (
+        select 1 from ${payslip}
+        inner join ${employment} on ${employment.id} = ${payslip.employmentId}
+        inner join ${person} on ${person.id} = ${employment.personId}
+        where ${payslip.batchId} = batches.id
+          ${p.employmentId ? sql`and ${payslip.employmentId} = ${p.employmentId}` : sql``}
+        offset 0
+      )
+      order by batches.pay_period desc
+      limit 1`);
     const retained = await informationPayslipDocuments(tx, {
       ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle), intendedCycle: true, limit: 1,
     });
