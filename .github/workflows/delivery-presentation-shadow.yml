@@ -1,6 +1,9 @@
 name: delivery-presentation-shadow
-run-name: Presentation pilot · ${{ inputs.candidate }}
+run-name: Analytics export-wrap pilot
 on:
+  push:
+    branches: [codex/cicd-redesign-20261119]
+    paths: ['.github/workflows/delivery-presentation-shadow.yml']
   workflow_dispatch:
     inputs:
       base:
@@ -22,13 +25,13 @@ jobs:
     env:
       PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
       HOME: /root
-      BASE: ${{ inputs.base }}
-      CANDIDATE: ${{ inputs.candidate }}
+      BASE: ${{ inputs.base || 'd6bfd00891e4db5d25d5f0027d0b14b0383ef6fd' }}
+      CANDIDATE: ${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with: {ref: '${{ inputs.candidate }}', path: source, fetch-depth: 0, persist-credentials: false}
+        with: {ref: '${{ inputs.candidate || '42a3b1c8e03a4588cf8d21949e575b80ba5882e8' }}', path: source, fetch-depth: 0, persist-credentials: false}
       - name: Resolve the narrow policy from committed source
         run: node automation/scripts/delivery/presentation-pilot.mjs source "$BASE" "$CANDIDATE" "$RUNNER_TEMP/presentation-plan.json"
       - uses: ./source/.github/actions/setup-browser-image
