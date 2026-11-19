@@ -16,7 +16,7 @@
  * what says it is additive.
  */
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import * as schema from '../db/schema';
@@ -26,7 +26,6 @@ import { swingRowsTx } from '../core/loops/swing-rows';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   evaluateBatchAnomalies,
-  PayrollAnomalySourceUnavailableError,
   openBlockingVerdicts,
   resolveAnomalyVerdict,
   thresholdsInForce,
@@ -36,13 +35,6 @@ import {
   anomalyMetrics,
   evaluateCircuitBreaker,
 } from '../core/payroll-anomaly';
-import {nativePayrollPayslipWrite} from '../core/payroll-history-native-baseline';
-import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
-import {runBulkJobTick} from '../core/bulk-job-worker';
-import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
-import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
-import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
-import {toCsv} from '../lib/csv';
 import { BatchHasBlockingAnomaliesError, BatchSwingTooLargeError, closeBatch } from '../core/payroll';
 import { closeAll, entitledCtx, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, setModule, setTenantStatus, type Base } from './harness';
 
@@ -821,65 +813,4 @@ describe('ADR-0076 §5 — the metrics ADR-0074 is judged on', () => {
     expect(m.autoClearRate).toBe(1);
     expect(m.flaggedPerThousand).toBe(0);
   });
-});
-
-describe('Anomaly source custody across ordinary and detached native payroll',()=>{
- it('keeps the existing null-USER nightly SYSTEM carrier on its ordinary RLS source',async()=>{
-  const subject=await makeEmp('SystemOrdinary');await giveProfile(subject.personId);const batchId=await makeBatch();await addPayslip(batchId,subject.employmentId,{}, {noAttendance:true});
-  const system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:a.entitlements};
-  expect((await withTenant(system,tx=>tx.execute<{available:boolean}>(sql`select app.payroll_history_native_module() available`)))[0].available).toBe(false);
-  const [physical]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
-  const complete=async(ids:readonly string[]|null,as:SessionContext=system)=>withTenant(as,async tx=>(await tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,${ids===null?sql`null::uuid[]`:sql`ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`}) complete`))[0].complete);
-  expect(await complete([physical.id])).toBe(true);expect(await complete(null)).toBe(false);expect(await complete([])).toBe(false);expect(await complete([physical.id,physical.id])).toBe(false);expect(await complete([physical.id,randomUUID()])).toBe(false);expect(await complete([randomUUID()])).toBe(false);
-  expect((await withTenant(system,tx=>tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY[null::uuid]) complete`)))[0].complete).toBe(false);
-  expect((await withTenant(system,tx=>tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY(select gen_random_uuid() from generate_series(1,50001))) complete`)))[0].complete).toBe(false);
-  const foreign=await seedBase();await setModule(foreign.tenantId,'payroll','active');expect(await complete([physical.id],await entitledCtx(foreign))).toBe(false);expect(await complete([physical.id],{tenantId:b.tenantId,roles:[]})).toBe(false);expect(await complete([physical.id],{...a,grants:[]})).toBe(false);
-  await evaluateBatchAnomalies(system,{batchId});const verdict=(await liveVerdicts(batchId)).find(row=>row.employmentId===subject.employmentId);if(!verdict)throw Error('Expected the actual SYSTEM anomaly verdict');expect((await findingsOf(verdict.id)).some(row=>row.detectorId==='pay-without-attendance')).toBe(true);
-  const before=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));await evaluateBatchAnomalies(system,{batchId});expect((await liveVerdicts(batchId))).toHaveLength(1);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(before);
- });
- it('holds an actual overlaid SYSTEM source with a stale zero counter and preserves every prior verdict and finding',async()=>{
-  await seedPayrollCycleCatalog(a,b.companyId);const subject=await makeEmp('SystemOverlay',{employeeCode:'ANOM-HOLD'});await giveProfile(subject.personId);const batchId=await makeBatch();
-  await addPayslip(batchId,subject.employmentId,{totalDeductions:'799.65',netPay:'4200.35',employerCost:'5000.00'},{noAttendance:true});
-  await evaluateBatchAnomalies(a,{batchId});
-  const review=await previewPayrollHistoryUpload(a,{name:'fictional-anomaly-overlay.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),['ANOM-HOLD',PERIOD,'ME','BASIC',b.companyId,'6000.00']])),maintenance:{version:1,mode:'update_listed',reason:'Reviewed source for the anomaly custody fixture'}});expect(review.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(a,{attemptId:review.attemptId,previewHash:review.plan.previewHash,confirmReplacement:true});
-  await owner.db.update(schema.payrollBatch).set({employeeCount:0}).where(eq(schema.payrollBatch.id,batchId));
-  const system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:a.entitlements};
-  const [access]=await withTenant(system,tx=>tx.execute<{overridden:boolean;available:boolean}>(sql`select app.payroll_history_native_batch_override(${batchId}::uuid) overridden,app.payroll_history_native_module() available`));expect(access).toEqual({overridden:false,available:false});expect((await withTenant(system,tx=>tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY[]::uuid[]) complete`)))[0].complete).toBe(false);
-  const verdicts=await liveVerdicts(batchId);expect(verdicts).toHaveLength(1);const findings=await findingsOf(verdicts[0].id),money=await owner.db.select().from(schema.payslip);
-  await expect(evaluateBatchAnomalies(system,{batchId})).rejects.toBeInstanceOf(PayrollAnomalySourceUnavailableError);
-  expect(await liveVerdicts(batchId)).toEqual(verdicts);expect(await findingsOf(verdicts[0].id)).toEqual(findings);expect(await owner.db.select().from(schema.payslip)).toEqual(money);
- });
-});
-
-it('holds a partially overlaid SYSTEM source before its first verdict even when the stale counter matches the visible subset',async()=>{
- await seedPayrollCycleCatalog(a,b.companyId);const target=await makeEmp('PartialOverlayTarget',{employeeCode:'PARTIAL-TARGET'}),sibling=await makeEmp('PartialOverlaySibling');await giveProfile(target.personId);await giveProfile(sibling.personId);const batchId=await makeBatch();
- const coherent={totalDeductions:'799.65',netPay:'4200.35',employerCost:'5000.00'};
- await addPayslip(batchId,target.employmentId,coherent,{noAttendance:true});await addPayslip(batchId,sibling.employmentId,coherent,{noAttendance:true});
- const preview=await previewPayrollHistoryUpload(a,{name:'fictional-partial-overlay.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),['PARTIAL-TARGET',PERIOD,'ME','BASIC',b.companyId,'6000.00']])),maintenance:{version:1,mode:'update_listed',reason:'Reviewed one member only'}});expect(preview.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(a,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true});
- await owner.db.update(schema.payrollBatch).set({employeeCount:1}).where(eq(schema.payrollBatch.id,batchId));const system:SessionContext={tenantId:b.tenantId,roles:['hr_admin'],entitlements:a.entitlements};
- const visible=await withTenant(system,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip).where(eq(schema.payslip.batchId,batchId)));expect(visible).toHaveLength(1);expect(await liveVerdicts(batchId)).toEqual([]);
- const [proof]=await withTenant(system,tx=>tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY[${visible[0].id}::uuid]) complete`));expect(proof.complete).toBe(false);const before=await owner.db.select().from(schema.payslip);
- await expect(evaluateBatchAnomalies(system,{batchId})).rejects.toBeInstanceOf(PayrollAnomalySourceUnavailableError);expect(await liveVerdicts(batchId)).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toEqual(before);
- // A real staged batch never becomes a complete source, even if its creator forges the public selector.
- const staged=await previewPayrollHistoryUpload(a,{name:'fictional-pending-anomaly-source.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),['PARTIAL-TARGET',PERIOD,'ME','BASIC',b.companyId,'6100.00']])),maintenance:{version:1,mode:'update_listed',reason:'Pending source remains unavailable'}});
- const pending=await requestPayrollHistoryConfirm(a,{attemptId:staged.attemptId,previewHash:staged.plan.previewHash,confirmReplacement:true});if(!('jobId' in pending))throw Error('Expected the actual staged history job');
- const budget=process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
- try{
-  let stagedBatch:string|null=null;
-  for(let n=0;n<60;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [row]=await owner.client<{row_id:string}[]>`select row_id from app.payroll_history_staged_row where stage_id=${pending.jobId}::uuid and relation='payroll_batch' limit 1`;if(row){stagedBatch=row.row_id;break;}}
-  if(!stagedBatch)throw Error('Expected an actual unpublished history batch');
-  const [proof]=await withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.payroll_history_stage',${pending.jobId},true)`);return tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${stagedBatch}::uuid,ARRAY[]::uuid[]) complete`);});expect(proof.complete).toBe(false);
-  for(let n=0;n<60;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [job]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,pending.jobId));if(job.state==='completed')break;if(job.state==='failed')throw Error(job.error??'The staged fixture failed');}
-  expect((await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,pending.jobId)))[0].state).toBe('completed');
- }finally{if(budget===undefined)delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;else process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS=budget;}
-});
-
-it('reevaluates an independently proven changed or empty physical cohort without erasing its retired anomaly records',async()=>{
- const first=await makeEmp('OldCohortMember'),remaining=await makeEmp('RemainingCohortMember');await giveProfile(first.personId);await giveProfile(remaining.personId);const batchId=await makeBatch();
- await addPayslip(batchId,first.employmentId,{}, {noAttendance:true});await addPayslip(batchId,remaining.employmentId,{}, {noAttendance:true});await evaluateBatchAnomalies(a,{batchId});
- const prior=await liveVerdicts(batchId);expect(prior).toHaveLength(2);const old=prior.find(row=>row.employmentId===first.employmentId);if(!old)throw Error('Expected the actual original cohort verdict');const oldFindings=await findingsOf(old.id);
- // This is the real authorized native physical writer, with its tenant/principal/company/open-batch gates.
- await withTenant(a,tx=>tx.delete(nativePayrollPayslipWrite).where(and(eq(nativePayrollPayslipWrite.batchId,batchId),eq(nativePayrollPayslipWrite.employmentId,first.employmentId))));
- const changedMoney=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(changedMoney).toHaveLength(1);await evaluateBatchAnomalies(a,{batchId});expect((await liveVerdicts(batchId)).map(row=>row.employmentId)).toEqual([remaining.employmentId]);expect((await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,old.id)))[0].supersededAt).not.toBeNull();expect(await findingsOf(old.id)).toEqual(oldFindings);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(changedMoney);
- await withTenant(a,tx=>tx.delete(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId,batchId)));await evaluateBatchAnomalies(a,{batchId});expect(await liveVerdicts(batchId)).toEqual([]);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);expect(await findingsOf(old.id)).toEqual(oldFindings);
 });

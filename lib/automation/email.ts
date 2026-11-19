@@ -27,8 +27,6 @@ export type AutomationEmailTemplate = {
   /** Always copied, in addition to the step's own CC list. */
   cc: AutomationRecipient[];
   assets?:AutomationEmailAsset[];slots?:AutomationEmailSlot[];documentIds?:string[];
-  /** Additive rich editor content; the canonical template and revision remain unchanged. */
-  definition?: import('./probation-email-definition').ProbationEmailDefinition;
 };
 export const MAX_EMAIL_NAME = 200;
 export const MAX_EMAIL_SUBJECT = 500;

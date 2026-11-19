@@ -105,22 +105,3 @@ export function readPcbNonCash(value: unknown): PcbNonCashSnapshot | null {
   }
   return v;
 }
-
-/** Rebuild saved noncash snapshots from exact, ordered owned sources. No rates or taxability are inferred. */
-export function createNonCashOwnershipReplay(prefixComplete=true){
- let period='',complete=prefixComplete;const annual={bik:0,vola:0};let monthOpening={bik:0,vola:0,complete:prefixComplete};
- const entries=new Map<string,NonCashEntry>(),ea=new Map<string,NonCashEaEntry>();
- const key=(entry:{source:string;sourceId?:string;code:string})=>entry.source+':'+(entry.sourceId??entry.code);
- return (input:{period:string;cashNormal:number;owned:NonCashEntry[];ownedEa:NonCashEaEntry[];original:PcbNonCashSnapshot|null;completeSource:boolean}):PcbNonCashSnapshot=>{
-  if(input.period!==period){period=input.period;entries.clear();ea.clear();monthOpening={...annual,complete};}
-  const before=taxableNonCash([...entries.values()]),accumulated={...monthOpening};
-  for(const entry of input.ownedEa){if(ea.has(key(entry)))throw new NonCashBenefitConfigurationError(entry.code,'month_baseline_unavailable');ea.set(key(entry),entry);}
-  for(const entry of input.owned)entries.set(key(entry),entry);
-  const missing=input.original?.eaEntries.find(entry=>!ea.has(key(entry)));if(missing)throw new NonCashBenefitConfigurationError(missing.code,'month_baseline_unavailable');
-  const full=[...entries.values()],fullEa=[...ea.values()],owned=taxableNonCash(input.owned);
-  const snapshot:PcbNonCashSnapshot={version:1,current:totalNonCash(full),ownedCurrent:totalNonCash(input.owned),owned,cumulative:taxableNonCash(full),before,accumulated,cashNormal:input.cashNormal,entries:full,ownedEntries:input.owned,eaEntries:fullEa,ownedEaEntries:input.ownedEa};
-  if(!readPcbNonCash(snapshot))throw new NonCashBenefitConfigurationError(input.period,'month_baseline_unavailable');
-  annual.bik=round(annual.bik+owned.bik);annual.vola=round(annual.vola+owned.vola);complete=complete&&input.completeSource;
-  return snapshot;
- };
-}

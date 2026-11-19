@@ -62,7 +62,3 @@ export async function discardFormulaDraftAction(){
 export async function registerPersonnelFormulaFieldAction(input:{sourceKey:string;label:string;description:string;enabled:boolean}){
  return execute(async()=>{const result=await registerPayFormulaPersonnelField(await getSession(),{sourceKey:input.sourceKey,label:input.label,description:input.description,enabled:input.enabled});revalidatePath(PAGE,'layout');return result;});
 }
-
-export async function readFormulaCodeChoicesAction(input:{key:string;search?:string;offset?:number}){
- return execute(async()=>{const {payFormulaCodeChoices}=await import('@/packs/payroll/service');return payFormulaCodeChoices(await getSession(),{key:String(input.key),search:typeof input.search==='string'?input.search.slice(0,100):'',offset:Number(input.offset)||0});});
-}

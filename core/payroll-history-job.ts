@@ -88,9 +88,10 @@ export async function requestPayrollHistoryConfirm(ctx:SessionContext,input:Hist
 /** Web side of revert: authority and the attempt's state (a refusal records the failure and throws, as before). */
 export async function requestPayrollHistoryRevert(ctx:SessionContext,attemptId:string,previewHash:string):Promise<{jobId:string;existing:boolean}>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
- const {payrollHistoryMaintenanceRevertReceipt}=await import('./payroll-history-maintenance');const receipt=await payrollHistoryMaintenanceRevertReceipt(ctx,attemptId,previewHash);
- if(receipt){const input={attemptId:receipt.id,previewHash,confirmReplacement:true};const checked=await checkPayrollHistoryConfirm(ctx,input);return withTenant(ctx,tx=>admitTx(tx,ctx,{operation:'confirm',...input} satisfies ConfirmJobInput,checked.companyIds));}
- throw new PayrollHistoryRevisionError('The removal preview is unavailable or changed. Preview the current history again.');
+ const checked=await checkPayrollHistoryRevert(ctx,attemptId,previewHash);
+ return withTenant(ctx,async tx=>{
+  return admitTx(tx,ctx,{operation:'revert',attemptId,previewHash} satisfies RevertJobInput,checked.companyIds);
+ });
 }
 /** The creator's own job, for the screen's progress panel. */
 export async function payrollHistoryJobStatus(ctx:SessionContext,jobId:string):Promise<PayrollHistoryJobStatus|null>{
@@ -152,16 +153,14 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
   await joinPayrollHistoryStageTx(tx,stageOf(job));
  },
  async applyStepTx(tx,ctx,job,step,cache){
-  await tx.execute(sql`select app.payroll_history_stage_step(${job.id}::uuid,${step.seq}::integer)`);
   const plan=planOf(job)!;
   if(step.kind==='revert')return{result:{change:await stageHistoryRevertTx(tx,ctx,plan.attemptId,(step.payload as {target:StagedHistoryRevertTarget}).target)}};
   const confirm=plan as ConfirmPlan&CommonPlan;
   const {group}=step.payload as {group:number};
   if(step.kind==='batch'){const batchId=await stageHistoryBatchTx(tx,ctx,plan.attemptId,confirm.groups[group]);cache.set('batch:'+group,batchId);return{result:{batchId}};}
-  if(group===-1)return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,'',(step.payload as {row:HistoryRevisionRow}).row,confirm.input.previewHash)},counters:{written:1}};
   const batchId=(cache.get('batch:'+group) as string|undefined)??await stagedBatchTx(tx,job.id,group);
   cache.set('batch:'+group,batchId);
-  return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row,confirm.input.previewHash)},counters:{written:1}};
+  return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};
  },
  // Finalize clears the released stage's registry rows on the queue-owner connection (unit.ownerTx); the kind's
  // bulk_job_kind row declares finalize_owner to match (5055).

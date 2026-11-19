@@ -4,7 +4,7 @@ import {v9Configuration} from '@/packs/lifecycle/service';
 import {LifecycleTemplateSection} from '../lifecycle-configuration';
 import {FilterChips} from '../filter-chips';
 import {ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
-import {notFound,redirect} from 'next/navigation';
+import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
 import {automationFilter,automationPageAccess} from '../access';
@@ -15,7 +15,6 @@ import type {ContractTemplatesData} from './contract-templates';
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx,'templates');
  if(!access.any)notFound();
- if(query.module==='probation'&&access.probation)redirect('/lifecycle/v9?view=templates&module=probation'+(typeof query.company==='string'?'&company='+encodeURIComponent(query.company):''));
  const filter=automationFilter(query.module,access);
  let emails:ListedEmailTemplate[]=[],letters:LetterSection=null;
  let sharedRoutings:Awaited<ReturnType<typeof listAutomationRoutings>>|undefined;

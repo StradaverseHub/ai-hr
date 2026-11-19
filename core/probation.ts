@@ -1,4 +1,3 @@
-import {withAccessDisplayRead} from './access-configuration-lock';
 import type {ProbationOrganisationMapping} from '../lib/probation-organisation';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
@@ -103,8 +102,7 @@ export function probationIntakeCandidates(ctx:SessionContext,companyId:string){r
  const ids=await tx.execute<{id:string}>(sql`select id from employment e where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and not exists(select 1 from probation_case c where c.employment_id=e.id and c.tenant_id=e.tenant_id) order by employee_code,id limit 1000`);
  return Promise.all(ids.map(r=>sourceTx(tx,r.id)));
 });}
-/** Canonical owner admission, shared by the scheduled sweep and durable Personnel reconciliation. */
-export async function admitProbationPersonnelTx(tx:Tx,ctx:SessionContext,employmentId:string,reason:string){
+async function admitTx(tx:Tx,ctx:SessionContext,employmentId:string,reason:string){
  const source=await sourceTx(tx,employmentId),setup=await setupTx(tx,ctx,source.companyId,source.grade);
  if(!setup.settings||!setup.form||!setup.route)throw new ProbationError('invalid','Publish probation settings, form and routes before intake.');
  if(source.confirmationOn||source.resignationOn||source.terminatedOn||source.employmentType!=='full_time'||source.explicitNoProbation)return null;
@@ -122,7 +120,7 @@ export async function admitProbationPersonnelTx(tx:Tx,ctx:SessionContext,employm
  if(row?.id){const{emitProbationEventsSafelyTx}=await import('./probation-automation');await emitProbationEventsSafelyTx(tx,ctx,row.id,[{trigger:'caseOpened',occurrence:'',facts:{}}]);}
  return row.id;
 }
-export function admitProbation(ctx:SessionContext,input:{employmentId:string;reason:string}){return withProbationTenant(ctx,tx=>admitProbationPersonnelTx(tx,ctx,uuid(input.employmentId),input.reason));}
+export function admitProbation(ctx:SessionContext,input:{employmentId:string;reason:string}){return withProbationTenant(ctx,tx=>admitTx(tx,ctx,uuid(input.employmentId),input.reason));}
 async function rolesTx(tx:Tx,employmentId:string):Promise<ProbationRole[]>{
  const roles:ProbationRole[]=[];for(const role of ['employee','lm','hod','pbp','gbs']as const){const[row]=await tx.execute<{ok:boolean}>(sql`select app.probation_role(${employmentId}::uuid,${role}) as ok`);if(row?.ok)roles.push(role);}return roles;
 }
@@ -457,7 +455,7 @@ export async function sweepProbation(ctx:SessionContext,connection:import('./not
   // New admissions only: older employees require the reviewed cutover/offline intake path. An employment opens its case
   // when it exists (activated), including before its start date; nothing is issued until the start date (decision 6).
   const admissions=await connection.withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select e.id from employment e join assignment a on a.employment_id=e.id and a.tenant_id=e.tenant_id and a.valid_to is null and a.superseded_at is null where e.tenant_id=${ctx.tenantId}::uuid and e.company_id=${company.companyId}::uuid and a.employment_type='full_time' and e.voided_at is null and e.import_pending_attempt_id is null and coalesce(e.join_date,e.hired_on)>=${company.activationOn}::date and not exists(select 1 from probation_case c where c.tenant_id=e.tenant_id and c.employment_id=e.id) order by e.id limit 500`));
-  for(const e of admissions)try{await connection.withTenant(ctx,tx=>admitProbationPersonnelTx(tx,ctx,e.id,'Activated new starter intake'));processed++;}catch{failed++;}
+  for(const e of admissions)try{await connection.withTenant(ctx,tx=>admitTx(tx,ctx,e.id,'Activated new starter intake'));processed++;}catch{failed++;}
   // Did not join: the hire was voided, ended on or before its start date, or an exit was recorded before it started.
   const notJoined=await connection.withTenant(ctx,tx=>tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid and company_id=${company.companyId}::uuid and data->>'state' not in('withdrawn','confirmed','not_confirmed') and app.probation_owns_legacy(employment_id) and app.probation_did_not_join(id) order by id limit 500`));
   for(const c of notJoined)try{await connection.withTenant(ctx,tx=>tx.execute(sql`select app.probation_withdraw(${c.id}::uuid,'Did not join: the hire was withdrawn or ended before the start date')`));processed++;}catch{failed++;}
@@ -661,13 +659,13 @@ export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskIt
 export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
  if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
  const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
- return withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
+ return withProbationTenant(ctx,async tx=>{
   const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
   const data=row.data;
   if(!options.companyIds)return data;
   const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
   return {count:items.length,capped:data.capped,items};
- },{readOnlySnapshot:true}));
+ });
 }
 /** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
 const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;

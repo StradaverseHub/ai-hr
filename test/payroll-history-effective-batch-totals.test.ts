@@ -1,5 +1,5 @@
 /**
- * 5129/6661 — optimized payroll history totals match the current canonical payslip SELECT policy.
+ * 5129 — payroll history reads at production size, with every reader's visible result unchanged.
  *
  * One fictional tenant holds every history shape the effective rule distinguishes: imported months, a correction that
  * supersedes two payslips, an ordinary closed run adopted and corrected by an import, a revert to "no snapshot", an
@@ -31,7 +31,7 @@ let b:Base;
 const f={} as {
  companies:Record<'A'|'B'|'C',string>;cycles:Record<string,string>;emp:Record<string,string>;person:Record<string,string>;
  batch:Record<string,string>;slip:Record<string,string>;stage:string;released:string;foreignTenant:string;
- scopedUser:string;selfUser:string;originalSelfUser:string;receivingUser:string;
+ scopedUser:string;selfUser:string;
 };
 const statutory=(i:number,missingEis=false)=>({version:'2026.1',epfEmployee:500+i,epfEmployer:600+i,socsoEmployee:24.75,socsoEmployer:86.65,
  eisEmployee:9.9,...(missingEis?{}:{eisEmployer:9.9}),pcb:150.05+i,importedLines:[{code:'A010',name:'Meal allowance',amount:300}]});
@@ -41,7 +41,7 @@ async function seed(){
  b=await seedBase();await setModule(b.tenantId,'payroll','active');
  const T=b.tenantId;
  f.companies={A:b.companyId,B:id(),C:id()};f.cycles={};f.emp={};f.person={};f.batch={};f.slip={};
- f.stage=id();f.released=id();f.scopedUser=id();f.selfUser=id();f.originalSelfUser=id();f.receivingUser=id();
+ f.stage=id();f.released=id();f.scopedUser=id();f.selfUser=id();
  const [foreign]=await owner.client<{id:string}[]>`insert into tenant(workos_org_id,name) values(${'org_'+id()},'Other Group') returning id`;f.foreignTenant=foreign.id;
  await owner.client.begin(async tx=>{
   await tx`set local session_replication_role = replica`;
@@ -54,11 +54,9 @@ async function seed(){
     await tx`insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code) values(${f.emp[key]},${T},${f.person[key]},${f.companies[c]},'2020-01-01',${key+'-'+f.emp[key].slice(0,4)})`;
    }
   }
-  // Real database grants: A HR/self B1, self C2, A HR/self transferred A3, and receiving C HR/self B2.
-  await tx`insert into app_user(id,tenant_id,workos_user_id,person_id) values(${f.scopedUser},${T},${'user_'+id()},${f.person.B1}),(${f.selfUser},${T},${'user_'+id()},${f.person.C2}),
-   (${f.originalSelfUser},${T},${'user_'+id()},${f.person.A3}),(${f.receivingUser},${T},${'user_'+id()},${f.person.B2})`;
-  await tx`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${T},${f.scopedUser},${f.companies.A},'hr_admin'),(${T},${f.selfUser},null,'employee'),
-   (${T},${f.originalSelfUser},${f.companies.A},'hr_admin'),(${T},${f.receivingUser},${f.companies.C},'hr_admin')`;
+  // A company-A administrator who is also employee B1; a self-service employee C2.
+  await tx`insert into app_user(id,tenant_id,workos_user_id,person_id) values(${f.scopedUser},${T},${'user_'+id()},${f.person.B1}),(${f.selfUser},${T},${'user_'+id()},${f.person.C2})`;
+  await tx`insert into role_assignment(tenant_id,app_user_id,company_id,role) values(${T},${f.scopedUser},${f.companies.A},'hr_admin'),(${T},${f.selfUser},null,'employee')`;
   const attempt=async(key:string,companies:string[])=>{
    const content=Buffer.from('fictional history '+key);const hash=(await tx<{h:string}[]>`select encode(sha256(${content}),'hex') as h`)[0].h;
    const [row]=await tx<{id:string}[]>`insert into payroll_history_import_attempt(tenant_id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
@@ -143,8 +141,6 @@ async function rolledBack<T>(body:(tx:postgres.TransactionSql)=>Promise<T>):Prom
 const admin=():SessionContext=>adminCtx(b);
 const scoped=():SessionContext=>({...adminCtx(b),userId:f.scopedUser,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:f.companies.A}]});
 const self=():SessionContext=>({...adminCtx(b),userId:f.selfUser,roles:['employee'],grants:[{role:'employee',companyId:null}]});
-const originalSelf=():SessionContext=>({...adminCtx(b),userId:f.originalSelfUser,personId:f.person.A3,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:f.companies.A}]});
-const receiving=():SessionContext=>({...adminCtx(b),userId:f.receivingUser,personId:f.person.B2,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:f.companies.C}]});
 type Tx=Parameters<Parameters<typeof withTenant>[1]>[0];
 const inStage=<T,>(ctx:SessionContext,body:(tx:Tx)=>Promise<T>)=>withTenant(ctx,async tx=>{
  await tx.execute(sql`select set_config('app.payroll_history_stage',${f.stage},true)`);return body(tx);
@@ -165,55 +161,35 @@ beforeAll(async()=>{await resetDb();await seed();});
 afterAll(closeAll);
 
 describe('5129 payroll history effective reads',()=>{
- it('the set-wise owner preserves the legacy money rule while stage selectors require current capability',async()=>{
+ it('the set-wise effective owner answers as 5055 did for every id, session and stage',async()=>{
   const body=readFileSync('db/migrations/5055_payroll_history_staged_job.sql','utf8')
    .match(/CREATE OR REPLACE FUNCTION app\.payroll_history_effective\(subject uuid\)[\s\S]*?\n\$\$;/)![0]
    .replace('app.payroll_history_effective(subject uuid)','pg_temp.reference_effective_5055(subject uuid)');
   const sessions=[{tenant:b.tenantId,stage:''},{tenant:b.tenantId,stage:f.stage},{tenant:b.tenantId,stage:f.released},{tenant:f.foreignTenant,stage:''}];
   const results=await rolledBack(async tx=>{
    await tx.unsafe(body);
-   const out:{tenant:string;stage:string;n:number;bad:number;effective:number;bulk:(string|null)[];point:(string|null)[];duplicates:(string|null)[];pointDuplicates:(string|null)[]}[]=[];
+   const out:{tenant:string;stage:string;n:number;bad:number;effective:number}[]=[];
    for(const s of sessions){
     await tx`select set_config('app.tenant_id',${s.tenant},true),set_config('app.payroll_history_stage',${s.stage},true)`;
-    // Exercise the private set owner itself, once over the entire requested set. Comparing only
-    // the two scalar owners missed 5129's independently expanded raw stage-selector predicates.
-    const [row]=await tx<{n:number;bad:number;effective:number;bulk:(string|null)[];point:(string|null)[]}[]>`
-     with requested as materialized(select id from payslip union all select gen_random_uuid() from generate_series(1,5) union all select null::uuid),
-     bulk as materialized(select value.id from app.payroll_history_effective_ids(array(select id from requested)) value(id))
-     select count(*)::int as n,
-      count(*) filter(where app.payroll_history_effective(x.id) is distinct from pg_temp.reference_effective_5055(x.id))::int as bad,
-      count(*) filter(where app.payroll_history_effective(x.id))::int as effective,
-      (select coalesce(jsonb_agg(id order by id nulls last),'[]'::jsonb) from bulk) as bulk,
-      (select coalesce(jsonb_agg(id order by id nulls last),'[]'::jsonb) from requested where app.payroll_history_effective(id)) as point
-     from requested x`;
-    const [duplicates]=await tx<{duplicates:(string|null)[];pointDuplicates:(string|null)[]}[]>`
-     with requested as materialized(select unnest(array[${f.slip['C12024-01']}::uuid,${f.slip['C12024-01']}::uuid,
-      ${f.slip['C12024-01x']}::uuid,${f.slip['C12024-01x']}::uuid,null::uuid,null::uuid,${randomUUID()}::uuid]) id),
-     bulk as materialized(select value.id from app.payroll_history_effective_ids(array(select id from requested)) value(id))
-     select (select coalesce(jsonb_agg(id order by id nulls last),'[]'::jsonb) from bulk) as duplicates,
-      (select coalesce(jsonb_agg(id order by id nulls last),'[]'::jsonb) from requested where app.payroll_history_effective(id)) as "pointDuplicates"`;
-    out.push({...s,...row,...duplicates});
+    const [row]=await tx<{n:number;bad:number;effective:number}[]>`select count(*)::int as n,
+      count(*) filter (where app.payroll_history_effective(x.id) is distinct from pg_temp.reference_effective_5055(x.id))::int as bad,
+      count(*) filter (where app.payroll_history_effective(x.id))::int as effective
+     from (select id from payslip union all select gen_random_uuid() from generate_series(1,5) union all select null::uuid) x`;
+    out.push({...s,...row});
    }
    await tx`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.payroll_history_stage',${f.stage},true)`;
    const [own]=await tx<{first:boolean;staged:boolean}[]>`select app.payroll_history_effective(${f.slip['C12024-01']}::uuid) as first,app.payroll_history_effective(${f.slip['C12024-01x']}::uuid) as staged`;
    await tx`select set_config('app.payroll_history_stage','',true)`;
    const [ordinary]=await tx<{first:boolean;staged:boolean}[]>`select app.payroll_history_effective(${f.slip['C12024-01']}::uuid) as first,app.payroll_history_effective(${f.slip['C12024-01x']}::uuid) as staged`;
-   const [empty]=await tx<{nullArray:string[];emptyArray:string[]}[]>`select array(select value from app.payroll_history_effective_ids(null::uuid[]) value) as "nullArray",array(select value from app.payroll_history_effective_ids(array[]::uuid[]) value) as "emptyArray"`;
-   return {out,own,ordinary,empty};
+   return {out,own,ordinary};
   });
   expect(results.out).toHaveLength(4);
-  for(const row of results.out){
-   expect(row.bad,JSON.stringify(row)).toBe(0);expect(row.bulk,row.tenant+' '+row.stage).toEqual(row.point);
-   expect(row.duplicates,row.tenant+' duplicate/NULL members').toEqual(row.pointDuplicates);
-  }
-  expect(results.out[0].duplicates).toHaveLength(5);expect(results.out[1].duplicates).toHaveLength(5);
-  expect(results.out[3].duplicates).toHaveLength(7);expect(results.empty).toEqual({nullArray:[],emptyArray:[]});
+  for(const row of results.out)expect(row.bad,JSON.stringify(row)).toBe(0);
   // Independent expectations: 45 payslips (36 imported, 2 corrections, 4 ordinary, 2 adoptions, 1 staged), 5 random ids, one null.
   expect(results.out[0].n).toBe(51);
-  // A writable stage selector alone grants no visibility after6695; both sessions retain committed evidence.
-  // Genuine held-capability publication remains covered by payroll-history-stage-boundary.test.ts.
+  // Outside the stage C1's first payslip stays effective and the staged one is not; inside the stage it is the reverse.
   expect(results.ordinary).toEqual({first:true,staged:false});
-  expect(results.own).toEqual({first:true,staged:false});
+  expect(results.own).toEqual({first:false,staged:true});
   // Another tenant's session treats none of these snapshots as its own: every id is effective there.
   expect(results.out[3].effective).toBe(51);
  });
@@ -227,7 +203,6 @@ describe('5129 payroll history effective reads',()=>{
   }
   const stage=await inStage(admin(),bothReads);
   expect(stage.view).toEqual(stage.reference);
-  expect(stage.view).toEqual((await withTenant(admin(),bothReads)).view);
   // Independent expectations per reader.
   const a=(await withTenant(admin(),bothReads)).view,s=(await withTenant(scoped(),bothReads)).view,e=(await withTenant(self(),bothReads)).view;
   expect(countOf(a,'A2024-01')).toBe(4);
@@ -237,7 +212,7 @@ describe('5129 payroll history effective reads',()=>{
   expect(countOf(a,'C2024-01x')).toBeUndefined();        // and so is its batch
   expect(countOf(a,'C2024-03')).toBe(3);                 // C4 reverted to no snapshot
   expect(countOf(a,'B2024-04')).toBe(2);                 // adopted ordinary run: B3, B4 remain
-  expect(countOf(s,'A2024-01')).toBe(4);                 // 6661: original employer A retains A3's history after its transfer to C
+  expect(countOf(s,'A2024-01')).toBe(3);                 // A3 now belongs to company C, which this administrator does not run
   expect(countOf(s,'B2024-01')).toBe(1);                 // their own B1 payslip only
   const [own]=await owner.client<{gross:string}[]>`select gross_pay::text as gross from payslip where id=${f.slip['B12024-01']}`;
   expect(grossOf(s,'B2024-01')).toBe(Number(own.gross));
@@ -245,31 +220,8 @@ describe('5129 payroll history effective reads',()=>{
   expect(s.some(row=>row.id===f.batch['C2024-01'])).toBe(false);
   expect(e.map(row=>row.employee_count)).toEqual(e.map(()=>1));
   expect(e.length).toBe(3);                              // C2's three imported months
-  expect(stage.view).toEqual(a);
-  expect(countOf(stage.view,'C2024-01')).toBe(4);
-  expect(countOf(stage.view,'C2024-01x')).toBeUndefined();
- });
-
- it('counts original-employer administration overlapping self exactly once and preserves actual current-company and unrelated-scope RLS',async()=>{
-  // A3 moved to C, but this actual account is still A's HR administrator AND the person on A3's historical slips.
-  // A naive addition of the original-employer arm without excluding it from S would count A3 twice.
-  const overlap=await withTenant(originalSelf(),bothReads);expect(overlap.view).toEqual(overlap.reference);expect(countOf(overlap.view,'A2024-01')).toBe(4);
-  const readBatch=(ctx:SessionContext,batchId:string)=>withTenant(ctx,async tx=>{
-   const [row]=await tx.execute<{admin:string;visible:string;reference:string;rows:number;original:boolean}>(sql`select app.payroll_tax_basis_original_employer_read(${batchId}::uuid) as original,app.payroll_history_batch_admin_totals(${batchId}::uuid)::text as admin,app.payroll_history_batch_visible_totals(${batchId}::uuid)::text as visible,app.payroll_history_batch_totals(${batchId}::uuid)::text as reference,(select count(*)::int from payslip where batch_id=${batchId}::uuid) as rows`);return row;
-  });
-  const a=await readBatch(originalSelf(),f.batch['A2024-01']);expect(a.original).toBe(true);expect(a.rows).toBe(4);expect(a.visible).toBe(a.reference);expect(a.admin).toBe(a.reference);expect(JSON.parse(a.visible).employeeCount).toBe(4);
-  // Existing current-employment policy still permits C's HR to read A3 alone; do not invent a new denial or expose A1/A2/A4.
-  const current=await readBatch(receiving(),f.batch['A2024-01']);expect(current.original).toBe(false);expect(current.rows).toBe(1);expect(current.visible).toBe(current.reference);expect(current.admin).toBe(current.reference);expect(JSON.parse(current.visible).employeeCount).toBe(1);
-  const receivingView=await withTenant(receiving(),bothReads);expect(receivingView.view).toEqual(receivingView.reference);expect(countOf(receivingView.view,'A2024-01')).toBe(1); // Batch visibility through A3 does not reveal A1/A2/A4.
-  // The original-employer/self account has neither administration nor a self payslip in a C batch.
-  const unrelated=await readBatch(originalSelf(),f.batch['C2024-01']);expect(unrelated.rows).toBe(0);expect(unrelated.visible).toBe(unrelated.reference);expect(JSON.parse(unrelated.visible)).toMatchObject({employeeCount:0,gross:0,net:0});
-  const foreign=await readBatch({...originalSelf(),tenantId:f.foreignTenant},f.batch['A2024-01']);expect(foreign.rows).toBe(0);expect(foreign.visible).toBe(foreign.reference);expect(JSON.parse(foreign.visible).employeeCount).toBe(0);
-  // Existing role-based SYSTEM reads retain their current-company arm; the new original-employer arm still requires a principal.
-  const system=await readBatch({...admin(),userId:undefined},f.batch['A2024-01']);expect(system.original).toBe(false);expect(system.visible).toBe(system.reference);expect(JSON.parse(system.visible).employeeCount).toBe(4);
- });
-
- it('keeps the optimized administration reader gated by the correction-aware reader flag',async()=>{
-  const result=await withTenant(originalSelf(),async tx=>{await tx.execute(sql`select set_config('app.payroll_tax_basis_reader','0',true)`);const [row]=await tx.execute<{totals:unknown}>(sql`select app.payroll_history_batch_admin_totals(${f.batch['A2024-01']}::uuid) as totals`);return row;});expect(result.totals).toBeNull();
+  expect(countOf(stage.view,'C2024-01')).toBe(3);
+  expect(countOf(stage.view,'C2024-01x')).toBe(1);
  });
 
  it('computes each history batch once and runs no payslip policy function per payslip',async()=>{

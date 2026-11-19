@@ -74,7 +74,6 @@ export type AutomationStepOutcome =
   | {status: 'done'; message?: string; recipients?: string[]; unresolved?: AutomationUnresolvedRecipient[]}
   | {status: 'skipped'; reason: string}
   | {status: 'wait'; documentId: string; message?: string; retryStep?:true}
-  | {status:'hold';resourceId:string;message:string}
   | {status: 'failed'; reason: string};
 export type AutomationStepExecutor = (context: AutomationStepContext) => Promise<AutomationStepOutcome>;
 /**
@@ -198,10 +197,6 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
     const outcome = await executor({run, step, index, read: deps.read});
     if (outcome.status === 'failed') return fail(run, deps, next, outcome.reason);
     if (outcome.status === 'skipped') { append(run, {...entry, kind: 'stepSkipped', message: `Skipped: ${outcome.reason}`}); continue; }
-    if(outcome.status==='hold'){
-      run.status='waiting';run.waitingFor=outcome.resourceId;run.remaining=[next,...run.remaining];
-      append(run,{...entry,kind:'waiting',message:outcome.message});return run;
-    }
     if (outcome.status === 'wait') {
       run.status = 'waiting'; run.waitingFor = outcome.documentId;
       // Some effects must retry the same frozen step after their prerequisite becomes ready.
@@ -221,7 +216,7 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
 export async function resumeAutomationRun(run: AutomationRun, documentId: string, deps: AutomationRunDeps): Promise<AutomationRun> {
   if (run.status !== 'waiting' || run.waitingFor !== documentId) return run;
   const resumed: AutomationRun = {...structuredClone(run), status: 'running', waitingFor: null};
-  append(resumed, {at: deps.now(), kind: 'resumed', step: null, stepId: null, type: null, message:run.remaining[0]?.step.type==='sendEmail'?'Email requirements were checked; the held step continues.':'The document was released; the remaining steps continue.'});
+  append(resumed, {at: deps.now(), kind: 'resumed', step: null, stepId: null, type: null, message: 'The document was released; the remaining steps continue.'});
   return advanceAutomationRun(resumed, deps);
 }
 

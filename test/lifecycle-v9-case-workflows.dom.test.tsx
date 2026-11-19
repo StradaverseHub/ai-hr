@@ -63,15 +63,3 @@ it('permits pending per-person editing and self-tests without offering a live st
 
 function withMessages(node:ReactElement){return <NextIntlClientProvider locale="en" messages={messages}>{node}</NextIntlClientProvider>;}
 function render(node:ReactElement){const view=renderUI(withMessages(node));return {...view,rerender:(next:ReactElement)=>view.rerender(withMessages(next))};}
-
-it('shows a late held email with explicit Send anyway and Skip controls and the current Personnel manager',()=>{
- const {c,config,workflow}=fixture(),command=vi.fn().mockResolvedValue({ok:true});
- c.runs=[{id:'late-run',workflowId:workflow.id,revision:1,date:'2020-01-01',status:'waiting',cursor:0,reason:'Held',at:'',definition:structuredClone(workflow),hold:{stepId:'notify',at:'',missing:[{role:'supervisor',label:'Line manager',reason:'no supervisor on the Personnel record'}]}}];
- c.supervisorDelivery={name:'Fictional Manager',problem:null};
- render(<CaseWorkflows c={c} config={config} busy={false} command={command}/>);
- expect(screen.getByText('This email is late')).toBeVisible();expect(screen.getByText(/Scheduled for/)).toHaveTextContent('01/01/2020');
- expect(screen.getByText('Line manager found')).toBeVisible();expect(screen.getByText(/A login account is not needed/)).toBeVisible();
- expect(screen.queryByRole('button',{name:'Continue Fictional manual workflow'})).not.toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:'Send anyway'}));expect(command).toHaveBeenLastCalledWith({type:'lateEmail',workflowId:'manual',runId:'late-run',stepId:'notify',decision:'send'});
- fireEvent.click(screen.getByRole('button',{name:'Skip this email'}));expect(command).toHaveBeenLastCalledWith({type:'lateEmail',workflowId:'manual',runId:'late-run',stepId:'notify',decision:'skip'});
-});

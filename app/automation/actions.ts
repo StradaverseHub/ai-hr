@@ -5,7 +5,7 @@ import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {
   AutomationError,automationBuilderAccess,automationPeopleNames,conditionFieldsForTrigger,dryRunAutomationWorkflow,
   installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
-  automationEmailTemplateHistory,saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
+  saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   saveAutomationDocumentTemplate,automationDocumentVersions,
   saveAutomationAssignmentGroups,
   testAutomationEmail,
@@ -190,6 +190,3 @@ export async function documentTemplateAction(input:{id:string;expectedRevision:n
 export async function checkContractRoutingAction(routing:Routing,caseId:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingCheck(await requireScopedLifecycleModule(),routing,caseId);});}
 
 export async function searchContractRoutingCasesAction(search:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingPreviewCases(await requireScopedLifecycleModule(),search);});}
-export async function readEmailTemplateHistoryAction(templateId:string){
- return execute(async()=>automationEmailTemplateHistory(await requireScopedLifecycleModule(),templateId));
-}

@@ -1,8 +1,8 @@
 /** Historical display resolution: a stored null is meaningful and must not fall back to corrected master data. */
 import {sql,getTableColumns,type SQL} from 'drizzle-orm';
 import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} from '../db/schema';
-export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL,sourcePayslipId:SQL=sql`${payslip.id}`){
- return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${sourcePayslipId}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${sourcePayslipId}) else ${fallback}::text end`;
+export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
+ return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
 }
 /** Board 4604dccc r4 (ADR 2026-11-15 dated information corrections, revision 4) — the LATEST SAVED correction of a
  * field controls it from its Effective Date onward. The correction in force on `asOf` is the latest saved one (by

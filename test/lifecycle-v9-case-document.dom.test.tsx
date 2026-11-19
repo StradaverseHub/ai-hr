@@ -1,8 +1,5 @@
-import type {ReactElement} from 'react';
-import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
 import { expect, it, vi } from 'vitest';
-import { fireEvent, render as testingRender, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { CaseDocument } from '../app/lifecycle/v9/case-document';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import type { Document } from '../lib/lifecycle-v9-model';
@@ -55,5 +52,3 @@ it('limits the shared permitted signer list to the actual module candidates',()=
  render(<CaseDocument c={{state:'submitted',facts:{company:'company'} as never}} document={doc} config={config} eligibleSignatoryIds={[actor.id]} users={[actor,{id:'other-module',name:'Other module HR'}]} actor={actor} busy={false} command={vi.fn()}/>);
  expect(screen.queryByRole('option',{name:'Other module HR'})).not.toBeInTheDocument();expect(screen.getByRole('option',{name:'HR Reviewer (company default)'})).toBeInTheDocument();
 });
-
-function render(ui:ReactElement){return testingRender(ui,{wrapper:({children})=><NextIntlClientProvider locale="en" messages={messages}>{children}</NextIntlClientProvider>});}

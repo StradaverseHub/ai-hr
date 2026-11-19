@@ -55,12 +55,9 @@ it('serializes no library list values when Personnel field permission is denied'
 });
 it('serializes no list values for disabled sources, including the otherwise available Company field',async()=>{
  await owner.withTenant(ctx,tx=>tx.insert(schema.department).values({tenantId:base.tenantId,companyId:base.companyId,name:'DISABLED_LIST_SENTINEL',isGlobal:true}));
- // Internal IDs and business codes are separately registered typed sources. Disable both
- // representations before asserting that this catalogue is absent everywhere in the library.
- const disabled=['companyId','departmentId','departmentBusinessCode','businessUnitId','businessUnitCode','positionId','positionBusinessCode'];
- for(const sourceKey of disabled)await registerPayFormulaPersonnelField(ctx,{sourceKey,label:'Disabled '+sourceKey,description:'An unavailable source must not retain serialized choices',enabled:false});
+ for(const sourceKey of ['companyId','departmentId','businessUnitId','positionId'])await registerPayFormulaPersonnelField(ctx,{sourceKey,label:'Disabled '+sourceKey,description:'An unavailable source must not retain serialized choices',enabled:false});
  const options=await payFormulaOptions(ctx);
- for(const key of disabled)expect(options.personnelFields.find(field=>field.key===key)).toMatchObject({enabled:false,unavailableReason:'disabled',listValues:[]});
+ for(const key of ['companyId','departmentId','businessUnitId','positionId'])expect(options.personnelFields.find(field=>field.key===key)).toMatchObject({enabled:false,unavailableReason:'disabled',listValues:[]});
  expect(options.personnelFields.every(field=>field.enabled||!field.listValues.length)).toBe(true);expect(JSON.stringify(options.personnelFields)).not.toContain('DISABLED_LIST_SENTINEL');
 });
 it('uses saved per-code Criteria rather than creation-company or legacy-sharing flags and keeps genuine Global labels available',async()=>{

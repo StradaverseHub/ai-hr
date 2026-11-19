@@ -32,7 +32,6 @@ export function TrackerFilterPanel({options,filters}:{options:ProbationTrackerOp
  const field=(key:string)=>({input:id+'-'+key,hint:id+'-'+key+'-hint'});
  const hint=(key:string)=><span className="pct-h" id={field(key).hint}>{t('tracker.hints.'+key)}</span>;
  return <form className="pct-card pct-filters" method="get">
-  {filters.companyId&&<input type="hidden" name="companyId" value={filters.companyId}/>}
   {filters.flag&&<input type="hidden" name="flag" value={filters.flag}/>}
   {!showClosed&&<input type="hidden" name="hideClosed" value="1"/>}
   <div className="pct-filter-grid">

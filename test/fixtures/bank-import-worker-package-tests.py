@@ -4,9 +4,6 @@ sys.dont_write_bytecode=True
 import importlib.util
 from pathlib import Path
 import tempfile
-import os
-import threading
-from unittest.mock import patch
 import unittest
 import warnings
 import zipfile
@@ -43,45 +40,6 @@ class WorkerPackageTests(unittest.TestCase):
         self.assertEqual(actual,self.manifest)
         for path,data in self.payload.items(): self.assertEqual((target/path).read_bytes(),data)
         self.assertEqual((target/'node_modules/tsx/package.json').read_bytes(),self.payload['node_modules/.pnpm/tsx/node_modules/tsx/package.json'])
-    def test_bounds_parallel_writes_and_fsyncs_every_file_before_links(self):
-        packet=self.packet();target=self.root/'out';target.mkdir()
-        real_fsync=os.fsync;barrier=threading.Barrier(4);lock=threading.Lock()
-        active=0;peak=0;calls=0;durable=[]
-        def synced(fd):
-            nonlocal active,peak,calls
-            with lock:
-                active+=1;peak=max(peak,active);calls+=1;index=calls
-            try:
-                if index<=4:barrier.wait(timeout=10)
-                self.assertFalse((target/'node_modules/tsx').is_symlink())
-                real_fsync(fd)
-                with lock:durable.append(os.fstat(fd).st_ino)
-            finally:
-                with lock:active-=1
-        with patch.object(fmt.os,'fsync',side_effect=synced):
-            fmt.extract_archive(packet,target,SOURCE)
-        self.assertEqual(peak,4)
-        self.assertEqual(calls,len(self.payload))
-        self.assertEqual(set(durable),{(target/name).stat().st_ino for name in self.payload})
-        self.assertEqual(len(durable),len(set(durable)))
-        self.assertTrue((target/'node_modules/tsx').is_symlink())
-        for name,data in self.payload.items():self.assertEqual((target/name).read_bytes(),data)
-    def test_propagates_fsync_failure_without_publishing_links(self):
-        packet=self.packet();target=self.root/'out';target.mkdir()
-        with patch.object(fmt.os,'fsync',side_effect=OSError('durability failed')):
-            with self.assertRaisesRegex(OSError,'durability failed'):
-                fmt.extract_archive(packet,target,SOURCE)
-        self.assertFalse((target/'node_modules/tsx').is_symlink())
-        self.assertEqual(set(target.rglob('*'))&{target/name for name in self.payload},
-                         {target/name for name in sorted(self.payload)[:4]})
-    def test_parallel_creation_preserves_a_file_inserted_after_empty_check(self):
-        packet=self.packet();target=self.root/'out';target.mkdir();original=fmt.inspect_archive
-        def inspected(*args):
-            manifest=original(*args);(target/'package.json').write_bytes(b'preserve');return manifest
-        with patch.object(fmt,'inspect_archive',side_effect=inspected):
-            with self.assertRaises(FileExistsError):fmt.extract_archive(packet,target,SOURCE)
-        self.assertEqual((target/'package.json').read_bytes(),b'preserve')
-        self.assertFalse((target/'node_modules/tsx').is_symlink())
     def test_refuses_missing_localization_runtime_inputs(self):
         for path in ['i18n/config.ts','localization/registry.ts']:
             manifest=self.changed(lambda m:m.update(entries=[r for r in m['entries'] if r['path']!=path]))

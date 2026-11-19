@@ -21,7 +21,6 @@ export type RoutedStepChooser = {
   choose: (candidates: readonly string[], rule: DocumentRoutingPick, groupId: string | null) => string | null;
   /** Why the last choice found nobody (V9's reason), or null. */
   problem: () => string | null;
-  available:(userId:string)=>boolean;
 };
 export function routedStepChooser(facts: RoutedAssignmentFacts): RoutedStepChooser {
   const users = new Map(facts.users.map(user => [user.id, user])), extra: Record<string, number> = {};
@@ -42,6 +41,5 @@ export function routedStepChooser(facts: RoutedAssignmentFacts): RoutedStepChoos
       return result.userId;
     },
     problem: () => problem,
-    available:userId=>users.has(userId)&&!users.get(userId)?.onLeave,
   };
 }

@@ -19,7 +19,6 @@ export type Refs = { routings: (NamedOption & { retired?: boolean })[]; groups: 
 
 /** HR Automation › Templates (prototype TemplatesPage and EmailDrawer; mockup 14). Document signing routing stays in the letter editor. */
 export function TemplatesWorkspace({filter,access,emails,letters,refs,contract,lifecycleSection,contractSection,initialContractTarget}:{filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs;contract?:ContractTemplatesData;lifecycleSection?:ReactNode;contractSection?:ReactNode;initialContractTarget?:ContractTemplateEditorTarget}){
- const b=useTranslations('probationEmailBuilder.ui');
  const t=useTranslations('automation'),[editing,setEditing]=useState<ListedEmailTemplate|null>(null);
  const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!lifecycleSection||m==='contract_staff')&&(!(contract||contractSection)||m!=='contract_staff'));
  const published=new Set(letters?.templates.filter(l=>l.state==='published').map(l=>l.outcome)??[]);
@@ -49,7 +48,19 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs,contract,l
        <Link className="v9-button" aria-label={t('templates.editLetter',{name:l.name})} href={`/lifecycle/probation/templates?company=${letters.company.id}`}>{t('workflows.edit')}</Link></div></li>)}</ul>
     </>}
    </section>
-   <section className="pcg-card" aria-label={t('templates.emails')}><h2>{t('templates.emails')}</h2><p className="pcg-sub">{b('moved')}</p><Link className="v9-button" href={'/lifecycle/v9?view=templates&module=probation'+(letters?'&company='+encodeURIComponent(letters.company.id):'')}>{b('openEmails')}</Link></section>
+   <section className="pcg-card" aria-label={t('templates.emails')}>
+    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div><h2>{t('templates.emails')}</h2><p className="pcg-sub">{t('templates.emailsIntro')}</p></div>
+     <button type="button" className="v9-button v9-button-primary" onClick={()=>setEditing({template:{id:crypto.randomUUID(),module:'probation',name:t('templates.newName'),active:true,subject:'',body:'',cc:[]},revision:0,retired:false})}>{t('templates.newEmail')}</button></div>
+    {emails.length===0&&<p className="v9-muted">{t('templates.noEmails')}</p>}
+    <ul className="pcg-tl">{emails.map(item=><li key={item.template.id} className="pcg-tl-row">
+     <div><h3>{item.template.name}</h3><p>{t('modules.probation')} · {item.template.subject}</p></div>
+     <div className="pcg-tl-pills">
+      <span className="pcg-kp">{t('modules.probation')}</span>
+      {item.retired?<span className="pcg-kp">{t('status.retired')}</span>:!item.template.active&&<span className="pcg-kp pcg-kp-warn">{t('templates.turnedOff')}</span>}
+      <button type="button" className="v9-button" aria-label={t('templates.editNamed',{name:item.template.name})} onClick={()=>setEditing(item)}>{item.retired?t('workflows.view'):t('workflows.edit')}</button>
+     </div></li>)}</ul>
+   </section>
+   {editing&&<EmailEditor key={editing.template.id} initial={editing} refs={refs} onClose={()=>setEditing(null)}/>}
   </>}
   {contract&&(filter==='all'||filter==='contract_staff')&&<ContractTemplates key={initialContractTarget?initialContractTarget.kind+':'+initialContractTarget.id:'list'} data={contract} initialTarget={initialContractTarget}/>}
   {lifecycleSection}

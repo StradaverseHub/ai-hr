@@ -3,13 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Config, ConfigSaveReceipt } from '@/lib/lifecycle-v9-model';
 type Receipt = ConfigSaveReceipt;
 type Result = { ok: true; result: Receipt } | { ok: false; error: string };
-export type V9ConfigurationState = 'saved' | 'pending' | 'saving' | 'error';
+type State = 'saved' | 'pending' | 'saving' | 'error';
 /** Serialize settings writes while retaining edits made during an outstanding request. */
 export function useV9Configuration(initial: Config | null, save: (revision: number, value: Config) => Promise<Result>, refreshed: () => void, delay = 500) {
-  const [draft, setDraft] = useState(initial), [state, setState] = useState<V9ConfigurationState>('saved'), [error, setError] = useState('');
+  const [draft, setDraft] = useState(initial), [state, setState] = useState<State>('saved'), [error, setError] = useState('');
   const latest = useRef(initial), generation = useRef(0), savedGeneration = useRef(0), active = useRef(true), inFlight = useRef(false), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const awaitingSave = useRef<Array<(saved: boolean) => void>>([]);
-  const settle = (saved: boolean) => { if (!saved && timer.current) { clearTimeout(timer.current); timer.current = null; } for (const resolve of awaitingSave.current.splice(0)) resolve(saved); };
   const baselineGroups = useRef(structuredClone(initial?.groups ?? []));
   const revision = useRef(initial?.revision ?? 0), groupsRevision = useRef(initial?.groupsRevision ?? 0), saveRef = useRef(save), refreshedRef = useRef(refreshed), runRef = useRef<() => Promise<void>>(async () => {});
   saveRef.current = save; refreshedRef.current = refreshed;
@@ -22,7 +20,7 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
     try {
       const result = await saveRef.current(expected, value);
       if (!active.current) return;
-      if (!result.ok) { setError(result.error); setState('error'); settle(false); return; }
+      if (!result.ok) { setError(result.error); setState('error'); return; }
       revision.current = result.result.revision; groupsRevision.current = result.result.groupsRevision; savedGeneration.current = sentGeneration;
       baselineGroups.current = structuredClone(value.groups);
       const next = structuredClone(latest.current!);
@@ -33,11 +31,11 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
       latest.current = { ...next, revision: revision.current, groupsRevision: groupsRevision.current };
       setDraft(latest.current);
       if (generation.current !== sentGeneration) { setState('pending'); schedule(); }
-      else { setState('saved'); settle(true); refreshedRef.current(); }
-    } catch { if (active.current) { setError('Changes could not be saved. Your edits are still here. Try again.'); setState('error'); settle(false); } }
-    finally { inFlight.current = false; if (active.current && awaitingSave.current.length && generation.current !== savedGeneration.current) void runRef.current(); }
+      else { setState('saved'); refreshedRef.current(); }
+    } catch { if (active.current) { setError('Changes could not be saved. Your edits are still here. Try again.'); setState('error'); } }
+    finally { inFlight.current = false; }
   };
-  useEffect(() => { active.current = true; return () => { active.current = false; settle(false); if (timer.current) clearTimeout(timer.current); }; }, []);
+  useEffect(() => { active.current = true; return () => { active.current = false; if (timer.current) clearTimeout(timer.current); }; }, []);
   useEffect(() => {
     // Groups have their own canonical writer. Refresh that read-only reference without
     // replacing pending workflow/template edits, but never overwrite an intended group edit.
@@ -53,12 +51,5 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
     const next = structuredClone(latest.current); change(next); latest.current = next; generation.current++; setDraft(next); setState(inFlight.current ? 'saving' : 'pending'); setError(''); schedule();
   }
   function retry() { if (timer.current) { clearTimeout(timer.current); timer.current = null; } void runRef.current(); }
-  /** Resolve only once every edit visible when the action runs is acknowledged. A rejection never sends an older definition. */
-  function flush(): Promise<boolean> {
-    if (!active.current || !latest.current) return Promise.resolve(false);
-    if (!inFlight.current && generation.current === savedGeneration.current) return Promise.resolve(true);
-    const result = new Promise<boolean>(resolve => awaitingSave.current.push(resolve));
-    retry(); return result;
-  }
-  return { draft, edit, state, error, retry, flush };
+  return { draft, edit, state, error, retry };
 }

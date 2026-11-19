@@ -214,7 +214,7 @@ export const withRecruitmentTenant = withModuleTenant('recruitment');
 
 /** Admission for additive Lifecycle modules whose native owners check each target company.
  * This does not grant company scope and leaves the legacy onb/off gate unchanged. */
-export async function withScopedLifecycleTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>,options?:Parameters<typeof withTenant>[2]):Promise<T>{
+export async function withScopedLifecycleTenant<T>(ctx:SessionContext,fn:(tx:Tx)=>Promise<T>):Promise<T>{
  if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(companyId=>isModuleEnabled(ctx,'lifecycle',companyId)))assertModuleEnabled(ctx,'lifecycle');
- return withTenant(ctx,fn,options);
+ return withTenant(ctx,fn);
 }

@@ -1,7 +1,5 @@
 """Closed worker byte format. No credentials, subprocesses, source execution or release authority."""
 import hashlib
-from concurrent.futures import ThreadPoolExecutor
-from itertools import islice
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -106,8 +104,8 @@ def extract_archive(path, destination, source, lock_hash=None, package_hash=None
     with zipfile.ZipFile(path) as archive:
         for name,row in entries.items():
             if row['type']=='directory': (destination/name).mkdir(mode=0o755,parents=True,exist_ok=True)
-        def extract_file(item):
-            name,row=item
+        for name,row in entries.items():
+            if row['type']!='file': continue
             output=destination/name;h=hashlib.sha256();count=0
             fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,row['mode'])
             with os.fdopen(fd,'wb') as target, archive.open('payload/'+name) as incoming:
@@ -117,16 +115,6 @@ def extract_archive(path, destination, source, lock_hash=None, package_hash=None
                     count+=len(block);require(count<=row['size'],'decompressed file exceeds bound');target.write(block);h.update(block)
                 target.flush();os.fsync(target.fileno())
             require(count==row['size'] and h.hexdigest()==row['sha256'],'file bytes differ')
-        # Small staging disks spend substantial time waiting for each file's fsync.
-        # Overlap at most four complete writes; every file still has its own bounded
-        # read, digest, exclusive no-follow creation and fsync. Queue only one batch
-        # so a failure drains its in-flight writes before returning, without starting
-        # another batch or publishing links. ZipFile serializes its shared reader.
-        files=((name,row) for name,row in entries.items() if row['type']=='file')
-        with ThreadPoolExecutor(max_workers=4,thread_name_prefix='worker-extract') as pool:
-            while batch:=list(islice(files,4)):
-                pending=[pool.submit(extract_file,item) for item in batch]
-                for future in pending:future.result()
         for name,row in entries.items():
             if row['type']=='symlink': os.symlink(row['target'],destination/name)
     for name,row in entries.items():

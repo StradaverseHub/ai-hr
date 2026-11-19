@@ -119,7 +119,3 @@
  .probation .pct-chk{margin-inline-start:0}
  .pct-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
-
-.pct-reconciliation{margin-block:16px}.pct-reconciliation summary{cursor:pointer;font-weight:600}.pct-reconciliation summary:focus-visible{outline:2px solid currentColor;outline-offset:4px}.pct-reconciliation ul{margin:0;padding-inline-start:18px}.pct-reconciliation .pct-tw{margin-block:12px}.pct-reconciliation .pct-row{flex-wrap:wrap}
-
-.pct-reconciliation summary,.pct-reconciliation>.pct-warn{background:var(--pct-warn-soft);border:1px solid var(--pct-warn-line);border-radius:12px;padding:14px 18px}.probation .pct-reconciliation .pct-table{min-width:800px}.probation .pct-reconciliation .pct-link{white-space:normal}.pct-reconciliation>.pct-muted{margin-block:8px}@media(max-width:640px){.probation .pct-reconciliation .pct-table{min-width:0}}

@@ -1,13 +1,10 @@
 'use client';
-import {RoutedDocumentSummary} from '@/app/me/document-signing/summary';
 import { ActionButton } from '@/components/ui/action-button';
 import { v9CompanySigners } from '@/lib/lifecycle-v9-signatories';
 import type { Config } from '@/lib/lifecycle-v9-model';
 import { useEffect, useRef, useState } from 'react';
-import {useTranslations} from 'next-intl';
 import { DocumentTextEditor } from './document-text-editor';
-import {PersonnelCompletionDocumentBody,PersonnelCompletionPanel} from '@/components/lifecycle-v9/personnel-completion';
-import {effectivePersonnelCompletion,personnelCompletionIssues,personnelCompletionLocked} from '@/lib/lifecycle-v9-personnel-completion';
+import { DocumentBody } from '@/components/lifecycle-v9/document-body';
 import { SignatureInput } from '@/components/lifecycle-v9/signature-input';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import { documentDeliveryReserved, documentFinal, missingDocumentPersonnelValues, type Actor, type Case, type Document, type Template } from '@/lib/lifecycle-v9-model';
@@ -18,7 +15,6 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   eligibleSignatoryIds?:string[]; config?: Config; users?:{id:string;name:string}[];
   command: (command: LifecycleV9Command) => void | Promise<{ ok: boolean; error?: string }>;
 }) {
-  const completionCopy=useTranslations('personnelCompletion');
   const [values, setValues] = useState({ ...document.values }), [editingText,setEditingText] = useState(false), [error,setError]=useState('');
   const [personnel, setPersonnel] = useState<Record<string, string>>({});
   const missingPersonnel = missingDocumentPersonnelValues(document);
@@ -27,19 +23,15 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   async function execute(value:LifecycleV9Command){setError('');try{const result=await command(value);if(result&&!result.ok)setError(result.error??'The document could not be saved.');return result??{ok:true};}catch{const result={ok:false,error:'The document could not be saved. Your edits are still here.'};setError(result.error);return result;}}
   const reserved = documentDeliveryReserved({ mails: c.mails ?? [] }, document.id);
   const editable = !reserved && c.state === 'submitted' && !documentFinal(document) && !['superseded', 'withdrawn'].includes(document.status);
-  const fields = document.fields.filter(field => effectivePersonnelCompletion(document,field) === 'hr');
+  const fields = document.fields.filter(field => field.owner === 'hr');
   const canEditFields = editable && document.status === 'draft' && !document.hrSignature && !document.employeeSignature;
-  const completionLocked=!!document.personnelCompletion&&personnelCompletionLocked(document);
-  const dirty = !completionLocked&&fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
+  const dirty = fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
   const hrStep = document.hrStep ?? template?.hrStep;
   const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
   const allowed=(config&&c.facts?v9CompanySigners(config,c.facts.company):[]).filter(id=>eligibleSignatoryIds===undefined||eligibleSignatoryIds.includes(id));
   const signatory = hrStep === 'after' || document.signatoryUserId === actor.id && (!config||allowed.includes(actor.id));
-  const completionPanel=<PersonnelCompletionPanel document={document} busy={busy||reserved} canOverride={editable&&!personnelCompletionLocked(document)} onOverride={input=>execute({type:'documentCompletionOverride',id:document.id,...input})} onSave={values=>execute({type:'documentSave',id:document.id,values})} onRefresh={()=>execute({type:'documentRefresh',id:document.id})}/>;
-  const finalIssues=document.personnelCompletion?personnelCompletionIssues({...document,values:completionLocked?document.values:{...document.values,...Object.fromEntries(fields.map(field=>[field.id,values[field.id]??document.values[field.id]??'']))}},{final:true}):[];
-  if(document.signing)return <div className="v9-stack"><RoutedDocumentSummary document={document} caseId={c.id}/>{completionPanel}</div>;
-  return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<PersonnelCompletionDocumentBody document={document} values={{ ...document.values, ...Object.fromEntries(fields.map(field => [field.id, values[field.id] ?? document.values[field.id] ?? ''])) }} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
-    {canEditFields && !document.personnelCompletion && missingPersonnel.length > 0 && <section className="v9-panel v9-stack">
+  return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={{ ...document.values, ...Object.fromEntries(fields.map(field => [field.id, values[field.id] ?? document.values[field.id] ?? ''])) }} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
+    {canEditFields && missingPersonnel.length > 0 && <section className="v9-panel v9-stack">
       <strong>Complete missing Personnel values</strong>
       <p>These values apply to this document only.</p>
       {missingPersonnel.map(key => <label className="v9-field" key={key}>
@@ -52,13 +44,11 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
           if ((await execute({ type: 'documentFillPersonnel', id: document.id, values })).ok) setPersonnel({});
         }}>Save values for this document</ActionButton>
     </section>}
-    {completionPanel}
     {canEditFields && (document.templateType ?? template?.type) !== 'Attachment' && document.blocks.some(block => ['heading','subheading','text'].includes(block.type)) && <ActionButton guardNavigation={false} aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => setEditingText(true)}>Edit for this person</ActionButton>}
     {editingText && canEditFields && <DocumentTextEditor document={document} person={c.facts?.name ?? 'this person'} busy={busy} command={execute} close={() => setEditingText(false)}/>}
     {canEditFields && fields.length > 0 && <ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy || !dirty} onClick={() => execute({ type: 'documentSave', id: document.id, values: Object.fromEntries(fields.filter(f => values[f.id] !== undefined).map(f => [f.id, values[f.id]])) })}>Save HR fields</ActionButton>}
     {editable && document.status === 'draft' && <ActionButton guardNavigation aria-busy={busy} type="button" className="v9-button" disabled={busy || dirty} onClick={() => execute({ type: 'documentRefresh', id: document.id })}>Refresh Personnel values</ActionButton>}
     {needsSignature&&hrStep==='before'&&config&&<label className="v9-field"><span>HR signatory for this document</span><select disabled={busy||dirty} value={document.signatoryUserId??''} onChange={e=>void execute({type:'documentSignatory',id:document.id,userId:e.target.value})}><option value="" disabled>Choose a permitted signatory</option>{document.signatoryUserId&&!allowed.includes(document.signatoryUserId)&&<option value={document.signatoryUserId} disabled>Previously designated signer</option>}{allowed.map(id=><option key={id} value={id}>{users.find(user=>user.id===id)?.name??(id===actor.id?actor.name:'Permitted signer')}{id===config.companies?.find(company=>company.companyId===c.facts?.company)?.signatoryUserId?' (company default)':''}</option>)}</select></label>}
-    {needsSignature&&finalIssues.length>0&&<p className="v9-notice">{completionCopy('completionRequired')}</p>}
-    {needsSignature && (signatory ? <>{dirty && <p className="v9-notice">Save your changes before signing this document.</p>}<SignatureInput name={actor.name} busy={busy || dirty||finalIssues.length>0} submit={signature => execute({ type: 'documentSign', id: document.id, signature })}/></> : <p className="v9-notice">This document is waiting for the designated company HR signatory.</p>)}
+    {needsSignature && (signatory ? <>{dirty && <p className="v9-notice">Save your changes before signing this document.</p>}<SignatureInput name={actor.name} busy={busy || dirty} submit={signature => execute({ type: 'documentSign', id: document.id, signature })}/></> : <p className="v9-notice">This document is waiting for the designated company HR signatory.</p>)}
   </div>;
 }

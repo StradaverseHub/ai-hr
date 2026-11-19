@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { ConfigurationSaveError } from '../app/lifecycle/v9/configuration-save-error';
 import { EmailDefinition } from '../app/lifecycle/v9/email-definition';
 import type { EmailAsset, EmailTemplate } from '../lib/lifecycle-v9-model';
 const image: EmailAsset = { id: '9ea43e78-c325-4f88-8313-1b6fc3a1a78e', kind: 'image', name: 'Fictional logo.png', mimeType: 'image/png', size: 20, contentHash: 'a'.repeat(64), at: '2026-10-29T00:00:00Z', by: 'Fictional HR' };
@@ -45,28 +44,4 @@ it('rejects unsupported or oversized inline images before starting a request', (
   const fetcher=vi.fn();vi.stubGlobal('fetch',fetcher);render(<Harness/>);
   fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File(['<svg/>'],'script.svg')]}});expect(screen.getByRole('alert')).toHaveTextContent('PNG, JPG, GIF or WebP');
   fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File([new Uint8Array(1048577)],'large.png')]}});expect(screen.getByRole('alert')).toHaveTextContent('1 MB');expect(fetcher).not.toHaveBeenCalled();
-});
-
-it('requires explicit confirmation before discarding unsaved template changes', () => {
-  const retry = vi.fn(), reload = vi.fn();
-  render(<ConfigurationSaveError error="logo.png no longer matches its uploaded receipt." retry={retry} reload={reload}/>);
-  fireEvent.click(screen.getByRole('button', { name: 'Try saving again' }));
-  expect(retry).toHaveBeenCalledOnce(); expect(reload).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Reload saved settings' }));
-  expect(screen.getByRole('alertdialog', { name: 'Reload saved settings?' })).toHaveTextContent('discard your unsaved changes');
-  expect(reload).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
-  expect(screen.queryByRole('alertdialog')).toBeNull(); expect(reload).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Reload saved settings' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Discard changes and reload' }));
-  expect(reload).toHaveBeenCalledOnce();
-});
-it('aborts a closing editor upload and ignores a late receipt instead of editing another definition',async()=>{
-  let resolve!:(value:unknown)=>void;
-  const upload=new Promise(done=>{resolve=done;}),fetcher=vi.fn((_url:string,_options:RequestInit)=>upload),changed=vi.fn();vi.stubGlobal('fetch',fetcher);
-  const {EmailAssets}=await import('../app/lifecycle/v9/email-assets');
-  const view=render(<EmailAssets email={initial} revision={1} ready disabled={false} change={changed}/>);
-  fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File(['Fictional'],'Fictional logo.png',{type:'image/png'})]}});
-  const signal=fetcher.mock.calls[0][1].signal as AbortSignal;view.unmount();expect(signal.aborted).toBe(true);
-  resolve({ok:true,json:async()=>({asset:image})});await upload;await Promise.resolve();await Promise.resolve();expect(changed).not.toHaveBeenCalled();
 });

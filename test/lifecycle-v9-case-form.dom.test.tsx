@@ -105,9 +105,3 @@ it('removes Shared PBP routing while retaining GBS People Ops and company signat
   expect(screen.queryByRole('heading', { name: 'People Business Partner routing' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Add PBP rule' })).not.toBeInTheDocument();
 });
-
-it('shows the current Personnel manager independently of the old login snapshot',()=>{
- const c={id:'case',module:'off',revision:1,state:'submitted',facts:{name:'Fictional employee',employeeNo:'EMP-FICTIONAL',lastDay:'2026-11-01',noticeDate:'2026-10-01',caseType:'Resignation',supervisorUserId:'obsolete-login'},supervisorDelivery:{name:'Current Personnel manager',problem:null},revokeDate:'2026-11-01'} as unknown as Case;
- render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseForm c={c} config={v9Defaults()} users={[{id:'obsolete-login',name:'Old manager'}]} busy={false} command={vi.fn()}/></NextIntlClientProvider>);
- expect(screen.getByText('Current Personnel manager')).toBeVisible();expect(screen.queryByText('Old manager')).not.toBeInTheDocument();
-});

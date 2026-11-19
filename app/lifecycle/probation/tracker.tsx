@@ -7,8 +7,6 @@ import {Settings,Download,ArrowLeft,ArrowRight,ChevronRight,RefreshCw,Info,FileI
 import type {probationSummaryRows} from '@/packs/probation/service';
 import {formatDmy} from '@/lib/date-display';
 import {todayInKualaLumpur} from '@/lib/hr-date';
-import type {ProbationReconciliationView} from '@/lib/probation-reconciliation';
-import {ProbationReconciliationStatus} from './reconciliation-status';
 import {TrackerFilterPanel} from './tracker-filter-panel';
 import type {TrackerFilters} from './tracker-filters';
 import {trackerPendingPart,trackerPlanParts,trackerRowAttention,trackerRowClosed,trackerRowFlags,trackerWaitingStep,type TrackerTone} from './tracker-row';
@@ -24,7 +22,7 @@ const Pill=({tone,children}:{tone:TrackerTone;children:ReactNode})=><span classN
  * Probation tracker (lane M1; prototype Tracker): header with Export, the Personnel sync banner, seven counted tiles that
  * filter the list, the filter card and the case table. Every value is from the server-authorized summary page.
  */
-export function ProbationTracker({data,filters,configure,warning,overdue,today:serverToday,reconciliation}:{data:Awaited<ReturnType<typeof probationSummaryRows>>;filters:TrackerFilters;configure:boolean;warning?:ReactNode;reconciliation?:ProbationReconciliationView;
+export function ProbationTracker({data,filters,configure,warning,overdue,today:serverToday}:{data:Awaited<ReturnType<typeof probationSummaryRows>>;filters:TrackerFilters;configure:boolean;warning?:ReactNode;
  /** Working days overdue per KPI part id, streamed by the page after the list (app/lifecycle/probation/working-days-overdue.tsx). */
  overdue?:Readonly<Record<string,ReactNode>>;
  /** The HR calendar day the server read the page on (lib/hr-date). */
@@ -43,7 +41,6 @@ export function ProbationTracker({data,filters,configure,warning,overdue,today:s
    </div>
   </header>
   <div className="pct-banner" data-testid="probation-sync-banner"><RefreshCw aria-hidden="true"/><div>{t.rich('tracker.synced',{b:chunks=><b>{chunks}</b>})}</div></div>
-  {reconciliation&&<ProbationReconciliationStatus data={reconciliation} query={filterQuery(filters)}/>}
   {warning&&<div className="pct-warn">{warning}</div>}
   {filters.mine&&<div className="pct-banner" data-tone="info"><Info aria-hidden="true"/><div>{t('tracker.mineOnly')} <Link href={'/lifecycle/probation?'+filterQuery({...filters,mine:undefined},0)}>{t('tracker.mineClear')}</Link></div></div>}
   <nav className="pct-tiles" aria-label={t('tracker.summary')}>{FLAGS.map(flag=><Link className="pct-tile" data-tone={TILE_TONE[flag]} data-flag={flag} aria-current={filters.flag===flag?'page':undefined} href={'/lifecycle/probation?'+filterQuery({...filters,flag:filters.flag===flag?undefined:flag},0)} key={flag}><span>{t('tracker.tiles.'+flag)}</span><b>{data.totals[flag]}</b></Link>)}</nav>

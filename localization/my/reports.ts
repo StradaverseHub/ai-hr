@@ -1980,7 +1980,7 @@ export async function eaStatement(
     if (employerId !== info.companyId && slips.length === 0) return null;
     const originalSlips = slips.map(s => ({...s}));
     const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
-    const taxBasisCorrections = [...correctedBases.values()].flatMap(value => value.correction?[value.correction]:[]);
+    const taxBasisCorrections = [...correctedBases.values()].map(value => value.correction);
     for (const slip of slips) {
       const corrected = correctedBases.get(slip.id);
       if (corrected) slip.statutory = corrected.statutory;

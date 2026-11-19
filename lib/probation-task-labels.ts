@@ -5,7 +5,7 @@
  * Labels only: the link still opens the case screen, which authorizes again.
  */
 const PART_KINDS=['submit_employee','submit_manager','acknowledge','approve','record','confirm_extension','confirm_refusal','kpi_exception','employee_wait_exception'] as const;
-const CASE_KINDS=['letter_prepare','letter_sign','letter_review','letter_approve','letter_revise','letter_release','low_result_action','choose_outcome'] as const;
+const CASE_KINDS=['letter_sign','letter_review','letter_approve','letter_revise','letter_release','low_result_action','choose_outcome'] as const;
 export const PROBATION_TASK_KINDS=[...PART_KINDS,...CASE_KINDS] as const;
 export type ProbationTaskLabel={title:string;action:string;values:{part:number}};
 const partNumber=(part:number|string|null|undefined)=>{const n=typeof part==='string'?Number(part):part;return n===1||n===2||n===3?n:null;};

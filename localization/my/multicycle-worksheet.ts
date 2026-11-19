@@ -967,7 +967,7 @@ async function loadPriorAccumulators(
     .where(inArray(payslip.employmentId, employmentIds));
 
   const corrections = await readEffectiveTaxBasesTx(tx, ctx, rows.filter(r=>years.includes(r.period.slice(0,4))).map(r=>r.id));
-  evidence.refs.push(...[...corrections.values()].flatMap(value=>value.correction?[value.correction]:[]));
+  evidence.refs.push(...[...corrections.values()].map(value=>value.correction));
   // (employment, tax year) → its months, each month → the slips written in it (a multi-run month has
   // several, and they all belong to the SAME monthly accumulator step).
   const byEmpYear = new Map<string, Map<string, typeof rows>>();

@@ -12,8 +12,6 @@
  * company/cycle identity, append-only corrections/recovery and one effective canonical snapshot.
  * The record-based compatibility writer at the end delegates there too; it owns no SQL writes.
  */
-import {createHash} from 'node:crypto';
-import {importedTaxSettingsTx,importedTaxRulesStateTx,importedTaxRulesStatesTx,projectImportedTaxBasis} from './payroll-import-tax-source';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { entitySegmentRow, mergeCompanySegments, dayAfter, segmentForCompany, type CompanySegment } from './employment-company';
@@ -111,7 +109,6 @@ function money(raw: string): number | null {
 
 /** A single accepted line, already resolved. */
 type ParsedLine = {
-  employmentId:string;
   rowNum: number;
   employeeNo: string;
   period: string; // YYYY-MM
@@ -167,10 +164,6 @@ type ImportedStat = {
    *  no EA / statutory evidence reader sees them. See `importedComponentLines`. Absent when the month carried
    *  no allowance / overtime / bonus / deduction line. */
   importedLines?: ImportedComponentLine[];
-  importedTaxBasis?:import('./payroll-import-tax-source').ImportedTaxBasisStamp;
-  bases?:{pcb:number};
-  exemptionUsed?:Record<string,number>;
-  pcbNonCash?:unknown;
 };
 
 /** One imported pay item line, in the shape the kernel stamps (core/payroll.ts `PayComponentLine`), so every
@@ -264,14 +257,12 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   const read = async (tx: Tx) => {
     const components = await tx
       .select({
-        id: payComponent.id,
         code: payComponent.code,
         name: payComponent.name,
         kind: payComponent.kind,
         displayCategory: payComponent.displayCategory,
         isNonPayable: payComponent.isNonPayable,
         archivedAt: payComponent.archivedAt,
-        includedInPcb:payComponent.includedInPcb,pcbRemunerationType:payComponent.pcbRemunerationType,pcbExemptionCode:payComponent.pcbExemptionCode,epfBonus2012:payComponent.epfBonus2012,eaFormLine:payComponent.eaFormLine,
       })
       .from(payComponent);
     const catalog = await tx.select().from(payrollImportCode);
@@ -279,25 +270,21 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   };
   const { components, catalog } = await (transaction ? read(transaction) : withTenant(ctx, read));
 
-  const counts=new Map<string,number>();for(const component of components)counts.set(up(component.code),(counts.get(up(component.code))??0)+1);
-  const ambiguous=new Set([...counts].filter(([,count])=>count>1).map(([code])=>code));
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
   for (const c of components) {
-    if (c.archivedAt != null||ambiguous.has(up(c.code))) continue;
+    if (c.archivedAt != null || c.isNonPayable) continue;
     const { destination, direction } = payComponentDestination({
       code: c.code,
       kind: c.kind,
       displayCategory: c.displayCategory,
     });
-    byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,ownerId:c.id,taxSettings:c });
+    byCode.set(up(c.code), { code: c.code, label: c.name, destination, direction, source: 'component' });
   }
-  for(const code of ambiguous)byCode.delete(code);
   // Pass 1: direct catalog rows (and removals). Pass 2: aliases, so an alias may point at a row added in
   // pass 1 regardless of the order they came back from the database.
   const aliases: typeof catalog = [];
   for (const row of catalog) {
-    if(ambiguous.has(up(row.code))){byCode.delete(up(row.code));continue;}
     if (row.aliasFor != null && norm(row.aliasFor) !== '') {
       aliases.push(row);
       continue;
@@ -312,7 +299,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: row.destination as PayrollImportDestination,
       direction: row.direction as ImportCodeEntry['direction'],
-      source: 'catalog',targetCode:row.code,ownerId:components.find(component=>up(component.code)===up(row.code))?.id??row.id,taxSettings:components.find(component=>up(component.code)===up(row.code)),...(up(row.code)==='BASIC'&&row.destination==='basic'?{basicSalaryOwner:true}:{}),
+      source: 'catalog',
     });
   }
   for (const row of aliases) {
@@ -327,7 +314,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: target.destination,
       direction: target.direction,
-      source: 'alias',targetCode:target.targetCode??target.code,ownerId:target.ownerId,basicSalaryOwner:target.basicSalaryOwner,
+      source: 'alias',
     });
   }
   return byCode;
@@ -370,7 +357,6 @@ type AnalyzeInputs = Awaited<ReturnType<typeof readAnalyzeInputs>>;
 function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs) {
   const byId = <T extends { id?: string; employmentId?: string }>(a: T, b: T) => String(a.id ?? a.employmentId).localeCompare(String(b.id ?? b.employmentId));
   return {
-    taxRulesState:inputs.taxRulesState,
     codes: [...codes.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
     companies: [...inputs.companies].sort(byId),
     employees: [...inputs.employees].sort(byId),
@@ -379,8 +365,7 @@ function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs
     currentCompany: [...inputs.currentCompany].sort((a, b) => a.employmentId.localeCompare(b.employmentId)),
   };
 }
-async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
-      const targets=Array.isArray(companyId)?companyId:[companyId],scope=sql`ARRAY[${sql.join(targets.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+async function readAnalyzeInputs(tx: Tx, companyId: string) {
       const companies = await tx
         .select({
           id: company.id,
@@ -405,7 +390,7 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
         // Board 4604dccc — everyone this company employs today, and everyone its dated history (assignment
         // company) places here at some time, so a month is found under the company that employed the person
         // then. One set-based statement for the import (SCALE rule 2); the employment's own RLS still applies.
-        .where(sql`(${employment.companyId} = any(${scope}) or exists (select 1 from ${assignment} a where a.employment_id = ${employment.id} and a.superseded_at is null and a.company_id = any(${scope})))`);
+        .where(sql`(${employment.companyId} = ${companyId} or exists (select 1 from ${assignment} a where a.employment_id = ${employment.id} and a.superseded_at is null and a.company_id = ${companyId}))`);
       // Their dated company history, in one statement, to place each month under the right company.
       const ids = employees.map((e) => e.employmentId);
       const placements = ids.length
@@ -421,42 +406,29 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
       const cycles = await tx
         .select({
           id: payrollCycle.id,
-          companyId:payrollCycle.companyId,
           name: payrollCycle.name,
           code: payrollCycle.code,
           archivedAt: payrollCycle.archivedAt,
         })
         .from(payrollCycle)
-        .where(inArray(payrollCycle.companyId,targets));
-      const taxRulesState=await importedTaxRulesStateTx(tx);
-      return { companies, employees, cycles, placements, currentCompany,taxRulesState };
+        .where(eq(payrollCycle.companyId, companyId));
+      return { companies, employees, cycles, placements, currentCompany };
 }
-
-export type HistoryMaintenanceSubject={recordId:string;companyId:string;employmentId:string;employeeNo:string;period:string;cycleId:string;hiredOn:string|null;terminatedOn:string|null;calendarEvidence?:'retained_segment'|'retained_record'|'unavailable';unavailableReason?:string|null;segment?:{companyId:string;from:string;to:string}|null};
-export type HistoryAnalyzeBatchContext={codes:Map<string,ImportCodeEntry>;inputs:Map<string,AnalyzeInputs>;taxSettings:Awaited<ReturnType<typeof importedTaxSettingsTx>>;rules:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;ruleStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
-/** One set of scoped source reads for all requested companies, then canonical per-company views. */
-export async function historyAnalyzeBatchTx(ctx:SessionContext,tx:Tx,companyIds:string[]):Promise<HistoryAnalyzeBatchContext>{
- const codes=await resolveImportCodes(ctx,tx),all=await readAnalyzeInputs(tx,companyIds),inputs=new Map<string,AnalyzeInputs>();
- for(const id of companyIds){const members=new Set([...all.currentCompany.filter(row=>row.companyId===id).map(row=>row.employmentId),...all.placements.filter(row=>row.companyId===id).map(row=>row.employmentId)]);inputs.set(id,{...all,employees:all.employees.filter(row=>members.has(row.employmentId)),cycles:all.cycles.filter(row=>row.companyId===id),placements:all.placements.filter(row=>members.has(row.employmentId)),currentCompany:all.currentCompany.filter(row=>members.has(row.employmentId))});}
- return{codes,inputs,taxSettings:await importedTaxSettingsTx(tx),rules:new Map()};
-}
-export function historyAnalyzeBatchFact(context:HistoryAnalyzeBatchContext,companyId:string){return analyzeFacts(context.codes,context.inputs.get(companyId)!);}
 
 async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: PayrollHistoryRecord[],
-  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void; batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'> } = {},
+  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void } = {},
 ): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
-  const originalCodes=options.batch?.codes??await resolveImportCodes(ctx,options.transaction),codes=new Map(originalCodes);
-  for(const entry of options.retainedCodes??[])codes.set(up(entry.code),entry);
+  const codes = await resolveImportCodes(ctx, options.transaction);
   const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements, currentCompany,taxRulesState } = await read(
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements, currentCompany } = await read(
     async (tx) => {
-      const inputs = options.batch?.inputs.get(companyId)??await readAnalyzeInputs(tx, companyId);
-      options.facts?.(analyzeFacts(originalCodes, inputs));
-      const { companies, employees, cycles,taxRulesState } = inputs;
+      const inputs = await readAnalyzeInputs(tx, companyId);
+      options.facts?.(analyzeFacts(codes, inputs));
+      const { companies, employees, cycles } = inputs;
       const targetCompany = companies.find((c) => c.id === companyId);
       const statutoryVersion = requirePackFor(targetCompany?.country).statutoryConfig.default.version;
 
@@ -475,7 +447,7 @@ async function analyze(
         }
       }
 
-      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements: inputs.placements, currentCompany: inputs.currentCompany,taxRulesState };
+      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements: inputs.placements, currentCompany: inputs.currentCompany };
     },
   );
 
@@ -514,7 +486,7 @@ async function analyze(
   const cycleKeys = new Map<string, Set<string>>();
   for (const c of cycles) {
     if (c.archivedAt != null) continue;
-    for (const k of [c.id, c.code, c.name]) {
+    for (const k of [c.code, c.name]) {
       const kk = up(k ?? '');
       if (kk) { const ids = cycleKeys.get(kk) ?? new Set<string>(); ids.add(c.id); cycleKeys.set(kk, ids); }
     }
@@ -597,13 +569,7 @@ async function analyze(
     let employmentId = '';
     if (employeeNo) {
       const hits = employeesByCode.get(up(employeeNo)) ?? [];
-      const historical=(options.historical??[]).filter(row=>up(row.employeeNo)===up(employeeNo)&&row.companyId===companyId&&row.period===period&&cycleKeys.get(up(cycle))?.has(row.cycleId));
-      if(historical.length===1&&!hits.some(hit=>hit.employmentId!==historical[0].employmentId)&&period){
-        const h=historical[0],segment=h.segment,{first,last}=periodBounds(period);
-        if(h.calendarEvidence==='unavailable'||!h.calendarEvidence||(segment&&(segment.companyId!==companyId||segment.from<first||segment.to<segment.from||segment.to>last)))issues.push(issue(ref,'Invalid Employee No',h.unavailableReason??'The retained original-employer calendar evidence is unavailable or conflicts with the accepted period.'));
-        else{employmentId=h.employmentId;if(segment)coverageOf.set(h.employmentId+':'+period,{...segment});}
-      } else if(historical.some(row=>hits.some(hit=>hit.employmentId!==row.employmentId))){issues.push(issue(ref,'Invalid Employee No','The retained employee code now identifies a different employment. Review the original identity.'));}
-      else if (hits.length === 0) {
+      if (hits.length === 0) {
         issues.push(issue(ref, 'Invalid Employee No', `Employee does not exist in Employee Master for this company`));
       } else if (hits.length > 1) {
         issues.push(issue(ref, 'Invalid Employee No', `Employee No “${employeeNo}” matches ${hits.length} employments`));
@@ -693,7 +659,6 @@ async function analyze(
     }
 
     lines.push({
-      employmentId,
       rowNum,
       employeeNo,
       period,
@@ -814,7 +779,7 @@ async function analyze(
         ),
       );
     }
-    let net = options.netModes?.get(b.key)==='zakat_in_pcb'?netZakatInPcb:netCash;
+    let net = netCash;
     if (statedNet.length > 0) {
       if (Math.abs(t.net - netCash) <= MONEY_TOL) {
         net = t.net;
@@ -946,7 +911,7 @@ async function analyze(
     const componentLines = importedComponentLines(b.lines);
     months.push({
       month: summary,
-      employmentId: b.lines[0].employmentId,
+      employmentId: employmentByCode.get(up(b.employeeNo))!,
       period: b.period,
       basicSalary: t.basic,
       allowance: t.allowance,
@@ -958,7 +923,7 @@ async function analyze(
       netPay: net,
       employerCost,
       statutory: {
-        segment: coverageOf.get(b.lines[0].employmentId+':'+b.period),
+        segment: coverageOf.get(employmentByCode.get(up(b.employeeNo))!+':'+b.period),
         epfEmployee: t.epf_employee,
         epfEmployer: t.epf_employer,
         socsoEmployee: t.socso_employee,
@@ -978,23 +943,6 @@ async function analyze(
         ...(componentLines.length ? { importedLines: componentLines } : {}),
       },
     });
-  }
-
-  // The accepted import snapshot owns these derived wage inputs, separately from every imported
-  // statutory amount. Confirmation recomputes this same projection and binds its settings/rules bytes.
-  const taxSettings=options.batch?.taxSettings??await read(importedTaxSettingsTx);
-  const pack=requirePackFor(targetCompany?.country);
-  const taxRuleStates=options.batch?.ruleStates??await read(tx=>importedTaxRulesStatesTx(tx,[...new Set(months.map(month=>month.period))]));
-  for(const period of targetCompany?.country==='MY'?[...new Set(months.map(month=>month.period))]:[]){
-    const ruleKey=(targetCompany?.country??'')+':'+period;
-    const resolution=options.batch?.rules.get(ruleKey)??await read(tx=>pack.payroll.loadRulesetResolved(tx,{asOf:period+'-01'}));options.batch?.rules.set(ruleKey,resolution);
-    const rulesHash=createHash('sha256').update(JSON.stringify(resolution)).digest('hex');
-    for(const month of months.filter(month=>month.period===period)){
-      const source=buckets.get(month.month.key)!;
-      const stamp=projectImportedTaxBasis({ownerKey:`${companyId}:${month.employmentId}:${source.cycles.join(',')}`,replay:pack.payroll.replayTaxBasis,period,rows:source.lines.map(line=>({rowNum:line.rowNum,code:line.doeCode,amount:line.amount})),codes,settings:taxSettings,rules:resolution.ruleset,rulesHash,rulesState:taxRuleStates.get(period),rulesEvidence:{version:resolution.version,source:resolution.source,effectiveFrom:resolution.effectiveFrom,packVersion:resolution.packVersion,signedKeyId:resolution.signedKeyId,pcbExemptions:resolution.ruleset.pcbExemptions},gross:month.grossPay,deductions:month.otherDeductions,statutory:month.statutory as unknown as Record<string,unknown>});
-      month.statutory.importedTaxBasis=stamp;
-      if(stamp.state==='ready'&&stamp.basis){month.statutory.bases={pcb:stamp.basis.pcb};month.statutory.exemptionUsed=stamp.basis.exemptionUsed;if(stamp.basis.pcbNonCash)month.statutory.pcbNonCash=stamp.basis.pcbNonCash;}
-    }
   }
 
   // A month EVERY line of which failed produced no bucket above, so it has no summary yet. Emit one, or
@@ -1039,8 +987,8 @@ async function analyze(
 
 /** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
  * identities, inside this same transaction. This helper grants no write or replacement authority. */
-export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void,options?:{batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'>}) {
-  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true, facts,...options});
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void) {
+  return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true, facts});
 }
 
 /** Dry run: validate the file against the company's master data; writes nothing. */

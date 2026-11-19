@@ -5,15 +5,13 @@ import { ChevronDown } from 'lucide-react';
 import { lifecycleEmailFieldGroups } from '@/lib/lifecycle-v9-email-fields';
 import type {LifecycleMergeFieldGroup} from '@/lib/lifecycle-v9-resignation-fields';
 
-export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups=lifecycleEmailFieldGroups, tokenBraces=1, copy }: {
-  copy?:(key:string,values?:Record<string,string|number>)=>string;
-  fieldGroups?:readonly LifecycleMergeFieldGroup[];tokenBraces?:1|2;
+export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups = lifecycleEmailFieldGroups }: {
+  fieldGroups?:readonly LifecycleMergeFieldGroup[];
   label: 'Subject' | 'Body';
   value: string;
   disabled: boolean;
   onChange: (value: string) => void;
 }) {
-  const l=(key:string,fallback:string,values?:Record<string,string|number>)=>copy?.(key,values)??fallback;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [announcement, setAnnouncement] = useState('');
@@ -21,11 +19,11 @@ export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups=
   const trigger = useRef<HTMLButtonElement>(null);
   const selection = useRef<{ start: number; end: number } | null>(null);
   const pickerId = useId();
-  const field=l(label==='Subject'?'subject':'body',label.toLowerCase());
+  const field = label.toLowerCase();
   const maxLength = label === 'Subject' ? 1000 : 20000;
   const term = query.trim().toLowerCase();
   const personnelOnly=fieldGroups===lifecycleEmailFieldGroups;
-  const sourceLabel=copy?.('fieldSource')??(personnelOnly?'Personnel Management':'Offboarding');
+  const sourceLabel=personnelOnly?'Personnel Management':'Offboarding';
   const groups = fieldGroups.map(group => ({
     ...group,
     fields: group.fields.filter(option =>
@@ -42,17 +40,17 @@ export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups=
   function insert(key: string, name: string) {
     if (disabled) return;
     const { start, end } = selection.current ?? { start: value.length, end: value.length };
-    const token = '{'.repeat(tokenBraces) + key + '}'.repeat(tokenBraces);
+    const token = '{' + key + '}';
     const next = value.slice(0, start) + token + value.slice(end);
     if (next.length > maxLength) {
-      setAnnouncement(l('tooLong',`${name} exceeds the ${field} length limit.`,{name,field}));
+      setAnnouncement(`${name} exceeds the ${field} length limit.`);
       return;
     }
     const cursor = start + token.length;
     selection.current = { start: cursor, end: cursor };
     onChange(next);
     setOpen(false);
-    setAnnouncement(l('inserted',`${name} inserted into the ${field}.`,{name,field}));
+    setAnnouncement(`${name} inserted into the ${field}.`);
     requestAnimationFrame(() => {
       input.current?.focus();
       input.current?.setSelectionRange(cursor, cursor);
@@ -74,33 +72,33 @@ export function EmailMergeInput({ label, value, disabled, onChange, fieldGroups=
     }
   }}>
     <label className="v9-field">
-      <span>{l(label==='Subject'?'subject':'body',label)}</span>
+      <span>{label}</span>
       {label === 'Subject'
         ? <input {...inputProps} className="v9-input" ref={element => { input.current = element; }} />
         : <textarea {...inputProps} rows={12} ref={element => { input.current = element; }} />}
     </label>
     <div className="v9-actions">
       <button ref={trigger} className="v9-button" type="button" disabled={disabled}
-        aria-label={l('insertInto',`Insert field into ${field}`,{field})} aria-expanded={open && !disabled} aria-controls={pickerId}
+        aria-label={`Insert field into ${field}`} aria-expanded={open && !disabled} aria-controls={pickerId}
         onClick={() => { setQuery(''); setOpen(!open); }}>
-        {l('insertField','Insert field')} <ChevronDown aria-hidden size={14}/>
+        Insert field <ChevronDown aria-hidden size={14}/>
       </button>
       <span className="v9-muted" role="status">{announcement}</span>
     </div>
-    {open && !disabled && <section id={pickerId} aria-label={l('fieldPanel',`${label} ${personnelOnly?'Personnel':'merge'} fields`,{field})}
+    {open && !disabled && <section id={pickerId} aria-label={`${label} ${personnelOnly?'Personnel':'merge'} fields`}
       className="v9-panel v9-stack" style={{ width: 'min(24rem, 100%)', maxHeight: '18rem', overflowY: 'auto' }}>
-      <input className="v9-input" type="search" autoFocus placeholder={l('searchFields',personnelOnly?'Search Personnel fields':'Search merge fields')}
-        aria-label={l('searchFieldLabel',`Search ${field} fields`,{field})} value={query} onChange={event => setQuery(event.target.value)} />
+      <input className="v9-input" type="search" autoFocus placeholder={personnelOnly?'Search Personnel fields':'Search merge fields'}
+        aria-label={`Search ${field} fields`} value={query} onChange={event => setQuery(event.target.value)} />
       {groups.map(group => <div className="v9-stack" key={group.label}>
         <strong>{group.label}</strong>
         {group.fields.map(option => <button key={option.key} className="rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring" type="button"
-          aria-label={`${option.label} · ${'{'.repeat(tokenBraces)+option.key+'}'.repeat(tokenBraces)} · ${sourceLabel}`}
+          aria-label={`${option.label} · {${option.key}} · ${sourceLabel}`}
           onClick={() => insert(option.key, option.label)}>
           <span className="block font-medium">{option.label}</span>
-          <small className="v9-muted">{'{'.repeat(tokenBraces) + option.key + '}'.repeat(tokenBraces)} · {sourceLabel}</small>
+          <small className="v9-muted">{'{' + option.key + '}'} · {sourceLabel}</small>
         </button>)}
       </div>)}
-      {!groups.length && <p className="v9-muted">{l('noFields',`No matching ${personnelOnly?'Personnel':'merge'} fields.`)}</p>}
+      {!groups.length && <p className="v9-muted">No matching {personnelOnly?'Personnel':'merge'} fields.</p>}
     </section>}
   </div>;
 }

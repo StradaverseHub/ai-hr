@@ -8,9 +8,8 @@ import {freshImportContext,runBankImportTick} from '../core/bank-import-worker';
 import {runIndividualImportTick} from '../core/individual-import-worker';
 import {retireBulkJobWorker,runBulkJobTick} from '../core/bulk-job-worker';
 import {runRewardPlanCompanyTick} from '../packs/rewards/service';
-import {runProbationReconciliationTick} from '../packs/probation/service';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
-import {client,createDb} from '../db/client';
+import {client} from '../db/client';
 import {openImportWorkerOwner} from '../db/worker-connection';
 import {movementWorkbookKeyReady} from '../lib/movement-workbook-metadata.server';
 import {IMPORT_WORKER_STALL_ENV,importWorkerStallSeconds,startImportWorkerWatchdog} from '../lib/import-worker-watchdog';
@@ -20,8 +19,6 @@ if(!url)throw new Error('MIGRATION_DATABASE_URL is required by the import worker
 const stallSeconds=importWorkerStallSeconds(process.env);
 // Server and client keepalive end a half-open owner session, and its advisory locks, within minutes (db/worker-connection.ts).
 const owner=openImportWorkerOwner(url);
-// One bounded owner pool for canonical reconciliation transactions; never the web pool.
-const probationOwner=createDb(url,{max:1});
 // Between two bulk-job units, so waiting interactive writers always get the tenant locks first.
 const bulkPauseMs=Number(process.env.BULK_JOB_PAUSE_MS??25);
 let stopping=false;process.on('SIGTERM',()=>{stopping=true;});process.on('SIGINT',()=>{stopping=true;});
@@ -40,12 +37,10 @@ async function main(){
   const bulkWorked=await runBulkJobTick(owner,{handlers:BULK_JOB_HANDLERS});
   watchdog.enter('reward-plan-companies');
   const rewardPlansWorked=await runRewardPlanCompanyTick(owner);
-  watchdog.enter('probation-personnel');
-  const probationWorked=await runProbationReconciliationTick(owner,probationOwner);
   if(process.argv.includes('--once'))break;
   watchdog.enter('pause');
-  if(!bankWorked&&!individualWorked)await new Promise(resolve=>setTimeout(resolve,bulkWorked||rewardPlansWorked||probationWorked?bulkPauseMs:1000));
+  if(!bankWorked&&!individualWorked)await new Promise(resolve=>setTimeout(resolve,bulkWorked||rewardPlansWorked?bulkPauseMs:1000));
  }while(!stopping);}
- finally{watchdog.enter('stop');await retireBulkJobWorker(owner).catch(()=>undefined);await owner.end({timeout:5});await probationOwner.client.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
+ finally{watchdog.enter('stop');await retireBulkJobWorker(owner).catch(()=>undefined);await owner.end({timeout:5});await client.end({timeout:5});watchdog.stop();}
 }
 main().catch(()=>{console.error('Bank import worker stopped. Check its database access, migrations and runtime configuration.');process.exitCode=1;});

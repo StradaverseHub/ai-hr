@@ -1,10 +1,7 @@
-import type {ReactElement} from 'react';
-import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
 import { expect, it, vi } from 'vitest';
-import { render as testingRender, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn(), openLifecycleDocument:vi.fn().mockResolvedValue({ok:true}) }));
+vi.mock('../app/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn() }));
 import { EmployeeLifecycle } from '../app/me/lifecycle/view';
 import { CaseMailHistory } from '../app/lifecycle/v9/mail-history';
 import { CaseDocument } from '../app/lifecycle/v9/case-document';
@@ -35,5 +32,3 @@ it('keeps a queued draft read-only and hides signing and source refresh controls
   expect(screen.queryByRole('button', { name: 'Sign and submit' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Refresh Personnel values' })).not.toBeInTheDocument();
 });
-
-function render(ui:ReactElement){return testingRender(ui,{wrapper:({children})=><NextIntlClientProvider locale="en" messages={messages}>{children}</NextIntlClientProvider>});}

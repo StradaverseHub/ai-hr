@@ -1,9 +1,0 @@
-import type {Case,Document,Field} from '../../lib/lifecycle-v9-model';
-import {initializePersonnelCompletion} from '../../lib/lifecycle-v9-personnel-completion';
-export const completionActor={id:'fictional-employee',name:'Fictional employee'};
-export function completionDocument():Document{
- const field=(id:string,label:string,pmKey:string,type:Field['type']='text',required=true):Field=>({id,label,type,owner:'pmLocked',pmKey,required,sensitive:pmKey==='employee.passportNo',options:[],section:'details',when:null,width:'full'});
- const document:Document={id:'fictional-document',templateId:'fictional-form',version:1,name:'Fictional personal details form',status:'draft',blocks:[{id:'intro',type:'text',text:'Address: {address}',section:''},{id:'details',type:'fields',text:'',section:'details'}],fields:[field('address-answer','Address','address','textarea'),field('workEmail','Work email','email','email'),field('passport','Passport number','employee.passportNo'),field('mobile','Mobile phone','mobile','phone',false)],values:{'address-answer':'',workEmail:'',passport:'Fictional passport in PM',mobile:''},edits:{},mergeValues:{address:''},hrSignature:null,employeeSignature:null,createdAt:'2026-11-18T00:00:00.000Z',sentAt:null};
- initializePersonnelCompletion(document,{country:'MY',sourceFingerprint:'fictional-source-revision',officialValues:{passport:'Fictional passport in PM'},actor:completionActor,at:'2026-11-18T00:00:00.000Z'});return document;
-}
-export function completionReviewCase(document=completionDocument()):Case{return{state:'submitted',facts:{employmentId:'fictional-employment'},documents:[document],pmChanges:[{id:'fictional-proposal',documentId:document.id,field:'address',before:'',after:'Fictional employee address',status:'proposed',sourceRevision:'fictional-source-revision',provenance:{kind:'missing-personnel',version:1,by:completionActor,at:'2026-11-18T01:00:00.000Z'}}]} as unknown as Case;}

@@ -1,8 +1,5 @@
-import type {ReactElement} from 'react';
-import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
 import { expect, it, vi } from 'vitest';
-import { render as testingRender, screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 const actions = vi.hoisted(() => ({ task: vi.fn(), document: vi.fn(), report: vi.fn() }));
 vi.mock('../app/me/lifecycle/actions', () => ({ updateOwnLifecycleTask: actions.task, saveOwnLifecycleDocument: actions.document, reportOwnLifecycleReturn:actions.report }));
@@ -20,5 +17,3 @@ it('shows actual calendar dates, locks future tasks and labels another person’
   // Disabled controls are the visible affordance; the canonical command remains the authorization boundary.
   expect(screen.getByText(/Opens 02\/11\/2026/)).toBeVisible();
 });
-
-function render(ui:ReactElement){return testingRender(ui,{wrapper:({children})=><NextIntlClientProvider locale="en" messages={messages}>{children}</NextIntlClientProvider>});}

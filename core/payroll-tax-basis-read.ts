@@ -1,6 +1,4 @@
 /** Narrow read seam for audited tax-input corrections. Does not import payroll or the country registry. */
-import {importedTaxSettingsTx,importedTaxRulesStatesTx,importedTaxSettingEvidence} from './payroll-import-tax-source';
-import {createNonCashOwnershipReplay,readPcbNonCash} from '../localization/noncash-benefits';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -8,13 +6,13 @@ import {PayrollTaxBasisError,type TaxBasisValue} from '../lib/payroll-tax-basis'
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const canonical=(v:unknown):string=>JSON.stringify(v,(_key,item)=>object(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a.localeCompare(b))):item);
 export type TaxBasisCorrectionRef={id:string;batchId:string;sourceHash:string;basisVersion:1};
-export type TaxBasisSource={id:string;employmentId:string;companyId:string;period:string;source:Record<string,unknown>;batch:Record<string,unknown>;importRevision:string|null;historyAttemptId?:string|null};
+export type TaxBasisSource={id:string;employmentId:string;companyId:string;period:string;source:Record<string,unknown>;batch:Record<string,unknown>;importRevision:string|null};
 export async function taxBasisSourceRowsTx(tx:Tx,ids:string[]):Promise<TaxBasisSource[]>{
  if(!ids.length)return [];
- return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId",
+ return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,
    to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch,
-   app.payroll_tax_import_source_revision(p.id)::text as "importRevision"
-  from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
+   (select r.id::text from payroll_history_import_revision r join payroll_history_import_snapshot s on s.record_id=r.record_id where s.id=p.id order by r.ordinal desc limit 1) as "importRevision"
+  from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by p.id`);
 }
 export const hashTaxBasisSource=(row:TaxBasisSource)=>createHash('sha256').update(canonical({source:row.source,batch:row.batch,importRevision:row.importRevision})).digest('hex');
 /** Caller must own the history barrier while computing/validating this identity. */
@@ -77,9 +75,9 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
    values(${ctx.tenantId}::uuid,${next.companyId}::uuid,${next.employmentId}::uuid,${next.id}::uuid,${correction.id}::uuid,${historyByEmployment[next.employmentId]}::uuid,${hashTaxBasisSource(before)},${hashTaxBasisSource(next)},${JSON.stringify(before)}::jsonb,${JSON.stringify(next)}::jsonb,${ctx.userId??null}::uuid)`);
  }
 }
-export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef|null;basis:TaxBasisValue};
+export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef;basis:TaxBasisValue};
 /** Exact current source only. Returned statutory objects are copies; no payslip row is ever modified. */
-export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:{includeImported?:boolean;sameMonth?:boolean}={}):Promise<Map<string,EffectiveTaxBasis>>{
+export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[]):Promise<Map<string,EffectiveTaxBasis>>{
  const out=new Map<string,EffectiveTaxBasis>();if(!payslipIds.length)return out;
  const sources=await taxBasisSourceRowsTx(tx,[...new Set(payslipIds)]);if(!sources.length)return out;
  const keys=sources.map(s=>({companyId:s.companyId,employmentId:s.employmentId,period:s.period}));
@@ -89,14 +87,7 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
    on r.company_id=k."companyId" and r.employment_id=k."employmentId" and r.period=k.period
   where r.tenant_id=${ctx.tenantId}::uuid order by r.payslip_id,r.ordinal desc`);
  const replacements=await replacementsTx(tx,ctx,corrections.map(r=>r.id));
- // A newly accepted imported snapshot owns fresh inputs. It may supersede only corrections on
- // an older snapshot of the very same immutable import record, never another cycle or employer.
- const currentImported=sources.filter(source=>object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)).map(source=>source.id);
- const replaced=currentImported.length?await tx.execute<{id:string}>(sql`select r.id from payroll_tax_basis_revision r join payroll_history_import_snapshot previous on previous.id=r.payslip_id join payroll_history_import_record record on record.id=previous.record_id join lateral(select v.snapshot_id from payroll_history_import_revision v where v.record_id=record.id order by v.ordinal desc limit 1) latest on true join payroll_history_import_snapshot current on current.id=latest.snapshot_id and current.record_id=record.id where r.tenant_id=${ctx.tenantId}::uuid and current.id=any(array[${sql.join(currentImported.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) and previous.id<>current.id and r.company_id=record.company_id and r.employment_id=record.employment_id and r.period=record.period`):[];
- const detached=await tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(array[${sql.join(sources.map(source=>sql`${source.id}::uuid`),sql`, `)}]::uuid[])`),importedIds=new Set(currentImported);
- // A new accepted imported source supersedes only its proven physical-native predecessor.
- // A restored native baseline requires a fresh exact-source review; no old receipt is copied onto it.
- const superseded=new Set<string>([...replaced.map(row=>row.id),...detached.filter(row=>importedIds.has(row.sourceId)).map(row=>row.id)]);for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
+ const superseded=new Set<string>();for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
  // A consumer may request one cycle of a corrected multi-cycle month. Other current sources in
  // that exact employer/month context must be validated, not mistaken for vanished source rows.
  const requested=new Set(payslipIds),known=new Set(sources.map(s=>s.id));
@@ -113,53 +104,8 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
   if(basis.period!==source.period)throw new PayrollTaxBasisError('The corrected tax period does not match its original source.');
   if(!object(original))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
   const correction:TaxBasisCorrectionRef={id:row.id,batchId:row.batchId,sourceHash:row.sourceHash,basisVersion:1};
-  const statutory={...original,...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{}),bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),taxBasisCorrection:correction};
+  const statutory={...original,bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),taxBasisCorrection:correction};
   if(requested.has(row.payslipId))out.set(row.payslipId,{statutory,correction,basis});
- }
- // New imported inputs are never silently replaced by the legacy gross-pay fallback. A reviewed
- // exact-source revision wins; otherwise the accepted import's explicit projection must still match.
- const imported=options.includeImported?sources.filter(source=>!!source.historyAttemptId||object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)):[];
- const current=imported.length?await importedTaxSettingsTx(tx):[];
- const rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(imported.map(source=>source.period))]);
- for(const source of imported){
-  const statutory=(object(source.source.statutory)?source.source.statutory:{}) as Record<string,unknown>,stamp=(object(statutory.importedTaxBasis)?statutory.importedTaxBasis:{}) as Record<string,unknown>,reviewed=out.get(source.id);
-  const receiptSettings=reviewed?reviewed.basis.appliedSettings:stamp.settings,receiptRules=reviewed?reviewed.basis.rulesState:stamp.rulesState;
-  const unavailable=()=>{throw new PayrollTaxBasisError(`Imported wage inputs require review for ${source.period}. Preview the historical tax inputs and resolve the named missing evidence.`);};
-  if((!reviewed&&(stamp.version!==1||stamp.year!==Number(source.period.slice(0,4))||stamp.state!=='ready'))||canonical(receiptRules)!==canonical(rulesStates.get(source.period))||!Array.isArray(receiptSettings))unavailable();
-  const settings=receiptSettings as Record<string,unknown>[];
-  for(const saved of settings){
-   if(saved.id==='system-basic-salary'){if(current.some(setting=>setting.code.toUpperCase()==='BASIC'))unavailable();continue;}
-   const live=current.find(setting=>setting.id===saved.id);
-   if(!live||canonical(importedTaxSettingEvidence([live]))!==canonical(importedTaxSettingEvidence([saved])))unavailable();
-  }
-  if(options.sameMonth){
-   const basis=reviewed?.basis??validatedTaxBasis(stamp.basis),evidence=reviewed?.basis.rulesEvidence??stamp.rulesEvidence;
-   const noncash=readPcbNonCash(basis.pcbNonCash);
-   if(noncash?.ownedEaEntries.some(entry=>entry.entered>0))throw new PayrollTaxBasisError(`Imported monthly noncash source ownership is unavailable for ${source.period}. The original recurring/one-off and regular-run baseline evidence is required before a later cycle can be calculated.`);
-   const exemptions=object(evidence)&&object(evidence.pcbExemptions)?evidence.pcbExemptions:null;
-   if(!exemptions)unavailable();
-   const cashCap=basis.items.some(item=>settings.some(setting=>setting.code===item.code&&setting.includedInPcb===true&&setting.isNonPayable!==true&&(setting.epfBonus2012===true||setting.pcbRemunerationType==='normal'||setting.pcbRemunerationType==='additional')&&typeof setting.pcbExemptionCode==='string'&&object(exemptions!.pcb)&&Number(exemptions!.pcb[setting.pcbExemptionCode])>0&&item.exempt>0));
-   const optionalCap=Object.entries(basis.exemptionUsed).some(([code,amount])=>code.startsWith('LP_')&&amount>0&&object(exemptions!.lp)&&Number(exemptions!.lp[code])>0);
-   if(cashCap||optionalCap)throw new PayrollTaxBasisError(`Imported monthly exemption source ownership is unavailable for ${source.period}. The original recurring/one-off or optional-deduction evidence is required before a later cycle can be calculated.`);
-  }
-  if(reviewed)continue;
-  const basis=validatedTaxBasis(stamp.basis);
-  if(!object(statutory.bases)||statutory.bases.pcb!==basis.pcb)unavailable();
-  out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})}});
- }
- if(options.includeImported){
-  // Eligible consumers ask for their saved prefix. Recompose cumulative noncash snapshots from
-  // owned sources across cycles; never treat each imported cycle as an entire monthly baseline.
-  const builders=new Map<string,ReturnType<typeof createNonCashOwnershipReplay>>();
-  const ordered=[...sources].sort((a,b)=>a.companyId.localeCompare(b.companyId)||a.employmentId.localeCompare(b.employmentId)||a.period.localeCompare(b.period)||String(a.batch.batch_date??'').localeCompare(String(b.batch.batch_date??''))||String(a.batch.cycle_id??'').localeCompare(String(b.batch.cycle_id??''))||Number(a.batch.run_seq??0)-Number(b.batch.run_seq??0)||String(a.batch.id).localeCompare(String(b.batch.id))||a.id.localeCompare(b.id));
-  for(const source of ordered){
-   const effective=out.get(source.id),stat=effective?.statutory??source.source.statutory;if(!object(stat))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
-   const saved=readPcbNonCash(stat.pcbNonCash);if(stat.pcbNonCash!==undefined&&!saved)throw new PayrollTaxBasisError('Original month noncash ownership is malformed.');
-   const key=source.companyId+':'+source.employmentId+':'+source.period.slice(0,4),builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
-   let rebuilt:ReturnType<typeof builder>;
-   try{rebuilt=builder({period:source.period,cashNormal:typeof effective?.basis.normal==='number'?effective.basis.normal:saved?.cashNormal??0,owned:saved?.ownedEntries??[],ownedEa:saved?.ownedEaEntries??[],original:saved,completeSource:saved!==null||object(stat.importedTaxBasis)});}catch{throw new PayrollTaxBasisError('Original month noncash source ownership is incomplete or duplicated. Review the complete month prefix.');}
-   if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt}});
-  }
  }
  return out;
 }

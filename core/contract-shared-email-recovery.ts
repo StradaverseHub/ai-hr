@@ -25,8 +25,7 @@ export async function retryContractEmailRecovery(tx:SqlExecutor,eventId:string,s
    }
    // A native trigger verifies the actual queued OneHR intent and permits exactly this one-step suffix.
    await sqlAutomationRunStore(tx).save(next,'waiting');
-  }else if(outcome.status==='hold')throw Error(outcome.message);
-  else if(outcome.status!=='wait')throw Error(outcome.reason);
+  }else if(outcome.status!=='wait')throw Error(outcome.reason);
  }
  await tx.execute(sql`select app.contract_shared_email_prerequisite_finish(${eventId}::uuid)`);
 }

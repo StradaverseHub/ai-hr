@@ -23,17 +23,15 @@ import {createBatch,generatePayslips,closeBatch} from '../core/payroll';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
-import {taxBasisSourceRowsTx,hashTaxBasisSource} from '../core/payroll-tax-basis-read';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
-import {importedTaxSettingsTx,importTaxSettingsWithBasic,importedTaxSettingsHash} from '../core/payroll-import-tax-source';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 // `earlier` is imported new (after the processed month, so nothing processed depends on it and it can be reverted);
 // `processed` holds a closed processed run the file overwrites.
-// This fixture intentionally exercises calculation with the pack's verified assessment year.
-const year=2026,earlier=`${year}-03`,processed=`${year}-02`;
+const year=Number(todayInKualaLumpur().slice(0,4))-2,earlier=`${year}-03`,processed=`${year}-02`;
 const CODES=['0007','0008','0009'];
 const canonical=(value:unknown):string=>JSON.stringify(value,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item);
 const tick=()=>runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});
@@ -50,7 +48,7 @@ async function tenant():Promise<Tenant>{
  const b=await seedBase();await setModule(b.tenantId,'payroll','active');const ctx=await entitledCtx(b);
  await owner.db.update(schema.company).set({companyLabel:'000AC'}).where(eq(schema.company.id,b.companyId));
  await seedPayrollCycleCatalog(ctx,b.companyId);
- await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic',pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'});
+ await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
  const employments:Record<string,string>={};
  for(const [i,code] of CODES.entries()){
   const hired=await hireEmployee(ctx,{person:{fullName:`Fictional history employee ${code}`,primaryEmail:`history-${code}-${randomUUID().slice(0,6)}@fixture.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:code,hiredOn:`${year-1}-01-01`});
@@ -99,43 +97,13 @@ async function state(t:Tenant,attemptId:string){
  const cycles=await q(sql`select id,code from payroll_cycle where tenant_id=${t.b.tenantId}::uuid`);
  const selections=await q(sql`select id,employment_id from employment_tax_selection_my where tenant_id=${t.b.tenantId}::uuid`);
  const salaries=await q(sql`select id,employment_id from compensation where tenant_id=${t.b.tenantId}::uuid`);
- const sources=await withTenant(t.ctx,tx=>taxBasisSourceRowsTx(tx,slips.map(slip=>String(slip.id))));
- const sourceHashes=new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)]));
- for(const slip of slips){const statutory=slip.statutory as {taxBasisOpeningSource?:{prefix:{payslipId:string;sourceHash:string}[]};taxBasisImportedSources?:{payslipId:string;sourceHash:string;importRevision:string}[]};
-  for(const entry of statutory.taxBasisOpeningSource?.prefix??[])expect(entry.sourceHash).toBe(sourceHashes.get(entry.payslipId));
-  for(const entry of statutory.taxBasisImportedSources??[]){expect(entry.sourceHash).toBe(sourceHashes.get(entry.payslipId));expect(entry.importRevision).toBe(sources.find(source=>source.id===entry.payslipId)?.importRevision);}
- }
- const settings=importTaxSettingsWithBasic(await withTenant(t.ctx,importedTaxSettingsTx));
- const settingsHash=importedTaxSettingsHash(settings);
- // The digest binds tenant-specific Pay Item ids. Verify it before normalizing across tenants;
- // compare all receipt settings and source bindings below rather than discarding them.
- for(const slip of slips){const stamp=(slip.statutory as {importedTaxBasis?:{settingsHash:string;settings:{id:string;code:string}[];lines:{settingId:string;code:string}[]}}).importedTaxBasis;if(!stamp)continue;
-  expect(stamp.settingsHash).toBe(settingsHash);
-  for(const setting of stamp.settings)expect(settings.find(current=>current.id===setting.id)).toEqual(setting);
-  for(const line of stamp.lines)expect(stamp.settings.some(setting=>setting.id===line.settingId&&setting.code===line.code)).toBe(true);
- }
- // A reviewed removal has its own immutable actor-owned receipt. Verify its exact role before
- // normalizing that tenant-specific ID; the audit field itself remains in the comparison.
- const receiptId=(value:unknown)=>value&&typeof value==='object'&&'maintenanceAttemptId' in value&&typeof value.maintenanceAttemptId==='string'?value.maintenanceAttemptId:undefined;
- const receiptIds=[...new Set([...events.map(e=>receiptId(e.detail)),...audit.map(e=>receiptId(e.payload))].filter((id):id is string=>typeof id==='string'))];
- if(receiptIds.length){expect(receiptIds).toHaveLength(1);for(const e of events)if(e.kind==='reverted')expect(receiptId(e.detail)).toBe(receiptIds[0]);for(const e of audit)if(e.event_type==='payroll-history-import.reverted')expect(receiptId(e.payload)).toBe(receiptIds[0]);}
- const receiptNames:[string,string][]=[];
- for(const id of receiptIds){
-  const [receipt]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,id));if(!receipt)throw Error('The audited removal receipt is missing');expect(receipt.createdBy).toBe(t.ctx.userId);
-  const plan=receipt.plan;expect(plan.maintenance).toEqual({version:1,mode:'remove_batch',reason:'Revert import batch',request:{version:1,operation:'remove_batch',attemptId,reason:'Revert import batch'}});
-  expect(receipt.sourceHash).toBe(createHash('sha256').update(receipt.sourceContent).digest('hex'));expect(plan.sourceHash).toBe(receipt.sourceHash);expect(plan.counts.invalid).toBe(0);receiptNames.push([id,'reviewed-removal-receipt']);
- }
- const names=new Map<string,string>([...receiptNames,[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
-  ...[...slipKey].map(([id,key])=>[id,'payslip:'+key] as [string,string]),
-  ...[...revisionKey].map(([id,key])=>[id,'import-revision:'+key] as [string,string]),
-  ...settings.map(setting=>[setting.id,'pay-item:'+setting.code] as [string,string]),
+ const names=new Map<string,string>([[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
   ...Object.entries(t.employments).map(([c,id])=>[id,'employment:'+c] as [string,string]),
   ...person.map(r=>[r.person_id as string,'person:'+code.get(r.id as string)] as [string,string]),
   ...cycles.map(c=>[c.id as string,'cycle:'+c.code] as [string,string]),
   ...selections.map(r=>[r.id as string,'tax-selection:'+code.get(r.employment_id as string)] as [string,string]),
   ...salaries.map(r=>[r.id as string,'compensation:'+code.get(r.employment_id as string)] as [string,string])]);
- const normalizeHashes=(text:string)=>[...sourceHashes].reduce((value,[id,digest])=>value.replaceAll(digest,'verified-source-hash:'+slipKey.get(id)),text);
- const sort=<T,>(rows:T[])=>rows.map(r=>normalizeHashes(JSON.stringify(r)).replaceAll(settingsHash,'verified-settings-digest').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
+ const sort=<T,>(rows:T[])=>rows.map(r=>JSON.stringify(r).replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
  return{
   periods:sort(periods),
   batches:sort(batches.map(b=>Object.fromEntries(Object.entries(b).filter(([k])=>k!=='id')))),
@@ -225,13 +193,21 @@ describe('payroll history confirm and revert as staged jobs',()=>{
   expect(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,initial.attemptId))).toHaveLength(1);
  },120000);
 
- it('refuses an unreviewed removal hash before synchronous changes or job admission',async()=>{
+ it('refuses a revert exactly as the single transaction does, recording the same failure',async()=>{
   const sync=await tenant(),job=await tenant();
-  for(const t of [sync,job]){const v=await validated(t);await confirmPayrollHistoryUpload(t.ctx,v.input);const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});Object.assign(t,{attemptId:v.preview.attemptId});}
-  const syncId=(sync as Tenant&{attemptId:string}).attemptId,jobId=(job as Tenant&{attemptId:string}).attemptId,beforeSync=await state(sync,syncId),beforeJob=await state(job,jobId),hash='0'.repeat(64);
-  const refusal=await revertPayrollHistoryUpload(sync.ctx,syncId,hash).then(()=>null,(error:Error)=>error.message);expect(refusal).toMatch(/removal preview.*unavailable or changed/);
-  await expect(requestPayrollHistoryRevert(job.ctx,jobId,hash)).rejects.toThrow(refusal??'Expected the reviewed-removal refusal');
-  expect(await state(sync,syncId)).toEqual(beforeSync);expect(await state(job,jobId)).toEqual(beforeJob);expect(await owner.client`select 1 from bulk_job where tenant_id=${job.b.tenantId}::uuid`).toHaveLength(0);
+  for(const t of [sync,job]){
+   const v=await validated(t);await confirmPayrollHistoryUpload(t.ctx,v.input);
+   // A later month is processed: restoring the imported basis would change what it was worked out from.
+   const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});
+   Object.assign(t,{attemptId:v.preview.attemptId});
+  }
+  const hash='0'.repeat(64);
+  const refusal=await revertPayrollHistoryUpload(sync.ctx,(sync as Tenant&{attemptId:string}).attemptId,hash).then(()=>null,(error:Error)=>error.message);
+  expect(refusal).toMatch(/Normally processed payroll already depends/);
+  const request=await requestPayrollHistoryRevert(job.ctx,(job as Tenant&{attemptId:string}).attemptId,hash);
+  expect(await drain(request.jobId)).toBe('failed');
+  expect((await owner.client<{error:string}[]>`select error from bulk_job where id=${request.jobId}::uuid`)[0].error).toBe(refusal);
+  expect(await state(job,(job as Tenant&{attemptId:string}).attemptId)).toEqual(await state(sync,(sync as Tenant&{attemptId:string}).attemptId));
  },240000);
 
  it('keeps every staged row invisible until the release, then shows the whole attempt at once',async()=>{
@@ -348,19 +324,11 @@ describe('payroll history confirm and revert as staged jobs',()=>{
    const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});
    expect(await drain(revert.jobId)).toBe('failed');
    const [job]=await owner.client<{error:string;rechecks:number}[]>`select error,(plan->>'rechecks')::int as rechecks from bulk_job where id=${revert.jobId}::uuid`;
-   expect(job).toEqual({error:'The source, master data, permissions or target revisions changed. Validate a new attempt.',rechecks:1});
+   expect(job).toEqual({error:'Normally processed payroll already depends on this period or a later period in the same year.',rechecks:1});
    // Nothing of the revert remains; the import stays effective; the failure is recorded once.
    expect(await owner.client`select 1 from payroll_history_import_revision where tenant_id=${t.b.tenantId}::uuid and kind='revert'`).toHaveLength(0);
-   const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));expect(events.map(e=>e.kind)).toEqual(['confirmed']);
-   // Terminal settlement deliberately retires input; the retained sealed plan binds its durable audit receipt.
-   const [queued]=await owner.client<{attempt_id:string|null;input:unknown;recorded:boolean|null}[]>`select plan->>'attemptId' attempt_id,input,(plan->>'failureRecorded')::boolean recorded from bulk_job where id=${revert.jobId}::uuid`;
-   if(!queued||typeof queued.attempt_id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(queued.attempt_id))throw Error('The settled job must retain its exact removal receipt UUID');
-   expect(queued.input).toBeNull();expect(queued.recorded).toBe(true);expect(queued.attempt_id).not.toBe(v.preview.attemptId);
-   const actorId=t.ctx.userId;if(!actorId)throw Error('The audited fixture requires its authenticated creator');
-   const [receipt]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,queued.attempt_id));if(!receipt)throw Error('The bound removal receipt must remain available');
-   expect(receipt.createdBy).toBe(actorId);expect(receipt.plan.previewHash).toBe(review.previewHash);expect(receipt.plan.maintenance).toEqual({version:1,mode:'remove_batch',reason:'Revert import batch',request:{version:1,operation:'remove_batch',attemptId:v.preview.attemptId,reason:'Revert import batch'}});
-   const failures=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,queued.attempt_id));expect(failures.map(e=>({kind:e.kind,actorId:e.actorId,changes:e.changes,detail:e.detail}))).toEqual([{kind:'failed',actorId,changes:[],detail:{reason:job.error}}]);
-   const audit=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,queued.attempt_id),eq(schema.domainEvent.eventType,'payroll-history-import.failed')));expect(audit.map(e=>({aggregateType:e.aggregateType,actorType:e.actorType,actorId:e.actorId,payload:e.payload}))).toEqual([{aggregateType:'payroll-history-import',actorType:'user',actorId,payload:{reason:job.error}}]);
+   const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));
+   expect(events.map(e=>[e.kind,e.detail])).toEqual([['confirmed',expect.anything()],['revert_failed',{reason:job.error}]]);
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 

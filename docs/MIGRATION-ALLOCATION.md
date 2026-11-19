@@ -273,52 +273,6 @@ required. No database was migrated and no staging lease was claimed by this allo
 
 ---
 
-## Remaining approved board source reservations — 18 November 2026
-
-The coordinator reserves these append-only source blocks for the remaining approved items. A fresh survey read 482 working-tree journals; the only claim in these ranges was this session's assigned RVK owner at 6670–6671. The inspected staging ledger is below these ranges. Re-survey committed peers and the actual installation before release admission; these are source reservations, not installation authority.
-
-| Owner / item | Tags | Journal indices | Timestamps |
-| --- | --- | --- | --- |
-| Imported PCB history, 3c93ac46 | 6660–6669 | 10060–10069 | 1794998006660–1794998006669 |
-| Offboarding requisition, b472a445 | 6670–6679 | 10070–10079 | 1794998006670–1794998006679 |
-| Missing Personnel completion, fb99243c | 6680–6689 | 10080–10089 | 1794998006680–1794998006689 |
-
-The communications layout (88328f42) and email-image save acknowledgement (692520d1) require no migration at current design. Preserve prior allocation records and applied SQL bytes. Each used entry requires exact SQL hash, grants/RLS review and restricted-owner populated upgrade evidence.
-
-## Probation queue and employment rollback — 18 November 2026
-
-The reserved source slot 6601 uses idx 10001 / when 1794998006601. It excludes only the automatic
-reconciliation intent from the existing rehire/import-void activity scanners, preserving their
-permissions, all business-activity blockers, queue FK/RLS and applied SQL. The hosted rehire
-regression at c777d4475 showed an untouched new employment was blocked by this technical queue.
-This is uninstalled source and grants no deployment authority.
-
-# Approved board build — 18 November 2026 (source reservations only)
-
-Coordinator `codex/approved-board-build-20261118` reserves the following disjoint blocks.
-Each numbered tag uses the stated index and timestamp, with a descriptive suffix chosen by its owner.
-
-| Tags | idx | when | Owner |
-| --- | --- | --- | --- |
-| 6600–6609 | 10000–10009 | 1794998006600–1794998006609 | Probation reconciliation |
-| 6610–6619 | 10010–10019 | 1794998006610–1794998006619 | Probation email builder |
-| 6620–6629 | 10020–10029 | 1794998006620–1794998006629 | Probation letters and signing |
-| 6630–6639 | 10030–10039 | 1794998006630–1794998006639 | My tasks document projection |
-| 6640–6649 | 10040–10049 | 1794998006640–1794998006649 | Personnel manager email recipients |
-| 6650–6659 | 10050–10059 | 1794998006650–1794998006659 | Pay formula business-code sources |
-
-Fresh main/alpha refs were fetched before choosing main `5f29160ef`. A read of every
-readable Git-registered worktree journal found no tag in 6600–6659 and no index in
-10000–10059. The highest observed competing timestamp was 1794988006500 and index
-9934. Staging independently reported source `f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e`,
-build `MIdgSb_9kQdck-DwAgKj-`, and 924 applied migrations through 1794841006104.
-Production and all committed peer journals still require a fresh ordered-ledger and
-claim survey at integration/admission. These are source reservations for isolated
-builds, not approval to install, alter applied SQL or bypass release evidence.
-# Formula business codes — 18 November 2026 (unapplied candidate)
-
-Coordinator reserves `6650_pay_formula_business_code_registration`, idx `10050`, when `1794998006650` in the 6650–6659 block for approved board item 8fe17e53. It adds only the reviewed metadata-registration keys to the existing owner-owned function; no formula, payroll or employee rows are converted. Preserve existing applied SQL bytes. Target ledger/peer claims must be refreshed before admission; this reservation grants no installation authority.
-
 # Approved board items — 17 November 2026 (source reservations; installation held)
 
 Coordinator `codex/approved-board-controller-20261117` reserves:
@@ -5114,15 +5068,3 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
 (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
 the installed ledger at admission. This entry carries no deployment authority.
-
-
-2026-11-18 — coordinator reservation for `codex/v9-document-routing-20261118`: tags 6656–6657, idx 10056–10057, when 1794998006656–1794998006657. Additive saved-document signing subject guard and narrow authorized action custodian; no historical document rewrite. Parent survey: staging 924 receipts, max 1794841006104 at f8c90ebc; production and committed peer survey must be refreshed before admission. No installation or deployment authority.
-
-The same coordinator-owned block also allocates 6658 / idx 10058 / when 1794998006658 for shared returned-content custody, and 6659 / idx 10059 / when 1794998006659 for canonical V9 source-event dispatch. These are uninstalled candidate migrations; final hashes and ledger admission remain required.
-- 18 November 2026 approved PCB history lane: 6660–6669 / idx10060–10069 / when1794998006660–6669 reserved by release coordinator. 6660 adds the noncash import vocabulary and additive imported-tax compatible-reader guard; no existing data rewrite. Final integration re-surveys all registered worktrees and installed journals.
-
-- PCB lane6661 / idx10061 / when1794998006661: set-paged canonical historical subjects and recursion-safe read-only original payroll employer audience. Existing restrictive reader/effective-source guards and all write policies remain in force.
-
-2026-11-18 — coordinator source reservation: `codex/pm-recovery-sql-20261118` owns 6688–6689 / idx 10088–10089 / when 1794998006688–1794998006689 for explicit Personnel completion recovery review/adoption and bulk-job kinds. One target per worker checkpoint; no email replay. Source reservation only; final ordered ledger/hash and installation authority remain with the coordinator.
-
-2026-11-18 — approved imported-history maintenance 5b47be17 source reservation: CORE 6690–6709 / idx10090–10109 / when1794998006690–1794998006709; any separately leased UI/read support must coordinate before consuming a slot. Existing import record/snapshot/revision/event and staged bulk owners remain canonical. A fresh survey of 511 registered worktrees found no idx/when collision in 6690–6719; fetched main remains5f29160ef and alpha12098e9c5. The previously observed installation watermark is1794841006104; fresh installation and peer admission proofs remain required before release. This reservation authorises no live maintenance, installation or deployment.

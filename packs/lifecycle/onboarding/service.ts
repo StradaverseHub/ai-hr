@@ -1,4 +1,3 @@
-import type { PersonnelManagerRecipient } from '../../../lib/personnel-manager-recipient';
 import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
 import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
@@ -324,7 +323,7 @@ export function onboardingRegisterRows(ctx: SessionContext, display: Pick<M.Conf
     },{readOnlySnapshot:true});
 }
 
-async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false, reconcileCompany = true) {
+async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
     const q = tx.select().from(cases).where(eq(cases.id, id)).limit(1), [row] = lock ? await q.for('update') : await q;
     if (!row)
         M.fail('Onboarding case not found.', 'not_found');
@@ -350,7 +349,6 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false, rec
         const nextCompany = c.source.company;
         const nextActor = await actorTx(tx, ctx, config, nextCompany);
         if (!nextActor.hr) M.fail('Company HR access is required for the updated Personnel company.', 'forbidden');
-        if (!reconcileCompany) M.fail('Open the case to refresh its Personnel company before previewing.', 'conflict');
         M.log(c, actor, { ...clock(), id:randomUUID, nextNumber:()=>'', leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[] }, 'personnel.companyUpdated');
         await storeTx(tx,ctx,{...row,companyId:nextCompany},c,true);
         await auditTx(tx,ctx,c,'personnel_company_updated');
@@ -368,11 +366,6 @@ function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.
 export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c, personnelLabels } = await loadTx(tx, ctx, id);
-        if (actor.hr && (actor.module || actor.caseActions) && mode === 'case') {
-            const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${id}::uuid) as recipient`);
-            c.source.supervisor = manager.recipient.employmentId ?? '';
-            personnelLabels.supervisor = manager.recipient.name ?? '';
-        }
         if (mode === 'case' && !actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
         if (mode !== 'case' && !actor.module && !(mode==='requisition'&&actor.records) && !await participantTx(tx, id))
@@ -1083,8 +1076,6 @@ export type OnboardingTask = {
     tagged: boolean;
     team: boolean;
     taskId?: string;
-    documentTemplate?: string | null;
-    documentAction?: string;
     itemIds?: string[];
     stepId?: string;
     noteId?: string;
@@ -1125,7 +1116,7 @@ async function interpretOnboardingTasks(config: M.Config, actor: M.Actor, list: 
                     continue;
                 const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
                 if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, documentTemplate:t.documentTemplate, documentAction:t.documentAction, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
+                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
                 if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
                     add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))
@@ -1549,14 +1540,13 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
 }
 
 /** Private V9 document state follows the native case and its revision/history. */
-export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string, lock = true) {
+export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string) {
     let result: Awaited<ReturnType<typeof loadTx>>;
-    if (ctx.userId) result = await loadTx(tx, ctx, id, lock, lock);
+    if (ctx.userId) result = await loadTx(tx, ctx, id, true);
     else {
         const [permission] = await tx.execute<{ ok: boolean }>(sql`select current_user='ai_hr_owner' OR EXISTS(select 1 from pg_roles where rolname=current_user and rolsuper) as ok`);
         if (!permission?.ok) M.fail('The storage owner is required for scheduled onboarding documents.', 'forbidden');
-        const query = tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId)));
-        const [row] = lock ? await query.for('update') : await query;
+        const [row] = await tx.select().from(cases).where(and(eq(cases.id, id), eq(cases.tenantId, ctx.tenantId))).for('update');
         if (!row) M.fail('Onboarding case not found.', 'not_found');
         const { config } = await configTx(tx, ctx), c = structuredClone(row.data);
         const [privateRow] = await tx.select().from(secrets).where(eq(secrets.caseId, id));
