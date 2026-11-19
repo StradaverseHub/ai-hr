@@ -466,9 +466,13 @@ async function measureClaimApproval({page,user,db,report,save}){
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  const approved=main.locator(`tr[id="${rowId}"]`);
- await approved.locator('button[data-action-approval]').click({timeout:timeout()});
+ const confirmation=page.locator('[data-sonner-toast][data-type="success"]').filter({hasText:'Claim approved'});
+ await Promise.all([
+  confirmation.waitFor({state:'visible',timeout:timeout()}),
+  approved.locator('button[data-action-approval]').click({timeout:timeout()}),
+ ]);
  await page.waitForURL(url=>url.pathname==='/approvals'&&url.searchParams.get('category')==='claim'
-  &&url.searchParams.get('toast')==='Claim approved'&&!url.searchParams.has('error'),{timeout:timeout()});
+  &&!url.searchParams.has('error'),{timeout:timeout()});
  await approved.waitFor({state:'hidden',timeout:timeout()});
  await main.locator('[data-approvals-header-actions] select').waitFor({state:'visible',timeout:timeout()});
  await assertContentAvailable(page);
