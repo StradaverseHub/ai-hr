@@ -1,12 +1,14 @@
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {readLeaveInquiryPicker} from '../../core/leave-inquiry';
+import {inquiryBalancePage} from '../../app/leave/employee-balances/inquiry-data';
+import {leaveInquiryBalancePairsTx,leaveInquirySnapshot,readLeaveInquiryPicker} from '../../core/leave-inquiry';
 import {adminCompaniesTx,leaveInquiryPickerDisplayRowsTx,leaveInquiryPickerFacetsTx,listLeaveInquiryPickerIdentitiesTx} from '../../core/read';
 import {withTenant,type SessionContext} from '../../db/client';
 import type {EmployeeChoiceInput} from '../../lib/employee-choice';
 import {sortInquiryEmployees} from '../../lib/leave-inquiry';
 import {matchesLeaveInquiryPicker,normalizeLeaveInquiryPicker} from '../../lib/leave-inquiry-picker';
+import {parseInquiryQuery} from '../../lib/leave-inquiry-query';
 import {closeAll,migrateTestDb,owner} from '../harness';
 import {restoreWorkforceCapabilityCatalogue} from './personnel-scale-fixture';
 import {seedPersonnelSearchFixture} from './personnel-search-fixture';
@@ -70,7 +72,24 @@ it('measures the employee chooser and its owners at group and single-company sca
     if(name==='group-all-open')expect(full.result.populationTotal).toBeGreaterThan(1_000);
     evidence.push({name,fullPickerMs:full.ms,matchedRows:measured.total,population:measured.populationTotal,...measured.costs});
   }
-  const report=JSON.stringify({kind:'LEAVE_INQUIRY_PICKER_COMPONENT_ONLY',companies,employments,evidence});
+  const balanceEvidence=[];
+  for(const {name,ctx,scope} of cases.filter(row=>row.name!=='group-all-selective')){
+    const query=parseInquiryQuery({asOf:fixture.today},'balances');
+    const frameStart=performance.now();
+    const row=await leaveInquirySnapshot(ctx,scope,query,async(tx,selection)=>{
+      const snapshotMs=Math.round(performance.now()-frameStart);
+      const full=await timed(()=>inquiryBalancePage(ctx,selection,query,'en',query.pq,tx));
+      const pairs=await timed(()=>leaveInquiryBalancePairsTx(tx,ctx,selection,query,'en'));
+      expect(full.result.rows.length,name).toBeGreaterThan(0);
+      expect(full.result.total,name).toBe(pairs.result.total);
+      expect(full.result.rows.map(item=>[item.employee.employmentId,item.leaveTypeId]),name)
+        .toEqual(pairs.result.rows.map(item=>[item.employee.employmentId,item.leaveTypeId]));
+      return {name,snapshotMs,scopeRows:selection.employees.length,balanceReadMs:full.ms,
+        membershipMs:pairs.ms,visiblePairs:pairs.result.total,displayedRows:full.result.rows.length};
+    });
+    balanceEvidence.push(row);
+  }
+  const report=JSON.stringify({kind:'LEAVE_INQUIRY_COMPONENT_ONLY',companies,employments,evidence,balanceEvidence});
   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR){
     writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'leave-inquiry-picker-scale.json'),report);
   }

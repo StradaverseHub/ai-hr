@@ -169,8 +169,14 @@ async function readyContent(page,actor,path,timeout) {
   await main.locator('section[aria-labelledby="own-private-cases"]:visible').waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
- if(['/leave/employee-balances','/leave/employee-records'].includes(path)){
-  await main.getByTestId('pick-employee').waitFor({state:'visible',timeout:timeout()});
+ if(path==='/leave/employee-balances'){
+  await main.getByTestId('employee-balances-table').locator('tbody tr:visible').first()
+   .waitFor({state:'visible',timeout:timeout()});
+  await main.locator('input[type="search"]:visible').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/leave/employee-records'){
+  await main.getByRole('table').locator('thead:visible').first().waitFor({state:'visible',timeout:timeout()});
   await main.locator('input[type="search"]:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
