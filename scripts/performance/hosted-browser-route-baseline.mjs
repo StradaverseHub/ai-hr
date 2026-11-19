@@ -30,6 +30,8 @@ assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??'
 assert.equal(git('status','--porcelain'),'');
 
 const privateDir=mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
+const fixtureEvidenceDir=join(privateDir,'fixture-evidence');
+mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
@@ -41,7 +43,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
  AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'workflow-preflight',PERF_ATTENDANCE_DAYS:'180',
- PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:privateDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
+ PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
@@ -256,7 +258,8 @@ try{
   'scripts/performance/system-fixture.mjs'],{...dbEnv,
    TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
- assert(fixture.users.length===500&&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
+ assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
+  &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
  await waitForApp();
