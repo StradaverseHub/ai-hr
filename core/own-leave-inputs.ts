@@ -14,7 +14,7 @@
  *
  * Nothing here decides authority. The caller has already proved the own subject and principal; RLS still applies
  * to every row, so this can never return a row the staged statements could not. */
-import {sql,type Column,type Table} from 'drizzle-orm';
+import {sql,type Column,type SQL,type Table} from 'drizzle-orm';
 import type {Tx} from '../db/client';
 import {company,employment,entitlementEligibilityRule,entitlementTemplate,leaveLedger,leaveRequest,leaveSharedGroup,leaveSharedGroupMember,leaveType,person} from '../db/schema';
 import {columnRefSql,decodeJsonColumns,decodeJsonRow,jsonColumnsSql,jsonRowSql,projectFields} from '../db/json-row';
@@ -223,10 +223,18 @@ export async function sharedOwnLeaveInputsTx(tx:Tx,employmentId:string,today:str
  const raw=await sharedSnapshotValue(tx,'ownLeaveInputs|'+employmentId+'|'+today,()=>readRawOwnLeaveInputsTx(tx,employmentId,today));
  return new OwnLeaveInputs(tx,employmentId,structuredClone(raw));
 }
-async function readRawOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):Promise<Raw>{
- const id=sql`${employmentId}::uuid`;
- const [row]=await tx.execute<{inputs:Raw}>(sql`select jsonb_build_object(
+type SharedLeaveInputs=Pick<Raw,'types'|'groupMembers'|'templates'|'rules'>;
+type SubjectLeaveInputs=Omit<Raw,keyof SharedLeaveInputs>;
+const sharedLeaveInputsSql=()=>sql`jsonb_build_object(
   'types',(select coalesce(jsonb_agg(${jsonRowSql(leaveType,'t')} order by t.ctid),'[]'::jsonb) from ${leaveType} t),
+  'groupMembers',(select coalesce(jsonb_agg(jsonb_build_object('leaveTypeId',${a('m',leaveSharedGroupMember.leaveTypeId)},
+   'placement',${a('g',leaveSharedGroup.essPlacement)}) order by m.ctid),'[]'::jsonb)
+   from ${leaveSharedGroupMember} m join ${leaveSharedGroup} g on ${a('g',leaveSharedGroup.id)}=${a('m',leaveSharedGroupMember.groupId)}),
+  'templates',(select coalesce(jsonb_agg(${jsonRowSql(entitlementTemplate,'x')} order by x.ctid),'[]'::jsonb) from ${entitlementTemplate} x),
+  'rules',(select coalesce(jsonb_agg(${jsonRowSql(entitlementEligibilityRule,'y')} order by ${a('y',entitlementEligibilityRule.createdAt)},${a('y',entitlementEligibilityRule.id)}),'[]'::jsonb)
+   from ${entitlementEligibilityRule} y)
+ )`;
+const subjectLeaveInputsSql=(id:SQL,nextApproved:SQL)=>sql`jsonb_build_object(
   'employment',(select ${jsonColumnsSql('e',EMPLOYMENT_COLUMNS)} from ${employment} e where ${a('e',employment.id)}=${id}),
   'person',(select ${jsonColumnsSql('p',PERSON_COLUMNS)} from ${employment} e join ${person} p on ${a('p',person.id)}=${a('e',employment.personId)}
    where ${a('e',employment.id)}=${id}),
@@ -237,15 +245,28 @@ async function readRawOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):P
   'requests',(select coalesce(jsonb_agg(${jsonColumnsSql('r',REQUEST_COLUMNS)} order by r.ctid),'[]'::jsonb) from ${leaveRequest} r
    where ${a('r',leaveRequest.employmentId)}=${id} or ${a('r',leaveRequest.id)} in (select ${a('s',leaveLedger.sourceRequestId)} from ${leaveLedger} s
     where ${a('s',leaveLedger.employmentId)}=${id} and ${a('s',leaveLedger.sourceRequestId)} is not null)),
-  'groupMembers',(select coalesce(jsonb_agg(jsonb_build_object('leaveTypeId',${a('m',leaveSharedGroupMember.leaveTypeId)},
-   'placement',${a('g',leaveSharedGroup.essPlacement)}) order by m.ctid),'[]'::jsonb)
-   from ${leaveSharedGroupMember} m join ${leaveSharedGroup} g on ${a('g',leaveSharedGroup.id)}=${a('m',leaveSharedGroupMember.groupId)}),
-  'templates',(select coalesce(jsonb_agg(${jsonRowSql(entitlementTemplate,'x')} order by x.ctid),'[]'::jsonb) from ${entitlementTemplate} x),
-  'rules',(select coalesce(jsonb_agg(${jsonRowSql(entitlementEligibilityRule,'y')} order by ${a('y',entitlementEligibilityRule.createdAt)},${a('y',entitlementEligibilityRule.id)}),'[]'::jsonb)
-   from ${entitlementEligibilityRule} y),
-  'nextApproved',(select jsonb_build_object('requestId',q."requestId",'date',q.date,'duration',q.duration)
-   from (${nextApprovedLeavePresenceSql(employmentId,today)}) q)
- ) as inputs`);
+  'nextApproved',${nextApproved}
+ )`;
+
+async function readRawOwnLeaveInputsTx(tx:Tx,employmentId:string,today:string):Promise<Raw>{
+ const nextApproved=sql`(select jsonb_build_object('requestId',q."requestId",'date',q.date,'duration',q.duration)
+  from (${nextApprovedLeavePresenceSql(employmentId,today)}) q)`;
+ const [row]=await tx.execute<{inputs:Raw}>(sql`
+  select ${sharedLeaveInputsSql()} || ${subjectLeaveInputsSql(sql`${employmentId}::uuid`,nextApproved)} as inputs`);
  if(!row?.inputs)throw new Error('Own leave inputs are unavailable.');
  return row.inputs;
+}
+
+/** Load inputs for displayed balance rows inside their existing authorized snapshot. */
+export async function readLeaveBalancePageInputsTx(tx:Tx,employmentIds:readonly string[]){
+ const ids=[...new Set(employmentIds)];
+ if(!ids.length)return new Map<string,OwnLeaveInputs>();
+ if(ids.length>2000)throw new RangeError('Leave balance page exceeds 2,000 employments');
+ const list=sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+ const [row]=await tx.execute<{shared:SharedLeaveInputs;subjects:{id:string;inputs:SubjectLeaveInputs}[]}>(sql`
+  select ${sharedLeaveInputsSql()} as shared,
+   jsonb_agg(jsonb_build_object('id',wanted.id,'inputs',${subjectLeaveInputsSql(sql`wanted.id`,sql`'null'::jsonb`)})) as subjects
+  from unnest(${list}) as wanted(id)
+ `);
+ return new Map(row.subjects.map(({id,inputs})=>[id,new OwnLeaveInputs(tx,id,{...row.shared,...inputs})]));
 }

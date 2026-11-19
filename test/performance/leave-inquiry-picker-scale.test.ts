@@ -2,6 +2,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {inquiryBalancePage} from '../../app/leave/employee-balances/inquiry-data';
+import {employeeBalanceRows,type EmployeeBalanceRow} from '../../app/leave/employee-balances/rows';
 import {leaveInquiryBalancePairsTx,leaveInquirySnapshot,readLeaveInquiryPicker} from '../../core/leave-inquiry';
 import {adminCompaniesTx,leaveInquiryPickerDisplayRowsTx,leaveInquiryPickerFacetsTx,listLeaveInquiryPickerIdentitiesTx} from '../../core/read';
 import {withTenant,type SessionContext} from '../../db/client';
@@ -80,12 +81,29 @@ it('measures the employee chooser and its owners at group and single-company sca
       const snapshotMs=Math.round(performance.now()-frameStart);
       const full=await timed(()=>inquiryBalancePage(ctx,selection,query,'en',query.pq,tx));
       const pairs=await timed(()=>leaveInquiryBalancePairsTx(tx,ctx,selection,query,'en'));
+      const unbundled=await timed(async()=>{
+        const requested=new Map<string,string[]>();
+        for(const pair of pairs.result.rows){
+          const ids=requested.get(pair.employee.employmentId)??[];
+          ids.push(pair.leaveTypeId);
+          requested.set(pair.employee.employmentId,ids);
+        }
+        const rowsByPair=new Map<string,EmployeeBalanceRow>();
+        for(const [id,requestedTypeIds] of requested){
+          for(const row of await employeeBalanceRows(ctx,id,query.asOf,'en',{},{requestedTypeIds,tx})){
+            rowsByPair.set(id+'|'+row.leaveTypeId,row);
+          }
+        }
+        return pairs.result.rows.map(({employee,leaveTypeId})=>({
+          ...rowsByPair.get(employee.employmentId+'|'+leaveTypeId),employee,
+        }));
+      });
       expect(full.result.rows.length,name).toBeGreaterThan(0);
       expect(full.result.total,name).toBe(pairs.result.total);
-      expect(full.result.rows.map(item=>[item.employee.employmentId,item.leaveTypeId]),name)
-        .toEqual(pairs.result.rows.map(item=>[item.employee.employmentId,item.leaveTypeId]));
+      expect(full.result.rows,name).toEqual(unbundled.result);
       return {name,snapshotMs,scopeRows:selection.employees.length,balanceReadMs:full.ms,
-        membershipMs:pairs.ms,visiblePairs:pairs.result.total,displayedRows:full.result.rows.length};
+        legacyBalanceReadMs:pairs.ms+unbundled.ms,membershipMs:pairs.ms,
+        visiblePairs:pairs.result.total,displayedRows:full.result.rows.length};
     });
     balanceEvidence.push(row);
   }

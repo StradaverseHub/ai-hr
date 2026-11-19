@@ -5575,6 +5575,7 @@ export function leaveEntitlementBreakdowns(
   locale?: string,
   existingTx?: Tx,
   inputs?: OwnLeaveInputs,
+  opts: {derivation?:boolean} = {},
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
   const read = async (tx: Tx) => {
@@ -5603,7 +5604,7 @@ export function leaveEntitlementBreakdowns(
     }
     return Promise.all(
       items.map((i) =>
-        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, {}, {
+        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, opts, {
           type: typeById.get(i.leaveTypeId),
           emp,
           templates: resolverByAsOf.get(i.asOf)!,

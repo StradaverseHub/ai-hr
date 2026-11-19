@@ -1,5 +1,6 @@
 import type { SessionContext, Tx } from '@/db/client';
-import { leaveBalances, leaveEntitlementBreakdown, leaveBalancesTx, leaveEntitlementBreakdownTx } from '@/core/read';
+import { leaveBalances, leaveEntitlementBreakdown, leaveBalancesTx, leaveEntitlementBreakdownTx, leaveEntitlementBreakdowns } from '@/core/read';
+import type { OwnLeaveInputs } from '@/core/own-leave-inputs';
 // r367 — the leave YEAR this row's figures belong to, as a WINDOW rather than as a four-digit label. The
 // Taken drill-down needs both ends of it (Employee Leave Record filters on a leave-date window), and
 // `leaveCycleEnd` is the one definition of where a cycle closes — see its header in core/leave.ts for the
@@ -208,7 +209,7 @@ export function employeeBalanceRows(
   asOf: string,
   locale: string,
   filter?: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' },
-  opts?: { audience?: 'hr'; requestedTypeIds?: string[]; tx?: Tx },
+  opts?: { audience?: 'hr'; requestedTypeIds?: string[]; tx?: Tx; inputs?:OwnLeaveInputs },
 ): Promise<EmployeeBalanceRow[]>;
 export function employeeBalanceRows(
   ctx: SessionContext,
@@ -224,7 +225,7 @@ export async function employeeBalanceRows(
   asOf: string,
   locale: string,
   filter: { q?: string; typeIds?: string[]; dir?: 'asc' | 'desc' } = {},
-  opts: { audience?: BalanceAudience; requestedTypeIds?: string[]; tx?: Tx } = {},
+  opts: { audience?: BalanceAudience; requestedTypeIds?: string[]; tx?: Tx; inputs?:OwnLeaveInputs } = {},
 ): Promise<EmployeeBalanceRow[] | SelfBalanceRow[]> {
   const self = opts.audience === 'self';
   // 994a5287: `includeHidden` — this is HR's own screen, so a leave type HR has hidden from EMPLOYEE
@@ -255,12 +256,15 @@ export async function employeeBalanceRows(
   // `leaveBalances` BEFORE its visibility filter, so the hidden Emergency Leave's days still appear in Annual
   // Leave's Share column and its "EL" badge — the plan says so in as many words.
   const balanceOptions = self ? { includeHidden: false, includeArchived: true, includeIneligible: false, asOf } : { includeHidden: true, includeArchived: true, includeIneligible: true, asOf };
-  const balances = opts.tx ? await leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions) : await leaveBalances(ctx, employmentId, locale, balanceOptions);
+  const inputs=opts.tx&&opts.inputs?.answers(opts.tx,employmentId)?opts.inputs:undefined;
+  const balances = opts.tx ? await leaveBalancesTx(opts.tx, ctx, employmentId, locale, balanceOptions,inputs) : await leaveBalances(ctx, employmentId, locale, balanceOptions);
   // r303 (31492f74): `derivation: true` — this is an HR screen, and its Explain panel prints the per-line working.
   // Same read, same date; the working rides on the very `bd` every figure in the row comes from.
   const selectedBalances = opts.requestedTypeIds ? balances.filter(b => opts.requestedTypeIds!.includes(b.leaveTypeId)) : balances;
   const storyIds = [...new Set(selectedBalances.flatMap(b => [b.leaveTypeId, balanceStoryTypeId(b)]))];
-  const breakdowns = await Promise.all(
+  const breakdowns = inputs
+    ? await leaveEntitlementBreakdowns(ctx,employmentId,storyIds.map(leaveTypeId=>({leaveTypeId,asOf})),locale,opts.tx,inputs,{derivation:true})
+    : await Promise.all(
     storyIds.map((id) => opts.tx ? leaveEntitlementBreakdownTx(opts.tx, employmentId, id, asOf, locale, { derivation: true }) : leaveEntitlementBreakdown(ctx, employmentId, id, asOf, locale, { derivation: true })),
   );
   const byType = new Map(breakdowns.filter((x) => x != null).map((x) => [x!.leaveTypeId, x!]));
