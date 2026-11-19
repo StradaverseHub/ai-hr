@@ -26,6 +26,7 @@ it('renders affected operational routes at desktop and mobile widths without pag
  for(const module of ['claims','rewards','recruitment'])await setModule(b.tenantId,module,'active');
  const subject=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Visual Reviewer',primaryEmail:'visual-reviewer@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
  await owner.db.update(s.appUser).set({personId:subject.personId,onboardedAt:new Date()}).where(eq(s.appUser.id,b.adminUserId));
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:b.adminUserId,companyId:b.companyId,role:'employee'});
  const claimType=await createClaimType(adminCtx(b),{code:'VISUAL',name:'Fictional visual claim',defaultTaxable:false,requiresReceipt:false});
  await setClaimPolicy(adminCtx(b),{claimTypeId:claimType.id,annualBudget:100,perClaimCap:100,effectiveFrom:'2024-01-01'});
  const origin='http://127.0.0.1:3159';preview=new OwnedVisualPreview(origin,join(evidence,'operational-preview.log'),signal,evidence);
