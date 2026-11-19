@@ -38,9 +38,9 @@ class Fixture(owner.Fixture):
 class PreparedPreunitTests(unittest.TestCase):
  def fixture(self):
   t=tempfile.TemporaryDirectory();self.addCleanup(t.cleanup);return Fixture(Path(t.name))
- def no_mutation(self,f):
+ def no_mutation(self,f,expected_unit=None):
   self.assertFalse(any(isinstance(x,(list,tuple))and len(x)>1 and x[0]=='/usr/bin/systemctl'and x[1]in('start','daemon-reload','stop','disable','enable')for x in f.events))
-  self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker));self.assertFalse((f.app/'releases'/f.source).exists())
+  self.assertEqual(f.unit.read_text(),f.service_unit(f.previous_worker) if expected_unit is None else expected_unit);self.assertFalse((f.app/'releases'/f.source).exists())
  def test_expired_original_prepared_authority_reuses_seal_full_graph_and_retains_all_failures(self):
   f=self.fixture();a,proof=f.failed_prepared();paths=[f.operation/'ci-runtime-started.json',Path(a['recovery']['originalActivationApproval']),f.state/'current',f.state/'last-ok',proof,f.firstfile,f.directory/'authorization.json',f.directory/'runtime.json']
   before={p:p.read_bytes()for p in paths};root_identity=proof.stat().st_ino
@@ -89,7 +89,8 @@ class PreparedPreunitTests(unittest.TestCase):
     elif fault=='unit':f.unit.write_text('tampered')
     else:f.report.update(MainPID='99',ActiveState='active',SubState='running')
     self.assertRaises((ValueError,FileNotFoundError),f.invoke_preunit,a)
-    if fault not in('release','release-link'):self.no_mutation(f)
+    if fault not in('release','release-link'):self.no_mutation(f,'tampered' if fault=='unit' else None)
+    else:self.assertFalse(any(isinstance(x,(list,tuple))and len(x)>1 and x[0]=='/usr/bin/systemctl'and x[1]in('start','daemon-reload','stop','disable','enable')for x in f.events))
  def test_insufficient_new_authority_never_rearms_original_clocks(self):
   f=self.fixture();a,_=f.failed_prepared();a['expiresAt']=f.iso(550)
   self.assertRaisesRegex(ValueError,'opportunity|expired|deadline',f.invoke_preunit,a);self.no_mutation(f)
