@@ -3,7 +3,6 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
 import { useIsMonolith } from '@/components/ui-theme-context';
@@ -131,7 +130,6 @@ export function NotificationCenter({
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
     ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder','letter.returned','letter.rejected','letter.approved','letter.acknowledged','letter.signed','letter.created'].includes(item.kind)
     ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText,bulkJobText,reviewPlanText]);
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
   const [query, setQuery] = useState('');
@@ -179,8 +177,9 @@ export function NotificationCenter({
 
   const [marking, start] = useTransition();
 
-  const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
-  const markAll = () => start(async () => { await markAllNotificationsReadAction(); router.refresh(); });
+  // Both actions return the revalidated shell with the updated notification counts.
+  const markRead = (id: string) => start(() => markNotificationReadAction(id));
+  const markAll = () => start(() => markAllNotificationsReadAction());
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
