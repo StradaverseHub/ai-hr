@@ -30,21 +30,51 @@ export function decodeCommittedBlobs(ids, bytes) {
   return result;
 }
 
-function committedTexts(cwd, ref) {
-  const records = git(cwd, 'ls-tree', '-r', '-z', ref).toString('utf8').split('\0').filter(Boolean);
-  const entries = [];
-  for (const record of records) {
-    const match = /^([0-7]{6}) (blob|commit) ([a-f0-9]{40})\t([\s\S]+)$/.exec(record);
-    if (!match) fail('unsupported Git tree entry');
-    if (!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(match[4])) continue;
-    if (!['100644', '100755'].includes(match[1]) || match[2] !== 'blob') fail('non-regular classifier input');
-    entries.push({path: match[4], id: match[3]});
+const BLOB_BATCH_BYTES = 16 * 1024 ** 2;
+const BLOB_TOTAL_BYTES = 256 * 1024 ** 2;
+const BLOB_FRAME_BYTES = 64;
+
+/** Use the committed blob sizes to bound each subprocess without dropping classifier input. */
+export function planCommittedBlobBatches(sizes, batchLimit = BLOB_BATCH_BYTES, totalLimit = BLOB_TOTAL_BYTES) {
+  const batches = [];
+  let current = [], batchBytes = 0, totalBytes = 0;
+  for (const [id, size] of sizes) {
+    if (!sha(id) || !Number.isSafeInteger(size) || size < 0) fail('invalid committed blob size');
+    const framedBytes = size + BLOB_FRAME_BYTES;
+    totalBytes += framedBytes;
+    if (framedBytes > batchLimit || totalBytes > totalLimit) fail('committed classifier byte budget exceeded');
+    if (batchBytes + framedBytes > batchLimit) {
+      batches.push(current);
+      current = [];
+      batchBytes = 0;
+    }
+    current.push(id);
+    batchBytes += framedBytes;
   }
-  const ids = [...new Set(entries.map(entry => entry.id))];
-  if (!ids.length) fail('no committed classifier inputs');
-  const bytes = execFileSync('git', ['cat-file', '--batch'], {cwd, input: ids.join('\n') + '\n',
-    maxBuffer: 128 * 1024 ** 2, timeout: 60000});
-  const blobs = decodeCommittedBlobs(ids, bytes);
+  if (current.length) batches.push(current);
+  return batches;
+}
+
+function committedTexts(cwd, ref) {
+  const records = git(cwd, 'ls-tree', '-r', '-l', '-z', ref).toString('utf8').split('\0').filter(Boolean);
+  const entries = [], sizes = new Map();
+  for (const record of records) {
+    const match = /^([0-7]{6}) (blob|commit) ([a-f0-9]{40}) +([0-9]+|-)\t([\s\S]+)$/.exec(record);
+    if (!match) fail('unsupported Git tree entry');
+    if (!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(match[5])) continue;
+    if (!['100644', '100755'].includes(match[1]) || match[2] !== 'blob' || match[4] === '-') fail('non-regular classifier input');
+    const [, , , id, size, path] = match;
+    if (sizes.has(id) && sizes.get(id) !== Number(size)) fail('conflicting committed blob size');
+    sizes.set(id, Number(size));
+    entries.push({path, id});
+  }
+  if (!sizes.size) fail('no committed classifier inputs');
+  const blobs = new Map();
+  for (const ids of planCommittedBlobBatches(sizes)) {
+    const bytes = execFileSync('git', ['cat-file', '--batch'], {cwd, input: ids.join('\n') + '\n',
+      maxBuffer: BLOB_BATCH_BYTES, timeout: 60000});
+    for (const [id, blob] of decodeCommittedBlobs(ids, bytes)) blobs.set(id, blob);
+  }
   return new Map(entries.map(entry => [entry.path, blobs.get(entry.id)]));
 }
 
