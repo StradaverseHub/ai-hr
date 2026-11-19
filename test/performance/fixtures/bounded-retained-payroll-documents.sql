@@ -18,13 +18,14 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
     (SELECT pc.run_type::text FROM public.payroll_cycle pc WHERE pc.id=b.payroll_cycle_id)
    )=p_cycle)
  ), page AS MATERIALIZED (
-  SELECT b.id AS batch_id,b.pay_period,b.run_seq,visible.id AS payslip_id
-  FROM runs b
-  JOIN LATERAL (
-   SELECT retained.id
-   FROM (
-    SELECT p.id,p.employment_id
+  SELECT candidate.*
+  FROM (
+   SELECT b.id AS batch_id,b.pay_period,b.run_seq,retained.id AS payslip_id
+   FROM runs b
+   JOIN LATERAL (
+    SELECT p.id
     FROM public.payslip p
+    JOIN public.employment e ON e.id=p.employment_id AND e.tenant_id=p.tenant_id
     JOIN LATERAL (
      SELECT f.payslip_id FROM public.information_payslip_snapshot f
      WHERE f.payslip_id=p.id AND f.tenant_id=p.tenant_id
@@ -34,13 +35,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
     WHERE p.tenant_id=b.tenant_id AND p.batch_id=b.id
      AND (p_employment IS NULL OR p.employment_id=p_employment)
     OFFSET 0
-   ) retained
-   JOIN public.employment e ON e.id=retained.employment_id AND e.tenant_id=b.tenant_id
-   WHERE app.payroll_history_effective(retained.id) OR app.payroll_history_self_issued(retained.id)
-   ORDER BY retained.id
-   LIMIT greatest(0,least(coalesce(p_limit,0),5000))
-  ) visible ON true
-  ORDER BY b.pay_period DESC,b.run_seq,visible.id
+   ) retained ON true
+   -- Sort narrow identities before evaluating visibility so the outer LIMIT can
+   -- stop inspecting history as soon as it has found the requested visible rows.
+   ORDER BY b.pay_period DESC,b.run_seq,retained.id
+   OFFSET 0
+  ) candidate
+  WHERE app.payroll_history_effective(candidate.payslip_id)
+     OR app.payroll_history_self_issued(candidate.payslip_id)
+  ORDER BY candidate.pay_period DESC,candidate.run_seq,candidate.payslip_id
   LIMIT greatest(0,least(coalesce(p_limit,0),5000))
  )
  SELECT jsonb_build_object(
