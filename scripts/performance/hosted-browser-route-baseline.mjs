@@ -610,11 +610,41 @@ async function measureNotificationReads({page,user,fixture,db,report,save}){
  }finally{page.off('request',observe);}
 }
 
+async function measureApprovalSummaryReadiness({page,user,report,save}){
+ const started=performance.now(),deadline=started+15000;
+ const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ const response=await page.goto(origin+'/approvals',{waitUntil:'commit',timeout:timeout()});
+ assert.equal(response?.status(),200);
+ await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+  .waitFor({state:'visible',timeout:timeout()});
+ const main=page.locator('main:visible').first();
+ const sort=main.locator('[data-approvals-header-actions] select');
+ await sort.waitFor({state:'visible',timeout:timeout()});
+ assert(await sort.isEnabled({timeout:timeout()}));
+ await main.locator('tr[id^="approval-row-"] button[data-action-approval]').first()
+  .waitFor({state:'visible',timeout:timeout()});
+ report.approvalReadiness=[{step:'decision-controls-visible',elapsedMs:Math.round(performance.now()-started)}];
+ save();
+
+ for(const label of ['Approved','Rejected','Cancelled']){
+  const bucket=main.locator('div.uppercase').filter({hasText:new RegExp('^'+label+'$')});
+  await bucket.locator('..').locator('div.tabular-nums').filter({hasText:/^(?:[0-9]+|—)$/})
+   .waitFor({state:'visible',timeout:timeout()});
+ }
+ assert.equal(await main.locator('[data-approval-history-summary="unavailable"]').count(),0);
+ await assertContentAvailable(page);
+ report.approvalReadiness.push({step:'history-counts-visible',elapsedMs:Math.round(performance.now()-started)});
+ await page.waitForLoadState('domcontentloaded',{timeout:timeout()});
+ report.approvalReadiness.push({step:'document-content-loaded',elapsedMs:Math.round(performance.now()-started)});
+}
+
 async function measureActions(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[2,1,0].map(actorIndex=>({name:'approvals-summary-readiness',actorIndex,run:measureApprovalSummaryReadiness,
+   timings:result=>result.approvalReadiness})),
   ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,
    timings:result=>result.approvalSteps})),
   {name:'claim-approval',actorIndex:1,run:measureClaimApproval,timings:result=>result.claimSteps},
