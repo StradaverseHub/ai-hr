@@ -731,6 +731,80 @@ async function measureJobDescriptionEditor({page,user,report,save}){
  report.jobEditorSteps.push({step:'open-company-editor',elapsedMs:Math.round(performance.now()-editorStarted)});
 }
 
+async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
+ const path='/attendance/daily';
+ const company=fixture.tenants[user.tenant].companies[user.company];
+ const employee=fixture.users.find(actor=>actor.tenant===user.tenant&&actor.companyId===company.companyId&&actor.role==='employee');
+ assert(employee,'Daily Attendance needs a known employee in the selected company');
+ const code='PERF'+String(employee.index).padStart(4,'0');
+ const date=fixture.today;
+ const initial=await page.goto(origin+path+'?date='+encodeURIComponent(date),{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(initial?.status(),200);
+ const card=page.locator('main [data-tour="attendance-day"]');
+ const form=card.locator('form');
+ const search=form.locator('input[name="q"]');
+ await form.locator('select[name="company"]').selectOption(company.companyId,{timeout:15000});
+ await form.locator('select[name="dept"]').selectOption(company.departmentId,{timeout:15000});
+ const matching=card.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})});
+ const anyEmployee=card.locator('tbody a[href^="/attendance/individual/"]');
+ const empty=card.getByText('No employees in scope.',{exact:true});
+ report.attendanceFilterSteps=[];
+ for(const [step,query,expected] of [
+  ['filter-employee',code,true],
+  ['filter-no-matches','PERF-NO-FIXTURE-MATCH',false],
+  ['restore-filtered-employee',code,true],
+ ]){
+  await search.fill(query,{timeout:15000});
+  const matchesSubmission=url=>url.origin===origin&&url.pathname===path&&url.searchParams.get('date')===date
+   &&url.searchParams.get('company')===company.companyId&&url.searchParams.get('dept')===company.departmentId
+   &&url.searchParams.get('q')===query;
+  const started=performance.now();
+  await Promise.all([
+   page.waitForURL(matchesSubmission,{waitUntil:'commit',timeout:15000}),
+   form.getByRole('button',{name:'Apply',exact:true}).click({timeout:15000}),
+  ]);
+  if(expected){
+   await matching.getByRole('cell',{name:employee.name,exact:true}).waitFor({state:'visible',timeout:15000});
+   await matching.locator('a[href="/attendance/individual/'+date+'?emp='+employee.employmentId+'"]')
+    .waitFor({state:'visible',timeout:15000});
+  }else{
+   await empty.waitFor({state:'visible',timeout:15000});
+  }
+  assert.equal(await anyEmployee.count(),expected?1:0,'Daily Attendance returned unexpected employees for the selected scope');
+  report.attendanceFilterSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ }
+}
+
+async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
+ const response=await page.goto(origin+payrollHistoryPath,{waitUntil:'domcontentloaded',timeout:20000});
+ assert.equal(response?.status(),200);
+ assert.equal(new URL(page.url()).pathname,payrollHistoryPath);
+ const table=page.locator('main tbody').filter({has:page.locator('button[data-table-disclosure]')});
+ const disclosure=table.locator('button[data-table-disclosure]').first();
+ await disclosure.waitFor({state:'visible',timeout:15000});
+ const employeeCodes=new Set(fixture.users.filter(actor=>actor.tenant===user.tenant
+  &&(user.role==='groupHR'||actor.companyId===user.companyId)).map(actor=>'PERF'+String(actor.index).padStart(4,'0')));
+ const displayedCode=(await disclosure.locator('xpath=ancestor::tr[1]').innerText()).match(/\bPERF[0-9]{4}\b/)?.[0];
+ assert(employeeCodes.has(displayedCode),'Payroll History needs a fixture payslip in the session scope');
+ assert.equal(await disclosure.getAttribute('aria-expanded'),'false');
+ const breakdown=table.locator('tr[id^="payslip-breakdown-"]');
+ report.payrollDisclosureSteps=[];
+ let started=performance.now();
+ await disclosure.click({timeout:15000});
+ await breakdown.getByRole('heading',{name:'Earnings',exact:true}).waitFor({state:'visible',timeout:15000});
+ await breakdown.getByText('Net pay',{exact:true}).waitFor({state:'visible',timeout:15000});
+ assert.equal(await disclosure.getAttribute('aria-expanded'),'true');
+ report.payrollDisclosureSteps.push({step:'open-breakdown',elapsedMs:Math.round(performance.now()-started)});
+ save();
+ started=performance.now();
+ await disclosure.click({timeout:15000});
+ await breakdown.waitFor({state:'hidden',timeout:15000});
+ assert.equal(await disclosure.getAttribute('aria-expanded'),'false');
+ report.payrollDisclosureSteps.push({step:'close-breakdown',elapsedMs:Math.round(performance.now()-started)});
+ save();
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -741,6 +815,10 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
+   timings:result=>result.attendanceFilterSteps})),
+  ...[0,1].map(actorIndex=>({name:'payroll-history-breakdown',actorIndex,run:measurePayrollHistoryDisclosure,
+   timings:result=>result.payrollDisclosureSteps})),
   ...[0,1].map(actorIndex=>({name:'job-description-editor-open',actorIndex,run:measureJobDescriptionEditor,
    timings:result=>result.jobEditorSteps})),
 
