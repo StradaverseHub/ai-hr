@@ -538,6 +538,21 @@ try{
      counts[code]=(counts[code]??0)+1;
     }
     report.serverFailureCounts=counts;
+    const phases=new Set(['scope','focus','eligibility','labels','queues','overtime','reviews','leaveDates','decided',
+     'recommendations','prepared','readReward','readProbation','readAttendanceAssignment','readResignationInbox',
+     'readContracts','readLeave','readCancellation','readReplacement','readAttendance','readClaims','readResignationLegacy']);
+    const approvals=[];
+    for(const [,record] of log.matchAll(/^PERF_APPROVALS_PHASES (.{1,1500})$/gm)){
+     let entry;
+     try{entry=JSON.parse(record);}catch{continue;}
+     if(!entry||!['admin','manager','assigned'].includes(entry.role)||!['inbox','category','focused'].includes(entry.view))continue;
+     const measurements=Object.entries(entry.timings??{}).filter(([phase,ms])=>
+      phases.has(phase)&&Number.isSafeInteger(ms)&&ms>=0&&ms<=120000);
+     if(!measurements.length)continue;
+     approvals.push({role:entry.role,view:entry.view,timings:Object.fromEntries(measurements)});
+     if(approvals.length===64)break;
+    }
+    if(approvals.length)report.approvalsPreparation=approvals;
    }
   }finally{
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
