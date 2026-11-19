@@ -19,7 +19,14 @@ class Fixture(unstarted_fixture.prior.Fixture):
   if argv==['/usr/bin/systemctl','enable','aihr-bank-import.service']:self.report['UnitFileState']='enabled'
   return super().command(argv,**options)
  seal_record=published_fixture.Fixture.seal_record
- invoke_published=published_fixture.Fixture.invoke_published
+ def invoke_published(self,stage,a):
+  original=ci.RuntimeObservation.failure_summary;observed=[]
+  def retain_cause(observer,error):
+   # Fictional fixture diagnostics only. Preserve the real native summary and quarantine behavior.
+   observed.append(type(error).__name__+': '+str(error));return original(observer,error)
+  with patch.object(ci.RuntimeObservation,'failure_summary',retain_cause):
+   try:return published_fixture.Fixture.invoke_published(self,stage,a)
+   except RuntimeError as error:raise RuntimeError(str(error)+'; fixture original cause: '+repr(observed))from error
  seal=published_fixture.Fixture.seal
  live=published_fixture.Fixture.live
 
@@ -60,7 +67,7 @@ class PublishedUnstartedTests(unittest.TestCase):
     elif fault=='policy':old['policy']='unknown'
     elif fault=='recovery':old['recovery']['policy']='unknown'
     else:
-     p=Path(f.pins['operation'])/'activation-failure-observation.json';v=json.loads(p.read_bytes());v['failure']['slot']='F4';p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())};f.pins['operationIdentity']=published.identity(p.parent)
+     p=Path(f.pins['operation'])/'activation-failure-observation.json';v=json.loads(p.read_bytes());v['failure']['slot']='F4';p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);os.utime(p,(f.clock,f.clock));f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())};f.pins['operationIdentity']=published.identity(p.parent)
     if fault in ('kind','policy','recovery'):path.write_bytes(unstarted_fixture.prior.encoded(old));f.pins['approvalSha256']=ci.sha(path.read_bytes())
     with self.assertRaises((ValueError,KeyError)):f.seal()
     self.unchanged(f)
@@ -69,7 +76,7 @@ class PublishedUnstartedTests(unittest.TestCase):
    with self.subTest(fault=fault):
     f=self.fixture();operation=Path(f.pins['operation'])
     if type(fault)is int:
-     p=operation/('ci-runtime-fence-%02d.json'%fault);v=json.loads(p.read_bytes());v['stage']='R0';p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())}
+     p=operation/('ci-runtime-fence-%02d.json'%fault);v=json.loads(p.read_bytes());v['stage']='R0';p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);os.utime(p,(f.clock,f.clock));f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())}
     elif fault=='missing':(operation/'ci-runtime-fence-04.json').unlink();f.pins['members'].pop('ci-runtime-fence-04.json')
     elif fault=='extra':(operation/'unreviewed.json').write_text('{}')
     else:(f.operation/'unstarted-recovery-unreviewed').mkdir()
@@ -79,7 +86,7 @@ class PublishedUnstartedTests(unittest.TestCase):
  def test_stopped_no_forced_kill_observation_and_seal_freshness_cannot_be_waived(self):
   for fault in ('stopped','disabled','forcedKill','accepted'):
    with self.subTest(fault=fault):
-    f=self.fixture();p=Path(f.pins['operation'])/'activation-failure-observation.json';v=json.loads(p.read_bytes());v[fault]=not v[fault];p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())};f.pins['operationIdentity']=published.identity(p.parent)
+    f=self.fixture();p=Path(f.pins['operation'])/'activation-failure-observation.json';v=json.loads(p.read_bytes());v[fault]=not v[fault];p.chmod(0o600);p.write_bytes(unstarted_fixture.prior.encoded(v));p.chmod(0o400);os.utime(p,(f.clock,f.clock));f.pins['members'][p.name]={**published.identity(p),'sha256':ci.sha(p.read_bytes())};f.pins['operationIdentity']=published.identity(p.parent)
     with self.assertRaisesRegex(ValueError,'stopped rejected F5'):f.seal()
     self.unchanged(f)
   f=self.fixture();proof=f.seal();f.clock+=301
