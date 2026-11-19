@@ -4,7 +4,7 @@ import {createContext,useContext,useEffect,useState,useSyncExternalStore,type Re
 import type {PendingTaskItem} from '@/core/approvals-inbox';
 
 export type ShellApprovalResult=
- | {state:'ready';items:PendingTaskItem[];total:number;approvalCount:number;claimTotal:number;
+ | {state:'ready';items:PendingTaskItem[];total:number;approvalCount:number;claimTotal:number;lifecycleTaskCount?:number;
     hasAssignedAttendanceApproval:boolean;hasAssignedApproval:boolean}
  | {state:'unavailable'};
 type ShellApprovalFacts={result:ShellApprovalResult|{state:'pending'};canOpenApprovalsWithoutAssignment:boolean};
