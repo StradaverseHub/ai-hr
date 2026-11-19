@@ -83,7 +83,7 @@ it('offers the original company and effective date in the same Hire Correction f
   const form = mount(<HireCorrectionForm employmentId="example" heading="Hired · 1 January 2026" fields={[]}
     cancelHref="/history" information={[
       {field:'companyId', label:'Company', value:'north', display:'Fictional North', type:'select', options:companies},
-      {field:'hiredOn', label:'Effective Date (Group Join Date)', value:'2026-01-01', display:'1 January 2026', type:'date'},
+      {field:'hiredOn', label:'Group Join Date', value:'2026-01-01', display:'1 January 2026', type:'date'},
       {field:'employmentType', label:'Employment Type', value:'full_time', display:'Full time', type:'select',
         options:[{id:'full_time',name:'Full time'},{id:'contract',name:'Contract'}]},
     ]} />);
