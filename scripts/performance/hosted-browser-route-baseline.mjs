@@ -701,6 +701,36 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
  });
 }
 
+async function measureJobDescriptionEditor({page,user,report,save}){
+ const list='/admin/job-descriptions',create=list+'/new';
+ const response=await page.goto(origin+list,{waitUntil:'commit',timeout:15000});
+ assert.equal(response?.status(),200);
+ await readyContent(page,user,list,()=>15000);
+ const main=page.locator('main:visible').first();
+ const picker=main.locator('form select[name="company"]');
+ const started=performance.now();
+ await main.locator(`a[href="${create}"]`).click({timeout:15000});
+ await page.waitForURL(origin+create,{timeout:15000});
+ await picker.waitFor({state:'visible',timeout:15000});
+ const label=await picker.locator(`option[value="${user.companyId}"]`).textContent();
+ assert(label?.trim());
+ report.jobEditorSteps=[{step:'open-company-picker',elapsedMs:Math.round(performance.now()-started)}];
+ save();
+ await picker.selectOption(user.companyId);
+ const editorStarted=performance.now();
+ await main.getByRole('button',{name:'Continue',exact:true}).click({timeout:15000});
+ await page.waitForURL(url=>url.pathname===create&&url.searchParams.get('company')===user.companyId,{timeout:15000});
+ const company=main.getByRole('textbox',{name:'Company',exact:true});
+ await company.waitFor({state:'visible',timeout:15000});
+ assert.equal(await company.inputValue(),label);
+ const approver=main.getByRole('combobox',{name:'Named approver',exact:true});
+ await approver.waitFor({state:'visible',timeout:15000});
+ assert.equal(await approver.locator(`option[value="${user.userId}"]`).textContent(),user.name);
+ assert(await main.getByRole('button',{name:'Save draft',exact:true}).isEnabled());
+ await assertContentAvailable(page);
+ report.jobEditorSteps.push({step:'open-company-editor',elapsedMs:Math.round(performance.now()-editorStarted)});
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -711,6 +741,9 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[0,1].map(actorIndex=>({name:'job-description-editor-open',actorIndex,run:measureJobDescriptionEditor,
+   timings:result=>result.jobEditorSteps})),
+
   ...[4,1].map(actorIndex=>({name:'assistant-saved-history',actorIndex,run:measureSavedAssistantHistory,
    timings:result=>result.historySteps})),
 
