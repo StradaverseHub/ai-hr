@@ -13,7 +13,7 @@ import { pendingRewardReviews } from '@/packs/rewards/service';
 import { probationTaskList } from '@/packs/probation/service';
 import { probationTaskLabel } from '@/lib/probation-task-labels';
 import { formatMinutesToHM } from '@/lib/overtime-duration';
-import { Fragment } from 'react';
+import { Fragment, Suspense } from 'react';
 import Link from 'next/link';
 import { redirect,notFound } from 'next/navigation';
 import {parseAssignedApprovalFocus,assignedApprovalCategory,type AssignedApprovalFocus,type AssignedApprovalKind} from '@/lib/assigned-approval-focus';
@@ -80,10 +80,12 @@ import {
   approvalsReturnUrl,
   correctionsRowFilter,
   parseApprovalCategory,
+  type ApprovalCategory,
   sectionVisible,
   type ApprovalSection,
 } from '@/lib/approvals-categories';
-import { decidedStatusCounts } from '@/core/approvals-summary';
+import { decidedStatusCounts, type DecidedStatusCounts } from '@/core/approvals-summary';
+import { withBackgroundReadWork, type SessionContext } from '@/db/client';
 import { APPROVAL_SECTION_ID, approvalRowDomId } from '@/lib/approvals-focus';
 import {
   BulkSelectionProvider,
@@ -172,6 +174,47 @@ function DecideButtons({
 
     </div>
   );
+}
+
+const DECIDED_BUCKETS = ['approved', 'rejected', 'cancelled'] as const;
+type DecidedLabels = Record<(typeof DECIDED_BUCKETS)[number], string>;
+
+function ApprovalSummaryCard({label, value}: {label: string; value: number | string}) {
+  return <Card className="p-5">
+    <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</div>
+    <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{value}</div>
+  </Card>;
+}
+
+function DecidedSummaryCards({labels, counts, loading, unavailable}: {
+  labels: DecidedLabels;
+  counts?: DecidedStatusCounts;
+  loading?: string;
+  unavailable?: string;
+}) {
+  return <div className="contents" data-approval-history-summary={loading ? 'pending' : unavailable ? 'unavailable' : 'ready'}
+    aria-busy={loading ? true : undefined}>
+    {DECIDED_BUCKETS.map(bucket => <ApprovalSummaryCard key={bucket} label={labels[bucket]}
+      value={loading ? '…' : counts?.[bucket] ?? '—'}/>)}
+    {loading && <span role="status" className="sr-only">{loading}</span>}
+    {unavailable && <p role="status" className="col-span-full text-sm text-muted-foreground">{unavailable}</p>}
+  </div>;
+}
+
+async function DecidedApprovalSummary({session, scopeIds, category, labels, unavailable}: {
+  session: SessionContext;
+  scopeIds: string[];
+  category: ApprovalCategory;
+  labels: DecidedLabels;
+  unavailable: string;
+}) {
+  try {
+    const counts = await withBackgroundReadWork(session.tenantId, () => decidedStatusCounts(session, scopeIds, category));
+    return <DecidedSummaryCards labels={labels} counts={counts}/>;
+  } catch {
+    console.error('Approvals history summary unavailable');
+    return <DecidedSummaryCards labels={labels} unavailable={unavailable}/>;
+  }
 }
 
 /** One inbox for everything awaiting a decision: leave, attendance corrections and (admin-only)
@@ -390,11 +433,6 @@ export default async function ApprovalsPage({
   const visible = (section: ApprovalSection) => focusedSection?section===focusedSection:(!attendanceOnly || section === 'corrections') && sectionVisible(category, section);
   const rowFilter = correctionsRowFilter(category);
 
-  // The three DECIDED buckets for the summary cards (approved / rejected / cancelled). Pending never comes
-  // from SQL — it is the sum of the visible sections' in-memory counts below. null → the card shows a dash
-  // (categories without that state, and both review queues which decide confirm/extend instead).
-  const decided = attendanceOnly||focus ? { approved: null, rejected: null, cancelled: null } : await decidedStatusCounts(s, scopeIds, category);
-
   // Approvals sort (09cda965): order EACH per-type section's already-loaded rows in the render layer
   // (no loader ORDER BY rewrite). Sort is stable + keyed on request id, so counts/permissions/visible
   // rows are unchanged and a re-sort preserves the (bulk-approval) selection keyed by id. Each section
@@ -476,14 +514,12 @@ export default async function ApprovalsPage({
       : []),
   ];
 
-  // Summary card (2dec6406): dash for buckets the selected category does not have.
-  const bucket = (n: number | null) => (n == null ? '—' : n);
-  const summaryCards: { key: string; label: string; value: number | string }[] = [
-    { key: 'pending', label: t('summaryPending'), value: total },
-    { key: 'approved', label: t('summaryApproved'), value: bucket(decided.approved) },
-    { key: 'rejected', label: t('summaryRejected'), value: bucket(decided.rejected) },
-    { key: 'cancelled', label: t('summaryCancelled'), value: bucket(decided.cancelled) },
-  ];
+  const summaryLabels = {
+    approved: t('summaryApproved'),
+    rejected: t('summaryRejected'),
+    cancelled: t('summaryCancelled'),
+  };
+  const summaryStatus = !focus && !attendanceOnly ? await getTranslations('commandBar') : undefined;
 
   const claimSelectionScope = !focus && claimsOn && visible('claims') ? [...scopeIds].sort().join(',') : undefined;
   return (
@@ -522,15 +558,16 @@ export default async function ApprovalsPage({
       <ErrorBanner message={error} />
       {focus&&<Link href="/approvals" className="inline-flex min-h-11 items-center text-sm font-medium text-primary underline">{t('viewAllAssigned')}</Link>}
 
-      {/* 2dec6406: the four summary cards — Pending from the same in-memory lists as the badges/headings;
-          Approved / Rejected / Cancelled from decidedStatusCounts, updating with the selected category. */}
+      {/* Pending comes from the actionable queues. Historical counts use background admission
+          and can settle after the viewer starts working. */}
       {!focus&&<div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {summaryCards.map((c) => (
-          <Card key={c.key} className="p-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{c.label}</div>
-            <div className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">{c.value}</div>
-          </Card>
-        ))}
+        <ApprovalSummaryCard label={t('summaryPending')} value={total}/>
+        {summaryStatus
+          ? <Suspense fallback={<DecidedSummaryCards labels={summaryLabels} loading={summaryStatus('loading')}/>}>
+              <DecidedApprovalSummary session={s} scopeIds={scopeIds} category={category} labels={summaryLabels}
+                unavailable={summaryStatus('loadError')}/>
+            </Suspense>
+          : <DecidedSummaryCards labels={summaryLabels}/>}
       </div>}
 
       {/* 8cb7b089: stable section id (from the shared APPROVAL_SECTION_ID constant — the calendar pill href
