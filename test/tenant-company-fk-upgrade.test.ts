@@ -1298,6 +1298,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.lifecycle_task_card_documents(uuid[],jsonb)',app:true},
    {fn:'app.lifecycle_personnel_manager(uuid)',app:true},
    {fn:'app.lifecycle_manager_recovery_page(text,integer)',app:true},
+   {fn:'app.payroll_transaction_export_read(uuid,integer)',app:true},
+   {fn:'app.payroll_transaction_export_store(uuid,integer,bytea)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

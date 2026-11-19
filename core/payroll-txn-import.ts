@@ -52,7 +52,6 @@
  * and sends text. That is r185's shape and it is kept for the reason r185 kept it: no server-side
  * spreadsheet parser means no server-side spreadsheet attack surface.
  */
-import { resolveDailyImportInput } from './pay-rule';
 import { createHash } from 'node:crypto';
 
 import { and, eq, inArray, isNull } from 'drizzle-orm';
@@ -84,6 +83,7 @@ import {
   updateEmploymentPayComponent,
   type FixedTransactionCycle,
   payRuleInputUnit,
+  resolveDailyImportInput,
   isTxnUnit,
   PayRuleEvalError,
   type PayRule,

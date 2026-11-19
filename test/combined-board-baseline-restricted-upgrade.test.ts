@@ -1,7 +1,7 @@
 /** Exact public F8/Board924 historical replay +145 forward bodies, populated BEFORE either upgrade.
  * Separate from the existing729 rehearsal. Disposable source-derived evidence, never an installed-ledger export.
  * Board business records are produced by the frozen native child, not copied/forged managed state.
- * A second phase then applies the independently pinned Board50 tail to both actual1069 databases.
+ * A second phase applies the independently pinned Board50 plus the separately appended public-guidance migration to both actual1069 databases.
  */
 import {createHash,randomUUID} from 'node:crypto';
 import {execFile,execFileSync} from 'node:child_process';
@@ -39,7 +39,9 @@ type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:stri
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
 const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
-const PREFIX=924,TAIL=145,BOARD_TAIL=50,FOLLOW_ON_TAIL=5,OWNER='ai_hr_owner';
+const PREFIX=924,TAIL=145,BOARD_TAIL=50,GUIDANCE_TAIL=1,SIX_ITEM_TAIL=4,OWNER='ai_hr_owner';
+const GUIDANCE:Entry={idx:10360,version:'7',when:1795028006960,tag:'6960_board_public_guidance_function_kinds',breakpoints:true};
+const GUIDANCE_SHA256='c1b4926b4d1860e6a4a79019685c39ba0988af3a97f30dbdebf2365565c0972b';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
 const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
 const TAIL_DIGEST='63c7c63e258e3a05b2e75b964e0a00b7858638c63a7a524beef60a73077a6277';
@@ -113,7 +115,13 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   // cannot redefine its145 bodies, digest, order or rehearsal merely by appending a migration.
   const journal=candidate;
   expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);
-  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+FOLLOW_ON_TAIL);
+  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
+  const guidanceStart=PREFIX+TAIL+BOARD_TAIL;
+  const guidanceTail=currentJournal.entries.slice(guidanceStart,guidanceStart+GUIDANCE_TAIL);
+  expect(guidanceTail).toEqual([GUIDANCE]);
+  const sixItemTail=currentJournal.entries.slice(guidanceStart+GUIDANCE_TAIL);
+  expect(sixItemTail).toHaveLength(SIX_ITEM_TAIL);
+  expect(sha(readFileSync(join(root,'db/migrations',GUIDANCE.tag+'.sql')))).toBe(GUIDANCE_SHA256);
   expect({...currentJournal,entries:currentJournal.entries.slice(0,PREFIX+TAIL)}).toEqual(candidate);
   // This existing independent owner pins the exact current journal and literal SHA256 of each
   // reviewed forward SQL body. It runs before any connection and again before phase two.
@@ -290,16 +298,18 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   expect(secondLogin).toEqual({session:OWNER,current:OWNER,role:'none'});expect(await ownerAttributes(restricted)).toEqual(ATTRIBUTES);
   expect(await leftovers(observer)).toEqual([]);
   assertApprovedUpgradeTail(currentJournal.entries);
-  const boardTail=currentJournal.entries.slice(PREFIX+TAIL);expect(boardTail).toHaveLength(BOARD_TAIL+FOLLOW_ON_TAIL);
+  const boardTail=currentJournal.entries.slice(PREFIX+TAIL,PREFIX+TAIL+BOARD_TAIL);expect(boardTail).toHaveLength(BOARD_TAIL);
   expect(boardTail[0].tag).toBe('6600_probation_reconciliation');
-  const boardIdentities=boardTail.map((entry,index)=>{
-   expect(entry.when).toBeGreaterThan(index?boardTail[index-1].when:journal.entries.at(-1)!.when);
+  const forwardTail=[...boardTail,...guidanceTail,...sixItemTail];
+  expect(forwardTail).toHaveLength(BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
+  const boardIdentities=forwardTail.map((entry,index)=>{
+   expect(entry.when).toBeGreaterThan(index?forwardTail[index-1].when:journal.entries.at(-1)!.when);
    const bytes=readFileSync(join(root,'db/migrations',entry.tag+'.sql'));
    // Identity was admitted above against literal reviewed pins, not a candidate-derived expected catalogue.
    writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
    return {hash:sha(bytes),created_at:String(entry.when)};
   });
-  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+FOLLOW_ON_TAIL);
+  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
   const referenceNoticeOffset=referenceNotices.length,ownerNoticeOffset=ownerNotices.length;
   writeFileSync(join(migrations,'meta/_journal.json'),JSON.stringify(currentJournal));
   await migrate(drizzle(reference),{migrationsFolder:migrations});
