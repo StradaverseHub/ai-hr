@@ -79,6 +79,7 @@ class GuardedInvocation:
         self.a=json.loads(self.bytes)
         fields=ci.FIRST_APPROVAL_FIELDS if stage=='drain' else ci.ACTIVATION_FIELDS if stage=='activate-ci-runtime' else ci.RECOVERY.PREP_FIELDS if stage=='prepare-ci-worker' else ci.RECOVERY.NORMAL_FIELDS if stage=='activate-prepared-ci-runtime' else ci.RECOVERY.FIELDS
         if stage in published_kinds(ci):fields=ci.PUBLISHED.SEAL_FIELDS if stage==ci.PUBLISHED.SEAL_STAGE else ci.PUBLISHED.LIVE_FIELDS
+        if stage in published_kinds(ci):fields=ci.PUBLISHED.budget_fields(base,ci,fields,self.a,stage)
         if stage in unstarted_kinds(ci):fields=ci.UNSTARTED.LIVE_FIELDS
         baseline_allowed=stage in('drain','activate-ci-runtime','activate-prepared-ci-runtime',*unstarted_kinds(ci))
         if stage in published_kinds(ci) and ci.PUBLISHED.unstarted_origin(ci,self.a):baseline_allowed=True

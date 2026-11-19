@@ -395,7 +395,7 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
             ci_observer.complete_fence()  # F4: exact owned start captured
         stable_pid = None
         for _ in range(3):
-            if ci_observer:ci_observer.slot('W/F'+str(_+1),24)
+            if ci_observer:ci_observer.slot('W/F'+str(_+1),ci_observer.stability_seconds())
             time.sleep(4)
             report = properties(base)
             base.validate_service(report, release)

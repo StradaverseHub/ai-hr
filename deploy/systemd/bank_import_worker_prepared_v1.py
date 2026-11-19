@@ -131,7 +131,8 @@ def admit_mutation(o):
     b=o.base;remaining=min(o.overall_deadline-time.monotonic(),o.guard.ci.epoch(o.auth['expiresAt'])-time.time())
     b.check(o.fence_count==3 and len(o.audits)==1 and len(o.content_proofs)==1,'full recovery pre-mutation proof graph required')
     extra=40 if o.guard.stage in ('recover-published-ci-runtime','recover-unstarted-ci-runtime')else 0
-    b.check(o.guard.ci.epoch(o.auth['expiresAt'])-time.time()>=527+extra and remaining>=497+extra,'insufficient independently authorized recovery/global opportunity')
+    post=o.guard.ci.PUBLISHED.post_opportunity(o,extra)if o.guard.stage=='recover-published-ci-runtime'else 497+extra
+    b.check(o.guard.ci.epoch(o.auth['expiresAt'])-time.time()>=post+30 and remaining>=post,'insufficient independently authorized recovery/global opportunity')
     failed_snapshot(o)
     return {'recoveryOnly':True,'originalReadinessWindowRevived':False,'expiredGrantWriteAuthority':False}
 

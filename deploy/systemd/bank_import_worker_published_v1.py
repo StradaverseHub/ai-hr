@@ -14,6 +14,8 @@ import time
 from types import SimpleNamespace
 
 POLICY='aihr-worker-published-recovery/v1'
+BUDGET_PROFILE='aihr-worker-unstarted-published-budget/v1'
+BUDGET_KEY='recoveryBudgetProfile'
 SEAL_STAGE='seal-published-ci-worker'
 LIVE_STAGE='recover-published-ci-runtime'
 KINDS={SEAL_STAGE:'ADMIN_REVIEWED_PUBLISHED_WORKER_SEAL',LIVE_STAGE:'ADMIN_AUTHORIZED_PUBLISHED_WORKER_RECOVERY'}
@@ -22,6 +24,27 @@ ATTEMPT_MEMBERS={'activation-failed.json','ci-runtime-started.json','ci-runtime-
                  'ci-worker-start-request.json','ci-worker-started.json','ci-worker-quarantine-authority.json',
                  *('ci-runtime-fence-%02d.json'%i for i in range(4))}
 FAILURE_FIELDS={'approval','approvalSha256','operation','operationIdentity','members','releaseIdentity','unitSha256'}
+
+
+def budget_fields(b,ci,fields,a,stage):
+    if BUDGET_KEY not in a:return fields
+    b.check(a[BUDGET_KEY]==BUDGET_PROFILE and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named published-unstarted recovery budget required')
+    return fields|{BUDGET_KEY}
+
+
+def selected_budget(o):
+    """One immutable allocation, never caller-supplied seconds. Total post opportunity stays unchanged."""
+    if BUDGET_KEY not in o.auth:return None
+    budget_fields(o.base,o.guard.ci,set(),o.auth,o.guard.stage)
+    return {'F4':30,'stability':30,'F8':26,'F9':26}
+
+
+def post_opportunity(o,legacy_extra):
+    profile=selected_budget(o)
+    if profile is None:return 497+legacy_extra
+    delta=(profile['F4']-60)+3*(profile['stability']-24)+(profile['F8']-20)+(profile['F9']-20)
+    o.base.check(delta==0,'closed recovery allocation must remain budget neutral')
+    return 497+40+delta
 
 def identity(path):return {k:str(getattr(Path(path).lstat(),k))for k in STAT_FIELDS}
 

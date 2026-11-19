@@ -966,6 +966,24 @@ and fresh900-second authorities do not change. Required post-mutation opportunit
 increases497→537 and authority reserve527→567; admission therefore refuses before
 unit mutation if the pre-graph consumed more than290 seconds of the global cap.
 
+The optional root-approval field `recoveryBudgetProfile` may select exactly
+`aihr-worker-unstarted-published-budget/v1` for a published recovery whose retained
+origin is `aihr-worker-unstarted-recovery/v1`. It is refused for preparation seals,
+normal activation, unknown origins and unknown profile names. The resulting native
+receipt repeats that exact profile selection. This finite allocation addresses a
+complete metadata observation that exhausted the original shared stability slot;
+it grants no exemption from any content, ownership, lease or freshness proof.
+
+This profile allocates30 seconds to F4,30 seconds to each of the three stability
+slots (each still includes its own mandatory4-second sleep), and26 seconds each
+to F8 and F9. Relative to the legacy published allocation, its change is
+`(30-60) + 3*(30-24) + (26-20) + (26-20) = 0`. The native owner derives the same537
+seconds of required post-mutation opportunity and567 seconds of authority reserve
+from that closed allocation. The global827-second cap, fresh root authority of at
+most900 seconds, native proof freshness60, native child deadlines, both full audits
+and all ten complete fences remain mandatory. Normal20/24-second slots and its830
+planning reservation, and every unselected recovery profile, remain unchanged.
+
 A fresh root selection may additionally bind exactly one failed published attempt
 in `publishedFailure.previousPublished`, keyed by its fixed derived directory name.
 It pins that directory, all eleven file identities/hashes and its original live

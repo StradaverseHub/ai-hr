@@ -507,6 +507,7 @@ class RuntimeObservation:
         published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
         unstarted=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-unstarted-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
+        if published:fields=PUBLISHED.budget_fields(base,ACTIVE_OPERATION_GUARD.ci,fields,a,ACTIVE_OPERATION_GUARD.stage)
         if unstarted:fields=UNSTARTED.LIVE_FIELDS
         fields=baseline_publication_fields(fields,a,allow=unstarted or published and PUBLISHED.unstarted_origin(ACTIVE_OPERATION_GUARD.ci,a) or recovery is None and not published)
         kind=UNSTARTED.KINDS[ACTIVE_OPERATION_GUARD.stage]if unstarted else PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
@@ -1098,7 +1099,11 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime') and self.fence_count==4 else 20)
+        else:
+            profile=PUBLISHED.selected_budget(self)if getattr(self.guard,'stage',None)=='recover-published-ci-runtime'else None
+            seconds=60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime','recover-unstarted-ci-runtime') and self.fence_count==4 else 20
+            if profile is not None:seconds=profile.get('F'+str(self.fence_count),seconds)
+            self.slot('F'+str(self.fence_count),seconds)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -1162,6 +1167,10 @@ class RuntimeObservation:
     def stage_ranks(self):
         return {'R0':0,'R1':1,'O':2} if self.recovery is None else {'F':0}
 
+    def stability_seconds(self):
+        profile=PUBLISHED.selected_budget(self)if getattr(self.guard,'stage',None)=='recover-published-ci-runtime'else None
+        return 24 if profile is None else profile['stability']
+
     def admit_mutation(self):
         if self.recovery is not None:return RECOVERY.admit_mutation(self)
         b=self.base;now=time.time()
@@ -1182,7 +1191,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {**({'recoveryBudgetProfile':self.auth['recoveryBudgetProfile']}if 'recoveryBudgetProfile' in self.auth else {}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
