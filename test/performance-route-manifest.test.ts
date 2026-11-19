@@ -5,7 +5,7 @@ import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
- requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
+ requireNativeRenderedUnion,readManifestRoute,builtPageCoverage} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
  const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards','/admin/rewards/plans','/admin/rewards/shared']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
@@ -14,6 +14,30 @@ it('counts the actual distinct route pools and binds every concrete path to its 
   for(const path of paths){const url=new URL(path,'https://fixture.invalid');expect(url.origin).toBe('https://fixture.invalid');expect(url.pathname).toMatch(/^\/(?:[a-z0-9/-]*)$/);const entry=handlers.has(url.pathname)?'/route.ts':'/page.tsx';expect(existsSync(new URL('../app'+(url.pathname==='/'?'':url.pathname)+entry,import.meta.url)),path).toBe(true);}
  }
  for(const [role,paths]of Object.entries(additionalBrowserRoutes))for(const path of paths)expect(routePools[role as keyof typeof routePools],role).toContain(path);
+});
+
+it('keeps the real build inventory distinct from authorized usable browser evidence',()=>{
+ const appPathRoutes={
+  '/(app)/page':'/','/(app)/reports/page':'/reports','/(app)/unplanned/page':'/unplanned',
+  '/(other)/reports/page':'/reports','/(app)/profile/[id]/page':'/profile/[id]',
+  '/(app)/approvals/page':'/approvals','/legacy/route':'/legacy','/_not-found/page':'/_not-found',
+ };
+ const plan=[
+  {role:'employee',requested:'/',final:'/'},
+  {role:'groupHR',requested:'/legacy',final:'/reports?view=all'},
+  {role:'companyHR',requested:'/approvals',final:'/approvals'},
+ ];
+ const observations=[
+  {role:'employee',route:'/',status:'observed',destination:'expected',readiness:'heading'},
+  {role:'groupHR',route:'/legacy',status:'observed',destination:'expected',readiness:'usable-content'},
+  {role:'companyHR',route:'/approvals',status:'observed',destination:'expected',readiness:'scope-denial'},
+  {role:'employee',route:'/unplanned',status:'observed',destination:'expected',readiness:'usable-content'},
+ ];
+ expect(builtPageCoverage(appPathRoutes,plan,observations)).toEqual({
+  pages:5,directStaticPages:4,plannedStaticPages:3,visitedStaticPages:3,usableStaticPages:1,
+  staticPagesWithoutPlan:['/unplanned'],plannedStaticPagesWithoutUsableContent:['/','/approvals'],
+  dynamicPageTemplates:['/profile/[id]'],
+ });
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,

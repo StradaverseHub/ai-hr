@@ -9,7 +9,7 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {nativePreflightRoutePlan} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -352,6 +352,9 @@ async function measureRoutes(fixture){
  }
  plan.push({role:'employee',actorIndex:4,requested:'/me/cases',final:'/me/cases'});
  report.plannedRoleRoutes=plan.length;
+ const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+ report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,[]);
+ save();
  const require=createRequire(join(process.cwd(),'package.json'));
  const {chromium}=require('playwright');
  browser=await chromium.launch();
@@ -364,6 +367,8 @@ async function measureRoutes(fixture){
    for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass,fixture);
   }finally{await context.close();}
  }));
+ report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
+ save();
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 

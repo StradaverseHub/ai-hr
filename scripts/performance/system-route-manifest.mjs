@@ -28,6 +28,37 @@ const concreteReadRoutes=new Set(Object.values(routePools).flat());
 export const wholeSystemRouteCount=concreteReadRoutes.size;
 /** Keep known static views distinct; discard arbitrary query values from measurement labels. */
 export function readRouteForMeasurement(path){return concreteReadRoutes.has(path)?path:path.split('?')[0];}
+
+/** Compare direct browser evidence with the pages present in the measured build. */
+export function builtPageCoverage(appPathRoutes,plan,observations){
+ const frameworkPages=new Set(['/_not-found','/_global-error']);
+ const pages=[...new Set(Object.entries(appPathRoutes)
+  .filter(([entry,path])=>entry.endsWith('/page')&&typeof path==='string'&&path.startsWith('/')&&!frameworkPages.has(path))
+  .map(([,path])=>path))].sort();
+ assert(pages.length>0,'The build recorded no application pages');
+ const key=(role,path)=>JSON.stringify([role,path]);
+ const planned=new Map(plan.map(row=>[key(row.role,row.requested),(row.final??row.requested).split('?')[0]]));
+ const plannedPaths=new Set(planned.values());
+ const visits=new Set(),usable=new Set();
+ for(const row of observations){
+  if(row.status!=='observed'||row.destination!=='expected')continue;
+  const path=planned.get(key(row.role,row.route));
+  if(!path)continue;
+  visits.add(path);
+  if(row.readiness==='usable-content')usable.add(path);
+ }
+ const staticPages=pages.filter(path=>!path.includes('['));
+ return {
+  pages:pages.length,
+  directStaticPages:staticPages.length,
+  plannedStaticPages:staticPages.filter(path=>plannedPaths.has(path)).length,
+  visitedStaticPages:staticPages.filter(path=>visits.has(path)).length,
+  usableStaticPages:staticPages.filter(path=>usable.has(path)).length,
+  staticPagesWithoutPlan:staticPages.filter(path=>!plannedPaths.has(path)),
+  plannedStaticPagesWithoutUsableContent:staticPages.filter(path=>plannedPaths.has(path)&&!usable.has(path)),
+  dynamicPageTemplates:pages.filter(path=>path.includes('[')),
+ };
+}
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],
