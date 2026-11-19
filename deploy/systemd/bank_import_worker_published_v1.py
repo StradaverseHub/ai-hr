@@ -16,6 +16,8 @@ from types import SimpleNamespace
 POLICY='aihr-worker-published-recovery/v1'
 BUDGET_PROFILE='aihr-worker-unstarted-published-budget/v1'
 BUDGET_KEY='recoveryBudgetProfile'
+SEAL_FRESHNESS_KEY='sealFreshnessPolicy'
+SEAL_FRESHNESS_POLICY='aihr-worker-unstarted-published-seal-completion/v1'
 SEAL_STAGE='seal-published-ci-worker'
 LIVE_STAGE='recover-published-ci-runtime'
 KINDS={SEAL_STAGE:'ADMIN_REVIEWED_PUBLISHED_WORKER_SEAL',LIVE_STAGE:'ADMIN_AUTHORIZED_PUBLISHED_WORKER_RECOVERY'}
@@ -27,9 +29,24 @@ FAILURE_FIELDS={'approval','approvalSha256','operation','operationIdentity','mem
 
 
 def budget_fields(b,ci,fields,a,stage):
-    if BUDGET_KEY not in a:return fields
-    b.check(a[BUDGET_KEY]==BUDGET_PROFILE and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named published-unstarted recovery budget required')
-    return fields|{BUDGET_KEY}
+    if BUDGET_KEY in a:
+        b.check(a[BUDGET_KEY]==BUDGET_PROFILE and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named published-unstarted recovery budget required')
+        fields=fields|{BUDGET_KEY}
+    if SEAL_FRESHNESS_KEY in a:
+        b.check(a[SEAL_FRESHNESS_KEY]==SEAL_FRESHNESS_POLICY and a.get(BUDGET_KEY)==BUDGET_PROFILE and stage==LIVE_STAGE and a.get('kind')==KINDS[LIVE_STAGE] and unstarted_origin(ci,a),'closed named live seal-completion freshness required')
+        fields=fields|{SEAL_FRESHNESS_KEY}
+    return fields
+
+
+def validate_seal_window(b,ci,a,authority,record,proof_mtime,now):
+    """Historical SEAL execution authority never moves. Only explicitly selected LIVE issuance age differs."""
+    issued,expires=ci.epoch(authority['issuedAt']),ci.epoch(authority['expiresAt'])
+    sealed,live=ci.epoch(record['sealedAt']),ci.epoch(a['issuedAt'])
+    b.check(issued<=sealed<=expires<=issued+300 and issued<=proof_mtime<=expires,'published seal was not completed inside original finite authority')
+    budget_fields(b,ci,set(),a,LIVE_STAGE)
+    bound=sealed+300 if a.get(SEAL_FRESHNESS_KEY)==SEAL_FRESHNESS_POLICY else expires
+    b.check(sealed<=live<=bound and live<=now,'published seal must complete before a fresh live authority inside selected original/completion freshness window')
+    return bound
 
 
 def selected_budget(o):
@@ -262,10 +279,7 @@ def load_seal(guard,fmt,b,ci,prepared):
             authority['releaseAuthorized']is False and authority['sealId']==record['sealId'] and
             authority['publishedFailure']==record['publishedFailure'],'original published seal authority differs')
     b.check(path==b.ROOT/'upgrades'/a['identity']['source']/('published-worker-'+record['sealId']+'.json'),'fixed published seal destination required')
-    issued,expires=ci.epoch(authority['issuedAt']),ci.epoch(authority['expiresAt'])
-    sealed=ci.epoch(record['sealedAt']);live=ci.epoch(a['issuedAt'])
-    b.check(issued<=sealed<=expires<=issued+300 and issued<=path.stat().st_mtime<=expires and
-            sealed<=live<=expires and live<=time.time(),'published seal must complete before a fresh live authority inside original seal freshness window')
+    validate_seal_window(b,ci,a,authority,record,path.stat().st_mtime,time.time())
     old,_,_=historical(b,ci,prepared,a,record['publishedFailure'])
     shared=(prepared.FIELDS|({ci.BASELINE_PUBLICATION_KEY}if ci.BASELINE_PUBLICATION_KEY in old else set()))-{'helperSha256','issuedAt','expiresAt','kind'}
     b.check(all(a[k]==old[k]for k in shared),'published recovery original installation/history pins differ')

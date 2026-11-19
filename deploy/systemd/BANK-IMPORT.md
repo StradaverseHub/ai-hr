@@ -984,6 +984,23 @@ most900 seconds, native proof freshness60, native child deadlines, both full aud
 and all ten complete fences remain mandatory. Normal20/24-second slots and its830
 planning reservation, and every unselected recovery profile, remain unchanged.
 
+An optional LIVE-only `sealFreshnessPolicy` of exactly
+`aihr-worker-unstarted-published-seal-completion/v1` may accompany that exact budget
+profile and unstarted published origin. It measures the review/issuance window from
+the actual completed seal: `sealedAt <= LIVE.issuedAt <= sealedAt + 300 seconds`.
+The native receipt repeats this selection. Without it, LIVE issuance still must
+precede the original seal authority's expiry. Unknown or misplaced policies refuse.
+
+The original SEAL authority remains at most300 seconds: its actual completed proof
+and protected proof-file mtime must both fall inside that original authority. No
+expired authority, proof timestamp or retained hash is rewritten or renewed. The
+new policy gives a fully completed byte proof a finite review window even when
+verification consumed most of its original execution allowance. The latest possible
+LIVE issuance is600 seconds after the original SEAL issue;
+this is an explicit expansion of the proof-to-LIVE issuance window.
+Metadata, source, original failure lineage and sealed tree are still revalidated before mutation;
+the LIVE900/global827 limits, complete proof graph and budget allocation do not change.
+
 A fresh root selection may additionally bind exactly one failed published attempt
 in `publishedFailure.previousPublished`, keyed by its fixed derived directory name.
 It pins that directory, all eleven file identities/hashes and its original live

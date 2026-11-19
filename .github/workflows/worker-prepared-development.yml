@@ -30,3 +30,4 @@ jobs:
           python3 -I -B test/fixtures/bank-import-worker-unstarted-tests.py
           python3 -I -B test/fixtures/bank-import-worker-published-unstarted-tests.py
           python3 -I -B test/fixtures/bank-import-worker-recovery-profile-tests.py
+          python3 -I -B test/fixtures/bank-import-worker-seal-completion-tests.py

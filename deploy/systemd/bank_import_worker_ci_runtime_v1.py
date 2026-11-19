@@ -1191,7 +1191,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {**({'recoveryBudgetProfile':self.auth['recoveryBudgetProfile']}if 'recoveryBudgetProfile' in self.auth else {}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {**({key:self.auth[key]for key in ('recoveryBudgetProfile','sealFreshnessPolicy')if key in self.auth}),'mode':UNSTARTED.LIVE_STAGE if self.guard.stage=='recover-unstarted-ci-runtime' else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':UNSTARTED.POLICY if self.guard.stage=='recover-unstarted-ci-runtime' else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
