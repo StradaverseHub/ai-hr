@@ -8695,6 +8695,7 @@
       "filterYear": "ปี",
       "noPayslip": "ยังไม่มีการคำนวณเงินเดือนสำหรับพนักงานคนนี้ในงวดและรอบที่เลือก",
       "cycleRun": "{cycle} รอบที่ {n}",
+      "matchingRuns": "รอบประมวลผลเงินเดือนที่ตรงกัน",
       "payDateLine": "วันที่จ่าย: {date}",
       "payPeriodLine": "งวดเงินเดือน: {period}",
       "segmentPeriodLine": "ทำงานกับบริษัทนี้ {from} ถึง {to}",

@@ -50,7 +50,7 @@ import { setCompensation } from '../core/comp';
 import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 // r360 — the company's own Pay Cycle catalogue, so a run can be opened under a REAL configured cycle
 // instead of a hand-inserted payroll_cycle row.
-import { listPayrollCycles, seedPayrollCycleCatalog } from '../core/payroll-cycle';
+import { listPayrollCycles, seedPayrollCycleCatalog, setPayrollCycleActive, upsertPayrollCycle } from '../core/payroll-cycle';
 import { createMovementEvent } from '../core/movement';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
@@ -226,7 +226,7 @@ describe('5a29686c — the four dropdowns fill in with the payslip on screen', (
     expect(selectNamed(tree, 'year').value, 'Year must name the payslip’s year').toBe('2026');
     expect(selectNamed(tree, 'month').value, 'Month must name the payslip’s month').toBe('03');
     // The cycle value carries the RUN as well as the type — that fold is what retired the run picker.
-    expect(selectNamed(tree, 'cycle').value, 'Payroll cycle must name the run').toBe('regular:1');
+    expect(selectNamed(tree, 'payrollCycleId').value).toBe('');
 
     // …and a payslip is genuinely on screen, so the boxes are describing something real rather than
     // agreeing with each other about nothing.
@@ -257,7 +257,7 @@ describe('5a29686c — the four dropdowns fill in with the payslip on screen', (
     expect(selectNamed(tree, 'month').value).toBe('05');
     expect(real(selectNamed(tree, 'month')).map((o) => o.value)).toEqual(['02', '05']);
     // The cycle list narrows to the MONTH showing. May holds one run, so one option, not four.
-    expect(real(selectNamed(tree, 'cycle')).map((o) => o.value)).toEqual(['regular:1']);
+    expect(real(selectNamed(tree, 'payrollCycleId'))).toEqual([]);
   });
 
   it('a stale month posted by the GET form is DROPPED, not answered with an empty screen', async () => {
@@ -307,25 +307,8 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     await generatePayslips(a, { batchId: bonus.batchId });
 
     const opened = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
-    const cycle = selectNamed(opened, 'cycle');
-    const values = real(cycle).map((o) => o.value);
-    expect(values, 'run_seq is unique within a pay period, so the two runs get two values').toEqual([
-      'regular:1',
-      'bonus:2',
-    ]);
-    // DISTINGUISHABLE ON SCREEN, not merely in the value. The run number is what the reader reads.
-    const labels = real(cycle).map((o) => o.label);
-    expect(new Set(labels).size, 'two options reading the same words is the defect over again').toBe(2);
-    expect(labels[1], 'the second run must be labelled with its number').toContain('cycleRun');
-    expect(labels[1]).toContain('"n":2');
-    // …and the first must NOT be, or an ordinary month would read "Regular run 1".
-    expect(labels[0]).not.toContain('cycleRun');
-
-    // The screen opens on the regular run (lowest run number in the newest period) and says so.
-    expect(cycle.value).toBe('regular:1');
-
-    // AND EACH VALUE RESOLVES TO EXACTLY ONE, DIFFERENT PAYSLIP. Four boxes, one payslip — which is the
-    // property the deleted card used to provide by hand.
+    expect(selectNamed(opened,'payrollCycleId').value).toBe('');
+    expect(textOf(opened)).toContain('matchingRuns');
     const pick = async (c: string) =>
       renderedPayslipId(
         await IndividualPayslipPage({
@@ -369,10 +352,8 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     }
 
     const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
-    const cycle = selectNamed(tree, 'cycle');
-    expect(real(cycle).map((o) => o.value)).toEqual(['regular:1', 'bonus:2', 'bonus:3']);
-    expect(new Set(real(cycle).map((o) => o.label)).size, 'three options, three distinct labels').toBe(3);
-
+    expect(real(selectNamed(tree,'payrollCycleId'))).toEqual([]);
+    expect(textOf(tree)).toContain('matchingRuns');
     const pick = async (c: string) =>
       renderedPayslipId(
         await IndividualPayslipPage({
@@ -388,6 +369,35 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     const ids = [await pick('regular:1'), await pick('bonus:2'), await pick('bonus:3')];
     expect(ids.every(Boolean), 'every option must open a payslip').toBe(true);
     expect(new Set(ids).size, 'and three different ones — no run may be unreachable').toBe(3);
+  });
+
+  it('filters two configured cycles sharing a run type and offers archived matching runs only',async()=>{
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const actor=await entitledCtx(base);scope.s=actor;
+    const employee=await hire(actor,'Configured cycle test','configured.cycle@acme.test');
+    const first=await upsertPayrollCycle(actor,{companyId:base.companyId,name:'Commission',runType:'bonus',sortOrder:1});
+    const second=await upsertPayrollCycle(actor,{companyId:base.companyId,name:'Incentive',runType:'bonus',sortOrder:2});
+    const empty=await upsertPayrollCycle(actor,{companyId:base.companyId,name:'Unpaid special',runType:'bonus',sortOrder:3});
+    const slips=[];
+    for(const cycle of [first,second,first]) {
+      const {batchId}=await createAdditionalRun(actor,{companyId:base.companyId,payPeriod:'2026-09',runType:'bonus',payrollCycleId:cycle.id});
+      await setPayrollInput(actor,{batchId,employmentId:employee.employmentId,overtimeAmount:0,bonusAmount:100});
+      await generatePayslips(actor,{batchId});
+      const [saved]=await owner.db.select({id:schema.payslip.id}).from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+      slips.push(saved.id);
+    }
+    await setPayrollCycleActive(actor,{id:first.id,active:false});
+    const page=(payrollCycleId:string,payslipId?:string)=>IndividualPayslipPage({searchParams:Promise.resolve({
+      employmentId:employee.employmentId,companyId:base.companyId,year:'2026',month:'09',payrollCycleId,payslipId,
+    })});
+    const tree=await page(first.id);
+    expect(renderedPayslipId(tree)).toBe(slips[2]);
+    expect(real(selectNamed(tree,'payrollCycleId')).map(option=>option.label)).toEqual(['Commission','Incentive','Unpaid special']);
+    expect(textOf(tree)).toContain('matchingRuns');
+    expect(renderedPayslipId(await page(first.id,slips[0]))).toBe(slips[0]);
+    expect(renderedPayslipId(await page(first.id,slips[1]))).toBeNull();
+    expect(renderedPayslipId(await page(second.id))).toBe(slips[1]);
+    expect(renderedPayslipId(await page(empty.id))).toBeNull();
   });
 
   it('a bare ?cycle=bonus made before r210 still opens the bonus run', async () => {
@@ -414,7 +424,8 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
         cycle: 'bonus',
       }),
     });
-    expect(selectNamed(tree, 'cycle').value, 'the old link resolves to the run it meant').toBe('bonus:2');
+    const [saved] = await owner.db.select({id:schema.payslip.id}).from(schema.payslip).where(eq(schema.payslip.batchId,bonus.batchId));
+    expect(renderedPayslipId(tree)).toBe(saved.id);
   });
 });
 
@@ -546,7 +557,7 @@ describe('5a29686c — an employee with no payslips is told so, not offered choi
     // already knows the answer is "no payslip".
     expect(real(selectNamed(tree, 'year')), 'no year leads anywhere for this employee').toEqual([]);
     expect(real(selectNamed(tree, 'month'))).toEqual([]);
-    expect(real(selectNamed(tree, 'cycle'))).toEqual([]);
+    expect(real(selectNamed(tree, 'payrollCycleId'))).toEqual([]);
     expect(real(selectNamed(tree, 'companyId'))).toEqual([]);
     for (const name of ['companyId', 'year', 'month', 'cycle']) {
       expect(selectNamed(tree, name).value, `${name} must show "All", not a fabricated value`).toBe('');
@@ -688,7 +699,7 @@ describe('5a29686c — year-to-date is the employee’s year, not the selected c
         companyId: selectNamed(arrived, 'companyId').value,
         year: selectNamed(arrived, 'year').value,
         month: selectNamed(arrived, 'month').value,
-        cycle: selectNamed(arrived, 'cycle').value,
+        payrollCycleId: selectNamed(arrived, 'payrollCycleId').value,
       }),
     });
 

@@ -251,7 +251,7 @@ beforeEach(async () => {
   loc.cur = 'en';
 });
 
-describe('e0b6e3b8 — on the rendered screen, the two labels are different words', () => {
+describe('e0b6e3b8 — on the rendered screen, the chooser uses the configured Payroll Cycle', () => {
   /** One employee, one REGULAR run opened under the company's own configured "Monthly" cycle. That
    *  combination is the reporter's screen: run type `regular`, cycle name "Monthly". */
   async function screenWithAMonthlyRun() {
@@ -278,66 +278,22 @@ describe('e0b6e3b8 — on the rendered screen, the two labels are different word
       payrollCycleId: monthly!.id,
     });
     await generatePayslips(admin, { batchId });
-    return e.employmentId;
+    return {employmentId:e.employmentId,cycleId:monthly!.id};
   }
 
-  // All six locales held the SAME string in both keys before this round, so every one of them is a
-  // locale "where the two labels were previously identical". Three are rendered: English, the Malay a
-  // Malaysian tenant reads, and a non-Latin script where a stale copy would be least visible by eye.
   for (const locale of ['en', 'ms', 'zh'] as const) {
-    it(`[${locale}] the chooser says "Run type", the payslip says "Payroll cycle", and they differ`, async () => {
+    it(`[${locale}] filters and displays the configured Payroll Cycle`, async () => {
       loc.cur = locale;
-      const employmentId = await screenWithAMonthlyRun();
-      const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId }) });
-
-      const chooser = labelOfControl(tree, 'cycle');
-      // r392 (23bd49d9) — Payroll Cycle is a payslip setting field now, labelled by its own catalogue key
-      // (payroll.payslipInformation.payrollCycle, Title Case) like every other field in the block.
+      const {employmentId,cycleId} = await screenWithAMonthlyRun();
+      const tree = await IndividualPayslipPage({searchParams:Promise.resolve({employmentId,payrollCycleId:cycleId})});
       const field = String(at(catalogue(locale), 'payroll.payslipInformation.payrollCycle'));
-
-      // 1. THE CHOOSER RESOLVES THE NEW KEY. Asserted against the catalogue VALUE, not the key name: put
-      //    `t('filterCycle')` back and this fires, because the retire marker is what would render.
-      expect(chooser, `${locale}: the chooser must carry the run-type label`).toBe(msg(locale, 'filterRunType'));
-
-      // 2. THE PAYSLIP FIELD IS UNCHANGED, and still names the company's own cycle rather than the
-      //    kernel's run-type word. r360's promise, restated here only as the OTHER HALF of the
-      //    comparison below — the behaviour itself is pinned in test/individual-payslip-selection.test.ts.
-      expect(infoLabelled(tree, field), `${locale}: the payslip field still names the configured cycle`).toBe(
-        'Monthly',
-      );
-
-      // 3. THE ITEM. Two labels, one page, and they are no longer the same words.
-      expect(chooser, `${locale}: the chooser and the payslip field must not read as one field`).not.toBe(field);
-
-      // 4. NO RETIRE MARKER REACHES A READER. A retired key that is still resolved paints its own
-      //    explanation onto the screen — a louder failure than the label it replaced.
-      expect(
-        textOf(tree).filter((s) => s.includes('[retired r')),
-        `${locale}: no retire marker may render`,
-      ).toEqual([]);
+      expect(labelOfControl(tree, 'payrollCycleId')).toBe(field);
+      expect(infoLabelled(tree, field)).toBe('Monthly');
+      const select = nodes(tree).find(el=>el.type==='select'&&el.props?.name==='payrollCycleId');
+      expect(select.props.defaultValue).toBe(cycleId);
+      const option=nodes(select.props.children).find(el=>el.type==='option'&&el.props?.value===cycleId);
+      expect(textOf(option).join('')).toBe('Monthly');
+      expect(textOf(tree).filter(word=>word.includes('[retired r'))).toEqual([]);
     });
   }
-
-  it('the options under the relabelled chooser are the SAME options — only the label moved', async () => {
-    // The plan's promise, and the line between this round and the bigger one the reporter may still ask
-    // for: the chooser was NOT switched over to listing configured cycle names. It still offers the runs
-    // this employee holds, labelled by run type — "All", then the one regular run of the month.
-    const employmentId = await screenWithAMonthlyRun();
-    const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId }) });
-    const select = nodes(tree).find((el) => el.type === 'select' && el.props?.name === 'cycle');
-    expect(select, 'the chooser still posts under ?cycle=').toBeTruthy();
-    const options = nodes(select.props.children)
-      .filter((o) => o.type === 'option')
-      .map((o) => ({ value: String(o.props?.value ?? ''), label: textOf(o.props?.children).join('') }));
-    expect(
-      options.map((o) => o.value),
-      'All, then the one run this employee holds',
-    ).toEqual(['', 'regular:1']);
-    // The run-type word, from the run-type catalogue — NOT "Monthly", which is what a chooser switched
-    // over to cycle names would say, and that is the change this round deliberately did not make.
-    expect(options[1].label, 'the option is still labelled by run TYPE').toBe(
-      String(at(catalogue('en'), 'payroll.transactions.individual.cycle.regular')),
-    );
-    expect(options[1].label, 'and must NOT have become the configured cycle name').not.toBe('Monthly');
-  });
 });
