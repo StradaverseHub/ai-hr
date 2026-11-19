@@ -2,7 +2,7 @@ name: prelaunch-arrival-development
 run-name: Prelaunch arrival controls only · ${{ github.sha }}
 on:
   push:
-    branches: ['codex/board-prelaunch-arrival-resume-20261119']
+    branches: ['codex/board-prelaunch-arrival-overall-20261119']
 permissions:
   contents: read
 jobs:
