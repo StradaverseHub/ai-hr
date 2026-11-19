@@ -337,6 +337,56 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
  }
  return 'heading';
 }
+// Collect timing before application scripts run, and retain only counts and durations.
+function observeStartup(){
+ const tasks={count:0,totalMs:0,longestMs:0};
+ const accumulate=entries=>{
+  for(const entry of entries){
+   tasks.count++;
+   tasks.totalMs+=entry.duration;
+   tasks.longestMs=Math.max(tasks.longestMs,entry.duration);
+  }
+ };
+ const supported=PerformanceObserver.supportedEntryTypes.includes('longtask');
+ const observer=supported?new PerformanceObserver(list=>accumulate(list.getEntries())):null;
+ observer?.observe({type:'longtask',buffered:true});
+ let resourceBufferFull=false;
+ performance.addEventListener('resourcetimingbufferfull',()=>{resourceBufferFull=true;});
+ globalThis.readFixtureStartupTiming=()=>{
+  if(observer)accumulate(observer.takeRecords());
+  return {
+   longTasks:observer?{count:tasks.count,totalMs:Math.round(tasks.totalMs),longestMs:Math.round(tasks.longestMs)}:null,
+   resourceBufferFull,
+  };
+ };
+}
+
+async function documentTiming(page){
+ return page.evaluate(()=>{
+  const [entry]=performance.getEntriesByType('navigation');
+  if(!entry||entry.responseStart<=0)return null;
+  const round=ms=>ms>0?Math.round(ms):null;
+  const firstPaint=performance.getEntriesByName('first-contentful-paint','paint')[0];
+  const scripts=performance.getEntriesByType('resource').filter(resource=>{
+   const url=new URL(resource.name,location.href);
+   return url.origin===location.origin&&url.pathname.startsWith('/_next/static/')&&url.pathname.endsWith('.js');
+  });
+  return {
+   firstByteMs:round(entry.responseStart),documentResponseEndMs:round(entry.responseEnd),
+   firstContentfulPaintMs:firstPaint?round(firstPaint.startTime):null,
+   domInteractiveMs:round(entry.domInteractive),domContentLoadedMs:round(entry.domContentLoadedEventEnd),
+   transferBytes:entry.transferSize,sampledAtMs:round(performance.now()),
+   appScripts:{count:scripts.length,
+    completedBeforeDomContentLoaded:scripts.filter(resource=>entry.domContentLoadedEventStart>0
+     &&resource.responseEnd<=entry.domContentLoadedEventStart).length,
+    transferBytes:scripts.reduce((total,resource)=>total+resource.transferSize,0),
+    decodedBodyBytes:scripts.reduce((total,resource)=>total+resource.decodedBodySize,0),
+    lastResponseEndMs:round(scripts.reduce((latest,resource)=>Math.max(latest,resource.responseEnd),0))},
+   ...globalThis.readFixtureStartupTiming?.(),
+  };
+ }).catch(()=>null);
+}
+
 async function visit(page,actor,route,pass,fixture) {
  const observation={role:route.role,route:route.requested,pass,status:'failed'};
  const started=performance.now(),deadline=started+15000;
@@ -392,12 +442,7 @@ async function visit(page,actor,route,pass,fixture) {
     if(observation.visibleState?.capacityError)observation.failure='capacity';
     if(observation.visibleState?.renderError)observation.failure='render-error';
    }
-   observation.documentTiming=await page.evaluate(()=>{
-    const [entry]=performance.getEntriesByType('navigation');
-    if(!entry||entry.responseStart<=0)return null;
-    return {firstByteMs:Math.round(entry.responseStart),domContentLoadedMs:Math.round(entry.domContentLoadedEventEnd),
-     transferBytes:entry.transferSize};
-   }).catch(()=>null);
+   observation.documentTiming=await documentTiming(page);
   }
   report.observations.push(observation);save();
  }
@@ -469,6 +514,7 @@ async function measureRoutes(fixture){
   const context=await signedInContext(actor);
   try{
    const page=await context.newPage();
+   await page.addInitScript(observeStartup);
    for(const pass of ['first','repeat'])for(const route of routes)await visit(page,actor,route,pass,fixture);
   }finally{await context.close();}
  }));
@@ -686,16 +732,32 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
  const history=fixture.assistantHistory?.[user.index];
  assert(history?.rowsVerified,'The authorized actor needs their seeded Assistant history');
  report.historySteps=[];
+ report.assistantStartup={};
+ await page.addInitScript(observeStartup);
  await verifyAssistantHistoryBrowser({page,history,timeout:15000,
   visitAsk:async()=>{
+   const started=performance.now();
    const response=await page.goto(origin+'/assistant',{waitUntil:'commit',timeout:15000});
    assert.equal(response?.status(),200);
-   await page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
-    .waitFor({state:'visible',timeout:15000});
+   assert.equal(page.url(),origin+'/assistant');
+   await Promise.all([
+    page.locator('button[data-tour="account"]').getByText(user.name,{exact:true}).first()
+     .waitFor({state:'visible',timeout:15000})
+     .then(()=>{report.assistantStartup.authenticatedShellMs=Math.round(performance.now()-started);}),
+    page.locator('main [data-ask-conversation] textarea[name="question"]:enabled')
+     .waitFor({state:'visible',timeout:15000})
+     .then(()=>{report.assistantStartup.composerVisibleMs=Math.round(performance.now()-started);}),
+   ]);
   },
-  onMeasurement:row=>{
+  onMeasurement:async row=>{
    report.historySteps.push({step:row.step,elapsedMs:Math.round(row.navigationToUsableMs??row.clickToUsableMs),
     promptsSubmitted:row.promptsSubmitted});
+   if(row.step==='saved-history-list'){
+    const timing=await documentTiming(page);
+    report.assistantStartup.documentTiming=timing;
+    assert(timing?.appScripts.count>0&&timing.longTasks&&timing.resourceBufferFull===false,
+     'Assistant startup must have bounded script and main-thread observations');
+   }
    save();
   },
  });
@@ -877,7 +939,11 @@ async function measureActions(fixture){
    const user=fixture.users[action.actorIndex],context=await signedInContext(user),result={};
    const row={journey:action.name,role:user.role,status:'incomplete',timings:[]};
    report.journeys.push(row);
-   const retain=()=>{row.timings=action.timings(result)??[];save();};
+   const retain=()=>{
+    row.timings=action.timings(result)??[];
+    if(result.assistantStartup)row.startup=result.assistantStartup;
+    save();
+   };
    const matchedActions=new Set();
    const observeAction=request=>{
     if(request.method()!=='POST'||new URL(request.url()).origin!==origin)return;
