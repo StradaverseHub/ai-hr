@@ -33,7 +33,7 @@ it('renders affected operational routes at desktop and mobile widths without pag
  browser=await chromium.launch({channel:'chrome',headless:true});const context=await browser.newContext();
  await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
  const routes=['/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily','/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records','/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/'];
- const checks:unknown[]=[];
+ const checks:unknown[]=[],overflowFailures:unknown[]=[];
  for(let index=0;index<routes.length;index+=2){
   signal.throwIfAborted();await preview.start();
   for(const route of routes.slice(index,index+2)){
@@ -45,10 +45,12 @@ it('renders affected operational routes at desktop and mobile widths without pag
     await page.locator('main h1').first().waitFor();
     await page.waitForLoadState('load');
     await page.evaluate(async()=>{await document.fonts.ready;await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));});
+    if(route==='/reports/employee-master/new')await page.waitForFunction(label=>{const button=[...document.querySelectorAll('button')].find(button=>button.textContent===label);return !!button&&!button.disabled;},en.employeeMasterReports.refreshPreview);
     if(route.endsWith('system-labels'))await page.locator('[data-label-import-ready="true"]').waitFor();
     expect(await page.locator('main').innerText()).not.toMatch(/MISSING_MESSAGE|INVALID_MESSAGE|Application error/);
     const metrics=await page.evaluate(()=>{const main=document.querySelector('main')!;return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,mainWidth:main.getBoundingClientRect().width,mainClientWidth:main.clientWidth,mainScrollWidth:main.scrollWidth};});
-    expect(metrics.documentWidth).toBeLessThanOrEqual(width+1);expect(metrics.mainWidth).toBeGreaterThan(250);expect(metrics.mainScrollWidth).toBeLessThanOrEqual(metrics.mainClientWidth+1);
+    expect(metrics.mainWidth).toBeGreaterThan(250);
+    if(metrics.documentWidth>width+1||metrics.mainScrollWidth>metrics.mainClientWidth+1)overflowFailures.push({route,device,...metrics});
     const key=route.split('/').filter(Boolean).join('-')||'today';
     await page.screenshot({path:join(evidence,`operational-${key}-${device}.png`),fullPage:true});
     if(route.endsWith('system-labels')){
@@ -72,6 +74,8 @@ it('renders affected operational routes at desktop and mobile widths without pag
   await preview.stop();
  }
  await context.close();expect(checks).toHaveLength(routes.length*2);
+ writeFileSync(join(evidence,'operational-overflow-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,overflowFailures},null,2));
+ expect(overflowFailures,'Every route must fit the document and main scroller; screenshots are retained for all failures').toEqual([]);
  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated HR administrator with own employment',complete:true,checks},null,2));
  // Nine bounded pairs, measured from the 15-minute combined timeout in 44577652028; Excel/languages run separately.
 },900000);
