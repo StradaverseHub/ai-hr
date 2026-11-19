@@ -145,8 +145,10 @@ export const HARNESS_SPEC=freeze({
   * 30: 96a54ed2 (owner decision, 12 November 2026): operations_status gains the attendance_on_behalf_subjects and
   * attendance_on_behalf_approvers topics, the Request On Behalf and Approve On Behalf pages
   * (core/semantic-model/entities-attendance-on-behalf.ts: managers and administrators holding the on-behalf permission
-  * key, read only, no new tool). No instruction line is added, as for v29. */
- version:30,
+  * key, read only, no new tool). No instruction line is added, as for v29.
+  * 31: three literal public page-guidance topics for Offboarding requisitions, document signing and Payroll history records;
+  * administrator/module gates, unchanged disclosure fields, no business records and no new standalone tool or action. */
+ version:31,
  /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
   * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
   * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). 3: review B2 and
@@ -191,7 +193,7 @@ export const HARNESS_SPEC=freeze({
   publicContextTools:['product_destinations','product_guidance','available_actions'],
   /** v22: the topics product_guidance serves besides its guide search, each one of main's administrator page guides
    * (core/explainers/capabilities.ts, gated as there). The harness refuses any other topic before the owner runs. */
-  guidanceTopics:['password_policy','correction_controls','organisation_tagging','reward_reviews'],
+  guidanceTopics:['password_policy','correction_controls','organisation_tagging','reward_reviews','offboarding_requisitions','document_signing','payroll_history_records'],
   /** v23: the topic tools and their topics, in order (core/semantic-model/topic-tools.ts TOPIC_TOOLS). Each topic is one
    * declared read, bound only through its tool; the harness refuses any other topic before a runner. */
   topicTools:{
@@ -400,6 +402,8 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  29:'e5108db742b9e4fcc58f0a341477390f3f2fd977f4f686cebf31e068ee8fc13c',
  // 96a54ed2: the two attendance on-behalf operations_status topics.
  30:'750548d4761d28330d642919378c22a944532c8781d59784b5aa8e52c62942bd',
+ // Literal public page guidance, administrator/module gated, no new data or action.
+ 31:'72e606d0853616c03d0c406fa0c8478996caa31de90c571ee32103758d308246',
 });
 
 /** Parallel v24 deployed before the histories converged. Its number also identifies main's payroll-learning spec. */

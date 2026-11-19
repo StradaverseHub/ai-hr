@@ -88,10 +88,13 @@ export const V29_TOPIC='shared_leave_groups';
 /** v30's two topics (96a54ed2, the Request On Behalf and Approve On Behalf pages), appended to operations_status. v30 adds
  * no instruction line. */
 export const V30_TOPICS=['attendance_on_behalf_subjects','attendance_on_behalf_approvers'] as const;
-/** The v30 spec with its two topics removed and the version set to 29: v29 exactly, preserving its recorded digest. */
+/** The v31 public topics are removed when reconstructing the exact released v30 spec. */
+export const V31_GUIDANCE_TOPICS=['offboarding_requisitions','document_signing','payroll_history_records'] as const;
+export function v30ShapedSpec(){return {...HARNESS_SPEC,version:30,offer:{...HARNESS_SPEC.offer,guidanceTopics:HARNESS_SPEC.offer.guidanceTopics.filter(topic=>!(V31_GUIDANCE_TOPICS as readonly string[]).includes(topic))}};}
+/** v30 with its two operations topics removed: v29 exactly. */
 export function v29ShapedSpec(){
- const topicTools={...HARNESS_SPEC.offer.topicTools,operations_status:HARNESS_SPEC.offer.topicTools.operations_status.filter(topic=>!(V30_TOPICS as readonly string[]).includes(topic))};
- return {...HARNESS_SPEC,version:29,offer:{...HARNESS_SPEC.offer,topicTools}};
+ const current=v30ShapedSpec(),topicTools={...current.offer.topicTools,operations_status:current.offer.topicTools.operations_status.filter(topic=>!(V30_TOPICS as readonly string[]).includes(topic))};
+ return {...current,version:29,offer:{...current.offer,topicTools}};
 }
 /** The v29 spec with its one topic removed and the version set to 28: v28 exactly, preserving its recorded digest.
  * 96a54ed2: built from v29, not the current spec. */

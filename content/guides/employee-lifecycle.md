@@ -36,3 +36,9 @@ Withdrawal is available only while the case permits it, in Decision or Retention
 Follow HR's offboarding instructions and return equipment through the recorded process. A completed equipment checklist alone does not end employment or revoke login access. Managed resignation termination requires completed clearance and approval of its Termination posting.
 
 If an older resignation panel shows an existing request, continue with that request and ask HR if its route is unclear.
+
+## Review or sign your assigned documents
+
+Open [My document reviews and signatures](/me/document-signing) with your own account and select a document listed for you. The saved route determines who reviews, approves, signs or acknowledges each stage. The native owner checks your current account, real Person link and assigned participation; being a participant does not give Full case view or unrelated Personnel answers.
+
+Read the document and use only the action currently offered. Enter answers only where your stage permits them. A signature or acknowledgement is your explicit decision on that document. If it is sent back, review the updated content before acting again. Ask HR to resolve an absent account/Person link or changed assignment; never use another person’s account. Chat guidance cannot sign, approve, acknowledge or supply Personnel answers.

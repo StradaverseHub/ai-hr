@@ -45,6 +45,10 @@ function compare(gaps:Readonly<Record<string,readonly string[]>>,list:ReadonlyMa
 describe('definition of done',()=>{
  const inputs=definitionOfDoneInputs(),gaps=definitionOfDoneGaps(inputs),list=allowed();
  it('covers organisation review with its literal semantic owner, guide and corpus without a new gap',()=>{expect(inputs.pages.some(page=>page.path==='/admin/organization/organisation-tagging')).toBe(true);expect(gaps['page:/admin/organization/organisation-tagging']).toBeUndefined();});
+ it('ships all three board pages with semantic, bundled guide, existing readiness and corpus coverage',()=>{
+  for(const page of ['/lifecycle/requisitions/offboarding','/me/document-signing','/payroll/history-import/records']){expect(inputs.pages.some(row=>row.path===page),page).toBe(true);expect(gaps['page:'+page],page).toBeUndefined();}
+  expect(inputs.moduleStages.get('payroll')).toBe('company_payroll_setup');expect(inputs.stagesWithoutOwner.has('company_payroll_setup')).toBe(false);
+ });
  it('reads the live registries',()=>{
   expect(inputs.actions.length).toBeGreaterThanOrEqual(71);expect(inputs.pages.length).toBeGreaterThanOrEqual(293);
   expect(inputs.guideBodies.length).toBeGreaterThan(40);expect(inputs.corpus.length).toBeGreaterThan(150);
