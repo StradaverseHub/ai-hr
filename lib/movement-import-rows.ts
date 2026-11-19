@@ -9,6 +9,7 @@ import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
 import {movementWorkbookLayout,movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
 import { MOVEMENT_FORM_IDS, MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS, movementHistoryDateFields } from './movement-form-contract';
+import { MOVEMENT_HISTORY_PAY_FIELDS } from './movement-history-pay';
 import { personnelFormLabel } from './personnel-form-contract';
 import {movementRecordLimits} from './movement-type-csv';
 import {personnelImportOptionLookup} from './personnel-import-lookup';
@@ -37,7 +38,7 @@ export function movementSystemFields(type:MovementWorkbookType,resolve:Personnel
  return movementWorkbookLayout(type,resolve).filter(column=>column.role==='input'&&column.key!=='effectiveDate').map(column=>({key:column.key,label:column.label}));
 }
 export function movementHistorySystemFields(resolve: PersonnelLabelResolver, behaviour?: string): MovementSystemField[] {
- return [...MOVEMENT_HISTORY_FIELDS, ...(behaviour ? movementHistoryDateFields(behaviour) : MOVEMENT_HISTORY_DATE_FIELDS), 'remarks' as const].map(key=>({key,label:personnelFormLabel(MOVEMENT_FORM_IDS[key],resolve)}));
+ return [...MOVEMENT_HISTORY_FIELDS, ...(behaviour ? movementHistoryDateFields(behaviour) : MOVEMENT_HISTORY_DATE_FIELDS), ...MOVEMENT_HISTORY_PAY_FIELDS, 'remarks' as const].map(key=>({key,label:personnelFormLabel(MOVEMENT_FORM_IDS[key],resolve)}));
 }
 /** Display value for an event type in the drop-down: its label, or its code where labels repeat. */
 export function movementTypeDisplay(types:MovementWorkbookType[],type:MovementWorkbookType,resolve:PersonnelLabelResolver){

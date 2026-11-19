@@ -29,6 +29,7 @@ import { CurrencySelect } from '@/components/currency-select';
 import { PAY_MODE_OPTIONS, PAYMENT_TERM_OPTIONS } from '@/components/pay-structure-fields';
 import { createMovementEventAction, editMovementEventAction,saveMovementPageAction } from './actions';
 
+import { HistoryMovementPayFields } from './history-movement-pay-fields';
 import { HistoryMovementDateFields } from './history-movement-date-fields';
 import type {MovementPageContext} from '@/lib/personnel-movement-navigation';
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
@@ -208,6 +209,7 @@ export function MovementNewEvent({
   postingAction,
   rehire,
   historyOnly = false,
+  historyPayAllowed = false,
 }: {
   employmentId: string;
   today: string;
@@ -268,6 +270,7 @@ export function MovementNewEvent({
    *  Rehired type then renders its own form (a new employment, core/rehire.ts), never the movement writer. */
   rehire?: Omit<RehireFormProps, 'kindCode'>;
   historyOnly?: boolean;
+  historyPayAllowed?: boolean;
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
@@ -973,6 +976,7 @@ export function MovementNewEvent({
             id: choice.value, name: tRoot(choice.labelKey),
           })))}
           <HistoryMovementDateFields behaviour={behaviour} />
+          {historyPayAllowed && <HistoryMovementPayFields />}
         </div>
       )}
 

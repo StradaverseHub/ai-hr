@@ -15,6 +15,7 @@ import {createMovementEvent,movementDetail,movementHistory,reverseMovementEvent}
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
 import {classifyHistoryRows,recordHistoryMovementTx} from '../core/movement-history';
 import {previewInformationCorrection,correctInformation} from '../core/information-correction';
+import {readMovementHistoryPayTx} from '../core/movement-history-pay';
 import {editEntityHistoryMovement,historyMovementEditValues,recordHistoryMovement} from '../core/movement-history-command';
 import type {MovementImportRecord} from '../lib/movement-import-contract';
 
@@ -126,6 +127,27 @@ describe('recording history before a date',()=>{
   expect(await versions(id)).toEqual([{validFrom:HIRED,validTo:null,companyId:b.companyId}]);
   const [employee]=await owner.db.select({confirmed:schema.employment.confirmationDate}).from(schema.employment).where(eq(schema.employment.id,id));
   expect(employee.confirmed).toBeNull();
+ });
+
+ it('keeps salary and payment history evidence private and preserves payroll and live inputs', async()=>{
+  const id=await hire('HB-PAY-EVIDENCE'),ctx=adminCtx(b);
+  await closedPayroll(id,b.companyId,'2025-11');
+  const live=await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,id));
+  const paid=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,id));
+  const result=await recordHistoryMovement(ctx,{employmentId:id,typeCode:'increment',effectiveDate:TRANSFER,before:{},
+   pay:{basicSalary:{before:'4500',after:'4800'},paymentMethod:{before:'cash',after:'bank_transfer'}}});
+  const detail=await movementDetail(ctx,id,result.eventId);
+  expect(detail?.before).toMatchObject({salaryAmount:'4500.00',paymentMethod:'cash'});
+  expect(detail?.after).toMatchObject({salaryAmount:'4800.00',paymentMethod:'bank_transfer'});
+  const [logged]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(eq(schema.domainEvent.id,result.eventId));
+  expect(logged.payload).toMatchObject({hasPayEvidence:true});
+  expect(JSON.stringify(logged.payload)).not.toContain('4500');
+  const [actualEmployment]=await owner.db.select({method:schema.employment.paymentMethod}).from(schema.employment).where(eq(schema.employment.id,id));
+  expect(actualEmployment.method).toBeNull();
+  expect(await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,id))).toEqual(live);
+  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,id))).toEqual(paid);
+  const unauthorised={...ctx,userId:randomUUID(),roles:['employee'],grants:[]};
+  expect(await withTenant(unauthorised,tx=>readMovementHistoryPayTx(tx,id,result.eventId))).toBeUndefined();
  });
 
  it('refuses what history cannot mean, with a named reason',async()=>{

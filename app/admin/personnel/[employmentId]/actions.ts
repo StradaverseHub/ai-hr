@@ -1,5 +1,6 @@
 'use server';
 
+import { MOVEMENT_HISTORY_PAY_FIELDS, type HistoryPayFacts } from '@/lib/movement-history-pay';
 import { MOVEMENT_HISTORY_DATE_FIELDS, MOVEMENT_HISTORY_FIELDS } from '@/lib/movement-form-contract';
 import {recordPersonnelSalary,type SalaryRecordingChoice} from '@/core/personnel-salary-recording';
 
@@ -518,6 +519,17 @@ function parseHistoryDates(form: FormData): HistoryDateFacts {
   return dates;
 }
 
+function parseHistoryPay(form: FormData): HistoryPayFacts | undefined {
+  const pay: HistoryPayFacts = {};
+  for (const field of MOVEMENT_HISTORY_PAY_FIELDS) {
+    const before = String(form.get('historyPay.before.' + field) ?? '').trim();
+    const after = String(form.get('historyPay.after.' + field) ?? '').trim();
+    if (!before && after) throw new MovementHistoryError('movement_history_before_required');
+    if (before) pay[field] = { before, ...(after ? { after } : {}) };
+  }
+  return Object.keys(pay).length ? pay : undefined;
+}
+
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -530,6 +542,7 @@ export async function createMovementEventAction(formData: FormData) {
         effectiveDate: String(formData.get('effectiveDate') ?? ''),
         before: historyBefore,
         dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
         remarks: String(formData.get('remarks') ?? '').trim() || null,
       });
     } catch (e) {
@@ -637,6 +650,7 @@ export async function editMovementEventAction(formData: FormData) {
         effectiveDate: String(formData.get('effectiveDate') ?? ''),
         before: parseHistoryBefore(formData, true) ?? {},
         dates: parseHistoryDates(formData),
+        pay: parseHistoryPay(formData),
         remarks: orNull(formData.get('remarks')),
         reason: String(formData.get('reason') ?? ''),
       });

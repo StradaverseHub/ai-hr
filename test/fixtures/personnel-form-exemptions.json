@@ -1079,5 +1079,23 @@
       "occurrences": 1,
       "reason": "Movement records this explicit historical date as evidence through the finite Employment field list and protected historical command."
     }
+  ],
+  "app/admin/personnel/[employmentId]/history-movement-pay-fields.tsx": [
+    {
+      "tag": "input",
+      "context": "HistoryMovementPayFields",
+      "nameExpression": "`historyPay.${side}.basicSalary`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Historical pay evidence is submitted separately from live salary and payment fields and checked under native Payroll company scope."
+    },
+    {
+      "tag": "select",
+      "context": "HistoryMovementPayFields",
+      "nameExpression": "`historyPay.${side}.paymentMethod`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "Historical pay evidence is submitted separately from live salary and payment fields and checked under native Payroll company scope."
+    }
   ]
 }

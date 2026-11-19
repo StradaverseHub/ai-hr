@@ -142,6 +142,7 @@ import { EmploymentPeriodsCard } from './employment-periods-card';
 // c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
 import { historyMovementEditValues } from '@/core/movement-history-command';
 import { WorkforceAccessError } from '@/core/workforce-access';
+import { canWriteMovementHistoryPay } from '@/core/movement-history-pay';
 import { HistoryMovementEditForm } from './history-movement-edit-form';
 import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
 import { HireCorrectionForm, type HireCorrectionFormField,type HireInformationControl } from './hire-correction-form';
@@ -3626,11 +3627,13 @@ export default async function EmployeePage({
     other: t('terminationOther'),
   };
 
+  const historyPayAllowed = movementFormData ? await canWriteMovementHistoryPay(s, employmentId) : false;
   const movementFormProps = movementFormData
     ? {
         employmentId: emp.employmentId,
         today,
         closedPayrollPeriods,
+        historyPayAllowed,
         isBlacklisted: !!emp.blacklistedAt,
         // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
         // so the two sides cannot disagree about what "current" means.
@@ -3768,6 +3771,7 @@ export default async function EmployeePage({
           companies={movementFormProps.companies}
           orgByCompany={movementFormProps.orgByCompany}
           selectedCompanyId={movementFormProps.current.companyId}
+          historyPayAllowed={historyPayAllowed}
           fallbackOrganisation={movementFormProps}
           cancelHref={historyHref}
           context={movementContext}

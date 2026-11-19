@@ -8,6 +8,8 @@ import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {domainEvent} from '../db/schema';
 import {isCalendarDate} from '../lib/calendar-date';
+import type {HistoryPayFacts} from '../lib/movement-history-pay';
+import {canWriteMovementHistoryPayTx, readMovementHistoryPayTx} from './movement-history-pay';
 import {isMovementHistoryDateField} from '../lib/movement-form-contract';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {lockPayrollInputsTx} from './payroll-inputs-lock';
@@ -19,11 +21,11 @@ import {
  type RecordHistoryInput,
 } from './movement-history';
 
-type HistoryEntry={employmentId:string;typeCode:string;effectiveDate:string;before:Record<string,string|null>;remarks?:string|null;dates?:HistoryDateFacts};
+type HistoryEntry={employmentId:string;typeCode:string;effectiveDate:string;before:Record<string,string|null>;remarks?:string|null;dates?:HistoryDateFacts;pay?:HistoryPayFacts};
 
 async function applyHistoryEntryTx(tx:Tx,ctx:SessionContext,p:HistoryEntry,correction?:RecordHistoryInput['correction'],expectedAfter?:HistoryValues){
  const fields=Object.keys(p.before);
- if((!fields.length&&!Object.keys(p.dates??{}).length)||!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
+ if((!fields.length&&!Object.keys(p.dates??{}).length&&!Object.keys(p.pay??{}).length)||!fields.every(field=>(HISTORY_FIELDS as readonly string[]).includes(field)))throw new MovementHistoryError('movement_history_fields');
  if(Object.entries(p.before).some(([field,value])=>field!=='employmentType'&&value!==null&&!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)))throw new MovementHistoryError('movement_history_fields');
  if(Object.keys(p.dates??{}).some(field=>!isMovementHistoryDateField(field)))throw new MovementHistoryError('movement_history_fields');
  if(!isCalendarDate(p.effectiveDate))throw new MovementHistoryError('movement_history_future');
@@ -46,7 +48,7 @@ export async function recordHistoryMovement(ctx:SessionContext,p:HistoryEntry){
  });
 }
 
-type HistoryRevision = HistoryMovementFacts & {type:string;kind:string;spanFrom:string};
+type HistoryRevision = HistoryMovementFacts & {type:string;kind:string;spanFrom:string;hasPayEvidence?:boolean};
 async function activeEntityHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string){
  if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(movementId))return null;
  const [reversal]=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(
@@ -70,8 +72,10 @@ export async function historyMovementEditValues(ctx:SessionContext,employmentId:
   if(!active)return null;
   try { await assertHistoryEditCompaniesTx(tx,employmentId,active.facts); }
   catch(error){if(error instanceof WorkforceAccessError)return null;throw error;}
-  const {type,effectiveDate,before,remarks,dates}=active.facts;
-  return {typeCode:type,effectiveDate,before,remarks,dates,revisionId:active.id};
+  const {type,effectiveDate,before,remarks,dates,hasPayEvidence}=active.facts;
+  const pay=hasPayEvidence?await readMovementHistoryPayTx(tx,employmentId,active.id):undefined;
+  if(hasPayEvidence&&!pay)return null;
+  return {typeCode:type,effectiveDate,before,remarks,dates,pay,revisionId:active.id};
  });
 }
 
@@ -105,6 +109,9 @@ export async function editEntityHistoryMovementTx(tx:Tx,ctx:SessionContext,p:Ent
  const active=await activeEntityHistoryTx(tx,ctx,p.employmentId,p.movementId);
  if(!active||p.revisionId!==active.id)throw new MovementHistoryError('movement_history_overtaken');
  const companies=await assertHistoryEditCompaniesTx(tx,p.employmentId,active.facts);
+ if(active.facts.hasPayEvidence&&!await canWriteMovementHistoryPayTx(tx,p.employmentId,companies)){
+  throw new MovementHistoryError('movement_history_pay_scope');
+ }
  await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.before.companyId?[...companies,p.before.companyId]:companies});
  const {type,effectiveDate,before,after,remarks,dates}=active.facts;
  if(isCalendarDate(p.effectiveDate)&&p.effectiveDate<effectiveDate&&before.companyId!==undefined&&before.companyId!==after.companyId){
@@ -112,7 +119,8 @@ export async function editEntityHistoryMovementTx(tx:Tx,ctx:SessionContext,p:Ent
   if(paid.length)throw new MovementHistoryError('movement_history_payroll_company:'+paid.map(row=>row.period).join(', '));
  }
  await reverseHistoryMovementTx(tx,ctx,{id:active.id,payload:active.payload,subjectEmploymentId:p.employmentId});
- return applyHistoryEntryTx(tx,ctx,{...p,typeCode:type},{
+ const pay=p.pay??(active.facts.hasPayEvidence?await readMovementHistoryPayTx(tx,p.employmentId,active.id):undefined);
+ return applyHistoryEntryTx(tx,ctx,{...p,pay,typeCode:type},{
   movementId:p.movementId,reason,previous:{effectiveDate,before,after,remarks,dates},
  },p.expectedAfter);
 }
