@@ -19,6 +19,7 @@ import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-r
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
+import {prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
@@ -57,6 +58,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
  AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ PERF_ATTENDANCE_REJECTION_BROWSER:staticShard===null&&!fixtureOnly?'1':'0',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -1390,6 +1392,40 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
  measure('authorized-lifecycle-flyout',clicked);
 }
 
+async function measureAttendanceRejection({fixture,db,report,save,observeRequest,observeResponse}){
+ const opened=new Set();
+ const closeContext=async context=>{
+  if(opened.delete(context))await context.close();
+ };
+ try{
+  const probe=await prepareAttendanceRejection({
+   context:async actor=>{
+    const context=await signedInContext(actor);
+    opened.add(context);
+    context.on('request',observeRequest);
+    context.on('response',observeResponse);
+    return context;
+   },
+   withContext:async(_context,work)=>work(),
+   closeContext,notePrimary:()=>{},noteEvidence:work=>work(),
+   visit:async(page,_actor,path)=>{
+    const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
+    assert.equal(response?.status(),200);
+    assert.equal(new URL(page.url()).pathname,path);
+   },
+   fixture,db,report,save,phase:'baseline',
+  });
+  await probe.run();
+  const proof=report.attendanceRejectionBrowser?.[0];
+  assert.equal(proof?.persisted,true);
+  assert.equal(proof.workflowDecisionVerified,true);
+  assert.equal(proof.unchangedPunches,2);
+  assert.equal(proof.linkedAuditEvents,2);
+ }finally{
+  await Promise.all([...opened].map(closeContext));
+ }
+}
+
 async function measureActions(fixture){
  const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
@@ -1427,6 +1463,12 @@ async function measureActions(fixture){
    timings:result=>result.approvalReadiness})),
   ...[2,1,0].map(actorIndex=>({name:'approvals-categories',actorIndex,run:measureApprovalCategories,
    timings:result=>result.approvalSteps})),
+  {name:'attendance-correction-rejection',actorIndex:0,run:measureAttendanceRejection,timings:result=>{
+   const proof=result.attendanceRejectionBrowser?.[0];
+   return proof?.status==='passed'?[{step:'rejection-visible-and-audited',elapsedMs:Math.round(proof.usableMs),
+    responseMs:Math.round(proof.responseMs),persisted:proof.persisted===true,
+    linkedAuditEvents:proof.linkedAuditEvents,unchangedPunches:proof.unchangedPunches}]:[];
+  }},
   {name:'claim-approval',actorIndex:1,run:measureClaimApproval,timings:result=>result.claimSteps},
   {name:'notification-read',actorIndex:4,run:measureNotificationReads,timings:result=>result.notificationSteps},
   {name:'personnel-switcher',actorIndex:0,run:async options=>{
@@ -1515,7 +1557,7 @@ async function measureActions(fixture){
     const page=await context.newPage();
     page.on('request',observeRequest);
     page.on('response',observeResponse);
-    await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
+    await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir,observeRequest,observeResponse});
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
     const successful=new Set();
