@@ -18,6 +18,7 @@ export type PoolerShape = {name: 'main' | 'short-wait'; serverConnections: numbe
 
 export const MAIN_POOLER: PoolerShape = {name: 'main', serverConnections: 3, queryWaitTimeoutSeconds: 60};
 export const SHORT_WAIT_POOLER: PoolerShape = {name: 'short-wait', serverConnections: 1, queryWaitTimeoutSeconds: 2};
+export const POOLER_PREPARED_STATEMENT_LIMIT = 200;
 
 // PgBouncer 1.25.2, multi-architecture index. Named by digest, so a retagged image cannot change what this proves.
 const IMAGE = 'edoburu/pgbouncer@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340';
@@ -64,7 +65,8 @@ export async function poolerTarget(shape: PoolerShape = MAIN_POOLER): Promise<Po
     // trust only where the job's own PostgreSQL trusts its loopback. Production uses SCRAM verifiers (deploy/pgbouncer).
     database.password ? 'auth_type = scram-sha-256' : 'auth_type = trust', 'auth_file = /etc/pgbouncer/userlist.txt',
     'pool_mode = transaction', `default_pool_size = ${shape.serverConnections}`, 'reserve_pool_size = 0',
-    `max_db_connections = ${shape.serverConnections}`, 'max_client_conn = 1000', 'max_prepared_statements = 200',
+    `max_db_connections = ${shape.serverConnections}`, 'max_client_conn = 1000',
+    `max_prepared_statements = ${POOLER_PREPARED_STATEMENT_LIMIT}`,
     'server_reset_query =', `query_wait_timeout = ${shape.queryWaitTimeoutSeconds}`, '',
   ].join('\n'));
   if (database.password) writeFileSync(join(directory, 'userlist.txt'), `"${decodeURIComponent(database.username)}" "${decodeURIComponent(database.password)}"\n`);

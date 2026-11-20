@@ -17,7 +17,7 @@ import {createDb, type SessionContext} from '../db/client';
 import {actorOf, appendEvent} from '../db/events';
 import {adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base} from './harness';
 import {isDatabaseCapacityFailure} from '../db/read-retry';
-import {poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
+import {POOLER_PREPARED_STATEMENT_LIMIT, poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
 import {ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections, readAccountTaskBundle} from '../core/account-task-bundle';
 import {assignRole, revokeRole} from '../core/admin';
 import {createClaimType} from '../packs/claims/service';
@@ -310,6 +310,41 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       const refreshed = await inspect(fresh);
       expect(refreshed.row.principal).toBe(true);
       expect(refreshed.row.claims.total).toBe(0);
+      const beforeEviction = await inspect(fresh);
+      expect(beforeEviction.previousUses).toBeGreaterThan(0);
+
+      // Fill the server's statement cache with newer entries without disconnecting the web client.
+      const evictionBackend = await pool.withTenant(fresh, async tx => {
+        const [backend] = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        for (let index = 0; index < POOLER_PREPARED_STATEMENT_LIMIT; index++) {
+          await connection.unsafe(`select $1::int + ${index}`, [index], {prepare: true});
+        }
+        return backend.pid;
+      }, {readOnlySnapshot: true});
+      const afterEviction = await inspect(fresh);
+      expect(afterEviction.backend).toBe(evictionBackend);
+      expect(afterEviction.backend).toBe(beforeEviction.backend);
+      expect(afterEviction.previousUses).toBe(0);
+      expect(afterEviction.row).toEqual(refreshed.row);
+
+      // Recycle only the idle backend just observed in this test worker's database.
+      const direct = postgres(process.env.TEST_DATABASE_URL!, {max: 1});
+      try {
+        const [stopped] = await direct<{terminated: boolean}[]>`
+          select pg_terminate_backend(pid, 5000) as terminated
+          from pg_stat_activity
+          where datname = current_database() and usename = current_user
+            and state = 'idle' and pid = ${afterEviction.backend} and pid <> pg_backend_pid()
+        `;
+        expect(stopped?.terminated).toBe(true);
+      } finally { await direct.end({timeout: 5}); }
+
+      const afterReconnect = await inspect(fresh);
+      expect(afterReconnect.backend).not.toBe(afterEviction.backend);
+      expect(afterReconnect.previousUses).toBe(0);
+      expect(afterReconnect.row).toEqual(refreshed.row);
+      expect((await inspect(stale)).row).toEqual(afterRevocation.row);
     } finally {
       await pool.client.end({timeout: 5});
     }
