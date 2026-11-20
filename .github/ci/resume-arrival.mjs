@@ -9,7 +9,7 @@
  * Pure policy and sequencing only; operator-release.mjs supplies the actual SSH/rsync ports. */
 import assert from 'node:assert/strict';
 import {existsSync,readdirSync,readFileSync,lstatSync} from 'node:fs';
-import {join} from 'node:path';
+import {basename,join} from 'node:path';
 import {isDeepStrictEqual} from 'node:util';
 import {validateInstallGrant,installHash,installJson} from './ci-install-grant.mjs';
 import {validateMigrationLedgerRows} from './staging-migration-ledger.mjs';
@@ -38,12 +38,12 @@ export const DEPLOY_FINISH_COMMAND='cd /opt/ai-hr && deploy/deploy-state.sh fini
 
 const authorization=grant=>installHash(Buffer.from(installJson(grant)+'\n'));
 
-/** The operator's own retained deploy evidence for this run: exactly one launched validated-ci directory. */
+/** The operator's own retained deploy evidence for this run: exactly one launched standard or focused-recovery directory. */
 export function findResumeEvidenceDirectory(scratchpad,runId){
  assert(/^[1-9][0-9]*$/.test(String(runId??'')),'Exact original run ID required');
- const pattern=new RegExp('^validated-ci-'+runId+'-'+UUID+'$');
+ const pattern=new RegExp('^validated-(?:ci|recovery)-'+runId+'-'+UUID+'$');
  const names=existsSync(scratchpad)?readdirSync(scratchpad).filter(name=>pattern.test(name)&&existsSync(join(scratchpad,name,'launch.json'))):[];
- assert(names.length===1,'Exactly one launched validated-ci-'+runId+' evidence directory required; found '+names.length);
+ assert(names.length===1,'Exactly one launched CI evidence directory for '+runId+' required; found '+names.length);
  const directory=join(scratchpad,names[0]),st=lstatSync(directory);
  assert(st.isDirectory()&&!st.isSymbolicLink()&&st.uid===process.getuid()&&(st.mode&0o077)===0,'Private operator-owned evidence directory required');
  return directory;
@@ -71,6 +71,13 @@ export function admitRetainedEvidence({evidence,candidate,controller,runId,targe
  assert(p?.execute===true&&isDeepStrictEqual(p.target,target)&&p.evidenceDirectory===directory,'Retained preflight is not this executed staging deployment');
  assert(p.sha===candidate&&Number(p.runId)===Number(runId)&&(p.verificationController??p.controller)===controller,'Retained evidence candidate/run/controller differs');
  assert(g.source===candidate&&g.runId===Number(runId)&&g.controller===p.controller&&g.baseline===p.baseline,'Installation grant differs from retained evidence');
+ if(basename(directory).startsWith('validated-recovery-')){
+  assert(p.result==='PASS'&&p.recovery?.kind==='AUTHENTICATED_FOCUSED_RECOVERY'
+   &&p.recovery.reviewedController===controller&&p.recovery.verificationController===controller
+   &&p.fingerprint===g.witnessFingerprint
+   &&p.fingerprint===installHash(Buffer.from(JSON.stringify(p.recovery))),
+   'Focused recovery witness differs from retained installation grant');
+ }
  assert(i?.installId===g.installId&&i.releaseAuthorized===false&&i.authorizationSha256===authorization(g),'Installation acknowledgement differs from installation grant');
  assert(l?.installId===g.installId&&l.testingBuildRecordId===g.build.buildRecordId&&l.nextBuildId===g.build.nextBuildId,'Launch record differs from installation grant');
  admitInterruptedDeployRecord(r,{grant:g,candidate});

@@ -202,6 +202,33 @@ test('evidence discovery needs exactly one private launched directory and no pri
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 
+test('a focused-recovery launch uses the original evidence directory and grant witness',()=>{
+ const root=mkdtempSync(join(tmpdir(),'resume-focused-evidence-'));
+ try{
+  const dir=join(root,'validated-recovery-123-'+UUID);mkdirSync(dir,{mode:0o700});
+  const s=fixture();
+  const controller=s.f.evidence.controller;
+  const recovery={kind:'AUTHENTICATED_FOCUSED_RECOVERY',reviewedController:controller,verificationController:controller};
+  const fingerprint=installHash(Buffer.from(JSON.stringify(recovery)));
+  s.evidence.directory=dir;
+  Object.assign(s.evidence.preflight,{evidenceDirectory:dir,result:'PASS',fingerprint,recovery});
+  s.grant.witnessFingerprint=fingerprint;
+  s.evidence.initialized.authorizationSha256=installHash(Buffer.from(installJson(s.grant)+'\n'));
+  writeFileSync(join(dir,'launch.json'),'{}',{mode:0o600});
+  assert.equal(findResumeEvidenceDirectory(root,123),dir);
+  const options={evidence:s.evidence,candidate:s.grant.source,controller,runId:123,target:STAGING};
+  assert.equal(admitRetainedEvidence(options).installId,s.grant.installId);
+  recovery.changed=true;
+  assert.throws(()=>admitRetainedEvidence(options),/witness differs/);
+  delete recovery.changed;
+  s.evidence.preflight.result='DIAGNOSTIC_NONINSTALLABLE';
+  assert.throws(()=>admitRetainedEvidence(options),/witness differs/);
+  const other=join(root,'validated-ci-123-'+UUID);mkdirSync(other,{mode:0o700});
+  writeFileSync(join(other,'launch.json'),'{}',{mode:0o600});
+  assert.throws(()=>findResumeEvidenceDirectory(root,123),/found 2/);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});
+
 test('follow reply splits at the last sentinel; commands are pinned, read-only and guarded only for finish',()=>{
  const sentinel='<<<AIHR-DEPLOY-STATE-9d3f41>>>',parse=text=>Object.fromEntries(text.trim().split('\n').map(l=>l.split('=')));
  const {log,status}=splitDeployFollow(Buffer.from('line '+sentinel+' echoed\nlast\n'+sentinel+'\nstate=failed\nphase=ci-build-health\n'),{sentinel,parse});

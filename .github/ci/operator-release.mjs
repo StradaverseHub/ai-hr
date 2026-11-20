@@ -122,9 +122,17 @@ export async function completeVerifiedArrival({official,ssh,sshRaw,lease,transpo
 /** aihr-resume-arrival/v1 (resume-arrival.mjs). Separate entry: the normal routes keep readyProductionBaseline and
  * requireSuccessfulBuild unchanged; this one admits only the activated-then-worker-check-failed record. */
 export async function resumeArrivalRelease(options){try{return await leasedResumeArrival(options);}catch(error){throw redactLeaseError(error);}}
-async function leasedResumeArrival({candidatePath,runId,execute=false}){
+async function leasedResumeArrival({candidatePath,runId,execute=false,originalControllerPath=controllerRoot}){
  candidatePath=resolve(candidatePath);bindStaging(process.env);
- const candidate=cleanHead(candidatePath),controller=cleanHead(controllerRoot);
+ const candidate=cleanHead(candidatePath),adapter=cleanHead(controllerRoot);
+ originalControllerPath=resolve(originalControllerPath);
+ const controller=cleanHead(originalControllerPath);
+ if(originalControllerPath!==resolve(controllerRoot)){
+  const gitCommonDir=path=>execFileSync('git',['rev-parse','--path-format=absolute','--git-common-dir'],{cwd:path,encoding:'utf8'}).trim();
+  if(gitCommonDir(originalControllerPath)!==gitCommonDir(controllerRoot))throw Error('Original verifier must be in the same repository');
+  execFileSync('git',['merge-base','--is-ancestor',controller,adapter],{cwd:controllerRoot,stdio:'ignore'});
+  if(execute&&process.env.AIHR_RESUME_REVIEWED_ADAPTER!==adapter)throw Error('Exact resume adapter review required before finish');
+ }
  const load=async path=>{const raw=await import(pathToFileURL(join(candidatePath,path)).href);return {...(raw.default??{}),...raw};};
  const official=await load('scripts/improve/release.ts');
  const {recordReleaseLearning}=await load('scripts/improve/release-learning.ts');
@@ -132,9 +140,9 @@ async function leasedResumeArrival({candidatePath,runId,execute=false}){
  const lease=execute?readLease(candidate):null;
  const sshRaw=(command,options={})=>execFileSync('ssh',transport.sshArgs(command),{encoding:'utf8',timeout:30000,maxBuffer:64*1024*1024,...options});
  const ssh=(command,options={})=>sshRaw(lease?guardCommand(lease,command):command,options);
- const evidence=readResumeEvidence(findResumeEvidenceDirectory(join(controllerRoot,'scratchpad'),runId));
+ const evidence=readResumeEvidence(findResumeEvidenceDirectory(join(originalControllerPath,'scratchpad'),runId));
  const save=(name,data)=>writeFileSync(join(evidence.directory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
- const frozen=()=>{if(cleanHead(candidatePath)!==candidate||cleanHead(controllerRoot)!==controller)throw Error('Verified source changed');};
+ const frozen=()=>{if(cleanHead(candidatePath)!==candidate||cleanHead(controllerRoot)!==adapter||cleanHead(originalControllerPath)!==controller)throw Error('Verified source changed');};
  const {target:unusedTarget,baselineLedger:unusedLedger,profilePreflight:unusedProfile,execute:unusedExecute,packetTransport:unusedPacket,...verified}=evidence.preflight;
  const grant=evidence.grant;
  return resumeArrival({execute,candidate,controller,runId,target:STAGING,evidence,expectedLedger:expectedMigrationLedger(candidatePath),lease,save,frozen,ports:{
@@ -157,8 +165,8 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const [mode,candidatePath,runId,focused]=process.argv.slice(2),recovering=['verify-recovery','deploy-recovery'].includes(mode),repairing=['verify-repair','deploy-repair'].includes(mode);
  const done=promise=>promise.then(result=>{console.log(JSON.stringify(result,null,2));process.exit(0);}).catch(error=>{console.error(error);process.exit(1);});
  if(['verify-resume-arrival','resume-arrival'].includes(mode)){
-  if(!candidatePath||!/^\d+$/.test(runId??'')||focused!==undefined)throw Error('Usage: node --import tsx operator-release.mjs <verify-resume-arrival|resume-arrival> <candidate-worktree> <original-run-id>');
-  done(resumeArrivalRelease({candidatePath,runId,execute:mode==='resume-arrival'}));
+  if(!candidatePath||!/^\d+$/.test(runId??'')||process.argv.length>6)throw Error('Usage: node --import tsx operator-release.mjs <verify-resume-arrival|resume-arrival> <candidate-worktree> <original-run-id> [original-verifier-worktree]');
+  done(resumeArrivalRelease({candidatePath,runId,execute:mode==='resume-arrival',originalControllerPath:focused}));
  }else{
  if(!['verify','deploy','verify-recovery','deploy-recovery','verify-repair','deploy-repair','verify-browser-recovery','deploy-browser-recovery'].includes(mode)||!candidatePath||!/^\d+$/.test(runId??'')||((recovering||repairing||['verify-browser-recovery','deploy-browser-recovery'].includes(mode))?!focused:focused!==undefined))throw Error('Usage: node --import tsx operator-release.mjs <verify|deploy|verify-recovery|deploy-recovery|verify-repair|deploy-repair|verify-browser-recovery|deploy-browser-recovery> <candidate-worktree> <original-run-id> [JSON-focused-run-ids|JSON-repair-options|JSON-browser-recovery-options]');
  done(operatorRelease({candidatePath,runId,execute:mode.startsWith('deploy'),recoveryRunIds:recovering?JSON.parse(focused):[],repair:repairing?JSON.parse(focused):null,browserRecovery:['verify-browser-recovery','deploy-browser-recovery'].includes(mode)?JSON.parse(focused):null}));
