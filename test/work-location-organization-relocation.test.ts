@@ -56,9 +56,10 @@ import { isHrefActive, isNavRowActive } from '../components/nav-flyout';
 import { attendancePack } from '../packs/attendance';
 import { createClockingLocation } from '../core/clocking-location';
 import { listCompanies } from '../core/read';
-import { archiveLocation, createLocation, listLocations, listUnmappedBranches, resolveLocationForBranch } from '../core/location';
+import { archiveLocation, createLocation, getWorkLocation, listLocations, listUnmappedBranches, resolveLocationForBranch } from '../core/location';
 import { hireEmployee, setEmploymentInfo } from '../core/org';
 import { workLocationsReturnTo } from '../lib/return-to';
+import { seedPersonnelSearchFixture } from './performance/personnel-search-fixture';
 
 let ADMIN: SessionContext;
 vi.mock('../lib/authz', async (importOriginal) => ({
@@ -484,6 +485,44 @@ describe('r428 (83c0d3c8 contest) (c) — a company with TWO locations: both ren
 });
 
 describe('639bf4a5 (d) — the listing is scoped by adminOnly, not by the company switcher', () => {
+  it('reads one site with the same counts and visibility as the existing reader across 70 companies', async () => {
+    const fixture = await seedPersonnelSearchFixture({ companies: 70, count: 1000 });
+    b = fixture.base;
+    const companyAdmin = await adminFor(b.companyId);
+    const [sisterCompany] = fixture.companies.filter(id => id !== b.companyId);
+    const sisterAdmin = await adminFor(sisterCompany);
+    const sites = await owner.client<{ id: string; company_id: string }[]>`
+      insert into location (tenant_id, company_id, code, name)
+      select ${b.tenantId}, unit.id, 'SCALE-' || n, 'Fictional Work Site ' || n
+      from unnest(${fixture.companies}::uuid[]) with ordinality as unit(id,n)
+      returning id, company_id
+    `;
+    expect(sites).toHaveLength(70);
+    const home = sites.find(site => site.company_id === b.companyId)!;
+    const sister = sites.find(site => site.company_id === sisterCompany)!;
+    const assignments = await owner.client`
+      update assignment set location_id = ${home.id}
+      where id = (
+        select id from assignment where tenant_id = ${b.tenantId} and company_id = ${b.companyId}
+          and valid_to is null and superseded_at is null limit 1
+      )
+      returning id
+    `;
+    expect(assignments).toHaveLength(1);
+    await archiveLocation(fixture.admin, { locationId: home.id });
+    await owner.db.update(schema.company).set({ archivedAt: new Date() }).where(eq(schema.company.id, sisterCompany));
+
+    for (const actor of [fixture.admin, companyAdmin, sisterAdmin]) {
+      const companies = await listCompanies(actor, { adminOnly: true });
+      const prior = await listLocations(actor, companies.map(company => company.id), { includeArchived: true });
+      for (const target of [home.id, sister.id, randomUUID()]) {
+        expect(await getWorkLocation(actor, target)).toEqual(prior.find(row => row.id === target));
+      }
+    }
+    expect(await getWorkLocation(fixture.admin, home.id)).toMatchObject({ headcount: 1, archivedAt: expect.any(Date) });
+    expect(await getWorkLocation(companyAdmin, sister.id)).toBeUndefined();
+  }, 60_000);
+
   it('a company-scoped admin sees THEIR company on step 1, and a foreign ?company= falls back to it rather than disclosing the sister company', async () => {
     /**
      * app/admin/organization/page.tsx: *the filter IS the permission boundary*. Feedback ab77dc1f is the
