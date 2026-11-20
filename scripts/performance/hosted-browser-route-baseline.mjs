@@ -50,8 +50,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44705668396,artifactId:14615123587,
-  sourceSha:'edf2dc5ca00a893898ab3c0918faa14e585d2fc2'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44722987389,artifactId:14623770794,
+  sourceSha:'0142e6d8aaeb6bbf96caaf58e1d9c99387ce9100'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
@@ -112,13 +112,30 @@ function retainSeedPhases(){
  save();
 }
 
-let server,app,browser,databaseStarted=false;
-async function stopApp(){
- if(!app||app.exitCode!==null||app.signalCode!==null)return;
- const closed=once(app,'close');
- app.kill('SIGTERM');
- const hardStop=setTimeout(()=>app.kill('SIGKILL'),5000);
+let server,app,browser,mixedWorker,databaseStarted=false;
+async function stopProcess(child){
+ if(!child||child.exitCode!==null||child.signalCode!==null)return;
+ const closed=once(child,'close');
+ child.kill('SIGTERM');
+ const hardStop=setTimeout(()=>child.kill('SIGKILL'),5000);
  try{await closed;}finally{clearTimeout(hardStop);}
+}
+async function startMixedWorker(command){
+ mixedWorker=start('bulk-job-worker',command,['--import','tsx','scripts/bank-import-runner.ts'],
+  {...dbEnv,NODE_ENV:'production',AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'2'});
+ const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+ const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+ const deadline=performance.now()+30000;
+ try{
+  while(performance.now()<deadline){
+   assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before readiness');
+   const [row]=await db`select exists(select 1 from bulk_job_worker where pid=${mixedWorker.pid}
+    and 'payroll_process'=any(kinds) and beat_at>=now()-interval '30 seconds') as ready`;
+   if(row?.ready){report.mixedWorkerReady=true;save();return;}
+   await pause(250);
+  }
+  assert.fail('The mixed workload worker did not register a fresh Payroll heartbeat');
+ }finally{await db.end({timeout:5});}
 }
 async function proxy(){
  const key=join(privateDir,'key.pem'),cert=join(privateDir,'cert.pem');
@@ -355,6 +372,11 @@ async function measureMixedLoad(command){
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const driverFacts=data.driverFailures;
+   const payroll=data.mixedWorkflows?.baseline?.find(workflow=>workflow.workflow==='payroll calculation and scoped CSV export');
+   if(payroll?.persisted===true&&payroll.employees===50&&Number.isSafeInteger(payroll.completionObservedMs)
+      &&payroll.completionObservedMs>=0&&payroll.completionObservedMs<=90000){
+    report.mixedPayrollProcessing={verified:true,employees:50,completionObservedMs:payroll.completionObservedMs};
+   }
    if(Array.isArray(data.driverFailureLocations)){
     report.mixedDriverFailureLocations=data.driverFailureLocations.slice(0,6).flatMap(location=>
      typeof location?.file==='string'&&/^[a-z0-9-]{1,90}\.(mjs|ts)$/.test(location.file)
@@ -1387,7 +1409,11 @@ try{
    throw error;
   }
  }
- if(driverCommand&&!fixtureOnly)await measureMixedLoad(driverCommand);
+ if(driverCommand&&!fixtureOnly){
+  await startMixedWorker(driverCommand);
+  await measureMixedLoad(driverCommand);
+  assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+ }
  else if(!fixtureOnly){
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
@@ -1407,7 +1433,7 @@ try{
  finally{
   try{
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
-   await stopApp();
+   await Promise.all([stopProcess(app),stopProcess(mixedWorker)]);
    const appLog=join(privateDir,'application.log');
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
