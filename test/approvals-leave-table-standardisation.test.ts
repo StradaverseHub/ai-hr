@@ -191,10 +191,8 @@ describe('33bf1a2d — the Attachment column costs no extra query', () => {
 
   it('the approvals page reads it off the row it already has (no per-row fetch)', () => {
     expect(approvals).toContain('r.hasDocument ? `/me/leave/attachment/${r.id}?inline=1` : null');
-    // An N+1 would look like a per-row loader. The ONE eager per-row await on this page is the ADR-0068
-    // date breakdown, which predates this round; nothing else may join it.
-    const perRowAwaits = [...approvals.matchAll(/pendingLeave\.map\(async/g)];
-    expect(perRowAwaits, 'no NEW per-row async map may be added for the attachment column').toHaveLength(1);
+    expect(approvals).not.toMatch(/(?:pendingLeave|sortedLeave|allSortedLeave)\.map\(\s*async/);
+    expect(approvals).toContain("await approvalLeaveDateBreakdowns(s, visible('leave') ? sortedLeave.map(r => r.id) : [])");
   });
 
   it('the icon links at the existing RLS-scoped attachment route, opened in a new tab', () => {
