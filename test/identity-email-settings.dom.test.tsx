@@ -15,7 +15,7 @@ vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:m.demo}));
 vi.mock('../lib/identity/email-settings',()=>({canConfigureIdentityEmail:m.allowed,requireIdentityEmailAdmin:m.guard,readIdentityEmailSettings:m.read}));
-vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),saveLifecycleSenderName:vi.fn()}));
+vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),deactivateEmailConnection:vi.fn(),saveLifecycleSenderName:vi.fn()}));
 vi.mock('../app/admin/settings/email/demo-actions',()=>({testDemoSmtpConnection:m.test}));
 import Page from '../app/admin/settings/email/page';
 import { Sidebar } from '../components/sidebar';

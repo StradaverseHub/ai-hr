@@ -52,6 +52,19 @@ describe('shared workflow editor',()=>{
   expect(within(screen.getByRole('region',{name:'Notes'})).getByText(warning)).toBeInTheDocument();
   expect(m.save.mock.calls[0][0]).toMatchObject({workflow:{status:'live'}});
  });
+ it('pauses the saved email workflow even when unsaved edits remove its last step',async()=>{
+  const initial=workflow({status:'live',steps:[{
+   id:'s1',type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],
+   params:{emailTemplateId:refs.emailTemplates[0].id},
+  }]});
+  show(initial);
+  fireEvent.click(screen.getByRole('button',{name:'Remove step 1'}));
+  fireEvent.click(screen.getByRole('button',{name:'Pause'}));
+  expect(await screen.findByText(/“Outcome · Confirm” is paused\./)).toHaveAttribute('role','status');
+  expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,workflow:{status:'paused',steps:initial.steps}});
+  expect(screen.queryByRole('button',{name:'Remove step 1'})).not.toBeInTheDocument();
+ });
+
  it('serializes autosave and retains a later edit made while the first request is in flight',async()=>{
   let resolve!:(value:unknown)=>void;m.save.mockImplementationOnce(()=>new Promise(done=>{resolve=done;})).mockResolvedValue({ok:true,result:{revision:3,problems:[],warnings:[]}});
   show(workflow());const input=screen.getByRole('textbox',{name:'Workflow name'});
