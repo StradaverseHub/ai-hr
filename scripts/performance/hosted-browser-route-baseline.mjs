@@ -29,8 +29,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
+const retryCensusTimeouts=shardInput==='retry-timeouts';
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(shardMatch&&!fixtureOnly),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||retryCensusTimeouts&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -49,7 +50,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -592,6 +593,8 @@ async function measureRoutes(fixture){
 }
 
 const censusPanelTitles={
+ '/admin/users/access':'Security & permissions',
+ '/assistant/rewards/calendar':'Edit Rewards deadlines',
  '/assistant/rewards/cancel':'Cancel a Rewards review',
  '/assistant/rewards/return':'Return annual Rewards review',
 };
@@ -645,6 +648,13 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
   }else row.outcome='browser-failure';
  }
  row.elapsedMs=Math.round(performance.now()-start);
+ if(retryCensusTimeouts&&row.outcome==='timeout'){
+  row.renderedLandmarks=await page.evaluate(()=>{
+   const count=selector=>Array.from(document.querySelectorAll(selector)).filter(node=>node.getClientRects().length>0).length;
+   return {documentState:document.readyState,main:count('main'),mainH1:count('main h1'),mainH2:count('main h2'),
+    busy:count('main [aria-busy="true"]'),readUnavailable:count('main [data-read-unavailable]'),alerts:count('main [role="alert"]')};
+  }).catch(()=>null);
+ }
  if(row.responseCommittedMs!==undefined&&['heading-visible','timeout','render-error','read-unavailable'].includes(row.outcome)){
   row.documentTiming=await documentTiming(page);
  }
@@ -666,6 +676,35 @@ async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered,par
   discovered.set(template,{url,sourcePath,depth,parentTemplate});
  }
  return false;
+}
+
+const censusTimeoutPaths=[
+ '/admin/attendance/approval-workflow','/admin/attendance/approval-workflow/new',
+ '/admin/rewards/bonus-matrices','/admin/rewards/salary-structures','/admin/rewards/uploaded',
+ '/admin/users/access','/assistant/rewards/calendar','/mobile-preview',
+];
+
+async function measureCensusTimeoutFollowUp(fixture){
+ const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+ const compiledPaths=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
+ assert(censusTimeoutPaths.every(path=>compiledPaths.has(path)),'The timeout follow-up requires all eight compiled pages');
+ const actor=fixture.users[0];
+ assert.equal(actor.role,'groupHR');
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ report.censusTimeoutFollowUp=[];
+ const context=await signedInContext(actor);
+ try{
+  const page=await context.newPage();
+  await page.addInitScript(observeStartup);
+  for(const path of censusTimeoutPaths){
+   for(const pass of ['first','repeat']){
+    report.censusTimeoutFollowUp.push(await measureCensusVisit(page,new URL(path,origin),actor.role,pass,path,compiledPaths));
+    save();
+   }
+  }
+ }finally{await context.close();}
+ assert.equal(report.censusTimeoutFollowUp.length,censusTimeoutPaths.length*2);
 }
 
 async function measureStaticPageCensus(fixture,shard){
@@ -1497,12 +1536,13 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
   await proxy();
-  if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
+  if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
+  else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
    await measureRoutes(fixture);
    await measureShellLinks(fixture);
