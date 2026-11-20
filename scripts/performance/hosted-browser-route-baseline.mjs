@@ -32,7 +32,9 @@ const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static census configuration');
 const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
-assert(!payrollReadTrace||(!fixtureOnly&&staticShard===null),'Invalid Payroll tracing configuration');
+const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
+assert(!(payrollReadTrace&&mobileTaskTrace)&&(!(payrollReadTrace||mobileTaskTrace)||(!fixtureOnly&&staticShard===null)),
+ 'Invalid browser read tracing configuration');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -49,7 +51,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -610,6 +612,63 @@ async function measurePayrollReadTrace(fixture){
  assert.equal(report.observations.length,6);
  assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
   'Payroll Transaction View did not show a History row on every measured visit');
+}
+
+async function measureMobileTaskTrace(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const actor=fixture.users[0];
+ assert.equal(actor.role,'groupHR');
+ const context=await signedInContext(actor);
+ report.mobileTaskVisits=[];
+ try{
+  const page=await context.newPage();
+  for(const view of ['builder','live']){
+   const started=performance.now(),url=origin+'/mobile-preview'+(view==='live'?'?live=1':'');
+   const elapsed=()=>Math.round(performance.now()-started);
+   const row={view,status:'incomplete'};
+   report.mobileTaskVisits.push(row);
+   try{
+    row.step='document';
+    const response=await page.goto(url,{waitUntil:'commit',timeout:15000});
+    assert.equal(response?.status(),200);
+    assert.equal(page.url(),url);
+    row.responseMs=elapsed();
+    if(view==='builder'){
+     row.step='editor';
+     await page.locator('[data-mobile-builder]').getByRole('textbox',{name:'App brand name',exact:true})
+      .waitFor({state:'visible',timeout:15000});
+     row.editorMs=elapsed();
+    }
+    row.step='phone';
+    const phone=page.locator('main [data-appearance]');
+    const navigation=phone.getByRole('navigation',{name:'Mobile navigation'});
+    await navigation.waitFor({state:'visible',timeout:15000});
+    row.phoneMs=elapsed();
+    row.step='tasks';
+    const taskSection=phone.locator('[data-home-section="tasks"]');
+    const pending=taskSection.getByRole('status').filter({hasText:'Refreshing data…'});
+    await taskSection.waitFor({state:'visible',timeout:5000});
+    row.tasksPendingWhenPhoneVisible=await pending.isVisible();
+    save();
+    if(view==='live'&&row.tasksPendingWhenPhoneVisible){
+     row.step='personal-requests';
+     await navigation.getByRole('button',{name:'Requests',exact:true}).click({timeout:10000});
+     await phone.getByRole('heading',{name:'Leave Request Status',exact:true}).waitFor({state:'visible',timeout:10000});
+     row.personalRequestsMs=elapsed();
+     await navigation.getByRole('button',{name:'Home',exact:true}).click({timeout:10000});
+     await taskSection.waitFor({state:'visible',timeout:10000});
+    }
+    row.step='task-content';
+    await pending.waitFor({state:'hidden',timeout:45000});
+    await taskSection.locator('a, p').first().waitFor({state:'visible',timeout:5000});
+    assert.equal(await taskSection.getByText('Unable to load this section. Refresh to try again.',
+     {exact:true}).count(),0,'Assigned-task data was unavailable');
+    row.tasksMs=elapsed();
+    row.status='observed';
+   }finally{save();}
+  }
+ }finally{await context.close();}
 }
 
 const censusPanelTitles={
@@ -1529,13 +1588,14 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!payrollReadTrace)await seedNotificationReads(fixture);
+  if(staticShard===null&&!payrollReadTrace&&!mobileTaskTrace)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true',
     AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
   await waitForApp();
   await proxy();
-  if(payrollReadTrace)await measurePayrollReadTrace(fixture);
+  if(mobileTaskTrace)await measureMobileTaskTrace(fixture);
+  else if(payrollReadTrace)await measurePayrollReadTrace(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
    await measureRoutes(fixture);
@@ -1586,12 +1646,13 @@ try{
      }
     }
     const mobilePhases=new Set(['preview','own-employment','own-person-name','clock','leave','requests',
-     'claims','team','tasks','inbox','payslips']);
+     'claims','team','tasks','inbox','payslips','tasks-leave','tasks-leave-cancellation','tasks-resignation',
+     'tasks-manager-review','tasks-hr-review','tasks-replacement','tasks-attendance','tasks-profile','tasks-claims']);
     const mobile=[];
     for(const [,line] of log.matchAll(/^PERF_MOBILE_PREVIEW_READ (.{1,220})$/gm)){
      let row;
      try{row=JSON.parse(line);}catch{continue;}
-     if(!Number.isSafeInteger(row.trace)||row.trace<1||!mobilePhases.has(row.phase)||
+     if(!row||!Number.isSafeInteger(row.trace)||row.trace<1||!mobilePhases.has(row.phase)||
       !['started','settled'].includes(row.state)||!Number.isSafeInteger(row.elapsedMs)||row.elapsedMs<0)continue;
      mobile.push({trace:row.trace,phase:row.phase,state:row.state,elapsedMs:row.elapsedMs});
      if(mobile.length>=120)break;

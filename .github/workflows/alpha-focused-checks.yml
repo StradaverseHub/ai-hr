@@ -64,6 +64,10 @@ on:
         description: Time isolated Payroll Transaction View opens and retain anonymous read phases
         default: false
         type: boolean
+      browser_mobile_task_trace:
+        description: Measure the Mobile Preview phone, its Tasks section and anonymous owner phases
+        default: false
+        type: boolean
       browser_static_shard:
         description: Static browser census shard (0–7), or all to cover the compiled inventory
         default: ''
@@ -131,6 +135,9 @@ jobs:
           if [[ "$BROWSER_PAYROLL_READ_TRACE" == true ]] && { [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD" ]]; }; then
             exit 2
           fi
+          if [[ "$BROWSER_MOBILE_TASK_TRACE" == true ]] && { [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD" || "$BROWSER_PAYROLL_READ_TRACE" == true ]]; }; then
+            exit 2
+          fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
           else
@@ -141,6 +148,7 @@ jobs:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
           BROWSER_STATIC_SHARD: ${{ inputs.browser_static_shard }}
           BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
+          BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
@@ -238,6 +246,7 @@ jobs:
           AIHR_BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
           AIHR_BROWSER_STATIC_SHARD: ${{ matrix.static_shard }}
           AIHR_BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
+          AIHR_BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
