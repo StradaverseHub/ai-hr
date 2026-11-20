@@ -1,5 +1,30 @@
--- Hosted test proof only. The canonical production queue and command owners are unchanged.
-CREATE FUNCTION app.offboarding_posting_queue_access_set_proof() RETURNS boolean
+-- Unnumbered replacement for the hosted installed-owner rehearsal.
+DO $predecessor$
+BEGIN
+ IF NOT EXISTS (
+  SELECT 1 FROM pg_catalog.pg_proc p
+  JOIN pg_catalog.pg_roles owner_role ON owner_role.oid=p.proowner
+  WHERE p.oid=pg_catalog.to_regprocedure('app.offboarding_posting_queue_access()')
+    AND owner_role.rolname=current_user
+    AND NOT owner_role.rolsuper
+    AND NOT owner_role.rolbypassrls
+    AND p.prorettype='boolean'::regtype
+    AND p.prosecdef
+    AND p.provolatile='s'
+    AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
+    AND pg_catalog.md5(p.prosrc)='0b244f4aa1621807d85b8bc27d5dc41e'
+    AND pg_catalog.has_function_privilege('ai_hr_app',p.oid,'EXECUTE')
+    AND NOT EXISTS (
+     SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
+     WHERE acl.grantee=0 AND acl.privilege_type='EXECUTE'
+    )
+ ) THEN
+  RAISE EXCEPTION 'Unexpected Offboarding queue access predecessor or owner';
+ END IF;
+END
+$predecessor$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.offboarding_posting_queue_access() RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  WITH RECURSIVE actor AS MATERIALIZED (
   SELECT u.id,u.tenant_id,u.person_id
@@ -98,5 +123,3 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   WHERE NOT coalesce(a.person_id=e.person_id,false)
  );
 $$;
-REVOKE ALL ON FUNCTION app.offboarding_posting_queue_access_set_proof() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.offboarding_posting_queue_access_set_proof() TO ai_hr_app;
