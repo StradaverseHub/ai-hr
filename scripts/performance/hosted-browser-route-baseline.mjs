@@ -610,6 +610,44 @@ const focusedSurfaces={
  }},
 };
 
+const recruitmentDestinations=[
+ {path:'/recruitment/candidates',witness:'form select[name="job"]:enabled'},
+ {path:'/recruitment/interviews',witness:'form select[name="interviewer"]:enabled'},
+ {path:'/recruitment/positions',witness:'form input[name="jobNumber"]:enabled'},
+ {path:'/recruitment/talent-pool',witness:'form select[name="reason"]:enabled'},
+];
+
+async function measureRecruitmentNavigation(page,observations){
+ const nav=page.locator('main nav[aria-label]').filter({has:page.locator('a[href="/recruitment"]')});
+ for(const {path,witness} of recruitmentDestinations){
+  const row={path,documentRequests:0,status:'incomplete'};
+  observations.push(row);
+  const observe=request=>{if(request.resourceType()==='document'&&request.isNavigationRequest())row.documentRequests++;};
+  page.on('request',observe);
+  const started=performance.now();
+  try{
+   const tab=nav.locator('a[href="'+path+'"]');
+   const remaining=()=>Math.max(1,Math.floor(15000-(performance.now()-started)));
+   await Promise.all([
+    page.waitForURL(origin+path,{timeout:remaining()}),
+    tab.click({timeout:remaining()}),
+   ]);
+   await nav.locator('a[href="'+path+'"][aria-current="page"]').waitFor({state:'visible',timeout:remaining()});
+   await page.locator('main').locator(witness).first().waitFor({state:'visible',timeout:remaining()});
+   await assertContentAvailable(page);
+   assert.equal(row.documentRequests,0,'Recruitment tab reloaded the document');
+   row.status='observed';
+  }catch(error){
+   row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+   throw error;
+  }finally{
+   row.usableMs=Math.round(performance.now()-started);
+   page.off('request',observe);
+   save();
+  }
+ }
+}
+
 async function measureSurfaceProbe(fixture,surface){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
@@ -654,6 +692,8 @@ async function measureSurfaceProbe(fixture,surface){
       await page.locator('#tasks').getByText('No updates in this category.',{exact:true})
        .or(page.locator('#tasks ul li time').first()).first().waitFor({state:'visible',timeout:5000});
       row.applicationsTabMs=Math.round(performance.now()-switchStarted);
+      row.navigation=[];
+      await measureRecruitmentNavigation(page,row.navigation);
      }
      row.status='observed';
     }catch(error){
