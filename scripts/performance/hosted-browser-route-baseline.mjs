@@ -388,6 +388,28 @@ async function measureMixedLoad(command){
     const code=typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|E[A-Z_]{2,40})$/.test(fact.code)?fact.code:null;
     return {kind:fact.kind,code};
    };
+   const lockStates=new Set(['complete','missed','unknown']);
+   const lockReasons=new Set(['window-unknown','samples-unknown','sample-failed','sample-unknown','sample-order',
+    'coverage-gap','cadence-unobserved','blocking-observed','application-unobserved','window-unsettled']);
+   const cadenceFacts=facts=>facts?{
+    state:lockStates.has(facts.state)?facts.state:null,
+    reason:lockReasons.has(facts.reason)?facts.reason:null,
+    pass:facts.pass===true,coveragePass:facts.coveragePass===true,
+    ...counts(facts,['qualifiedSamples','observedBlockingSamples','blockingSamples',
+     'openingGapUs','interiorGapUs','tailGapUs','maxGapUs']),
+   }:null;
+   if(data.lockSampling){
+    const preflight=data.lockSampling.preflight,loaded=data.lockSampling.loaded;
+    report.mixedLockSampling={
+     preflight:{...cadenceFacts(preflight?.cadence),...counts(preflight,['completed','failures']),
+      sampleFailures:(preflight?.samples??[]).filter(sample=>sample.state==='failed').slice(0,8)
+       .map(safeFailure).filter(Boolean)},
+     loaded:{...cadenceFacts(loaded?.cadence),...counts(loaded,['completed','failures'])},
+     preflightClient:cadenceFacts(data.lockSampling.privatePreflightClientCadence),
+     preflightWidestGap:counts(data.lockSampling.privatePreflightTiming,['gapUs','launchSpacingUs',
+      'timerAfterReadyUs','callbackToProbeUs','combinedRoundTripUs','activityRoundTripUs','advisoryRoundTripUs']),
+    };
+   }
    const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
    if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;
    const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
