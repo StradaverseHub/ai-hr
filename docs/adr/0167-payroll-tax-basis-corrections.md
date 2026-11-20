@@ -59,3 +59,10 @@ correction records are read-only. Genuine missing evidence, invalid lineage and
 unprovable annual allocation produce a named employee outcome, rolling back that
 employee's calculation and retaining their previous result while the job
 continues. Other consumers keep the strict original source policy.
+
+The Reprocess readiness screen checks the visible source identity and saved
+structure in a read-only snapshot. When historical inputs changed and are
+eligible to be reconstructed, the employee can proceed to reprocessing.
+Reading retained source files and reconstructing the prefix run in the
+background employee transaction. The saved outcome reports any evidence
+that cannot be recovered.
