@@ -3,7 +3,9 @@ import {randomUUID} from 'node:crypto';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {GET as payslipGet} from '../app/me/payslip/[payslipId]/pdf/route';
 import {GET as eaGet} from '../app/me/ea/[employmentId]/pdf/route';
-const mocks=vi.hoisted(()=>({document:vi.fn(),ea:vi.fn(),payslipPdf:vi.fn(),eaPdf:vi.fn(),eaLabels:vi.fn(),locale:'en',opened:vi.fn()}));
+import {schedulePayslipOpenAudit} from '../app/me/payslip/open-audit';
+const mocks=vi.hoisted(()=>({document:vi.fn(),ea:vi.fn(),payslipPdf:vi.fn(),eaPdf:vi.fn(),eaLabels:vi.fn(),locale:'en',opened:vi.fn(),after:vi.fn<(callback:()=>Promise<void>)=>void>()}));
+vi.mock('next/server',async importOriginal=>({...await importOriginal<typeof import('next/server')>(),after:mocks.after}));
 vi.mock('../lib/session',()=>({getSession:async()=>({tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee']})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale}));
 vi.mock('../app/me/payslip/document',()=>({myPayslipDocument:mocks.document}));
@@ -22,6 +24,14 @@ beforeEach(()=>{
  mocks.payslipPdf.mockResolvedValue(new Uint8Array([1,2,3]));mocks.eaPdf.mockResolvedValue(new Uint8Array([4,5,6]));mocks.eaLabels.mockResolvedValue({fictional:true});
 });
 describe('own document endpoints retain owner checks and private responses',()=>{
+ it('schedules the HTML open after the response with the same verified viewer and payslip',async()=>{
+  const viewer={tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee']};
+  schedulePayslipOpenAudit(viewer,id);
+  expect(mocks.opened).not.toHaveBeenCalled();
+  expect(mocks.after).toHaveBeenCalledTimes(1);
+  await mocks.after.mock.calls[0][0]();
+  expect(mocks.opened).toHaveBeenCalledExactlyOnceWith(viewer,{payslipId:id,channel:'web'});
+ });
  it.each(['inline','attachment'])('uses the exact own payslip document model for %s without accepting a caller subject',async(disposition)=>{
   const document={p:{id,payPeriod:'2025-03',employeeCode:'FICTIONAL-001',runType:'bonus',runSeq:2},data:{fictional:'recorded snapshot'},strings:{labels:{fictional:'labels'}}};
   mocks.document.mockResolvedValue(document);

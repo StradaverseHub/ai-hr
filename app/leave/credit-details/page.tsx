@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { scopedSession } from '@/lib/scope';
+import { getSession } from '@/lib/session';
 import { listOwnEarnedLeaveCredits } from '@/packs/leave/service';
 import { ownCreditRegisterQuery } from '@/lib/own-credit-register-query';
 import { CREDIT_REGISTER_STATUSES } from '@/lib/leave-credit-register';
@@ -11,7 +11,7 @@ import { EarnedCreditCells } from '@/components/leave/earned-credit-cells';
 
 const PAGE='/leave/credit-details';
 export default async function LeaveCreditDetailsPage({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}) {
-  const {s}=await scopedSession(), q=ownCreditRegisterQuery(await searchParams);
+  const s=await getSession(), q=ownCreditRegisterQuery(await searchParams);
   const t=await getTranslations('leaveCreditDetails'), tr=await getTranslations('admin.leaveCreditRegister'), th=await getTranslations('admin.leaveCredit');
   const labels={available:tr('available'),partially_used:tr('partiallyUsed'),fully_used:tr('fullyUsed'),expired:tr('expired'),reversed:tr('reversed'),paid_out:tr('paidOut')};
   if(!q.valid)return <div className="space-y-4"><PageHeader title={t('title')} description={t('subtitle')}/><ErrorBanner message={t('invalid')}/><Link href={PAGE} className={btnGhost}>{th('filterClear')}</Link></div>;

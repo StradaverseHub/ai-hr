@@ -1,14 +1,13 @@
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireModule } from '@/lib/authz';
-import { scopedSession } from '@/lib/scope';
 import { myReleasedPayslipRuns } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { StatutoryPdfViewer } from '@/components/statutory-pdf-viewer';
 import { publicErrorMessage } from '@/lib/public-error';
 import { resolvePersonalPayslipSelection } from './selection-state';
 import { myPayslipDocument } from './document';
-import { recordPayslipOpened } from '@/core/payroll-audit/access-log';
+import { schedulePayslipOpenAudit } from './open-audit';
 import { PersonalPayslipSelection } from './selection';
 import { PersonalPayslipStatement } from './statement';
 import { WhyLink } from '@/components/why/why-panel';
@@ -16,14 +15,12 @@ import { DeductionWhy, PayDifferenceWhy } from '@/components/why/sections';
 import { PAYSLIP_DEDUCTION_WHY, type PayslipDeductionWhy } from '@/core/pay-difference';
 
 export default async function MyPayslipPage({searchParams}:{searchParams:Promise<{companyId?:string;year?:string;month?:string;payslipId?:string;review?:string;why?:string}>}) {
-  await requireModule('payroll');
-  const {s}=await scopedSession(),sp=await searchParams,t=await getTranslations('myPayslip'),pay=await getTranslations('payroll.individualPayslip');
+  const s=await requireModule('payroll'),sp=await searchParams,t=await getTranslations('myPayslip'),pay=await getTranslations('payroll.individualPayslip');
   const locale=await getLocale();
   const result=await myReleasedPayslipRuns(s).then(runs=>({runs,error:undefined})).catch(error=>({runs:[],error:publicErrorMessage(error)}));
   const selection=resolvePersonalPayslipSelection(result.runs,sp);
   const document=selection.payslipId?await myPayslipDocument(s,selection.payslipId):null;
-  // AI v2 P2-2b: the employee opened their own released payslip; the Audit loop counts opens. Best effort, never blocking.
-  if(document)await recordPayslipOpened(s,{payslipId:document.p.id,channel:'web'}).catch(()=>null);
+  if(document)schedulePayslipOpenAudit(s,document.p.id);
   const choices=result.runs.map(run=>({...run,label:run.cycleName ?? ''}));
   const months=Array.from({length:12},(_,month)=>new Intl.DateTimeFormat(locale,{month:'long',timeZone:'UTC'}).format(new Date(Date.UTC(2000,month,1))));
   const context=new URLSearchParams({...(selection.companyId?{companyId:selection.companyId}:{}),...(selection.year?{year:String(selection.year)}:{}),...(selection.month?{month:String(selection.month).padStart(2,'0')}:{}),...(selection.payslipId?{payslipId:selection.payslipId}:{})});
