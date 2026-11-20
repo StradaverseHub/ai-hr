@@ -75,7 +75,8 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeSteps=[];
  const timeout=15000;
  const switcher=page.locator('button[data-company-switcher]');
- const companies=page.locator('input[type="checkbox"][name="companyId"]');
+ const companyForm=switcher.locator('..').locator('form');
+ const companies=companyForm.locator('input[type="checkbox"][name="companyId"]');
  const workforce=page.locator('main table tbody');
  const groupRows=workforce.getByRole('link',{name:/^PERF Person /});
  const scaleRows=workforce.getByRole('link',{name:new RegExp('^'+workerPrefix)});
@@ -92,17 +93,25 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeSteps.push({step:'all-companies-open',elapsedMs:Math.round(performance.now()-opened),usable:true});
  save();
 
- report.groupScopeStage='group-company-options';
+ report.groupScopeStage='group-company-popover';
+ const openingMenu=performance.now();
  await switcher.click({timeout});
- assert.equal(await companies.count(),70);
- assert.equal(await companies.and(page.locator(':checked')).count(),70);
- const clear=page.getByRole('button',{name:'Choose a new selection',exact:true});
+ await companies.first().waitFor({state:'visible',timeout});
+ report.groupScopeStage='group-company-options';
+ const total=await companies.count();
+ const checked=await companies.and(page.locator(':checked')).count();
+ report.groupScopeSteps.push({step:'company-menu-visible',elapsedMs:Math.round(performance.now()-openingMenu),total,checked});
+ save();
+ assert.equal(total,70);
+ assert.equal(checked,70);
+ const clear=companyForm.getByRole('button',{name:'Choose a new selection',exact:true});
  await clear.click({timeout});
+ const option=companyForm.getByRole('checkbox',{name:fixture.scaleCompany.name,exact:true});
+ await option.and(page.locator(':not(:checked)')).waitFor({state:'visible',timeout});
  assert.equal(await companies.and(page.locator(':checked')).count(),0);
 
  report.groupScopeStage='group-scope-narrowed';
  const selected=performance.now();
- const option=page.getByRole('checkbox',{name:fixture.scaleCompany.name,exact:true});
  const [response]=await Promise.all([
   page.waitForResponse(response=>response.request().method()==='POST'
    &&new URL(response.url()).pathname==='/admin/personnel',{timeout}),
@@ -119,7 +128,7 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeStage='group-scope-restored';
  if(await switcher.getAttribute('aria-expanded')!=='true')await switcher.click({timeout});
  const restored=performance.now();
- await page.getByRole('button',{name:'Select all',exact:true}).click({timeout});
+ await companyForm.getByRole('button',{name:'Select all',exact:true}).click({timeout});
  await switcher.getByText('All companies',{exact:true}).waitFor({state:'visible',timeout});
  await groupRows.first().waitFor({state:'visible',timeout});
  assert.equal(await selectedScope(),'');
