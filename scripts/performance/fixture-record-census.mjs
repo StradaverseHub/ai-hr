@@ -1,5 +1,85 @@
 import assert from 'node:assert/strict';
 
+const workSiteName = 'Fictional Census Work Site';
+const clockingPointName = 'Fictional Census Clocking Point';
+
+export async function seedWorkLocationRecords(owner, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.tenantId, company.tenantId);
+  assert.equal(fixture.tenants[0].companies[0].companyId, company.companyId);
+  await owner.begin(async tx => {
+    await tx`select set_config('app.tenant_id', ${company.tenantId}, true)`;
+    const [site] = await tx`
+      insert into location (tenant_id, company_id, code, name)
+      values (${company.tenantId}, ${company.companyId}, 'PERF-CENSUS-SITE', ${workSiteName})
+      returning id
+    `;
+    const [point] = await tx`
+      insert into clocking_location (tenant_id, location_id, name, lat, lng, radius_m)
+      values (${company.tenantId}, ${site.id}, ${clockingPointName}, 3.14, 101.69, 125)
+      returning id
+    `;
+    await tx`
+      insert into clocking_location_company (tenant_id, clocking_location_id, company_id)
+      values (${company.tenantId}, ${point.id}, ${company.companyId})
+    `;
+  });
+}
+
+async function workLocationRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  const records = await db`
+    select site.id as site_id, point.id as point_id
+    from location site
+    join clocking_location point on point.tenant_id = site.tenant_id and point.location_id = site.id
+    join clocking_location_company scope on scope.tenant_id = point.tenant_id
+      and scope.clocking_location_id = point.id and scope.company_id = site.company_id
+    where site.tenant_id = ${company.tenantId} and site.company_id = ${company.companyId}
+      and site.name = ${workSiteName} and point.name = ${clockingPointName}
+  `;
+  assert.equal(records.length, 1, 'Expected one fictional work site and linked clocking point');
+  const [record] = records;
+  const site = '/admin/work-locations/' + record.site_id;
+  const point = '/admin/work-locations/clocking/' + record.point_id;
+  const pointView = {
+    exactHeading: 'Clocking Location',
+    content: clockingPointName,
+    witness: 'dl dd:text-is("3.14, 101.69")',
+  };
+  const pointEdit = {
+    exactHeading: 'Edit Clocking Location',
+    witness: `form input[name="name"][value="${clockingPointName}"]`,
+  };
+  return [
+    {
+      actor: company, template: '/admin/work-locations/[id]', path: site,
+      exactHeading: 'Location', content: workSiteName,
+      witness: 'dl dd:text-is("PERF-CENSUS-SITE")',
+    },
+    {
+      actor: company, template: '/admin/work-locations/[id]/edit', path: site + '/edit',
+      exactHeading: 'Edit location',
+      witness: `form input[name="name"][value="${workSiteName}"]`,
+    },
+    ...[group, company].map(actor => ({
+      actor, template: '/admin/work-locations/clocking/[id]', path: point, ...pointView,
+    })),
+    {
+      actor: group, template: '/admin/work-locations/clocking/[id]/edit', path: point + '/edit', ...pointEdit,
+    },
+    {
+      actor: company, template: '/admin/work-locations/clocking/[id]/edit', path: point + '/edit',
+      redirectTo: point, ...pointView,
+    },
+    {
+      actor: group, template: '/admin/locations/clocking/[id]', path: '/admin/locations/clocking/' + record.point_id,
+      redirectTo: point + '/edit', ...pointEdit,
+    },
+  ];
+}
+
 // Match the statutory report's DB test: record the leaving date after the fictional
 // payslips exist so the preview has real retained payroll to read.
 export async function seedStatutoryLeaver(owner, fixture) {
@@ -75,7 +155,9 @@ async function fixtureRoutes(db, fixture) {
 }
 
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save }) {
-  const cases = await fixtureRoutes(db, fixture);
+  const payrollCases = await fixtureRoutes(db, fixture);
+  const locationCases = await workLocationRoutes(db, fixture);
+  const cases = [...payrollCases, ...locationCases];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
   const rows = report.fixtureRecordCensus.observations;
