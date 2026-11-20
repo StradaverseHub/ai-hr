@@ -94,6 +94,8 @@ export function UserMenu({
   const accessT=useTranslations('accessConfiguration');
   const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => { setInteractive(true); }, []);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
@@ -131,6 +133,7 @@ export function UserMenu({
       <button
         ref={trigger}
         type="button"
+        disabled={!interactive}
         onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         aria-haspopup="menu"

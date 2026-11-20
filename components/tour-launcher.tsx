@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { START_TOUR_EVENT } from '@/lib/onboarding-tour-events';
+import { requestTour } from '@/lib/onboarding-tour-events';
 
 /**
  * Help control: (re)starts the onboarding tour from anywhere.
@@ -34,7 +34,7 @@ export function TourLauncher({
       title={menu ? undefined : t('launch')}
       onClick={() => {
         onSelect?.();
-        window.dispatchEvent(new CustomEvent(START_TOUR_EVENT));
+        requestTour();
       }}
       className={cn(
         'transition-colors',

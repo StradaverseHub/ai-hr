@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
 import { completeOnboardingAction, readTourStepsAction } from '@/app/onboarding-actions';
 import type { TourStep } from '@/lib/onboarding-tour';
-import { START_TOUR_EVENT, WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
+import { START_TOUR_EVENT, WELCOME_TOUR_ID, takePendingTour } from '@/lib/onboarding-tour-events';
 import { btnGhost, btnPrimary } from '@/components/ui';
 
 const PAD = 8; // spotlight padding around the target
@@ -77,9 +77,14 @@ export function OnboardingTour({
       });
     };
     const onStart = (e: Event) => {
-      launch((e as CustomEvent<{ tourId?: string }>).detail?.tourId ?? WELCOME_TOUR_ID);
+      launch(takePendingTour() ?? (e as CustomEvent<{ tourId?: string }>).detail?.tourId ?? WELCOME_TOUR_ID);
     };
     window.addEventListener(START_TOUR_EVENT, onStart as EventListener);
+    queueMicrotask(() => {
+      if (!current) return;
+      const pendingTour = takePendingTour();
+      if (pendingTour) launch(pendingTour);
+    });
     return () => {
       current = false;
       window.removeEventListener(START_TOUR_EVENT, onStart as EventListener);
