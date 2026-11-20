@@ -7,6 +7,10 @@ import {STATIC_CENSUS_SHARDS,staticPageCensusPlan} from './system-route-manifest
 const roles=new Set(['public','employee','manager','companyHR','groupHR']);
 const outcomes=new Set(['heading-visible','redirect','http-error','render-error','read-unavailable',
  'external-destination','timeout','browser-failure']);
+function discoveryKey(role,path,pass){
+ return JSON.stringify([role,path,pass]);
+}
+
 const passes=['first','repeat'];
 
 export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
@@ -15,7 +19,7 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
  assert.equal(reports.length,STATIC_CENSUS_SHARDS,'Incomplete static census receipts');
  const first=reports[0],reference=first.staticPageCensus;
  assert(typeof first.buildId==='string'&&first.buildId.length>0,'A shared build ID is required');
- const staticPaths=new Set(),shards=new Set(),observations=[],dynamicRows=[];
+ const staticPaths=new Set(),shards=new Set(),observations=[],dynamicRows=[],discoveryLimits=[];
  for(const report of reports){
   assert.equal(report.kind,'FICTIONAL_STATIC_PAGE_CENSUS');
   assert.equal(report.sourceSha,sourceSha);
@@ -29,6 +33,14 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
   assert.equal(census.staticPageCount,reference.staticPageCount);
   assert.equal(census.dynamicTemplateCount,reference.dynamicTemplateCount);
   assert.deepEqual(census.dynamic.templates,reference.dynamic.templates);
+  assert.deepEqual(census.dynamic.missingMatchers,reference.dynamic.missingMatchers);
+  assert.equal(census.dynamic.maxLinkDepth,reference.dynamic.maxLinkDepth);
+  assert(Number.isInteger(census.dynamic.maxLinkDepth)&&census.dynamic.maxLinkDepth>=1&&census.dynamic.maxLinkDepth<=2);
+  assert(Number.isInteger(census.dynamic.discoveryFailures)&&census.dynamic.discoveryFailures>=0);
+  assert(census.dynamic.limitedRoles.every(role=>roles.has(role)));
+  if(census.dynamic.discoveryFailures||census.dynamic.limitedRoles.length){
+   discoveryLimits.push({shard:census.shard,discoveryFailures:census.dynamic.discoveryFailures,limitedRoles:census.dynamic.limitedRoles});
+  }
   assert(census.paths.every(path=>typeof path==='string'&&/^\/(?:[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*)?$/.test(path)));
   assert.equal(new Set(census.paths).size,census.paths.length,'Duplicate static route within a shard');
   const ownManifest=Object.fromEntries(census.paths.map(path=>[path==='/'
@@ -51,15 +63,37 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
   }
   assert.equal(missing.size,0,'Missing static visit');
   const templates=new Set(census.dynamic.templates);
-  const sourcePaths=new Set(census.paths);
+  for(const path of census.dynamic.missingMatchers){
+   assert(templates.delete(path),'Unexpected or duplicate unmatched route template');
+  }
+  const openedRoots=new Set(census.outcomes.filter(row=>row.pass==='first'&&row.outcome==='heading-visible')
+   .map(row=>discoveryKey(row.role,row.path,'first')));
+  const byVisit=new Map();
   for(const row of census.dynamic.outcomes){
-   assert(templates.has(row.path)&&sourcePaths.has(row.sourcePath)&&roles.has(row.role)&&outcomes.has(row.outcome));
+   assert(templates.has(row.path)&&roles.has(row.role)&&outcomes.has(row.outcome));
    assert(passes.includes(row.pass)&&Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0);
-   if(row.linkDepth!==undefined){
-    assert(Number.isInteger(row.linkDepth)&&row.linkDepth>=1&&row.linkDepth<=census.dynamic.maxLinkDepth);
+   assert(Number.isInteger(row.linkDepth)&&row.linkDepth>=1&&row.linkDepth<=census.dynamic.maxLinkDepth);
+   assert(openedRoots.has(discoveryKey(row.role,row.sourcePath,'first')),'Dynamic discovery has no visible static root');
+   const key=discoveryKey(row.role,row.path,row.pass);
+   assert(!byVisit.has(key),'Duplicate dynamic visit');
+   byVisit.set(key,row);
+  }
+  for(const row of byVisit.values()){
+   const otherPass=row.pass==='first'?'repeat':'first';
+   const other=byVisit.get(discoveryKey(row.role,row.path,otherPass));
+   assert(other&&other.sourcePath===row.sourcePath&&other.linkDepth===row.linkDepth
+    &&other.parentTemplate===row.parentTemplate,'Missing or mismatched dynamic visit pair');
+   if(row.linkDepth>1){
+    const parent=byVisit.get(discoveryKey(row.role,row.parentTemplate,'first'));
+    assert(parent?.outcome==='heading-visible'&&parent.sourcePath===row.sourcePath
+     &&parent.linkDepth===row.linkDepth-1,'Missing visible parent detail');
+   }else{
+    assert(row.parentTemplate===undefined,'Unexpected parent for directly linked detail');
    }
    dynamicRows.push({template:row.path,sourcePath:row.sourcePath,pass:row.pass,role:row.role,
-    outcome:row.outcome,elapsedMs:row.elapsedMs,...(row.linkDepth!==undefined&&{linkDepth:row.linkDepth})});
+    outcome:row.outcome,elapsedMs:row.elapsedMs,linkDepth:row.linkDepth,
+    ...(row.parentTemplate&&{parentTemplate:row.parentTemplate}),
+    ...(Number.isSafeInteger(row.headingMs)&&{headingMs:row.headingMs})});
   }
  }
  assert.equal(staticPaths.size,reference.staticPageCount,'Compiled static page count differs from measured routes');
@@ -74,7 +108,8 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
   staticObservations:observations.sort((a,b)=>a.path.localeCompare(b.path)||a.pass.localeCompare(b.pass)),
   compiledDynamicTemplates:reference.dynamicTemplateCount,dynamicTemplatesWithHeading:dynamicObserved.size,
   dynamicTemplatesWithoutHeading:reference.dynamic.templates.filter(template=>!dynamicObserved.has(template)),
-  dynamicObservations:dynamicRows,
+  dynamicObservations:dynamicRows,dynamicDiscoveryLimits:discoveryLimits,
+  dynamicTemplatesWithoutMatcher:reference.dynamic.missingMatchers,
  };
 }
 

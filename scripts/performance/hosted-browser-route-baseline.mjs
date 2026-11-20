@@ -651,7 +651,7 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
 
 const maxDynamicTemplatesPerRole=24;
 const maxDynamicLinkDepth=2;
-async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered){
+async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered,parentTemplate){
  const links=await page.locator('main:visible a[href]:visible:not([download])').evaluateAll(
   anchors=>anchors.slice(0,250).map(anchor=>anchor.href));
  for(const link of links){
@@ -661,7 +661,7 @@ async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered){
   if(!template||discovered.has(template))continue;
   if(discovered.size>=maxDynamicTemplatesPerRole)return true;
   url.hash='';
-  discovered.set(template,{url,sourcePath,depth});
+  discovered.set(template,{url,sourcePath,depth,parentTemplate});
  }
  return false;
 }
@@ -700,9 +700,9 @@ async function measureStaticPageCensus(fixture,shard){
    const role=actor?.role??'public';
    const discovered=new Map();
    let discoveryLimited=false;
-   async function discover(sourcePath,depth){
+   async function discover(sourcePath,depth,parentTemplate){
     try{
-     if(await discoverDynamicPages(page,sourcePath,depth,dynamicMatcher,discovered))discoveryLimited=true;
+     if(await discoverDynamicPages(page,sourcePath,depth,dynamicMatcher,discovered,parentTemplate))discoveryLimited=true;
     }catch{census.dynamic.discoveryFailures++;}
    }
    for(const pass of ['first','repeat'])for(const path of paths){
@@ -715,12 +715,12 @@ async function measureStaticPageCensus(fixture,shard){
    }
    // First-pass detail pages can reveal further details, edits or print screens. Retain their static
    // root and depth in the receipt and keep the concrete address inside the browser fixture.
-   for(const pass of ['first','repeat'])for(const [template,{url,sourcePath,depth}] of discovered){
+   for(const pass of ['first','repeat'])for(const [template,{url,sourcePath,depth,parentTemplate}] of discovered){
     const row=await measureCensusVisit(page,url,role,pass,template,compiledPaths);
     if(pass==='first'&&row.outcome==='heading-visible'&&depth<maxDynamicLinkDepth){
-     await discover(sourcePath,depth+1);
+     await discover(sourcePath,depth+1,template);
     }
-    census.dynamic.outcomes.push({...row,sourcePath,linkDepth:depth});
+    census.dynamic.outcomes.push({...row,sourcePath,linkDepth:depth,parentTemplate});
     save();
    }
    if(discoveryLimited){census.dynamic.limitedRoles.push(role);save();}
