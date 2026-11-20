@@ -9,7 +9,7 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher} from './system-route-manifest.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -588,10 +588,66 @@ async function measureRoutes(fixture){
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 
+async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
+ const row={path:label,pass,role,outcome:'browser-failure'};
+ const path=url.pathname;
+ const start=performance.now(),remaining=()=>Math.max(1,Math.floor(start+15000-performance.now()));
+ try{
+  const response=await page.goto(url.href,{waitUntil:'commit',timeout:remaining()});
+  row.responseCommittedMs=Math.round(performance.now()-start);
+  row.httpStatus=response?.status()??null;
+  const redirected=()=>{
+   const finalUrl=new URL(page.url());
+   if(finalUrl.origin!==origin){row.outcome='external-destination';return true;}
+   if(finalUrl.pathname===path)return false;
+   row.outcome='redirect';
+   row.destination=compiledPaths.has(finalUrl.pathname)?finalUrl.pathname:'non-static-destination';
+   return true;
+  };
+  if(!redirected()){
+   if(row.httpStatus!==200)row.outcome='http-error';
+   else{
+    const heading=page.locator('main:visible h1:visible').first();
+    const fault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/}).first();
+    await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
+    if(!redirected()){
+     row.headingMs=Math.round(performance.now()-start);
+     row.outcome=await fault.isVisible()?'render-error':
+      await page.locator('main [data-read-unavailable]:visible').count()?'read-unavailable':'heading-visible';
+    }
+   }
+  }
+ }catch(error){row.outcome=error?.name==='TimeoutError'?'timeout':'browser-failure';}
+ row.elapsedMs=Math.round(performance.now()-start);
+ if(row.outcome==='heading-visible')row.documentTiming=await documentTiming(page);
+ return row;
+}
+
+const maxDynamicTemplatesPerRole=8;
+async function discoverDynamicPages(page,sourcePath,matcher,discovered){
+ if(discovered.size>=maxDynamicTemplatesPerRole)return;
+ const links=await page.locator('main:visible a[href]:visible:not([download])').evaluateAll(
+  anchors=>anchors.slice(0,250).map(anchor=>anchor.href));
+ for(const link of links){
+  const url=new URL(link);
+  if(url.origin!==origin||url.username||url.password||url.href.length>1000)continue;
+  const template=matcher.match(url.pathname);
+  if(!template||discovered.has(template))continue;
+  url.hash='';
+  discovered.set(template,{url,sourcePath});
+  if(discovered.size>=maxDynamicTemplatesPerRole)break;
+ }
+}
+
 async function measureStaticPageCensus(fixture,shard){
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
  const plan=staticPageCensusPlan(appPathRoutes,shard);
- const census={shard,shards:STATIC_CENSUS_SHARDS,...plan,outcomes:[]};
+ const routesManifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
+ const dynamicMatcher=dynamicPageCensusMatcher(appPathRoutes,routesManifest);
+ const census={shard,shards:STATIC_CENSUS_SHARDS,...plan,outcomes:[],dynamic:{
+  templates:dynamicMatcher.templates,missingMatchers:dynamicMatcher.missingMatchers,
+  maxTemplatesPerRole:maxDynamicTemplatesPerRole,discoveryFailures:0,outcomes:[],
+ }};
  report.staticPageCensus=census;
  save();
  const require=createRequire(join(process.cwd(),'package.json'));
@@ -613,38 +669,19 @@ async function measureStaticPageCensus(fixture,shard){
   try{
    const page=await context.newPage();
    await page.addInitScript(observeStartup);
+   const role=actor?.role??'public';
+   const discovered=new Map();
    for(const pass of ['first','repeat'])for(const path of paths){
-    const row={path,pass,role:actor?.role??'public',outcome:'browser-failure'};
-    const start=performance.now(),remaining=()=>Math.max(1,Math.floor(start+15000-performance.now()));
-    try{
-     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:remaining()});
-     row.responseCommittedMs=Math.round(performance.now()-start);
-     row.httpStatus=response?.status()??null;
-     const redirected=()=>{
-      const finalUrl=new URL(page.url());
-      if(finalUrl.origin!==origin){row.outcome='external-destination';return true;}
-      if(finalUrl.pathname===path)return false;
-      row.outcome='redirect';
-      row.destination=compiledPaths.has(finalUrl.pathname)?finalUrl.pathname:'non-static-destination';
-      return true;
-     };
-     if(!redirected()){
-      if(row.httpStatus!==200)row.outcome='http-error';
-      else{
-       const heading=page.locator('main:visible h1:visible').first();
-       const fault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/}).first();
-       await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
-       if(!redirected()){
-        row.headingMs=Math.round(performance.now()-start);
-        row.outcome=await fault.isVisible()?'render-error':
-         await page.locator('main [data-read-unavailable]:visible').count()?'read-unavailable':'heading-visible';
-       }
-      }
-     }
-    }catch(error){row.outcome=error?.name==='TimeoutError'?'timeout':'browser-failure';}
-    row.elapsedMs=Math.round(performance.now()-start);
-    if(row.outcome==='heading-visible')row.documentTiming=await documentTiming(page);
+    const row=await measureCensusVisit(page,new URL(origin+path),role,pass,path,compiledPaths);
+    if(actor&&pass==='first'&&row.outcome==='heading-visible'){
+     await discoverDynamicPages(page,path,dynamicMatcher,discovered).catch(()=>{census.dynamic.discoveryFailures++;});
+    }
     census.outcomes.push(row);
+    save();
+   }
+   for(const pass of ['first','repeat'])for(const [template,{url,sourcePath}] of discovered){
+    const row=await measureCensusVisit(page,url,role,pass,template,compiledPaths);
+    census.dynamic.outcomes.push({...row,sourcePath});
     save();
    }
   }finally{await context.close();}

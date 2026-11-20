@@ -51,6 +51,23 @@ export function staticPageCensusPlan(appPathRoutes,shard){
  };
 }
 
+/** Use the built router's order so a broad catch-all cannot hide a specific page template. */
+export function dynamicPageCensusMatcher(appPathRoutes,routesManifest){
+ const pages=appPagePaths(appPathRoutes);
+ const staticPaths=new Set(pages.filter(path=>!path.includes('[')));
+ const templates=pages.filter(path=>path.includes('['));
+ const dynamicPages=new Set(templates);
+ assert(Array.isArray(routesManifest.dynamicRoutes),'The build recorded no dynamic route manifest');
+ const routes=routesManifest.dynamicRoutes.filter(route=>dynamicPages.has(route.page))
+  .map(({page,regex})=>({page,matches:new RegExp(regex)}));
+ const listed=new Set(routes.map(route=>route.page));
+ return {
+  templates,
+  missingMatchers:templates.filter(template=>!listed.has(template)),
+  match(path){return staticPaths.has(path)?undefined:routes.find(route=>route.matches.test(path))?.page;},
+ };
+}
+
 /** Compare direct browser evidence with the pages present in the measured build. */
 export function builtPageCoverage(appPathRoutes,plan,observations){
  const pages=appPagePaths(appPathRoutes);

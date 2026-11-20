@@ -5,7 +5,7 @@ import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
- requireNativeRenderedUnion,readManifestRoute,builtPageCoverage,staticPageCensusPlan,STATIC_CENSUS_SHARDS} from '../scripts/performance/system-route-manifest.mjs';
+ requireNativeRenderedUnion,readManifestRoute,builtPageCoverage,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
  const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards','/admin/rewards/plans','/admin/rewards/shared']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
@@ -51,6 +51,25 @@ it('assigns every compiled static page to one shard and leaves dynamic templates
  expect(shards.flatMap(plan=>plan.paths).sort()).toEqual([...staticPaths].sort());
  expect(shards.every(plan=>plan.staticPageCount===staticPaths.length&&plan.dynamicTemplateCount===1)).toBe(true);
  expect(()=>staticPageCensusPlan(manifest,STATIC_CENSUS_SHARDS)).toThrow('Invalid static browser census shard');
+});
+
+it('uses compiled template precedence and only observes concrete app pages',()=>{
+ const appPaths={
+  '/reports/new/page':'/reports/new','/reports/[id]/page':'/reports/[id]',
+  '/reports/[...path]/page':'/reports/[...path]','/profile/[id]/page':'/profile/[id]',
+  '/api/item/[id]/route':'/api/item/[id]',
+ };
+ const routes={dynamicRoutes:[
+  {page:'/reports/[id]',regex:'^/reports/([^/]+?)(?:/)?$'},
+  {page:'/reports/[...path]',regex:'^/reports/(.+?)(?:/)?$'},
+  {page:'/api/item/[id]',regex:'^/api/item/([^/]+?)(?:/)?$'},
+ ]};
+ const census=dynamicPageCensusMatcher(appPaths,routes);
+ expect(census.match('/reports/new')).toBeUndefined();
+ expect(census.match('/reports/fixture-draft')).toBe('/reports/[id]');
+ expect(census.match('/reports/archive/fixture-draft')).toBe('/reports/[...path]');
+ expect(census.match('/api/item/fixture-id')).toBeUndefined();
+ expect(census.missingMatchers).toEqual(['/profile/[id]']);
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,
