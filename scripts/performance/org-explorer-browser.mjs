@@ -101,11 +101,24 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase,e
   const form=await new Request(request.url(),{method:'POST',headers:{'content-type':type},body}).formData();
   // React's Flight encoding prefixes each field in the FormData argument with its part number.
   const submittedIds=[...form].filter(([name])=>/^_\d+_companyId$/.test(name)).map(([,value])=>value).sort();
-  assert.deepEqual(submittedIds,expectedIds,'Company selection posted a different scope');
+  const scopeModes=[...form].filter(([name])=>/^_\d+_scopeMode$/.test(name)).map(([,value])=>value);
+  const usesAuthorizedDefault=scopeModes.length>0;
+  if(usesAuthorizedDefault){
+   assert.deepEqual(scopeModes,['all'],'Company selection posted an unknown scope mode');
+   assert.deepEqual(expectedIds,companyIds,'Only the All companies action may restore the authorized default');
+   assert.deepEqual(submittedIds,[user.companyId],'All companies should submit only the prior checked selection');
+  }else{
+   assert.deepEqual(submittedIds,expectedIds,'Company selection posted a different scope');
+  }
   await ready(expectedPeople);
+  if(usesAuthorizedDefault){
+   const cookies=await page.context().cookies(orgOrigin);
+   assert(!cookies.some(cookie=>cookie.name==='company_scope'),'Restoring all companies retained the selection cookie');
+  }
   assert.equal(scopePosts,before+1,'Company selection did not post exactly once');
   assert.equal(await explorer().getAttribute('data-org-view'),'roots','Company change retained the previous Org Explorer state');
   if(await picker.getAttribute('aria-expanded')==='true')await picker.click();
+  return usesAuthorizedDefault?'authorized-default':'explicit-selection';
  }
  try{
   const started=performance.now();await page.goto(orgOrigin+'/org',{waitUntil:'domcontentloaded',timeout:90000});
@@ -167,8 +180,10 @@ export async function exerciseOrgExplorer({page,user,fixture,report,save,phase,e
   }
   stage='restore-all-companies';const restoreForm=await openCompanyScope();
   assert.deepEqual(await checkedIds(restoreForm),[user.companyId],'Company selector did not retain the committed scope');
-  await commitCompanyScope(()=>restoreForm.getByRole('button',{name:scopeCopy.selectAll,exact:true}).click(),companyIds,cohort.length);
+  const restoreStarted=performance.now();
+  const representation=await commitCompanyScope(()=>restoreForm.getByRole('button',{name:scopeCopy.selectAll,exact:true}).click(),companyIds,cohort.length);
   assert(await picker.getByText(scopeCopy.allCompanies,{exact:true}).isVisible(),'Company selector did not restore the committed company label');
+  record(stage,restoreStarted,{mode:'explorer',totalPeople:cohort.length,representation,stateReset:true});
   assert.equal(scopePosts,2,'Company scope journey must submit only the select and restore actions');
   page.off('request',observeScopePost);
   stage='language-switch';await switchLocale('zh');await switchLocale('en');
