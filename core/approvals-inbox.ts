@@ -156,21 +156,25 @@ type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTask
 /** What a surface that did not ask for recruitment work receives: every kind except the recruitment ones. */
 export type InboxTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,RecruitmentTaskKind>};
 type InboxApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'|RecruitmentTaskKind>};
+type TaskReadProbe = <T>(phase: string, work: () => Promise<T>) => Promise<T>;
+type TaskListOptions = { noticeAcknowledgements?: boolean; traceRead?: TaskReadProbe };
+const directTaskRead: TaskReadProbe = (_phase, work) => work();
+
 // The overloads that ask for recruitment come first (they need the `recruitment` key); the last one is what
 // ReturnType<typeof listPendingTasks> names, so every existing reader of that type keeps its kinds.
 export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
-  options:{noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
+  options:TaskListOptions & {noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
 export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
-  options?:{noticeAcknowledgements?:boolean}):Promise<PendingTaskItem[]>;
+  options?:TaskListOptions):Promise<PendingTaskItem[]>;
 export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:{noticeAcknowledgements:false}):Promise<InboxApprovalOnlyTaskItem[]>;
+  options:TaskListOptions & {noticeAcknowledgements:false}):Promise<InboxApprovalOnlyTaskItem[]>;
 export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options?:{noticeAcknowledgements?:boolean}):Promise<InboxTaskItem[]>;
+  options?:TaskListOptions):Promise<InboxTaskItem[]>;
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
   modules: InboxModules & { recruitment?: boolean },
-  options:{noticeAcknowledgements?:boolean}={},
+  options:TaskListOptions={},
 ): Promise<PendingTaskItem[]> {
   const {recruitment,...inbox}=modules;
   return (await withRecruitmentTasks(ctx,scopeIds,recruitment,loadPendingTasks(ctx,scopeIds,inbox,options))).items;
@@ -191,7 +195,7 @@ export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefine
 }
 
 type DecisionHeaders=Pick<AccountTaskBundle,'cancellations'|'resignations'|'managerReviews'|'hrReviews'>;
-async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,known?:DecisionHeaders){
+async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefined,preview?:true,known?:DecisionHeaders,traceRead=directTaskRead){
   // known: each owner the account task statement answered for this same read (core/account-task-bundle.ts); every
   // other owner reads on its own, exactly as below.
   if(known)return settleReadGroup([
@@ -218,23 +222,25 @@ async function loadDecisionHeaders(ctx:SessionContext,scopeIds:string[]|undefine
     if(candidates===false)return [[],[],[],[]] as const;
   }
   return settleReadGroup([
-    ()=>pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
-    ()=>pendingResignationTaskMetadata(ctx,scopeIds),
-    ()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds),
-    ()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+    ()=>traceRead('tasks-leave-cancellation',()=>pendingLeaveCancellationTaskMetadata(ctx,scopeIds)),
+    ()=>traceRead('tasks-resignation',()=>pendingResignationTaskMetadata(ctx,scopeIds)),
+    ()=>traceRead('tasks-manager-review',()=>pendingReviewTaskMetadata(ctx,'manager',scopeIds)),
+    ()=>traceRead('tasks-hr-review',()=>pendingReviewTaskMetadata(ctx,'hr',scopeIds)),
   ]);
 }
 
-type TaskSourceOptions={noticeAcknowledgements?:boolean;preview?:true;countOnly?:true;deferClaimPreview?:true};
+type TaskSourceOptions=TaskListOptions & {preview?:true;countOnly?:true;deferClaimPreview?:true};
 async function loadCommonTaskSources(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
   options:TaskSourceOptions){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
+  const traceRead=options.traceRead??directTaskRead;
   return settleReadGroup([
-    ()=>pendingLeaveTaskMetadata(ctx,scopeIds),()=>loadDecisionHeaders(ctx,scopeIds,options.preview),
-    ()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
-    ()=>modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
-    ()=>pendingProfileTaskMetadata(ctx,scopeIds),
+    ()=>traceRead('tasks-leave',()=>pendingLeaveTaskMetadata(ctx,scopeIds)),
+    ()=>loadDecisionHeaders(ctx,scopeIds,options.preview,undefined,traceRead),
+    ()=>traceRead('tasks-replacement',()=>listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds})),
+    ()=>modules.attendance?traceRead('tasks-attendance',()=>pendingAttendanceTaskMetadata(ctx,scopeIds)):Promise.resolve([]),
+    ()=>traceRead('tasks-profile',()=>pendingProfileTaskMetadata(ctx,scopeIds)),
     ()=>options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     ()=>settleReadGroup(PACK_TASK_SOURCES.map(source=>()=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
@@ -328,7 +334,9 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
   const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
     await settleReadGroup([
       ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
-      ()=>claimPreview??loadClaimTaskSource(ctx,scopeIds,modules,options),
+      ()=>claimPreview??(options.traceRead&&modules.claims
+        ?options.traceRead('tasks-claims',()=>loadClaimTaskSource(ctx,scopeIds,modules,options))
+        :loadClaimTaskSource(ctx,scopeIds,modules,options)),
     ]);
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();

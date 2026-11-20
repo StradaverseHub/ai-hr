@@ -28,7 +28,7 @@ function previewReadTrace(){
     try{return await work();}
     finally{mark(phase,'settled');}
   }
-  return {read,mark};
+  return {active,read,mark};
 }
 
 // The preview accepts no employee/user/tenant selector. Own employment comes from the web session;
@@ -59,7 +59,7 @@ export async function streamMobilePreview(s: SessionContext, scopeIds: string[],
     attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
     // The preview mirrors the mobile v1 task vocabulary, which has no Performance or Rewards kinds.
     performance: false, rewards: false, probation: false,
-  }, { noticeAcknowledgements: false })).map(task => ({
+  }, { noticeAcknowledgements: false, traceRead: trace.active ? trace.read : undefined })).map(task => ({
     id: task.id, kind: task.kind, subject: task.subjectName, href: task.linkPath,
   })));
   const [clock, leave, requests, claims, team, inbox, payslips] = await Promise.all([
