@@ -623,6 +623,13 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
      row.headingMs=Math.round(performance.now()-start);
      row.outcome=await fault.isVisible()?'render-error':
       await page.locator('main [data-read-unavailable]:visible').count()?'read-unavailable':'heading-visible';
+     if(path==='/mobile-preview'&&row.outcome==='heading-visible'){
+      const builder=page.locator('[data-mobile-builder]');
+      await builder.getByRole('textbox',{name:'App brand name',exact:true}).waitFor({state:'visible',timeout:remaining()});
+      row.editorControlsVisibleMs=Math.round(performance.now()-start);
+      await builder.locator('[data-appearance]').waitFor({state:'visible',timeout:remaining()});
+      row.contentWitnessVisibleMs=Math.round(performance.now()-start);
+     }
     }
    }
   }
@@ -631,7 +638,7 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
    if(row.responseCommittedMs===undefined){
     row.outcome='timeout';row.timeoutStage='response';
    }else if(!redirected()){
-    row.outcome='timeout';row.timeoutStage='render';
+    row.outcome='timeout';row.timeoutStage=row.headingMs===undefined?'render':'usable-content';
    }
   }else row.outcome='browser-failure';
  }
