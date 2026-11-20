@@ -22,3 +22,8 @@ export type MobilePreviewData = {
   inbox: PreviewRead<{ id: string; title: string; body: string; href: string | null; read: boolean; createdAt: string }[]>;
   payslips: PreviewRead<{ id: string; company: string; period: string }[]>;
 };
+
+/** The phone's task sections can settle independently from its main content. */
+export type MobilePreviewView = Omit<MobilePreviewData, 'tasks'> & {
+  tasks: MobilePreviewData['tasks'] | Promise<MobilePreviewData['tasks']>;
+};

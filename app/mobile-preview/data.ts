@@ -12,12 +12,17 @@ import { isModuleEnabled } from '@/core/entitlements';
 import { hasTeamAccess, isAdmin } from '@/lib/authz';
 import { ENTITLEMENT_STATUS_LABEL_KEY, entitlementStatusNeedsNotice } from '@/lib/entitlement-status';
 import { todayInKualaLumpur } from '@/lib/hr-date';
-import type { MobilePreviewData, PreviewRead } from '@/components/mobile-preview/types';
+import type { MobilePreviewData, MobilePreviewView, PreviewRead } from '@/components/mobile-preview/types';
 
 // The preview accepts no employee/user/tenant selector. Own employment comes from the web session;
 // team membership and company narrowing come from the same authority as My Team. No session is sent
 // to the browser, and no mobile bearer endpoint is weakened to admit web/demo cookies.
 export async function loadMobilePreview(s: SessionContext, scopeIds: string[], locale: string): Promise<MobilePreviewData> {
+  const preview = await streamMobilePreview(s, scopeIds, locale);
+  return { ...preview, tasks: await preview.tasks };
+}
+
+export async function streamMobilePreview(s: SessionContext, scopeIds: string[], locale: string): Promise<MobilePreviewView> {
   const today = todayInKualaLumpur();
   const me = await myEmployment(s);
   const name = me?.name ?? await myPersonName(s);
@@ -31,7 +36,14 @@ export async function loadMobilePreview(s: SessionContext, scopeIds: string[], l
     catch { console.error(`[mobile-preview] ${name} unavailable`); return { status: 'unavailable' }; }
   }
   const own = (code: string) => me ? moduleState(code) : 'disabled';
-  const [clock, leave, requests, claims, team, tasks, inbox, payslips] = await Promise.all([
+  const tasks = read('tasks', moduleState('leave'), async () => (await listPendingTasks(s, scopeIds, {
+    attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
+    // The preview mirrors the mobile v1 task vocabulary, which has no Performance or Rewards kinds.
+    performance: false, rewards: false, probation: false,
+  }, { noticeAcknowledgements: false })).map(task => ({
+    id: task.id, kind: task.kind, subject: task.subjectName, href: task.linkPath,
+  })));
+  const [clock, leave, requests, claims, team, inbox, payslips] = await Promise.all([
     read('clock', own('attendance'), async () => {
       const c = await ownClockToday(s);
       const [day] = await attendanceForEmploymentRange(s, me!.employmentId, c.date, c.date);
@@ -73,11 +85,6 @@ export async function loadMobilePreview(s: SessionContext, scopeIds: string[], l
         dates: rows.filter(r => r.employmentId === e.employmentId).flatMap(r => r.dates
           .filter(d => d.date >= today && d.date <= end).map(d => ({ date: d.date, status: d.status, session: r.session }))) }));
     }),
-    read('tasks', moduleState('leave'), async () => (await listPendingTasks(s, scopeIds, {
-      attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
-      // The preview mirrors the mobile v1 task vocabulary, which has no Performance or Rewards kinds.
-      performance: false, rewards: false, probation: false,
-    },{noticeAcknowledgements:false})).map(t => ({ id: t.id, kind: t.kind, subject: t.subjectName, href: t.linkPath }))),
     read('inbox', own('notifications'), async () => (await listNotifications(s, me!.employmentId, { limit: 30 }))
       .map(n => ({ id: n.id, title: n.title, body: n.body, href: n.linkPath,
         read: n.readAt != null, createdAt: n.createdAt.toISOString() }))),
