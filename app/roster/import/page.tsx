@@ -2,9 +2,8 @@ import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { allowedCompanies } from '@/core/read';
 import { getScopeIds } from '@/lib/scope';
-import { rosterMonthView } from '@/core/roster';
 import { PageHeader, Card } from '@/components/ui';
-import { buildRosterTemplate, isMonthParam, monthOf, shiftCodeOf } from '@/lib/roster-month';
+import { isMonthParam, monthOf } from '@/lib/roster-month';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { RosterImport } from './roster-import';
 
@@ -45,19 +44,6 @@ export default async function RosterImportPage({
   const company = inScope.find((c) => c.id === sp.companyId) ?? inScope[0];
   const month = isMonthParam(sp.month) ? sp.month : monthOf(todayInKualaLumpur());
 
-  // The template is the month as it stands, pre-filled with the ROSTERED days only. Blank means "leave
-  // this date exactly as it is", so a partly-filled month can be topped up without disturbing the rest.
-  // Built by the SHARED builder, whose four identity headings are the machine header and stay English in
-  // every locale — see lib/roster-month#ROSTER_TEMPLATE_ID_COLUMNS for what a translated one cost.
-  const view = await rosterMonthView(s, { companyIds: [company.id], month });
-  const codeById = new Map(view.shifts.map((sh) => [sh.id, shiftCodeOf(sh)]));
-  const template = buildRosterTemplate({
-    dates: view.dates,
-    employees: view.employees,
-    cells: view.cells,
-    shiftCode: (id) => codeById.get(id) ?? '',
-  });
-
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <PageHeader back={{ href: '/roster', label: t('backLabel') }} title={t('title')} description={t('description')} />
@@ -65,12 +51,6 @@ export default async function RosterImportPage({
         companies={inScope.map((c) => ({ id: c.id, name: c.name }))}
         companyId={company.id}
         month={month}
-        shiftCodes={view.shifts.map((sh) => ({ code: shiftCodeOf(sh), name: sh.name }))}
-        template={{
-          dates: view.dates,
-          rows: template.rows,
-          codes: view.shifts.map((sh) => shiftCodeOf(sh)),
-        }}
       />
     </div>
   );

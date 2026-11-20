@@ -1,6 +1,9 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const state=vi.hoisted(()=>({admin:vi.fn(),scope:vi.fn(),team:vi.fn(),page:vi.fn(),ids:vi.fn(),window:vi.fn()}));
+const state=vi.hoisted(()=>({auth:vi.fn(),admin:vi.fn(),scope:vi.fn(),team:vi.fn(),page:vi.fn(),ids:vi.fn(),window:vi.fn()}));
 const company='00000000-0000-4000-8000-000000000001',other='00000000-0000-4000-8000-000000000002';
+vi.mock('../lib/authz',async importOriginal=>({...await importOriginal<typeof import('../lib/authz')>(),requireAdmin:state.auth}));
+vi.mock('next-intl/server',async importOriginal=>({...await importOriginal<typeof import('next-intl/server')>(),getTranslations:async()=>((key:string)=>key)}));
+vi.mock('../app/roster/import/roster-import',()=>({RosterImport:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:state.admin,getScopeIds:state.scope}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:company,name:'Current company'}]}));
 vi.mock('../app/roster/my-team-scope',()=>({rosterTeamContext:state.team,rosterTeamWindow:vi.fn()}));
@@ -8,8 +11,9 @@ vi.mock('../core/roster-presentation',()=>({rosterEmployeePage:state.page,roster
 vi.mock('../core/roster',()=>({rosterWindowView:state.window}));
 import {GET as choices} from '../app/roster/employee-choices/route';
 import {GET as template} from '../app/roster/template/route';
+import RosterImportPage from '../app/roster/import/page';
 beforeEach(()=>{
- vi.clearAllMocks();state.admin.mockResolvedValue({s:{tenantId:company,userId:other,roles:['hr_admin']},scopeIds:[company]});state.scope.mockResolvedValue([company]);state.team.mockResolvedValue(null);
+ vi.clearAllMocks();state.auth.mockResolvedValue({tenantId:company,userId:other,roles:['hr_admin']});state.admin.mockResolvedValue({s:{tenantId:company,userId:other,roles:['hr_admin']},scopeIds:[company]});state.scope.mockResolvedValue([company]);state.team.mockResolvedValue(null);
  state.page.mockResolvedValue({rows:[],total:0,offset:0,limit:25,businessUnitOptions:[],departmentOptions:[]});state.ids.mockResolvedValue(Array.from({length:201},(_,i)=>'employee-'+i));
  state.window.mockResolvedValue({dates:['2027-01-04'],employees:Array.from({length:201},(_,i)=>({employmentId:'e'+i,name:'Employee '+i,code:'R'+i,department:'Operations',occupation:'Executive'})),cells:{'e200|2027-01-04':{kind:'shift',shiftId:'pg'}},shifts:[{id:'pg',code:'PG',name:'Page shift'}]});
 });
@@ -39,4 +43,24 @@ it('uses freshly resolved team IDs instead of URL membership claims',async()=>{
  const result=await choices(new Request(`https://example.invalid/roster/employee-choices?companyId=${company}&employmentIds=forged`));
  expect(result.status).toBe(200);
  expect(state.page.mock.calls[0][1].employmentIds).toEqual([other]);
+});
+
+
+it('opens Roster Import without reading the employee grid or building the workbook',async()=>{
+ const page=await RosterImportPage({searchParams:Promise.resolve({companyId:company,month:'2027-01'})});
+ expect(page).toBeDefined();
+ expect(state.auth).toHaveBeenCalledTimes(1);
+ expect(state.window).not.toHaveBeenCalled();
+});
+
+it('returns codes alone for the permitted company and month, with a fresh access check',async()=>{
+ const result=await template(new Request(`https://example.invalid/roster/template?companyId=${company}&month=2027-01&fields=codes`));
+ expect(result.status).toBe(200);
+ expect(result.headers.get('Cache-Control')).toBe('private, no-store');
+ expect(await result.json()).toEqual({codes:['PG']});
+ expect(state.window.mock.calls[0][1]).toMatchObject({companyIds:[company],from:'2027-01-01',to:'2027-01-31'});
+ state.window.mockClear();
+ const denied=await template(new Request(`https://example.invalid/roster/template?companyId=${other}&month=2027-01&fields=codes`));
+ expect(denied.status).toBe(403);
+ expect(state.window).not.toHaveBeenCalled();
 });

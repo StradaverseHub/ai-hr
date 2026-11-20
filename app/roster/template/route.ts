@@ -22,7 +22,10 @@ export async function GET(req: Request) {
     businessUnitId:url.searchParams.get('bu')??undefined,departmentId:url.searchParams.get('dept')??undefined,q:url.searchParams.get('q')??undefined,
     ...(team?{employmentIds:team.scope.employmentIds}:{}),
   });
+  const headers={'Cache-Control':'private, no-store'};
+  const codes=view.shifts.map(shiftCodeOf);
+  if(url.searchParams.get('fields')==='codes')return Response.json({codes},{headers});
   const codeById=new Map(view.shifts.map(sh=>[sh.id,shiftCodeOf(sh)]));
   const template=buildRosterTemplate({dates:view.dates,employees:view.employees,cells:view.cells,shiftCode:id=>codeById.get(id)??''});
-  return Response.json({dates:view.dates,rows:template.rows,codes:view.shifts.map(shiftCodeOf)}, {headers:{'Cache-Control':'private, no-store'}});
+  return Response.json({dates:view.dates,rows:template.rows,codes},{headers});
 }

@@ -10,7 +10,7 @@
  * is decoded to CSV text here (lib/import-file, the one workbook decoder in this repo) and only that
  * text crosses the wire, exactly as the employee and leave importers do it.
  */
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -24,24 +24,56 @@ import { commitRosterImportAction, dryRunRosterImportAction } from './actions';
 import { RosterBulkJobPanel } from '@/components/roster-bulk-job-panel';
 import type { RosterBulkJobView } from '@/lib/roster-bulk-job';
 
+/** Keep the same codes as the download, for the selected company and month. */
+function RosterShiftCodes({ source }: { source: string }) {
+  const t = useTranslations('common');
+  const tr = useTranslations('roster');
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const response = await fetch(source, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) throw new Error('Roster shift codes unavailable');
+        const data: { codes?: unknown } = await response.json();
+        if (!Array.isArray(data.codes) || !data.codes.every((code) => typeof code === 'string')) {
+          throw new Error('Invalid roster shift codes');
+        }
+        if (!controller.signal.aborted) setCodes(data.codes);
+      } catch {
+        if (!controller.signal.aborted) setFailed(true);
+      }
+    })();
+    return () => controller.abort();
+  }, [source]);
+
+  if (failed) return <span role="status">{tr('templateFailed')}</span>;
+  if (codes === null) return <span role="status">{t('loading')}</span>;
+  return (
+    <span aria-live="polite">
+      {codes.length ? codes.map((code, index) => <code key={index} className="mx-0.5">{code}</code>) : '—'}
+    </span>
+  );
+}
+
 export function RosterImport({
   companies,
   companyId: initialCompanyId,
   month: initialMonth,
-  shiftCodes,
-  template,
 }: {
   companies: { id: string; name: string }[];
   companyId: string;
   month: string;
-  shiftCodes: { code: string; name: string }[];
-  template: { dates: string[]; rows: string[][]; codes: string[] };
 }) {
   const t = useTranslations('roster.import');
   const tr = useTranslations('roster');
   const router = useRouter();
   const [companyId, setCompanyId] = useState(initialCompanyId);
   const [month, setMonth] = useState(initialMonth);
+  const [vocabularyOpen, setVocabularyOpen] = useState(false);
+  const templateSource = `/roster/template?${new URLSearchParams({ companyId, month })}`;
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<RosterImportResult | null>(null);
@@ -161,10 +193,8 @@ export function RosterImport({
           </div>
           <div className="flex items-end gap-2">
             <RosterTemplateButton
-              dates={template.dates}
-              rows={template.rows}
+              source={templateSource}
               month={month}
-              codes={template.codes}
               label={tr('downloadTemplate')}
               notesTitle={tr('templateNotesTitle')}
               notes={[
@@ -231,7 +261,10 @@ export function RosterImport({
           <span className="text-xs text-muted-foreground">{t('monthGuardHint', { month })}</span>
         </div>
 
-        <details className="mt-4 border-t border-border pt-3 text-xs">
+        <details
+          className="mt-4 border-t border-border pt-3 text-xs"
+          onToggle={(event) => setVocabularyOpen(event.currentTarget.open)}
+        >
           <summary className="cursor-pointer select-none font-medium text-muted-foreground">{t('vocabularyTitle')}</summary>
           <ul className="mt-2 space-y-1 text-muted-foreground">
             <li>{t('vocabBlank')}</li>
@@ -240,13 +273,7 @@ export function RosterImport({
             <li>{t('vocabOff')}</li>
             <li>
               {t('vocabCodes')}{' '}
-              {shiftCodes.length === 0
-                ? '—'
-                : shiftCodes.map((c) => (
-                    <code key={c.code} className="mx-0.5">
-                      {c.code}
-                    </code>
-                  ))}
+              {vocabularyOpen && <RosterShiftCodes key={templateSource} source={templateSource + '&fields=codes'} />}
             </li>
           </ul>
         </details>
