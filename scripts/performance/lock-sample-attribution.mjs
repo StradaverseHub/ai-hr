@@ -5,7 +5,8 @@ const categories=new Set(['advisory-exclusive','advisory-shared','rewards-author
 const originalAuditCategories=new Set(['auth-audit-append','rewards-access-observe','audit-append']);
 const originalAccessCategories=new Set(['access-acquire-shared','access-acquire-exclusive','access-owner-entry',
  'personnel-search-token','personnel-search-read','ai-control','rewards-access','attendance','leave',
- 'payroll','bulk-job','role-assignment','account','transaction-end','session-context']);
+ 'payroll','bulk-job','role-assignment','account','transaction-end','web-transaction-end',
+ 'worker-transaction-end','probation-reconciliation','reward-plan-outbox','session-context']);
 const states=new Set(['granted','queued']);
 const maxEdges=8;
 const lockKey=row=>row.classid+':'+row.objid+':'+row.objsubid;

@@ -102,7 +102,7 @@ async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,cate
    select pg_read_file('/proc/uptime',0,64) as uptime where pg_backend_pid()=${pid}::int
   ), backends as materialized (
    select a.* from opened o cross join lateral (
-    select pid,backend_type,state,wait_event_type,wait_event,usename,
+    select pid,backend_type,state,wait_event_type,wait_event,usename,application_name,
      case when usename='ai_hr_app' then left(query,320) end as app_query,
      case when usename in('ai_hr_app','ai_hr_owner','postgres') then left(query,320) end as local_query
     from pg_stat_activity where datname=current_database()
@@ -129,6 +129,8 @@ async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,cate
      when a.local_query ~* 'insert[[:space:]]+into[[:space:]]+(public[.])?"?personnel_private_search"?' then 'personnel-search-token'
      when a.local_query ~* 'app[.]personnel_(search|private_search|list_rows|overview)' then 'personnel-search-read'
      when a.local_query ~* 'app[.]ai_centre_' then 'ai-control'
+     when a.local_query ~* 'app[.]probation_(write_lock|reconciliation|storage_runner)|probation_reconciliation_(intent|schedule)' then 'probation-reconciliation'
+     when a.local_query ~* 'app[.]reward_review_plan_company_tick' then 'reward-plan-outbox'
      when a.local_query ~* 'app[.]reward_' then 'rewards-access'
      when a.local_query ~* '\\m(app[.]attendance_|"?attendance(_[a-z_]+)?"?\\M)' then 'attendance'
      when a.local_query ~* '\\m(app[.]leave_|"?leave_request"?\\M)' then 'leave'
@@ -136,7 +138,10 @@ async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,cate
      when a.local_query ~* '\\m(app[.]bulk_job_|"?bulk_job"?\\M)' then 'bulk-job'
      when a.local_query ~* '\\m"?role_assignment"?\\M' then 'role-assignment'
      when a.local_query ~* '\\m"?(app_user|internal_auth_session)"?\\M' then 'account'
-     when a.local_query ~* '^[[:space:]]*(commit|rollback)\\M' then 'transaction-end'
+     when a.local_query ~* '^[[:space:]]*(commit|rollback)\\M' then case
+      when a.application_name='aihr-fixture-mixed-worker' then 'worker-transaction-end'
+      when a.application_name='aihr-fixture-mixed-web' then 'web-transaction-end'
+      else 'transaction-end' end
      when a.local_query ~* '^[[:space:]]*select[[:space:]]+set_config[[:space:]]*[(]' then 'session-context'
      else 'unknown' end
     else 'unknown' end as category
