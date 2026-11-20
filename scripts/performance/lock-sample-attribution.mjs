@@ -56,6 +56,33 @@ export function measuredPreflightAttribution(start,end){
 
 const waitKinds=['advisory','transactionid','tuple','relation','other'];
 
+/** Share closed diagnostic categories from positive fictional preflight samples. */
+export function projectMixedPreflightLockWaits(rows){
+ if(!Array.isArray(rows))return null;
+ const count=value=>Number.isSafeInteger(value)&&value>=0&&value<=1024?value:null;
+ return rows.filter(row=>row?.phase==='preflight'&&[
+  row.appConnections?.waitingOnLock,row.appConnections?.sampledAdvisoryWaiters,
+ ].some(value=>count(value)>0)).slice(0,6).map(row=>{
+  const observation=row.appAdvisoryAttribution;
+  const phase=observation?.phase;
+  const workload=observation?.workloadStage;
+  const waitCounts=row.firstAppLockWaitCategories;
+  const edges=Array.isArray(observation?.edges)?observation.edges:[];
+  return {
+   phase:probePhases.includes(phase)||phase==='transition'?phase:null,
+   workloadStage:preflightWorkloads.has(workload)||workload==='transition'?workload:null,
+   activityWaiters:count(row.appConnections.waitingOnLock),
+   advisoryWaiters:count(row.appConnections.sampledAdvisoryWaiters),
+   waitKinds:waitCounts?Object.fromEntries(waitKinds.map(kind=>[kind,count(waitCounts[kind])])):null,
+   advisoryEdges:edges.filter(edge=>edge?.source==='original-sample'&&families.has(edge.family)
+    &&modes.has(edge.waiterMode)&&modes.has(edge.blockerMode)&&states.has(edge.blockerState))
+    .slice(0,maxEdges).map(edge=>({family:edge.family,waiterMode:edge.waiterMode,
+     blockerMode:edge.blockerMode,blockerState:edge.blockerState,
+     waiterCategory:originalAuditQueryCategory(edge.waiterCategory),blockerCategory:originalAuditQueryCategory(edge.blockerCategory)})),
+  };
+ });
+}
+
 /** Use only a closed partition of the original pg_stat_activity wait count. */
 export function firstAppLockWaitCategories(activity,waitingAppBackends){
  if(!Array.isArray(activity)||!Number.isSafeInteger(waitingAppBackends)||waitingAppBackends<1||waitingAppBackends>1024)return null;

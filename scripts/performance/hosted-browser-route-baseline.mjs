@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
-import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
+import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import {createServer,request as httpsRequest} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
@@ -12,6 +12,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
+import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -448,6 +449,16 @@ async function measureMixedLoad(command){
      preflightWidestGap:counts(data.lockSampling.privatePreflightTiming,['gapUs','launchSpacingUs',
       'timerAfterReadyUs','callbackToProbeUs','combinedRoundTripUs','activityRoundTripUs','advisoryRoundTripUs']),
     };
+    if(preflight?.cadence?.observedBlockingSamples>0){
+     const waitsPath=join(driverEvidence,'database-waits.json');
+     report.mixedLockSampling.preflightBlockingAttribution=null;
+     try{
+      const metadata=statSync(waitsPath);
+      if(metadata.isFile()&&metadata.size<=8*1024*1024){
+       report.mixedLockSampling.preflightBlockingAttribution=projectMixedPreflightLockWaits(JSON.parse(readFileSync(waitsPath,'utf8')));
+      }
+     }catch{/* Attribution is optional and the observed failure remains in the report. */}
+    }
    }
    const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
    if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;

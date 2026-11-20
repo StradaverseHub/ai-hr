@@ -117,6 +117,8 @@ jobs:
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+      - name: Check mixed-load diagnostic field projection
+        run: node --test .github/ci/mixed-preflight-lock-evidence.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: |
@@ -125,7 +127,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 7ffa9a45699f70e59e97e9afd17d18c3f240548e ]];
+            [[ "$EXPECTED_SHA" != 7a95199e662c58f9baa0f73ae8c3d2c073b1e04e ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -224,10 +226,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=0142e6d8aaeb6bbf96caaf58e1d9c99387ce9100
-          test "$AIHR_CI_HEAD" = 7ffa9a45699f70e59e97e9afd17d18c3f240548e
+          test "$AIHR_CI_HEAD" = 7a95199e662c58f9baa0f73ae8c3d2c073b1e04e
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/mixed-workflows.mjs')"
+          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/mixed-workflows.mjs\nM\tscripts/performance/system-load-owner.mjs')"
           archive="$(mktemp "$RUNNER_TEMP/register-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136243450014 --jq '
