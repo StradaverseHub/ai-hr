@@ -1,3 +1,4 @@
+import {Suspense} from 'react';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
 import {PageHeader} from '@/components/ui';
@@ -22,10 +23,16 @@ import {CheckAccuracySection} from '@/components/ai-centre/check-accuracy';
  * nothing for anyone who is not an administrator, so none of its reads run for them. */
 export async function AiCentreInsights({session,isAdmin,payroll,capacityQuery,qualityQuery}:{session:SessionContext;isAdmin:boolean;payroll:boolean;capacityQuery?:CapacityQuery;qualityQuery?:QualityQuery}){
  if(!isAdmin)return null;
- const t=await getTranslations('aiCentre.insights');
+ const [t,common]=await Promise.all([getTranslations('aiCentre.insights'),getTranslations('common')]);
+ const pending=<p role="status" className="text-sm text-muted-foreground">{common('loading')}</p>;
  return <div data-ai-centre-insights className="space-y-6">
   <PageHeader title={t('title')} description={t('description')}/>
-  <CapacityLedgerSection session={session} query={capacityQuery??{}}/>
-  <AiQualitySection session={session} query={qualityQuery??{}} accuracy={<CheckAccuracySection session={session} payroll={payroll}/>}/>
+  <Suspense fallback={pending}>
+   <CapacityLedgerSection session={session} query={capacityQuery??{}}/>
+  </Suspense>
+  <Suspense fallback={pending}>
+   <AiQualitySection session={session} query={qualityQuery??{}}
+    accuracy={<Suspense fallback={pending}><CheckAccuracySection session={session} payroll={payroll}/></Suspense>}/>
+  </Suspense>
  </div>;
 }

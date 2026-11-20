@@ -94,7 +94,7 @@ const wrap=(locale:Locale,node:ReactNode)=>render(<NextIntlClientProvider locale
  <main className="relative min-w-0"><div className="min-w-0">{node}</div></main></NextIntlClientProvider>);
 const text=(el:Node|null|undefined)=>(el?.textContent??'').replace(/\s+/g,' ').trim();
 const parts=(el:Element)=>[...el.childNodes].map(node=>text(node)).filter(Boolean).join(' ');
-const section=async(query:Record<string,string>={},session:unknown=SESSIONS.groupAdmin)=>CapacityLedgerSection({session:session as never,query});
+const section=async(query:Record<string,string>={},session:unknown=SESSIONS.groupAdmin)=>resolveServerTree(await CapacityLedgerSection({session:session as never,query}));
 const medium=(date:string)=>new Intl.DateTimeFormat('en',{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(`${date}T00:00:00+08:00`));
 afterEach(()=>{cleanup();state.locale='en';state.view=null;state.setup=null;state.reads=[];});
 
@@ -127,7 +127,7 @@ describe('the Insights tab',()=>{
    expect(rendered.container.querySelectorAll('[data-capacity-ledger]')).toHaveLength(1);
    expect(rendered.container.querySelector('#hr-capacity')).toBeTruthy();
    expect(screen.getByRole('heading',{level:2,name:'HR capacity'})).toBeTruthy();
-   expect(state.reads).toEqual([['processes',90],['ledger',{period:'last30',companyId:undefined}]]);
+   expect(state.reads).toEqual([['ledger',{period:'last30',companyId:undefined}],['processes',90]]);
   }else{
    // Insights renders nothing for them, so nothing is read (the page forwards them to their own readiness page).
    expect(rendered.container.textContent).toBe('');
@@ -287,10 +287,18 @@ describe('owner rule: no "HR staff per 100 employees" ratio anywhere',()=>{
 });
 
 describe('HR capacity › where the work is (the former Opportunities page, owner decision 29)',()=>{
+ it('returns the ledger before starting process evidence reads',async()=>{
+  state.view=view();
+  const ledger=await CapacityLedgerSection({session:SESSIONS.groupAdmin as never,query:{period:'last30',pdays:'30'}});
+  expect(state.reads).toEqual([['ledger',{period:'last30',companyId:undefined}]]);
+  const rendered=wrap('en',await resolveServerTree(ledger));
+  expect(state.reads).toContainEqual(['processes',30]);
+  expect(rendered.container.querySelector('[data-capacity-processes]')).toBeTruthy();
+ });
  it('the stored baseline is the only minutes input: one company with a baseline estimates hours from it, never a headcount',async()=>{
   state.view=view({companies:[COMPANIES[0]]});
   const rendered=wrap('en',await section({period:'last30',pdays:'30'}));
-  expect(state.reads[0]).toEqual(['processes',30]);
+  expect(state.reads).toContainEqual(['processes',30]);
   const processes=rendered.container.querySelector('[data-capacity-processes]')!;
   expect(processes.querySelector('h3')?.textContent).toBe('Where the work is');
   // 12 staff actions × the stored 2 minutes = 24 minutes = 0.4 h, from Fictional Alpha's own baseline.
