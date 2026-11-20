@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -7,7 +8,9 @@ import { AttendanceHistoryTable } from '@/components/attendance-history-table';
 import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { publicErrorMessage } from '@/lib/public-error';
 import { scopedAdmin } from '@/lib/scope';
-import { listAttendanceApplicationHistory, attendanceHistoryFilterOptions, type AttendanceHistoryFilter } from '@/packs/attendance/service';
+import { withBackgroundReadWork } from '@/db/client';
+import { listAttendanceApplicationHistory, attendanceHistoryOrganisationOptions, attendanceHistoryEmployeeOptions,
+  type AttendanceHistoryFilter } from '@/packs/attendance/service';
 import { PageHeader, Card, ErrorBanner, pageWideCls, inputCls } from '@/components/ui';
 import { OfflineClaimsReview } from './offline-review';
 import { loadOfflineReview, offlineReviewTabCount } from './offline-data';
@@ -15,6 +18,34 @@ import { loadOfflineReview, offlineReviewTabCount } from './offline-data';
 /** The Offline punches tab's address and its own query keys, which the status tabs never carry. */
 const OFFLINE_HREF = '/attendance/application-history?view=offline';
 const OFFLINE_KEYS = ['view', 'offline', 'before'];
+
+type EmployeeOptions = Promise<Awaited<ReturnType<typeof attendanceHistoryEmployeeOptions>> | null>;
+
+async function HistoryEmployeeRail({ employees, selectedId, preserve, heading, errorLabel }: {
+  employees: EmployeeOptions; selectedId?: string; preserve: Record<string, string>; heading: string; errorLabel: string;
+}) {
+  const rows = await employees;
+  if (!rows) return <Card className="p-4"><p role="alert">{errorLabel}</p></Card>;
+  const panelEmployees: ScopeEmployee[] = rows.map(row => ({
+    employmentId: row.id, name: row.name, employeeCode: row.employeeCode, companyId: row.companyId, company: row.company,
+    departmentId: row.departmentId, department: row.department, businessUnitId: row.businessUnitId, businessUnit: row.businessUnit,
+    status: row.terminatedOn == null ? 'active' : 'ended',
+  }));
+  return <Card className="space-y-3 bg-white! p-4 text-slate-900!">
+    <h2 className="text-sm font-semibold">{heading}</h2>
+    <EmployeeScopePanel employees={panelEmployees} selectedId={rows.find(row => row.id === selectedId)?.id ?? null}
+      basePath="/attendance/application-history" preserve={preserve} allowAll />
+  </Card>;
+}
+
+async function HistoryEmployeeTitle({ employees, selectedId, allLabel }: {
+  employees: EmployeeOptions; selectedId: string; allLabel: string;
+}) {
+  const selected = (await employees)?.find(row => row.id === selectedId);
+  return <h2 className="min-w-0 flex-1 text-sm font-semibold">
+    {selected ? (selected.employeeCode ? `${selected.employeeCode} · ` : '') + selected.name : allLabel}
+  </h2>;
+}
 
 export default async function AttendanceApplicationHistoryPage({ searchParams }: {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -33,7 +64,7 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
   // The Offline punches tab (draft 0647): null without the draft, and then there is no tab and no ?view=offline.
   const [result, options, offlineCount] = await Promise.all([
     listAttendanceApplicationHistory(s, scopeIds, f).then(data => ({ data, error: null as string | null })).catch(e => ({ data: { rows: [], total: 0, counts: emptyCounts, page: 1, pageSize: 25 }, error: publicErrorMessage(e) })),
-    attendanceHistoryFilterOptions(s, scopeIds),
+    sp.view === 'offline' ? null : attendanceHistoryOrganisationOptions(s, scopeIds),
     offlineReviewTabCount(s, scopeIds),
   ]);
   const offlineView = sp.view === 'offline' && offlineCount !== null;
@@ -45,31 +76,6 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     query.set('page', String(page));
     return '/attendance/application-history?' + query;
   };
-  const selects = [['companyId', 'company', options.companies], ['departmentId', 'department', options.departments], ['businessUnitId', 'businessUnit', options.businessUnits], ['gradeId', 'grade', options.grades], ['division', 'division', options.divisions]] as const;
-  const fieldClass = 'block space-y-1 rounded-md bg-white! p-2 text-sm text-slate-900!';
-  const controlClass = `${inputCls} min-h-11 w-full bg-white! text-slate-900! caret-slate-900! [color-scheme:light]`;
-  const panel = <Card className="space-y-3 p-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-    <label className={fieldClass}>{t('search')}<input name="query" className={controlClass} defaultValue={sp.query} /></label>
-    {selects.map(([key, label, items]) => <label className={fieldClass} key={key}>{t(label)}<select name={key} defaultValue={sp[key] ?? ''} className={controlClass}><option value="">{t('all')}</option>{items.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>)}
-    <label className={fieldClass}>{t('applicationType')}<select name="applicationType" defaultValue={sp.applicationType ?? ''} className={controlClass}><option value="">{t('all')}</option><option value="irregularity">{t('types.irregularity')}</option><option value="self_overtime">{t('types.self_overtime')}</option></select></label>
-    <label className={fieldClass}>{t('subtype')}<select name="requestKind" defaultValue={sp.requestKind ?? ''} className={controlClass}><option value="">{t('all')}</option>{['absent', 'short_hours', 'incomplete_entry', 'self_overtime', 'other', 'unknown'].map(k => <option key={k} value={k}>{t(`subtypes.${k}`)}</option>)}</select></label>
-    {(['attendanceFrom', 'attendanceTo', 'submittedFrom', 'submittedTo'] as const).map(key => <label key={key} className={fieldClass}>{t(key)}<input type="date" name={key} className={controlClass} defaultValue={sp[key]} /></label>)}
-    <label className={fieldClass}>{t('status')}<select name="status" defaultValue={status} className={controlClass}><option value="all">{t('all')}</option>{['pending', 'approved', 'rejected', 'cancelled', 'withdrawn'].map(value => <option key={value} value={value}>{t(`statuses.${value}`)}</option>)}<option value="cancelled_withdrawn">{t('cancelledWithdrawn')}</option></select></label>
-    <label className={fieldClass}>{t('pageSize')}<select name="pageSize" className={controlClass} defaultValue={sp.pageSize ?? '25'}>{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
-  </div><p className="text-xs text-muted-foreground">{t('organisationHelp')}</p></Card>;
-  const selected = options.employees.find(e => e.id === sp.employmentId);
-  const panelEmployees: ScopeEmployee[] = options.employees.map(e => ({
-    employmentId:e.id, name:e.name, employeeCode:e.employeeCode, companyId:e.companyId, company:e.company,
-    departmentId:e.departmentId, department:e.department, businessUnitId:e.businessUnitId, businessUnit:e.businessUnit,
-    status:e.terminatedOn == null ? 'active' : 'ended',
-  }));
-  const preservedFilters = Object.fromEntries(Object.entries(sp).filter(([key,value]) => value && key !== 'page' && key !== 'employmentId')) as Record<string,string>;
-  const selection = sp.employmentId ? <input type="hidden" name="employmentId" value={sp.employmentId} /> : undefined;
-  const employeePanel = <Card className="space-y-3 bg-white! p-4 text-slate-900!">
-    <h2 className="text-sm font-semibold">{t('selectEmployeeLabel')}</h2>
-    <EmployeeScopePanel employees={panelEmployees} selectedId={selected?.id ?? null}
-      basePath="/attendance/application-history" preserve={preservedFilters} allowAll />
-  </Card>;
   const tabs = [
     ['pending', t('statuses.pending'), data.counts.pending], ['approved', t('statuses.approved'), data.counts.approved],
     ['rejected', t('statuses.rejected'), data.counts.rejected], ['cancelled_withdrawn', t('cancelledWithdrawn'), data.counts.cancelledWithdrawn],
@@ -100,13 +106,43 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
       </div>
     </div>;
   }
+  const [organisation, pickerText, cookieStore] = await Promise.all([
+    options ?? attendanceHistoryOrganisationOptions(s, scopeIds),
+    getTranslations('employeePanel'),
+    cookies(),
+  ]);
+  // Picker work starts after the admitted result read, with the same scoped owner and lower-priority work lane.
+  const employees: EmployeeOptions = withBackgroundReadWork(s.tenantId, () => attendanceHistoryEmployeeOptions(s, scopeIds))
+    .catch(() => null);
+  const preservedFilters = Object.fromEntries(Object.entries(sp).filter(([key,value]) => value && key !== 'page' && key !== 'employmentId')) as Record<string,string>;
+  const selection = sp.employmentId ? <input type="hidden" name="employmentId" value={sp.employmentId} /> : undefined;
+  const loadingEmployees = <p role="status" className="text-sm text-muted-foreground">{pickerText('loadingEmployees')}</p>;
+  const employeePanel = <Suspense fallback={loadingEmployees}>
+    <HistoryEmployeeRail employees={employees} selectedId={sp.employmentId} preserve={preservedFilters}
+      heading={t('selectEmployeeLabel')} errorLabel={pickerText('loadFailed')} />
+  </Suspense>;
+  const detailHeader = sp.employmentId ? <Suspense fallback={null}>
+    <HistoryEmployeeTitle employees={employees} selectedId={sp.employmentId} allLabel={t('allEmployees')} />
+  </Suspense> : undefined;
+  const selects = [['companyId', 'company', organisation.companies], ['departmentId', 'department', organisation.departments], ['businessUnitId', 'businessUnit', organisation.businessUnits], ['gradeId', 'grade', organisation.grades], ['division', 'division', organisation.divisions]] as const;
+  const fieldClass = 'block space-y-1 rounded-md bg-white! p-2 text-sm text-slate-900!';
+  const controlClass = `${inputCls} min-h-11 w-full bg-white! text-slate-900! caret-slate-900! [color-scheme:light]`;
+  const panel = <Card className="space-y-3 p-4"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <label className={fieldClass}>{t('search')}<input name="query" className={controlClass} defaultValue={sp.query} /></label>
+    {selects.map(([key, label, items]) => <label className={fieldClass} key={key}>{t(label)}<select name={key} defaultValue={sp[key] ?? ''} className={controlClass}><option value="">{t('all')}</option>{items.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>)}
+    <label className={fieldClass}>{t('applicationType')}<select name="applicationType" defaultValue={sp.applicationType ?? ''} className={controlClass}><option value="">{t('all')}</option><option value="irregularity">{t('types.irregularity')}</option><option value="self_overtime">{t('types.self_overtime')}</option></select></label>
+    <label className={fieldClass}>{t('subtype')}<select name="requestKind" defaultValue={sp.requestKind ?? ''} className={controlClass}><option value="">{t('all')}</option>{['absent', 'short_hours', 'incomplete_entry', 'self_overtime', 'other', 'unknown'].map(k => <option key={k} value={k}>{t(`subtypes.${k}`)}</option>)}</select></label>
+    {(['attendanceFrom', 'attendanceTo', 'submittedFrom', 'submittedTo'] as const).map(key => <label key={key} className={fieldClass}>{t(key)}<input type="date" name={key} className={controlClass} defaultValue={sp[key]} /></label>)}
+    <label className={fieldClass}>{t('status')}<select name="status" defaultValue={status} className={controlClass}><option value="all">{t('all')}</option>{['pending', 'approved', 'rejected', 'cancelled', 'withdrawn'].map(value => <option key={value} value={value}>{t(`statuses.${value}`)}</option>)}<option value="cancelled_withdrawn">{t('cancelledWithdrawn')}</option></select></label>
+    <label className={fieldClass}>{t('pageSize')}<select name="pageSize" className={controlClass} defaultValue={sp.pageSize ?? '25'}>{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+  </div><p className="text-xs text-muted-foreground">{t('organisationHelp')}</p></Card>;
   return <div className={pageWideCls}>
     <PageHeader title={t('title')} description={t('subtitle')} /><ErrorBanner message={error ?? undefined} />
     <CollapsibleEmployeePanel panel={employeePanel} keepPanelMounted
-      defaultOpen={(await cookies()).get('attendance-history-employees')?.value !== '0'}
+      defaultOpen={cookieStore.get('attendance-history-employees')?.value !== '0'}
       cookieKey="attendance-history-employees" title={t('allEmployees')}
-      detailHeader={selected ? <p className="min-w-0 flex-1 text-sm font-semibold">{selected.employeeCode ? `${selected.employeeCode} · ` : ''}{selected.name}</p> : undefined}>
-    <AttendanceHistoryFilters selection={selection} panel={panel} defaultOpen={(await cookies()).get('attendance-history-panel')?.value === '1'}>
+      detailHeader={detailHeader}>
+    <AttendanceHistoryFilters selection={selection} panel={panel} defaultOpen={cookieStore.get('attendance-history-panel')?.value === '1'}>
       <div className="space-y-4">
         {statusNav}
         <div className="flex flex-wrap justify-between gap-4 text-sm"><p>{t('total', { count: data.total })}</p><nav aria-label={t('pagination')} className="flex items-center gap-4">{data.page > 1 && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page - 1)}>{t('previous')}</Link>}<span>{t('page', { number: data.page })}</span>{data.page * data.pageSize < data.total && <Link className="inline-flex min-h-11 items-center text-primary underline" href={url(data.page + 1)}>{t('next')}</Link>}</nav></div>

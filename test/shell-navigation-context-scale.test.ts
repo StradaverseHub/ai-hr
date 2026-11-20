@@ -4,7 +4,7 @@ import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
 import { employment } from '../db/schema';
 import { readShellNavigationContext } from '../lib/shell-navigation-context';
-import { attendanceHistoryFilterOptions } from '../packs/attendance/service';
+import { attendanceHistoryEmployeeOptions, attendanceHistoryFilterOptions, attendanceHistoryOrganisationOptions } from '../packs/attendance/service';
 import { observeNativeRead } from './helpers/native-read-observer';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
@@ -80,8 +80,17 @@ it('keeps group, selected company and scoped roles equivalent on one shell read 
 it('reads History filters at group scale without evaluating approval-editor choices', async () => {
   const probe=observeNativeRead({captureQueries:true});
   try {
+    const organisations=await attendanceHistoryOrganisationOptions(group.personas.group, group.companyIds);
+    expect(probe.queries.some(query=>/from employment e/i.test(query.sql))).toBe(false);
+    const selectedOrganisations=await attendanceHistoryOrganisationOptions(group.personas.group, [group.singleCompanyId]);
     const all=await attendanceHistoryFilterOptions(group.personas.group, group.companyIds);
     const selected=await attendanceHistoryFilterOptions(group.personas.group, [group.singleCompanyId]);
+    expect(organisations).toMatchObject({
+      companies:all.companies,departments:all.departments,businessUnits:all.businessUnits,grades:all.grades,divisions:all.divisions,
+    });
+    expect(selectedOrganisations.companies).toEqual(selected.companies);
+    expect(await attendanceHistoryEmployeeOptions(group.personas.group, group.companyIds)).toEqual(all.employees);
+    expect(await attendanceHistoryEmployeeOptions(group.personas.group, [group.singleCompanyId])).toEqual(selected.employees);
     expect(all.companies).toHaveLength(71);
     const stored = await owner.db.select({id:employment.id}).from(employment)
       .where(eq(employment.tenantId,group.personas.group.tenantId));

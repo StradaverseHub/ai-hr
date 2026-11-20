@@ -208,6 +208,48 @@ export function attendanceWorkflowCompanyOptions(ctx: SessionContext, companyIds
     return withTenant(ctx, tx => attendanceAdminCompaniesTx(tx, companyIds));
 }
 
+async function readAttendanceHistoryOrganisationTx(tx: Tx, companies: AttendanceOption[]) {
+    if (!companies.length) return { companies, departments: [], businessUnits: [], grades: [], divisions: [] };
+    const ids = companies.map(company => company.id);
+    const departments = await tx.select({ id: department.id, name: department.name }).from(department).where(and(isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', ids))).orderBy(asc(department.name));
+    const businessUnits = await tx.select({ id: businessUnit.id, name: businessUnit.name }).from(businessUnit).where(and(isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', ids))).orderBy(asc(businessUnit.name));
+    const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(asc(jobGrade.rank), asc(jobGrade.name));
+    const divisions = await tx.select({ id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(eq(profileOption.category, 'division'), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label));
+    return { companies, departments, businessUnits, grades, divisions };
+}
+
+/** One dated assignment supplies picker labels and narrowers without changing the application filters. */
+async function readAttendanceHistoryEmployeesTx(tx: Tx, companyIds: readonly string[]): Promise<AttendanceEmployeeOption[]> {
+    return tx.execute<AttendanceEmployeeOption>(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
+          e.company_id AS "companyId",co.legal_name AS company,e.terminated_on AS "terminatedOn",
+          a.department_id AS "departmentId",d.name AS department,
+          coalesce(a.business_unit_id,d.business_unit_id) AS "businessUnitId",bu.name AS "businessUnit"
+          FROM employment e JOIN person p ON p.id=e.person_id JOIN company co ON co.id=e.company_id
+          LEFT JOIN LATERAL (SELECT department_id,business_unit_id FROM assignment
+            WHERE employment_id=e.id AND superseded_at IS NULL AND valid_from<=${todayInKualaLumpur()}::date
+              AND (valid_to IS NULL OR valid_to>${todayInKualaLumpur()}::date)
+            ORDER BY valid_from DESC,id DESC LIMIT 1) a ON true
+          LEFT JOIN department d ON d.id=a.department_id
+          LEFT JOIN business_unit bu ON bu.id=coalesce(a.business_unit_id,d.business_unit_id)
+          WHERE e.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)})
+            AND app.is_admin_for(e.company_id)
+          ORDER BY p.full_name,e.id`);
+}
+
+/** The result filters need organisation labels, without preparing the employee picker. */
+export function attendanceHistoryOrganisationOptions(ctx: SessionContext, companyIds: readonly string[]) {
+    admin(ctx);
+    return withTenant(ctx, async tx => readAttendanceHistoryOrganisationTx(tx, await attendanceAdminCompaniesTx(tx, companyIds)));
+}
+
+export function attendanceHistoryEmployeeOptions(ctx: SessionContext, companyIds: readonly string[]) {
+    admin(ctx);
+    return withTenant(ctx, async tx => {
+        const companies = await attendanceAdminCompaniesTx(tx, companyIds);
+        return companies.length ? readAttendanceHistoryEmployeesTx(tx, companies.map(company => company.id)) : [];
+    });
+}
+
 export function attendanceHistoryFilterOptions(ctx: SessionContext, companyIds: readonly string[]) {
     return readAttendanceApplicationOptions(ctx, companyIds, []);
 }
@@ -225,27 +267,9 @@ async function readAttendanceApplicationOptions(
         const companies = await attendanceAdminCompaniesTx(tx, companyIds);
         if (!companies.length)
             return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
-        const departments = await tx.select({ id: department.id, name: department.name }).from(department).where(and(isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', companies.map(c => c.id)))).orderBy(asc(department.name));
-        const businessUnits = await tx.select({ id: businessUnit.id, name: businessUnit.name }).from(businessUnit).where(and(isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', companies.map(c => c.id)))).orderBy(asc(businessUnit.name));
-        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(asc(jobGrade.rank), asc(jobGrade.name));
-        const divisions = await tx.select({ id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(eq(profileOption.category, 'division'), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label));
-        // Extend the existing authorised options, rather than introducing a wider employee reader.
-        // One dated assignment supplies the choice-only narrowers; application filters remain separate.
-        const employees = await tx.execute(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
-          e.company_id AS "companyId",co.legal_name AS company,e.terminated_on AS "terminatedOn",
-          a.department_id AS "departmentId",d.name AS department,
-          coalesce(a.business_unit_id,d.business_unit_id) AS "businessUnitId",bu.name AS "businessUnit"
-          FROM employment e JOIN person p ON p.id=e.person_id JOIN company co ON co.id=e.company_id
-          LEFT JOIN LATERAL (SELECT department_id,business_unit_id FROM assignment
-            WHERE employment_id=e.id AND superseded_at IS NULL AND valid_from<=${todayInKualaLumpur()}::date
-              AND (valid_to IS NULL OR valid_to>${todayInKualaLumpur()}::date)
-            ORDER BY valid_from DESC,id DESC LIMIT 1) a ON true
-          LEFT JOIN department d ON d.id=a.department_id
-          LEFT JOIN business_unit bu ON bu.id=coalesce(a.business_unit_id,d.business_unit_id)
-          WHERE e.company_id IN (${sql.join(companies.map(c=>sql`${c.id}::uuid`),sql`, `)})
-            AND app.is_admin_for(e.company_id)
-          ORDER BY p.full_name,e.id`) as unknown as AttendanceEmployeeOption[];
-        const historyOptions = { companies, departments, businessUnits, grades, divisions, employees };
+        const organisation = await readAttendanceHistoryOrganisationTx(tx, companies);
+        const employees = await readAttendanceHistoryEmployeesTx(tx, companies.map(company => company.id));
+        const historyOptions = { ...organisation, employees };
         if (!workflowEditor) return { ...historyOptions, positions: [], profileFields: {} };
         const positions = await tx.select({ id: position.id, name: position.title }).from(position).where(and(isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', companies.map(c => c.id)))).orderBy(asc(position.title), asc(position.id));
         const profileOptions = await tx.select({ category: profileOption.category, id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(inArray(profileOption.category, [...EMPLOYMENT_PROFILE_CATEGORIES]), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label), asc(profileOption.id));

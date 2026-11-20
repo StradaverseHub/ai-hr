@@ -3,28 +3,38 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-const { list, options, cookie } = vi.hoisted(() => ({ list: vi.fn(), options: vi.fn(), cookie: vi.fn() }));
+import { resolveServerTree } from './helpers/server-tree';
+const { list, options, employees, cookie } = vi.hoisted(() => ({ list: vi.fn(), options: vi.fn(), employees: vi.fn(), cookie: vi.fn() }));
 // Server page markup is rendered outside Next's router; keep real anchor semantics.
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
-vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
-vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceHistoryFilterOptions: options }));
+vi.mock('next-intl/server', () => ({
+  getTranslations: async (namespace: 'attendanceHistory' | 'employeePanel') => createTranslator({
+    locale: 'en', messages: { attendanceHistory: en.attendanceHistory, employeePanel: en.employeePanel }, namespace,
+    onError: error => { throw error; },
+  }),
+}));
+vi.mock('../db/client', () => ({ withBackgroundReadWork: (_tenantId: string, run: () => Promise<unknown>) => run() }));
+vi.mock('../packs/attendance/service', () => ({
+  listAttendanceApplicationHistory: list, attendanceHistoryOrganisationOptions: options, attendanceHistoryEmployeeOptions: employees,
+}));
 vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
 // The Offline punches tab (draft 0647) reads the database; without the draft it is absent, which this suite pins.
 // Its own rendering is covered by test/offline-claims-review.dom.test.tsx.
 const offline = vi.hoisted(() => ({ count: null as number | null }));
-vi.mock('../app/attendance/application-history/offline-data', () => ({ offlineReviewTabCount: async () => offline.count, loadOfflineReview: vi.fn() }));
+vi.mock('../app/attendance/application-history/offline-data', () => ({ offlineReviewTabCount: async () => offline.count, loadOfflineReview: async () => ({ rows: [], groupAdmin: false, next: undefined }) }));
 vi.mock('../app/attendance/application-history/offline-review', () => ({ OfflineClaimsReview: () => null }));
 import Page from '../app/attendance/application-history/page';
 beforeEach(() => {
   vi.clearAllMocks(); cookie.mockReturnValue(undefined); offline.count = null;
   list.mockResolvedValue({ rows: [], total: 3, page: 1, pageSize: 25, counts: { pending: 3, approved: 5, rejected: 2, cancelled: 1, withdrawn: 2, cancelledWithdrawn: 3, all: 13 } });
-  options.mockResolvedValue({ employees: [{ id: 'employee', name: 'Fictional worker', employeeCode: '0007', companyId: 'company', company: 'Fictional company', departmentId: null, department: null, businessUnitId: null, businessUnit: null, terminatedOn: null }], companies: [], departments: [], businessUnits: [], grades: [], divisions: [] });
+  employees.mockResolvedValue([{ id: 'employee', name: 'Fictional worker', employeeCode: '0007', companyId: 'company', company: 'Fictional company', departmentId: null, department: null, businessUnitId: null, businessUnit: null, terminatedOn: null }]);
+  options.mockResolvedValue({ companies: [], departments: [], businessUnits: [], grades: [], divisions: [] });
 });
 afterEach(cleanup);
-async function show(query: Record<string, string> = {}) { render(<NextIntlClientProvider locale="en" messages={en}>{await Page({ searchParams: Promise.resolve(query) })}</NextIntlClientProvider>); }
+async function show(query: Record<string, string> = {}) { render(<NextIntlClientProvider locale="en" messages={en}>{await resolveServerTree(await Page({ searchParams: Promise.resolve(query) }))}</NextIntlClientProvider>); }
 it('defaults to Pending and All Employees, with extra filters hidden and counts on every requested tab', async () => {
   await show();
   expect(list).toHaveBeenCalledWith({}, ['company'], expect.objectContaining({ status: 'pending' }));
@@ -77,4 +87,23 @@ it('shows no Offline punches tab without draft 0647, and the tab with its count 
   expect(tab).not.toHaveAttribute('aria-current');
   // The status tabs never carry the offline view's own keys.
   expect(new URL(screen.getByRole('link', { name: 'Pending 3' }).getAttribute('href')!, 'http://localhost').searchParams.get('view')).toBeNull();
+});
+
+it('returns the result layout while the employee picker is still loading', async () => {
+  let finishPicker!: (rows: unknown[]) => void;
+  employees.mockImplementationOnce(() => new Promise(resolve => { finishPicker = resolve; }));
+  const tree = await Page({ searchParams: Promise.resolve({}) });
+  expect(options).toHaveBeenCalledOnce();
+  expect(employees).toHaveBeenCalledOnce();
+  finishPicker([]);
+  render(<NextIntlClientProvider locale="en" messages={en}>{await resolveServerTree(tree)}</NextIntlClientProvider>);
+  expect(screen.getByRole('link', { name: 'Pending 3' })).toBeVisible();
+});
+
+it('does not read history picker or filter catalogues when showing Offline punches', async () => {
+  offline.count = 4;
+  await show({ view: 'offline' });
+  expect(options).not.toHaveBeenCalled();
+  expect(employees).not.toHaveBeenCalled();
+  expect(screen.getByRole('link', { name: en.attendanceHistory.offline.tab.replace('{count}', '4') })).toHaveAttribute('aria-current', 'page');
 });
