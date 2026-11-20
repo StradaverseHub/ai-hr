@@ -72,6 +72,10 @@ on:
         description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor), Access editor, Rewards setup, the Leave inbox, Roster, or scripted actions
         default: ''
         type: string
+      reuse_roster_diagnostic_build:
+        description: Reuse the authenticated fictional Roster build for the same application SHA
+        default: false
+        type: boolean
       browser_static_shard:
         description: Static browser census shard (0–7), or all to cover the compiled inventory
         default: ''
@@ -156,6 +160,10 @@ jobs:
           else
             printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
           fi
+          if [[ "$REUSE_ROSTER_BUILD" == true ]] && {
+            [[ "$BROWSER_SURFACE_PROBE" != roster || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+            [[ "$EXPECTED_SHA" != 140acdfa4a2f3537e94b2df34a35a92a37bd026a ]];
+          }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
@@ -165,6 +173,10 @@ jobs:
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          REUSE_ROSTER_BUILD: ${{ inputs.reuse_roster_diagnostic_build }}
+          BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
+          RUN_BUILD: ${{ inputs.run_build }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -178,7 +190,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_roster_diagnostic_build || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -240,10 +252,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_roster_diagnostic_build }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
+      - name: Retrieve the verified combined Roster build
+        if: ${{ inputs.reuse_roster_diagnostic_build }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = 140acdfa4a2f3537e94b2df34a35a92a37bd026a
+          gh api repos/StradaverseHub/ai-hr/actions/runs/44721774150 --jq '
+            .conclusion == "success" and .run_attempt == 1 and
+            .head_sha == "0f47d405142a45fc3f3ae1fa1460c76de5d884aa" and
+            .head_repository.full_name == "StradaverseHub/ai-hr"' | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/roster-browser-build.XXXXXX")"
+          trap 'rm -f "$archive"' EXIT
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14621909647/zip > "$archive"
+          printf '%s  %s\n' 'e2c2a684470ce3b69ab219f898283dfb15abf6e974b886148383d67bdd15eae0' "$archive" | sha256sum -c -
+          test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
+          install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
+          unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
@@ -321,7 +350,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
+    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_roster_diagnostic_build) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
