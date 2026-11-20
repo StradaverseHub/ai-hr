@@ -50,7 +50,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44705668396,artifactId:14615123587}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44705668396,artifactId:14615123587,
+  sourceSha:'edf2dc5ca00a893898ab3c0918faa14e585d2fc2'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
@@ -277,6 +278,9 @@ const mixedDriverStages=new Set([
  'baseline-org-explorer','baseline-personnel-switcher','baseline-payroll-group','baseline-movement',
  'baseline-payroll-register','baseline-saved-reports','baseline-register-authority','baseline-ai-authority',
  'baseline-payroll-company','baseline-claims-language','baseline-client-navigation','baseline-language-switch',
+ 'baseline-claim-draft-open','baseline-claim-draft-fields','baseline-claim-create',
+ 'baseline-claim-create-response','baseline-claim-create-persistence','baseline-claim-edit',
+ 'baseline-claim-delete','baseline-claim-delete-response','baseline-claim-draft-close','baseline-claim-action-protocol',
  'steady-plan','loaded-setup','loaded-workload','loaded-acceptance','driver-settlement',
 ]);
 

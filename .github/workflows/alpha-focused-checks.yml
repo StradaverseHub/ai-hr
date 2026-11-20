@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       reuse_register_diagnostic_build:
-        description: Use the verified browser build from run 44705668396 for the exact Payroll Register candidate
+        description: Use the verified Payroll Register browser build with the pinned diagnostic driver
         default: false
         type: boolean
       model_eval:
@@ -125,7 +125,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != edf2dc5ca00a893898ab3c0918faa14e585d2fc2 ]];
+            [[ "$EXPECTED_SHA" != ec2d201dd4408ffd05c923350747a1838307f6bd ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -223,7 +223,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = edf2dc5ca00a893898ab3c0918faa14e585d2fc2
+          build_source=edf2dc5ca00a893898ab3c0918faa14e585d2fc2
+          test "$AIHR_CI_HEAD" = ec2d201dd4408ffd05c923350747a1838307f6bd
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
+          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
           archive="$(mktemp "$RUNNER_TEMP/register-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/runs/44705668396 --jq '
@@ -237,9 +241,15 @@ jobs:
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        env:
+          REUSE_BUILD: ${{ inputs.reuse_register_diagnostic_build }}
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
-          test "$(cat "$packet/source-sha")" = "$AIHR_CI_HEAD"
+          expected_build_source="$AIHR_CI_HEAD"
+          if [[ "$REUSE_BUILD" == true ]]; then
+            expected_build_source=edf2dc5ca00a893898ab3c0918faa14e585d2fc2
+          fi
+          test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"
           python3 ../automation/.github/ci/build-bundle.py unpack \
             "$packet/build-bundle.tar.gz" "$packet/build-bundle-files.json" .next "$PWD"
