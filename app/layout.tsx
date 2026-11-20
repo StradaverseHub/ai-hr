@@ -5,7 +5,7 @@ import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import {NextIntlClientProvider} from 'next-intl';
-import {CatalogClientProvider} from '@/i18n/client-provider';
+import {CatalogClientProvider} from '@/i18n/deferred-client-provider';
 import { getLocale, getMessages } from 'next-intl/server';
 import { authClientMessages } from '@/i18n/auth-messages';
 import './globals.css';
