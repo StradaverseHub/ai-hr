@@ -1,6 +1,6 @@
 /** Process one payroll run in the disposable browser database before opening correction forms. */
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -21,13 +21,23 @@ const [{client,createDb},{resolveEntitlementsTx},{generatePayslips},{setTenantSe
  source('db/client.ts'),source('core/entitlements.ts'),source('packs/payroll/service.ts'),source('core/tenant-settings.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
+const mark=stage=>writeFileSync(resolve(env.PERF_PRIVATE_DIR,'payroll-correction-seed-stage'),stage,{mode:0o600});
 try{
+ mark('module');
  await owner.client`insert into tenant_module (tenant_id,module_code,status)
   values (${group.tenantId}::uuid,'multi_cycle_payroll','active')
   on conflict (tenant_id,module_code) do update set status=excluded.status`;
- const grants=[{role:'hr_admin',companyId:null}];
- const ctx={tenantId:group.tenantId,userId:group.userId,personId:group.personId,grants,roles:['hr_admin'],
+ mark('principal');
+ const [principal]=await owner.client`select tenant_id,grants from app.principal(${group.userId}::uuid)`;
+ assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+ const grants=principal.grants;
+ assert(grants.some(grant=>grant.role==='hr_admin'&&grant.companyId===null));
+ const ctx={tenantId:group.tenantId,userId:group.userId,personId:group.personId,grants,
+  roles:[...new Set(grants.map(grant=>grant.role))],
   entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId))};
+ mark('reset-setting');
  await setTenantSetting(ctx,{key:'payroll.reset_enabled',value:true});
+ mark('calculate');
  await generatePayslips(ctx,{batchId:company.batchId});
+ mark('complete');
 }finally{await Promise.all([owner.client.end(),client.end()]);}

@@ -1538,8 +1538,21 @@ try{
   }finally{await owner.end({timeout:5});}
  }
  if(censusPayrollCorrections)report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
- if(censusPayrollCorrections)await run('seed-payroll-correction-run',process.execPath,
-  ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],dbEnv);
+ if(censusPayrollCorrections){
+  try{
+   await run('seed-payroll-correction-run',process.execPath,
+    ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],dbEnv);
+  }finally{
+   const path=join(privateDir,'payroll-correction-seed-stage');
+   if(existsSync(path)){
+    const stage=readFileSync(path,'utf8');
+    if(['module','principal','reset-setting','calculate','complete'].includes(stage)){
+     report.payrollCorrectionSeedStage=stage;
+     save();
+    }
+   }
+  }
+ }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
