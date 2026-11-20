@@ -1297,7 +1297,7 @@ try{
  if(!fixtureOnly){
   await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true'});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true'});
   await waitForApp();
   await proxy();
   await measureRoutes(fixture);
@@ -1358,6 +1358,23 @@ try{
      if(assistantOpens.length===128)break;
     }
     if(assistantOpens.length)report.assistantOpens=assistantOpens;
+    const shellRoutes=new Set(['/','/assistant','/admin/personnel','/approvals','/payroll',
+     '/payroll/transaction-view','/roster','/attendance','/recruitment']);
+    const shellPhases=new Set(['requestPreferences','session','entryAndIdlePolicy','initialNavigation','letters',
+     'rewards','lifecycle','moduleNavigation','identityEmailAndPerformance','renderPreparation']);
+    const shellOpens=[];
+    for(const [,record] of log.matchAll(/^PERF_SHELL_OPEN (.{1,1000})$/gm)){
+     let entry;
+     try{entry=JSON.parse(record);}catch{continue;}
+     if(!entry||!shellRoutes.has(entry.route)||!['group-admin','company-admin','manager','employee'].includes(entry.role)
+       ||!Number.isSafeInteger(entry.elapsedMs)||entry.elapsedMs<0||entry.elapsedMs>120000)continue;
+     const timings=Object.entries(entry.timings??{}).filter(([phase,ms])=>shellPhases.has(phase)
+      &&Number.isSafeInteger(ms)&&ms>=0&&ms<=entry.elapsedMs);
+     if(timings.length!==shellPhases.size)continue;
+     shellOpens.push({route:entry.route,role:entry.role,elapsedMs:entry.elapsedMs,timings:Object.fromEntries(timings)});
+     if(shellOpens.length===128)break;
+    }
+    if(shellOpens.length)report.shellOpens=shellOpens;
    }
   }finally{
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
