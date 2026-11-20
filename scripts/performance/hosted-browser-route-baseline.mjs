@@ -616,11 +616,15 @@ async function measureSurfaceProbe(fixture,surface){
  const {path,witnesses}=focusedSurfaces[surface];
  report.surfaceProbes??={};
  const visits=[];
+ const verifyRecruitmentScope=surface==='recruitment'&&groupShape;
  report.surfaceProbes[surface]=visits;
  for(const actorIndex of [0,1]){
   const actor=fixture.users[actorIndex],context=await signedInContext(actor);
   try{
    assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
+   if(verifyRecruitmentScope&&actorIndex===1){
+    await context.addCookies([{name:'company_scope',value:actor.companyId,url:origin,secure:true}]);
+   }
    const page=await context.newPage();
    for(const pass of ['first','repeat-1','repeat-2']){
     const row={role:actor.role,pass,status:'incomplete',milestones:{}};
@@ -637,11 +641,31 @@ async function measureSurfaceProbe(fixture,surface){
      }));
      assert(milestones.every(result=>result.status==='fulfilled'),'A focused browser milestone did not become visible');
      await assertContentAvailable(page);
+     if(verifyRecruitmentScope){
+      const expectedCompanies=actorIndex===0?70:1;
+      const scope=page.locator('main').getByText(new RegExp('^'+expectedCompanies+' compan(?:y|ies) · [0-9,]+ active applications$'));
+      await scope.waitFor({state:'visible',timeout:5000});
+      row.companyCount=expectedCompanies;
+      const applicationsHref='/recruitment?tasks=applications#tasks';
+      const applications=page.locator('#tasks nav a[href="'+applicationsHref+'"]');
+      const switchStarted=performance.now();
+      await Promise.all([page.waitForURL(origin+applicationsHref,{timeout:15000}),applications.click({timeout:5000})]);
+      await page.locator('#tasks nav a[href="'+applicationsHref+'"][aria-current="page"]').waitFor({state:'visible',timeout:5000});
+      await page.locator('#tasks').getByText('No updates in this category.',{exact:true})
+       .or(page.locator('#tasks ul li time').first()).first().waitFor({state:'visible',timeout:5000});
+      row.applicationsTabMs=Math.round(performance.now()-switchStarted);
+     }
      row.status='observed';
-    }finally{save();}
+    }catch(error){
+     row.status='failed';
+     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+     if(!verifyRecruitmentScope)throw error;
+    }finally{row.elapsedMs=elapsed();save();}
    }
   }finally{await context.close();}
  }
+ if(verifyRecruitmentScope)assert(visits.length===6&&visits.every(row=>row.status==='observed'),
+  'Recruitment controls did not become usable on every expected scope and pass');
 }
 
 async function measurePayrollReadTrace(fixture){
