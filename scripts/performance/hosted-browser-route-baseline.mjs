@@ -216,6 +216,35 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   await form.locator('input[name="date"]').waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
+ if(path==='/attendance'){
+  const summary=main.locator('[data-tour="attendance-summary"]');
+  await summary.getByRole('link',{name:'Previous month',exact:true}).waitFor({state:'visible',timeout:timeout()});
+  await summary.getByRole('link',{name:'Next month',exact:true}).waitFor({state:'visible',timeout:timeout()});
+  await summary.locator('table tbody tr:visible').first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await summary.locator('thead th').count(),9);
+  return 'usable-content';
+ }
+ if(path==='/me/payroll-readiness'){
+  const readiness=main.locator('[data-my-payroll-readiness-page] [data-payroll-readiness="ready"]');
+  await readiness.locator('[data-payroll-period]').waitFor({state:'visible',timeout:timeout()});
+  await readiness.locator('[data-payroll-group][data-payroll-status]').first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await readiness.locator('[data-read-unavailable]').count(),0);
+  return 'usable-content';
+ }
+ if(path==='/me/calendar'){
+  const calendar=main.locator('[data-home-card="calendar"][aria-busy="false"]');
+  await calendar.getByRole('group',{name:'Calendar view',exact:true}).waitFor({state:'visible',timeout:timeout()});
+  await calendar.locator('button[aria-current="date"]').waitFor({state:'visible',timeout:timeout()});
+  assert((await calendar.locator('button[aria-haspopup="dialog"]').count())>=28);
+  return 'usable-content';
+ }
+ if(path==='/leave/history'){
+  const history=main.locator('[data-tour="leave-requests"]');
+  await history.locator('button[aria-haspopup="dialog"][aria-expanded]').waitFor({state:'visible',timeout:timeout()});
+  await history.locator('a[aria-current], table tbody tr').or(history.getByText('No requests.',{exact:true})).first()
+   .waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
  if(path==='/lifecycle/v9'){
   const table=main.getByRole('table',{name:'New joiners',exact:true});
   await table.waitFor({state:'visible',timeout:timeout()});
@@ -279,6 +308,24 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
    assert.equal(await saved.locator('a[href^="/assistant?e="]').count(),history.threads);
   }
   assert.equal(await main.locator('[role="alert"]').count(),0);
+  return 'usable-content';
+ }
+ if(path==='/assistant?view=insights'){
+  const insights=main.locator('[data-ai-centre-insights]');
+  await insights.locator('[data-capacity-ledger] [data-capacity-period] a[aria-current]').waitFor({state:'visible',timeout:timeout()});
+  await insights.locator('[data-ai-quality] [data-quality-period] a[aria-current]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/control-tower/agents/build-list'){
+  const window=main.locator('form[data-build-list-window]');
+  const choice=window.locator('select[name="days"]:enabled');
+  await choice.waitFor({state:'visible',timeout:timeout()});
+  assert((await choice.locator('option').count())>1);
+  const ranked=main.locator('#ranked-build-list');
+  const exported=ranked.locator('a[href^="/control-tower/agents/build-list/export?days="]');
+  await exported.waitFor({state:'visible',timeout:timeout()});
+  assert.equal(new URL(await exported.getAttribute('href'),origin).searchParams.get('days'),await choice.inputValue());
+  assert.equal(await ranked.locator('table thead th').count(),6);
   return 'usable-content';
  }
  if(path==='/org'){
@@ -954,6 +1001,44 @@ async function measureRosterExceptions({page,user,fixture,report,save}){
  save();
 }
 
+async function measureCalendarMonth({page,user,fixture,report,save}){
+ const path='/me/calendar';
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+ assert.equal(response?.status(),200);
+ assert.equal(page.url(),origin+path);
+ assert.equal(await readyContent(page,user,path,()=>15000,undefined,fixture),'usable-content');
+ const calendar=page.locator('main [data-home-card="calendar"]');
+ const originalMonth=fixture.today.slice(0,7);
+ const previous=new Date(originalMonth+'-01T00:00:00Z');
+ previous.setUTCMonth(previous.getUTCMonth()-1);
+ const previousMonth=previous.toISOString().slice(0,7);
+ const format=new Intl.DateTimeFormat('en',{month:'long',year:'numeric',timeZone:'UTC'});
+ report.calendarSteps=[];
+ for(const [step,button,month] of [
+  ['calendar-previous-month','Previous',previousMonth],
+  ['calendar-return-to-current-month','Today',originalMonth],
+ ]){
+  const started=performance.now();
+  const [result]=await Promise.all([
+   page.waitForResponse(response=>{
+    const url=new URL(response.url());
+    return url.origin===origin&&url.pathname==='/api/home/calendar'&&url.searchParams.get('month')===month
+     &&url.searchParams.get('employmentId')===user.employmentId;
+   },{timeout:15000}),
+   calendar.getByRole('button',{name:button,exact:true}).click({timeout:15000}),
+  ]);
+  assert.equal(result.status(),200);
+  await page.waitForURL(url=>url.pathname===path&&url.searchParams.get('month')===month
+   &&url.searchParams.get('employmentId')===user.employmentId,{timeout:15000});
+  const heading=format.format(new Date(month+'-01T00:00:00Z'));
+  await calendar.getByRole('heading',{name:heading,exact:true}).waitFor({state:'visible',timeout:15000});
+  assert((await calendar.locator('button[aria-haspopup="dialog"]').count())>=28);
+  report.calendarSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ }
+ await calendar.locator('button[aria-current="date"]').waitFor({state:'visible',timeout:15000});
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -964,6 +1049,7 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
