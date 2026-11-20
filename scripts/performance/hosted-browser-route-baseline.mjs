@@ -1531,7 +1531,7 @@ try{
    report.fixture.groupShape=counts;
    if(censusFixtureRecords){
     await seedStatutoryLeaver(owner,fixture);
-    await seedWorkLocationRecords(owner,fixture);
+    report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
    save();
   }finally{await owner.end({timeout:5});}

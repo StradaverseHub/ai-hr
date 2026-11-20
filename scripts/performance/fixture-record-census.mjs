@@ -9,7 +9,7 @@ export async function seedWorkLocationRecords(owner, fixture) {
   assert.equal(company.role, 'companyHR');
   assert.equal(group.tenantId, company.tenantId);
   assert.equal(fixture.tenants[0].companies[0].companyId, company.companyId);
-  await owner.begin(async tx => {
+  return owner.begin(async tx => {
     await tx`select set_config('app.tenant_id', ${company.tenantId}, true)`;
     const [site] = await tx`
       insert into location (tenant_id, company_id, code, name)
@@ -25,6 +25,18 @@ export async function seedWorkLocationRecords(owner, fixture) {
       insert into clocking_location_company (tenant_id, clocking_location_id, company_id)
       values (${company.tenantId}, ${point.id}, ${company.companyId})
     `;
+    const { count: sites } = (await tx`
+      with seeded as (
+        insert into location (tenant_id, company_id, code, name)
+        select c.tenant_id, c.id, 'PERF-CENSUS-DECOY-' || n, 'Fictional comparison site ' || n
+        from company c cross join generate_series(1, 10) n
+        where c.tenant_id = ${company.tenantId} and c.archived_at is null
+        returning id
+      )
+      select count(*)::int as count from seeded
+    `)[0];
+    assert(sites >= 700 && sites % 10 === 0, 'Expected ten additional work sites per active company');
+    return { additionalSites: sites };
   });
 }
 
@@ -53,16 +65,18 @@ async function workLocationRoutes(db, fixture) {
     witness: `form input[name="name"][value="${clockingPointName}"]`,
   };
   return [
-    {
-      actor: company, template: '/admin/work-locations/[id]', path: site,
-      exactHeading: 'Location', content: workSiteName,
-      witness: 'dl dd:text-is("PERF-CENSUS-SITE")',
-    },
-    {
-      actor: company, template: '/admin/work-locations/[id]/edit', path: site + '/edit',
-      exactHeading: 'Edit location',
-      witness: `form input[name="name"][value="${workSiteName}"]`,
-    },
+    ...[group, company].flatMap(actor => [
+      {
+        actor, template: '/admin/work-locations/[id]', path: site,
+        exactHeading: 'Location', content: workSiteName,
+        witness: 'dl dd:text-is("PERF-CENSUS-SITE")',
+      },
+      {
+        actor, template: '/admin/work-locations/[id]/edit', path: site + '/edit',
+        exactHeading: 'Edit location',
+        witness: `form input[name="name"][value="${workSiteName}"]`,
+      },
+    ]),
     ...[group, company].map(actor => ({
       actor, template: '/admin/work-locations/clocking/[id]', path: point, ...pointView,
     })),
