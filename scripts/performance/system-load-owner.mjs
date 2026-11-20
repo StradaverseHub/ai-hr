@@ -816,6 +816,9 @@ async function main(){
   };
   if(trackHomePrefetch)page.on('request',observePrefetch);
   const start=performance.now();let response,signInTiming,visitFailed=false,visitStage=signIn?'sign-in':'navigation';
+  const tableRoute=['/claims','/admin/personnel','/payroll'].includes(path);
+  const tableNavigation=phase==='loaded'&&tableRoute
+   ?{responseMs:null,firstVisibleRowMs:null,documentParsedMs:null}:null;
   const contentWitness=nativeRoute?nativePreflightContentWitness(user.role,path):null;
   const deadline=nativeRoute?Math.min(renderedDeadline,start+90000):null;
   const timeout=(limit=90000)=>deadline===null?limit:Math.min(limit,nativeRemaining(deadline));
@@ -833,6 +836,23 @@ async function main(){
    }
    if(signIn)signInTiming=await signInToHome(page,user);
    // Readiness is proved below. Network-idle adds an unrelated500ms quiet window.
+   else if(tableNavigation){
+    const documentDeadline=start+timeout();
+    const documentRemaining=()=>Math.max(1,documentDeadline-performance.now());
+    response=await page.goto(base+path,{waitUntil:'commit',timeout:documentRemaining()});
+    tableNavigation.responseMs=Math.round(performance.now()-start);
+    // Observe streamed rows during parsing without replacing the document-completion or business-content gates.
+    if(response?.url()===base+path){
+     void page.locator('main tbody tr:visible').first()
+      .waitFor({state:'visible',timeout:documentRemaining()})
+      .then(()=>{
+       const observed=performance.now();
+       if(observed<=documentDeadline)tableNavigation.firstVisibleRowMs=Math.round(observed-start);
+      },()=>{});
+    }
+    await page.waitForLoadState('domcontentloaded',{timeout:documentRemaining()});
+    tableNavigation.documentParsedMs=Math.round(performance.now()-start);
+   }
    else response=await page.goto(base+path,{waitUntil:'domcontentloaded',timeout:timeout()});
   visitStage='page-content';
   if(nativeRoute)nativeEvidenceRule='status';
@@ -869,7 +889,7 @@ async function main(){
    if(await skip.isVisible()){requireNativeBusiness();await skip.click(nativeRoute?{timeout:timeout(30000)}:undefined);await skip.waitFor({state:'hidden',...(nativeRoute?{timeout:timeout(30000)}:{})});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   visitStage='table-data';
   if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
-  if(['/claims','/admin/personnel','/payroll'].includes(path)){
+  if(tableRoute){
    // Next can attach the streamed table in a hidden subtree before replacing
    // the loading shell. Only rendered rows establish user-visible readiness.
    const rows=page.locator('main tbody tr:visible');
@@ -883,6 +903,7 @@ async function main(){
     }
    }
    await rows.first().waitFor({state:'visible',timeout:timeout()});
+   if(tableNavigation)tableNavigation.firstVisibleRowMs??=Math.round(performance.now()-start);
    if(await page.locator(busyScreenSelector).count())rejectBusyPage(user,path,'browser');
   }
   if(path==='/me/payslip'){
@@ -1065,7 +1086,7 @@ async function main(){
    if(phase==='loaded'&&user.index===employee.index)report.loadedBrowserSignIn=result;
    save();
   }
-  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,startedWith,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,homeCards,homeCardIds,todaySectionIds,startedWith,elapsedMs:performance.now()-start,...(tableNavigation?{tableNavigation}:{}),...timing});save();
   }catch(error){
    visitFailed=true;
    failures.notePrimary(error);
@@ -1077,7 +1098,7 @@ async function main(){
     dom:nativeEvidenceDom,
    }:null;
    const detail={phase,role:user.role,user:user.index,path,errorType:driverErrorFact(error).kind,visitStage,startedWith,...browserFailureLocation(error),elapsedMs:performance.now()-start,
-    nativeEvidence,
+    nativeEvidence,...(tableNavigation?{tableNavigation}:{}),
     pdfRequests:browserPdfRequests.get(page)??[],
     frames:page.frames().map(frame=>{try{const url=new URL(frame.url());return {sameOrigin:url.origin===base,path:url.origin===base?url.pathname:'<other>'};}catch{return {path:'<unavailable>'};}}),dom:null};
    // Promise.all shutdown can make other pages fail later. Preserve the actual first visit.
