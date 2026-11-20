@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
+import { Suspense, use, useEffect, useRef, useState, useTransition, type CSSProperties, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ArrowUpRight, BatteryFull, Check, ChevronDown, Clock, Files, Home, Inbox, Moon, RefreshCw, Signal, Sun, UserRound, Users, Wifi } from 'lucide-react';
 import { DEFAULT_MOBILE_DESIGN, mobilePalette, type MobileDesign, type MobileBlock } from '@/lib/mobile-design';
 import { formatDays } from '@/lib/day-format';
-import type { MobilePreviewData, PreviewLeave, PreviewRead } from './types';
+import type { MobilePreviewData, MobilePreviewView, PreviewLeave, PreviewRead } from './types';
 import styles from './mobile-preview.module.css';
 import { ClockCard } from './clock-card';
 import { useMobileClock } from './use-mobile-clock';
@@ -14,7 +14,7 @@ import { useMobileClock } from './use-mobile-clock';
 export type Tab = 'home' | 'clock' | 'requests' | 'inbox' | 'me' | 'leave' | 'team' | (string & {});
 
 /** Live Monolith Flow. Clock gestures use Web Clocking; other commands open their guarded workflow. */
-export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = false, embedded = false, previewAppearance, initialTab = 'home', onNavigate, onSelectBlock, selectedBlock }: { data: MobilePreviewData; design?: MobileDesign; designOnly?: boolean; embedded?: boolean; previewAppearance?: 'light' | 'dark'; initialTab?: Tab; onNavigate?: (tab: Tab) => void; onSelectBlock?: (id: string) => void; selectedBlock?: string | null }) {
+export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = false, embedded = false, previewAppearance, initialTab = 'home', onNavigate, onSelectBlock, selectedBlock }: { data: MobilePreviewView; design?: MobileDesign; designOnly?: boolean; embedded?: boolean; previewAppearance?: 'light' | 'dark'; initialTab?: Tab; onNavigate?: (tab: Tab) => void; onSelectBlock?: (id: string) => void; selectedBlock?: string | null }) {
   const t = useTranslations('mobilePreview');
   const lt = useTranslations('me.leaveBalanceTable');
   const nt = useTranslations('notifications');
@@ -69,9 +69,16 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     return state(data.clock, c => <ClockCard clock={c} company={data.employment!.company} layout={embedded ? design.clockLayout : control} designOnly={designOnly}
       capture={capture} onHistory={() => go('clock')} showBothActions={tab === 'clock'} />);
   }
-  const taskRows = data.tasks.status === 'ready' ? data.tasks.data.map(task => <a key={task.id} className={styles.taskRow} href={safeHref(task.href) ?? '/approvals'}>
-    <span className={styles.taskIcon}><Files size={18} /></span><span><strong>{task.subject ?? nt(`task.${task.kind}`)}</strong><small>{nt(`task.${task.kind}`)}</small></span><ArrowUpRight size={17} />
-  </a>) : null;
+  function withTasks(render: (read: MobilePreviewData['tasks']) => ReactNode, showPending = true) {
+    return <Suspense fallback={showPending ? <p className={styles.empty} role="status">{t('live.refreshing')}</p> : null}>
+      <ReadMobileTasks read={data.tasks}>{render}</ReadMobileTasks>
+    </Suspense>;
+  }
+  function taskRows(tasks: Extract<MobilePreviewData['tasks'], { status: 'ready' }>['data']) {
+    return tasks.map(task => <a key={task.id} className={styles.taskRow} href={safeHref(task.href) ?? '/approvals'}>
+      <span className={styles.taskIcon}><Files size={18} /></span><span><strong>{task.subject ?? nt(`task.${task.kind}`)}</strong><small>{nt(`task.${task.kind}`)}</small></span><ArrowUpRight size={17} />
+    </a>);
+  }
   function teamPeek() {
     if (data.team.status === 'disabled') return null;
     const people = [...approved, ...pending.filter(p => !approved.some(a => a.employmentId === p.employmentId))];
@@ -126,7 +133,8 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
       case 'clock': return workday();
       case 'leave': return block.detail === 'compact' ? data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button> : leaveBank(false);
       case 'team': return teamPeek();
-      case 'tasks': return state(data.tasks, tasks => tasks.length ? <>{taskRows?.slice(0, block.detail === 'compact' ? 4 : 20)}</> : empty(t('live.allClear')));
+      case 'tasks': return withTasks(read => state(read, tasks => tasks.length
+        ? taskRows(tasks.slice(0, block.detail === 'compact' ? 4 : 20)) : empty(t('live.allClear'))));
       case 'requests': return state(data.requests, r => r.items.length ? r.items.slice(0, block.detail === 'compact' ? 3 : 20).map(item => row(item.type, `${date(item.from)} – ${date(item.to)} · ${t(`leave.historyStatus.${item.status}`)}`, data.leaveHistoryHref, item.id)) : empty(t('live.noRequests')));
       case 'inbox': return state(data.inbox, items => items.length ? items.slice(0, block.detail === 'compact' ? 3 : 20).map(n => <article key={n.id} className={styles.update}><h3>{n.title}</h3><p>{n.body}</p></article>) : empty(t('live.noUpdates')));
       case 'pay': return state(data.payslips, slips => slips.length ? slips.map(p => row(p.period, p.company, `/me/payslip/${p.id}`, p.id)) : empty(t('live.noDocuments')));
@@ -146,12 +154,13 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
   let content: ReactNode = null;
   switch (tab) {
     case 'home': content = <>{heading(firstName ? t('live.greeting', { name: firstName }) : t('live.home'))}{design.homeOrder.map(id => <div key={id} data-home-section={id} inert={id !== 'clock' && captureLocked}>
-      {id === 'clock' ? workday() : id === 'tasks' ? <section className={styles.attention}><div className={styles.sectionTitle}><h3>{t('live.needsYou')}</h3>{data.tasks.status === 'ready' && <span>{data.tasks.data.length}</span>}</div>
-        {state(data.tasks, tasks => tasks.length ? <>{taskRows?.slice(0, 4)}{tasks.length > 4 && row(t('live.allTasks'), String(tasks.length), '/approvals')}</> : empty(t('live.allClear')))}</section>
+      {id === 'clock' ? workday() : id === 'tasks' ? <section className={styles.attention}>{withTasks(read => <>
+        <div className={styles.sectionTitle}><h3>{t('live.needsYou')}</h3>{read.status === 'ready' && <span>{read.data.length}</span>}</div>
+        {state(read, tasks => tasks.length ? <>{taskRows(tasks.slice(0, 4))}{tasks.length > 4 && row(t('live.allTasks'), String(tasks.length), '/approvals')}</> : empty(t('live.allClear')))}</>)}</section>
       : id === 'leave' ? data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.planLeave')}</strong></span><ArrowUpRight size={26} /></button>
       : teamPeek()}</div>)}</>; break;
     case 'clock': content = <>{heading(t('live.workday'))}{workday()}<div inert={captureLocked}>{section(t('live.eventRecord'), state(data.clock, c => c.events.length ? c.events.map((e, i) => <div className={styles.event} key={`${e.direction}:${e.time}:${i}`}><Check size={16} /><span>{t(e.direction === 'in' ? 'live.in' : 'live.out')}</span><strong>{e.time}</strong></div>) : empty(t('live.noEvent'))))}{row(t('feature.attendance'), t('live.openSystem'), '/attendance/my-records')}</div></>; break;
-    case 'requests': content = <>{heading(t('live.requests'))}{data.tasks.status === 'ready' && data.tasks.data.length > 0 && <div className={styles.segments} role="group" aria-label={t('live.requests')}><button type="button" aria-pressed={requestView === 'mine'} onClick={() => setRequestView('mine')}>{t('gesture.myRequests')}</button><button type="button" aria-pressed={requestView === 'tasks'} onClick={() => setRequestView('tasks')}>{t('live.needsYou')} · {data.tasks.data.length}</button></div>}{requestView === 'tasks' ? taskRows : <>{data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.requestLeave')}</strong></span><ArrowUpRight size={23} /></button>}
+    case 'requests': content = <>{heading(t('live.requests'))}{withTasks(read => read.status === 'ready' && read.data.length > 0 && <div className={styles.segments} role="group" aria-label={t('live.requests')}><button type="button" aria-pressed={requestView === 'mine'} onClick={() => setRequestView('mine')}>{t('gesture.myRequests')}</button><button type="button" aria-pressed={requestView === 'tasks'} onClick={() => setRequestView('tasks')}>{t('live.needsYou')} · {read.data.length}</button></div>, false)}{requestView === 'tasks' ? withTasks(read => state(read, taskRows)) : <>{data.leave.status !== 'disabled' && <button type="button" className={styles.leaveDoor} onClick={() => go('leave')}><span><small>{t('live.allTypes')}</small><strong>{t('live.requestLeave')}</strong></span><ArrowUpRight size={23} /></button>}
       {section(t('leave.history'), state(data.requests, r => r.items.length ? <>{r.items.map(item => row(item.type, `${date(item.from)} – ${date(item.to)} · ${item.partial && item.status === 'approved' ? t('live.partiallyApproved') : t(`leave.historyStatus.${item.status}`)}`, data.leaveHistoryHref, item.id))}{row(t('live.viewAll'), t('live.records', { count: r.total }), data.leaveHistoryHref)}</> : empty(t('live.noRequests'))))}
       {/* Expense claims are not in the app (mobile declutter round), so the preview shows none either. */}
       </>}</>; break;
@@ -189,4 +198,11 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
       </nav><div className={styles.homebar} aria-hidden="true" />
     </div><p className={styles.caption} role="status">{refreshing ? t('live.refreshing') : t('live.updated', { time: time(data.loadedAt) })}</p>
   </div>;
+}
+
+function ReadMobileTasks({ read, children }: {
+  read: MobilePreviewView['tasks'];
+  children: (value: MobilePreviewData['tasks']) => ReactNode;
+}) {
+  return children('then' in read ? use(read) : read);
 }
