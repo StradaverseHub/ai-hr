@@ -260,10 +260,21 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
+  function measureLifecycleOwner<T>(owner: string, read: () => Promise<T>): Promise<T> {
+    if (!measure) return read();
+    const started = performance.now();
+    return read().finally(() => {
+      timings[owner] = Math.round(performance.now() - started);
+    });
+  }
   const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+    lifecycleEnabled
+      ? measureLifecycleOwner('onboardingNavigation', () => onboardingNavigation(session))
+      : Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
+    measureLifecycleOwner('scopedLifecycleNavigation', () => lifecycleModuleNavigation(session)),
+    lifecycleEnabled
+      ? measureLifecycleOwner('offboardingPostingAccess', () => offboardingPostingAccess(session).catch(()=>false))
+      : Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
   mark('lifecycle');
