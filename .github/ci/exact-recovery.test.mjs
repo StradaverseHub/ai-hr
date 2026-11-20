@@ -166,14 +166,14 @@ test('The original 9bdf receiver accepts the unchanged format-2 grant from a dis
   assert.deepEqual(original.validateInstallGrant(grant,{now:g.now}),grant);assert.equal(grant.kind,'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL');assert.equal(grant.format,2);
   assert.equal(original.validateInstallGrant.toString(),(await import('./ci-install-grant.mjs')).validateInstallGrant.toString());
   assert.throws(()=>original.validateInstallGrant({...grant,target:'production'},{now:g.now}));
-  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v5');
+  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v6');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 test('Focused evidence cannot silently replace the original producing controller',()=>{const f=dbInput();f.focused[0].run.head_sha='d'.repeat(40);f.focused[0].report.controller='d'.repeat(40);assert.throws(()=>verifyExactRecovery(f));});
 test('Canonical source/build context cannot be rehashed onto another source',()=>{const f=dbInput();f.canonicalAdvance=exactCanonicalRefs({originalController:f.plan.controller,baseline:f.plan.migrationBase,candidate:'d'.repeat(40)});assert.throws(()=>verifyExactRecovery(f));});
 
 test('Recovery controller scope refuses application, receiver-runtime or coverage-policy edits',()=>{
- const paths=['.github/ci/exact-recovery-policy.mjs','.github/ci/exact-recovery.mjs','.github/ci/exact-recovery.test.mjs','.github/ci/exact-recovery-adapter.test.mjs','.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs','.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs','.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
+ const paths=['.github/ci/exact-recovery-policy.mjs','.github/ci/exact-recovery.mjs','.github/ci/exact-recovery.test.mjs','.github/ci/exact-recovery-adapter.test.mjs','.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs','.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs','.github/ci/payroll-mixed-source.mjs','.github/ci/repair-missing-unit-policy.mjs','.github/ci/repair-missing-unit.mjs','.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs','.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
  assert.equal(validateExactControllerDelta(paths),true);
  for(const extra of ['core/analytics.ts','.github/ci/postgres-evidence.mjs','.github/ci/policy-version.mjs','test/analytics-carry-searched-native-scale.test.ts'])assert.throws(()=>validateExactControllerDelta([...paths,extra]));
  assert.throws(()=>validateExactControllerDelta(paths.slice(1)));assert.throws(()=>validateExactControllerDelta([...paths,paths[0]]));

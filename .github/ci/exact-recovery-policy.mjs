@@ -6,7 +6,9 @@ import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {exactCanonicalRefs,validateCanonicalContext} from './canonical-docs-advance.mjs';
-export const EXACT_RECOVERY_POLICY='aihr-exact-source-recovery/v5';
+import {verifyMissingUnitEvidence} from './repair-missing-unit-policy.mjs';
+import {MIXED,validateMixedOriginal} from './payroll-mixed-source.mjs';
+export const EXACT_RECOVERY_POLICY='aihr-exact-source-recovery/v6';
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
@@ -25,7 +27,7 @@ function cases(result,files,cwd){
  assert(positive(count)&&result.numTotalTests===count&&result.numPassedTests===count,'Focused assertion totals differ');return found;
 }
 /** All metadata and archives must first be authenticated by the API/byte adapter. */
-export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController,canonicalAdvance=exactCanonicalRefs({originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha})}){
+export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,missingProof,classifierHash,verificationController,canonicalAdvance=exactCanonicalRefs({originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha})}){
  assert(sha(verificationController)&&assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint,'Recovery source identity differs');
  validateCanonicalContext(canonicalAdvance,{originalController:plan.controller,baseline:plan.migrationBase,candidate:plan.sha});
  const focusedController=canonicalAdvance.focusedController;
@@ -40,7 +42,16 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   if(unit&&failed.has(unit.id)){assert(['nodb','db'].includes(unit.kind)&&j.conclusion==='failure','Only complete failed Node/DB units are recoverable');continue;}
   assert(j.conclusion==='success','A failed build/compiler/migration/controller/browser prerequisite cannot be recovered by focused tests');
  }
- assert(Array.isArray(reports)&&reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original report inventory required');
+ if(run.id===MIXED.originalRun)assert(missingProof,'Exact interrupted System Labels proof required');
+ let missing;
+ if(missingProof){
+  const unit=validateMixedOriginal({run,jobs,artifacts:missingProof.originalArtifacts},plan);
+  const observed=assessment.observations.find(row=>row.id===unit.id);
+  assert(failed.has(unit.id)&&observed?.artifact===null&&observed.jobId===MIXED.interruptedJob,'Interrupted unit must remain without an original report');
+  assert(missingProof.proof.freshPlan.controller===verificationController&&missingProof.proof.expected.after===run.updated_at,'Replacement unit controller or chronology differs');
+  missing={...verifyMissingUnitEvidence({sourcePlan:plan,plan,missing:unit.id,proof:missingProof.proof}),nativePrepull:missingProof.nativePrepull};
+ }
+ assert(Array.isArray(reports)&&reports.length===plan.units.length-(missing?1:0)&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete available original report inventory required');
  const replacements=new Map(),focusedSources=[];
  for(const f of focused){
   const r=f.report;
@@ -52,7 +63,7 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   same(r.files,[...r.files].sort(),'Focused selection must be canonical');
   const database=r.groups?.DB?.length>0,kind=database?'DB':'NODB';
   same(r.groups,database?{NODB:[],DB:r.files}:{NODB:r.files,DB:[]},'One homogeneous focused partition required');
-  const unit=plan.units.find(u=>failed.has(u.id)&&u.kind===(database?'db':'nodb')&&!u.pdfTools&&
+  const unit=plan.units.find(u=>failed.has(u.id)&&u.id!==missing?.unitId&&u.kind===(database?'db':'nodb')&&!u.pdfTools&&
     (database?isDeepStrictEqual(u.files.slice().sort(),r.files):r.files.every(file=>u.files.includes(file))));
   assert(unit,'Replacement must cover one full DB unit or files from one failed no-DB unit');
   assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Focused process did not pass');
@@ -77,6 +88,11 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
  const units=[];let tests=0;
  for(const unit of plan.units){
   const report=reports.find(r=>r.id===unit.id);
+  if(unit.id===missing?.unitId){
+   assert(!report,'Original interrupted report must remain absent');
+   tests+=missing.tests;
+   units.push({id:unit.id,kind:'interrupted-unit-recovery',originalReport:null,...missing});continue;
+  }
   if(!failed.has(unit.id)){
    const result=verifyUnitReport(plan,report),source=assessment.reusable.find(r=>r.id===unit.id);
    assert(source?.reportHash===hash(report),'Retained report changed');tests+=result.tests;units.push({id:unit.id,kind:'retained',files:result.files,tests:result.tests,reportHash:hash(report),source:source.source});continue;
@@ -94,8 +110,8 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   for(const path of unit.files){const replacement=replacements.get(path);assert(replacement,'Failed unit lacks focused recovery: '+path);same(replacement.cases,originalCases.get(path),'Recovery dropped/changed assertions');count+=replacement.tests;files.push({path,...replacement});}
   tests+=count;units.push({id:unit.id,kind:'focused-recovery',originalReportHash:hash(report),tests:count,files});
  }
- assert(replacements.size===plan.units.filter(u=>failed.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
- return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY',recoveryPolicy:EXACT_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,focusedController,canonicalAdvance,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ assert(replacements.size===plan.units.filter(u=>failed.has(u.id)&&u.id!==missing?.unitId).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
+ return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY',recoveryPolicy:EXACT_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,focusedController,canonicalAdvance,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,...(missing?{missingUnit:missing}:{}),focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 /** Installation grant keeps the original failed run and build tuple; its fingerprint binds this distinct certificate. */
 export function validateExactRecoveryGrantEvidence(evidence,run){
@@ -105,7 +121,12 @@ export function validateExactRecoveryGrantEvidence(evidence,run){
  assert(sha(c.verificationController)&&c.runId===run.id&&c.controller===run.head_sha&&run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='focused-recovery'),'Original failure/recovery provenance required');
  validateCanonicalContext(c.canonicalAdvance,{originalController:c.controller,baseline:c.baseline,candidate:c.sha});
  assert(c.focusedController===c.canonicalAdvance.focusedController&&c.focusedSources.every(f=>f.controller===c.focusedController),'Focused producer differs from audited canonical context');
- assert(c.history?.kind==='AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY'&&c.history.originalRunId===c.runId&&isDeepStrictEqual(c.history.runIds,c.focusedSources.map(f=>f.runId).sort((a,b)=>a-b)),'Complete exact recovery history required');
+ const runIds=c.focusedSources.map(f=>f.runId);
+ if(c.runId===MIXED.originalRun){
+  assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===c.verificationController&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
+  runIds.push(c.missingUnit.source.runId);
+ }
+ assert(c.history?.kind==='AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY'&&c.history.originalRunId===c.runId&&isDeepStrictEqual(c.history.runIds,runIds.sort((a,b)=>a-b)),'Complete exact recovery history required');
  assert(c.verificationDiagnostic?.controller===c.verificationController&&positive(c.verificationDiagnostic.runId)&&c.reviewedController===c.verificationController,'Reviewed verification controller validation missing');
  return true;
 }
@@ -121,18 +142,20 @@ export function exactRecoveryBranch(candidateBranch,runId,ref){
 }
 
 /** Complete API history, including overlapping failures and active executions. */
-export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,focusedRunIds,focusedController=sourceRun.head_sha}){
+export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,focusedRunIds,focusedController=sourceRun.head_sha,missingRunId,missingController}){
  assert(sourceRun.display_title===`Alpha CI · ${candidateBranch}`&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact original candidate branch required');
  assert(Array.isArray(rows)&&rows.length<=8000,'Bounded complete history required');
  const expected=new Set(focusedRunIds),found=new Map();
+ if(missingRunId)expected.add(missingRunId);
  for(const r of rows){
   const title=typeof r.display_title==='string'?r.display_title.match(/^(?:Alpha CI|Focused only|Canonical build only) · (.+)$/):null;
-  if(r.id===sourceRun.id||!title||!exactRecoveryBranch(candidateBranch,sourceRun.id,title[1]))continue;
+  const missingTitle=sourceRun.id===MIXED.originalRun&&r.display_title===`Missing whole unit · ${MIXED.unit} · ${candidateBranch}`;
+  if(r.id===sourceRun.id||(!missingTitle&&(!title||!exactRecoveryBranch(candidateBranch,sourceRun.id,title[1]))))continue;
   assert(positive(r.id)&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at)&&['queued','in_progress','waiting','requested','pending','completed'].includes(r.status),'Malformed relevant history');
   const record={id:r.id,title:r.display_title,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
   assert(!found.has(r.id)||isDeepStrictEqual(found.get(r.id),record),'Conflicting history snapshots; retry after stabilization');found.set(r.id,record);
  }
  const relevant=[...found.values()].filter(r=>r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(sourceRun.updated_at)).sort((a,b)=>a.id-b.id);
- assert(relevant.length===expected.size&&relevant.every(r=>expected.has(r.id)&&r.controller===focusedController&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, failed, superseding, foreign-controller or active recovery execution');
+ assert(relevant.length===expected.size&&relevant.every(r=>expected.has(r.id)&&r.controller===(r.id===missingRunId?missingController:focusedController)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, failed, superseding, foreign-controller or active recovery execution');
  return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY',originalRunId:sourceRun.id,runIds:relevant.map(r=>r.id),metadataFingerprint:hash(relevant)};
 }

@@ -1,4 +1,4 @@
-# Exact-source recovery for failed test units (v5)
+# Exact-source recovery for failed test units (v6)
 
 This is an independently reviewed operator controller, not a new application gate or automatic deployment.
 It adapts the existing exact-source v3 architecture from `7bc5b7d5` to the current published controller.
@@ -23,12 +23,26 @@ Before verification the aliases must still resolve to the frozen candidate.
 Recovery checks the execution history for the original ref and every reserved
 alias, including active runs and failed runs missing from the supplied IDs.
 
-The distinct certificate is `aihr-exact-source-recovery/v5`. It records the original producing controller
+The distinct certificate is `aihr-exact-source-recovery/v6`. It records the original producing controller
 separately from the verification controller and each focused producer. It does not rewrite the original failure,
 issue a fabricated original PASS or reuse a compiled build on another source. The operator validates the new
 certificate before creating the existing format-2 installation grant. The receiver's policy, exact grant shape,
 target, source/build identity, capacity and original 24-hour/30-minute time bounds are unchanged.
 Hosted controls load the real baseline receiver to prove this transport boundary.
+
+## Interrupted System Labels job
+
+The payroll gate 44653948000 has a failed no-database unit with its original
+report and one interrupted System Labels database job with no report. The
+dedicated recovery workflow runs the complete System Labels unit on the same
+application source. It recreates the original database, font and test steps.
+Verification compares its assertions against authenticated prior evidence with
+the identical test file. The prior result establishes the assertion inventory.
+The replacement run must independently pass the complete database unit.
+
+Supply the dedicated run ID in `AIHR_EXACT_MISSING_RUN_ID`. The verifier binds
+its producing controller, archive and host receipts alongside the focused
+runs. The original interrupted unit has no result in the certificate.
 
 ## Pinned documentation advance
 

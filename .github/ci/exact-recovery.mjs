@@ -1,4 +1,4 @@
-/** Unchanged-source recovery v5: independently authenticate complete failed DB/Node processes.
+/** Unchanged-source recovery v6: independently authenticate complete failed DB/Node processes.
  * Original app source, producer, successful build and failures keep their own exact identities.
  */
 import assert from 'node:assert/strict';
@@ -10,6 +10,9 @@ import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
 import {REPOSITORY} from './release-policy.mjs';
+import {MIXED,validateMixedOriginal} from './payroll-mixed-source.mjs';
+import {collectMissingUnitRecovery} from './repair-missing-unit.mjs';
+import {nativePostgresOwner,validatePostgresPrepull} from './unit-postgres-prepull.mjs';
 import {proveCanonicalRefs} from './canonical-docs-advance.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
@@ -24,6 +27,8 @@ export function validateExactControllerDelta(paths){
  const allowed=['.github/ci/exact-recovery-policy.mjs','.github/ci/exact-recovery.mjs','.github/ci/exact-recovery.test.mjs','.github/ci/exact-recovery-adapter.test.mjs',
   '.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs',
   '.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs',
+  '.github/ci/payroll-mixed-source.mjs','.github/ci/repair-missing-unit-policy.mjs','.github/ci/repair-missing-unit.mjs',
+  '.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs',
   '.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
  assert(Array.isArray(paths)&&paths.length===allowed.length&&new Set(paths).size===paths.length
   &&isDeepStrictEqual(paths.slice().sort(),allowed.sort()),'Exact independently reviewed recovery-only controller delta required');
@@ -48,9 +53,9 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  execFileSync('git',['merge-base','--is-ancestor',canonicalAdvance.head,verificationController],{cwd:controllerRoot,stdio:'ignore'});
  validateExactControllerDelta(git(controllerRoot,'diff','--name-only',canonicalAdvance.head,verificationController).split('\n').filter(Boolean));
  const workflowText=readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8');
- const restoredWorkflow=workflowText.replace(' .github/ci/exact-recovery.test.mjs .github/ci/exact-recovery-adapter.test.mjs .github/ci/canonical-docs-advance.test.mjs','')
-  .replace('          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/exact-recovery-extract.test.py\n','');
- assert(restoredWorkflow===execFileSync('git',['show',canonicalAdvance.head+':.github/workflows/alpha-staging.yml'],{cwd:controllerRoot,encoding:'utf8',maxBuffer:1024**2}),'Recovery may add integrity controls only; execution/coverage policy must remain unchanged');
+ assert(hash(workflowText)==='1f8445a25bd09ffbfa035a9d44f7c87798eb06c9c6f0f3bfb4fdc54ea5364230','Dedicated one-unit recovery workflow differs');
+ assert(runId===MIXED.originalRun&&candidate===MIXED.source&&baseline===MIXED.baseline&&verificationDiagnostic.controller===verificationController,'Exact mixed recovery constraint differs');
+ assert(api('git/ref/heads/'+MIXED.branch).object?.sha===verificationController,'Owned verifier branch moved');
  for(const path of ['.github/ci/ci-install-grant.mjs','.github/ci/staging-build-install.mjs','.github/ci/policy-version.mjs'])
   assert(readFileSync(join(candidatePath,path),'utf8')===execFileSync('git',['show',controller+':'+path],{cwd:candidatePath,encoding:'utf8',maxBuffer:1024**2}),'Candidate receiver or policy changed: '+path);
  const p={candidate,controller,baseline,runId};
@@ -79,12 +84,27 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName].sort()),'Exact homogeneous focused packet members required');
   focused.push({...f,producer,artifact,report,result:packet.get(resultName)});
  }
- const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
+ validateMixedOriginal(source,expectedPlan);
+ const missingRunId=Number(process.env.AIHR_EXACT_MISSING_RUN_ID);
+ assert(Number.isSafeInteger(missingRunId)&&missingRunId>0&&!focusedRunIds.includes(missingRunId)&&missingRunId!==runId,'Exact dedicated System Labels recovery run required');
+ const {fingerprint:sourceFingerprint,...freshBody}={...expectedPlan,controller:verificationController};
+ const freshPlan={...freshBody,fingerprint:hash(freshBody)};
+ const missingProof=await collectMissingUnitRecovery({candidatePath,originalPath:candidatePath,sourcePlan:expectedPlan,plan:freshPlan,source,options:{
+  runId:missingRunId,controller:verificationController,branch:MIXED.branch,candidateBranch,unitId:MIXED.unit,
+  expectation:{runId:MIXED.expectedRun,source:MIXED.expectedSource,controller:MIXED.baseline,branch:'main'},controllerDiagnosticRunId:diagnosticId
+ },directory:dir,reuse,after:source.run.updated_at});
+ const {proof}=missingProof;
+ assert(isDeepStrictEqual(proof.freshPlan,freshPlan),'Dedicated execution full plan differs');
+ assert(proof.metadata.jobs.find(job=>job.name==='deployment-hold')?.steps.some(step=>step.name==='Deployment remains disabled'&&step.conclusion==='success'),'Missing dedicated deployment hold evidence');
+ const owner=nativePostgresOwner(readFileSync(join(candidatePath,'.github/ci/postgres.sh')),git(candidatePath,'rev-parse',candidate+':.github/ci/postgres.sh'));
+ missingProof.nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:candidate,controller:verificationController,runId:missingRunId,unit:MIXED.unit,producer:proof.producer,prepullStep:proof.producer.steps.find(step=>step.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(step=>step.name==='Source-bound fixed HTTPS fonts for missing whole unit')});
+ missingProof.originalArtifacts=source.artifacts;
+ const reports=plan.units.filter(u=>u.id!==MIXED.unit).map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
+ const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,missingProof,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${source.run.workflow_id}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[source.run.workflow_id,workflow.id].includes(r.workflow_id)));
- recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController});
+ recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController,missingRunId,missingController:verificationController});
  recovery.verificationDiagnostic=verificationDiagnostic;recovery.reviewedController=verificationController;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');

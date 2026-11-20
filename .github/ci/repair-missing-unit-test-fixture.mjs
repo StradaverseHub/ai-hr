@@ -1,0 +1,31 @@
+/** Pure source/metadata model for controller controls; no application imports or test registration. */
+import {fixture as baseFixture,now} from './resume-test-fixtures.mjs';
+import {buildUnits,hash} from './manifest.mjs';
+import {MISSING_UNIT_FILE} from './repair-missing-unit-policy.mjs';
+const clone=x=>structuredClone(x);
+export function missingUnitFixture({clock=now}={}){
+ const time=minutes=>new Date(clock-minutes*60000).toISOString();
+ const b=clone(baseFixture()),body={...b.expectedPlan,suite:[MISSING_UNIT_FILE,'test/plain.test.ts']};delete body.fingerprint;
+ body.units=buildUnits(body.suite,{db:[MISSING_UNIT_FILE],nodb:['test/plain.test.ts']},['test/ui.browser.test.tsx']);const sourcePlan={...body,fingerprint:hash(body)},unit=body.units.find(u=>u.kind==='db');
+ const replan=(sha,controller)=>{const body={...clone(sourcePlan),sha,controller};delete body.fingerprint;return {...body,fingerprint:hash(body)};};
+ const plan=replan('d'.repeat(40),sourcePlan.controller),freshPlan=replan(plan.sha,'e'.repeat(40)),priorPlan=replan('f'.repeat(40),sourcePlan.controller);
+ const run={...b.run,created_at:time(20),updated_at:time(5),conclusion:'cancelled'},jobs=[{id:1,name:`test (${unit.id})`,run_id:run.id,head_sha:run.head_sha,head_branch:run.head_branch,run_attempt:1,status:'completed',conclusion:'cancelled',steps:[{name:'Run ./.github/actions/setup-alpha',conclusion:'success'},{name:'Provision System Labels multilingual fonts before tests',conclusion:'success'},{name:'Run node ../automation/.github/ci/run-unit.mjs',status:'in_progress',conclusion:null,started_at:time(8)}]}];
+ const target=jobs[0];jobs.splice(0,jobs.length,...['resolve','typecheck','migrations','controller-tests','plan','runner-diagnostics','build',...sourcePlan.units.map(u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`)].map((name,i)=>name===target.name?{...target,id:100+i}:{...target,id:100+i,name,conclusion:'success',steps:[]}));
+ const artifacts=[{name:'gate-plan'},...sourcePlan.units.filter(u=>u.id!==unit.id).map(u=>({name:'unit-'+u.id}))];
+ const freshRun={...run,id:200,head_sha:freshPlan.controller,head_branch:'codex/producer',conclusion:'success',display_title:`Missing whole unit · ${unit.id} · codex/candidate`,created_at:time(4),updated_at:time(1)};
+ const names=['resolve','typecheck','migrations','controller-tests','plan','runner-diagnostics','build',`test (${unit.id})`,'browser','verify','deployment-hold'];
+ const freshJobs=names.map((name,i)=>({id:2000+i,name,run_id:200,head_sha:freshPlan.controller,head_branch:freshRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','plan',`test (${unit.id})`,'deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2),steps:[{name:'Source-bound fixed HTTPS fonts for missing whole unit',conclusion:'success',started_at:time(2.99),completed_at:time(2.9)},{name:'Run node ../automation/.github/ci/run-unit.mjs',conclusion:'success',started_at:time(2.8),completed_at:time(2.1)}]}));
+ const freshArtifacts=['gate-plan','unit-'+unit.id].map((name,i)=>({id:3000+i,name,size_in_bytes:100,digest:'sha256:'+'a'.repeat(64),expired:false,created_at:time(2.5),expires_at:time(-60),workflow_run:{id:200,head_sha:freshPlan.controller,head_branch:freshRun.head_branch,repository_id:1333414856,head_repository_id:1333414856}}));
+ const expected={runId:200,controller:freshPlan.controller,branch:freshRun.head_branch,candidateBranch:'codex/candidate',unitId:unit.id,after:run.updated_at};
+ const producer=freshJobs.find(j=>j.name===`test (${unit.id})`),resource={...clone(b.reports.find(r=>r.databaseTerminalEvidence).databaseTerminalEvidence),name:`aihr-ci-200-1-${unit.id}`,capturedAt:time(2.5)};
+ const report={...clone(b.reports.find(r=>r.databaseTerminalEvidence)),id:unit.id,files:unit.files,sha:plan.sha,fingerprint:freshPlan.fingerprint,healthBefore:{ok:true,platform:'linux',at:time(2.8)},healthAfter:{ok:true,platform:'linux',at:time(2.1)},databaseTerminalEvidence:resource};
+ report.batches[0].databaseEvidence=clone(resource);report.batches[0].result.testResults[0].name='/candidate/'+MISSING_UNIT_FILE;report.batches[0].result.testResults[0].assertionResults[0].fullName='independent unchanged browser journey';
+ const priorReport=clone(report);priorReport.sha=priorPlan.sha;priorReport.fingerprint=priorPlan.fingerprint;
+ // Authenticate an honest complete prior PASS only as the independent case inventory.
+ // The current candidate still requires its own fresh whole-unit PASS.
+ const font={kind:'FIXED_NOTO_BOOTSTRAP_NOT_TEST_OR_RELEASE_PASS',candidate:plan.sha,controller:freshPlan.controller,releaseAuthorized:false,packages:['fonts-noto-core','fonts-noto-cjk'],steps:[{status:0}],transport:{afterBytesVerified:true,phase:'verified',variant:'primary-https',signaturePolicyUnchanged:true,packageSelectionUnchanged:true,beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64)}};
+ const priorRun={...run,id:50,head_sha:priorPlan.controller,created_at:time(30),updated_at:time(25)},priorJob={...producer,id:51,run_id:50,head_sha:priorPlan.controller,head_branch:'main',started_at:time(28),completed_at:time(26)};
+ const priorArtifact={...freshArtifacts[1],id:52,digest:'sha256:'+'b'.repeat(64),created_at:time(27),workflow_run:{...freshArtifacts[1].workflow_run,id:50,head_sha:priorPlan.controller,head_branch:'main'}};
+ const proof={freshPlan,metadata:{run:freshRun,jobs:freshJobs,artifacts:freshArtifacts},expected,run:freshRun,producer,report,font,fileBlob:{original:'1'.repeat(40),candidate:'1'.repeat(40),expectation:'1'.repeat(40)},source:{runId:200,controller:freshPlan.controller,branch:freshRun.head_branch,jobId:producer.id,artifactId:3001,digest:freshArtifacts[1].digest},expectation:{metadata:{run:priorRun,jobs:[priorJob],artifacts:[priorArtifact]},selection:{runId:50,source:priorPlan.sha,controller:priorPlan.controller,branch:'main'},plan:priorPlan,report:priorReport,source:{runId:50,controller:priorPlan.controller,branch:'main',jobId:51,artifactId:52,digest:priorArtifact.digest}}};
+ return {sourcePlan,plan,unit,run,jobs,artifacts,proof,freshRun,freshJobs,freshArtifacts,expected,inputs:{missing_unit:unit.id,missing_original_run:String(run.id),candidate_ref:'codex/candidate',expected_sha:plan.sha}};
+}
