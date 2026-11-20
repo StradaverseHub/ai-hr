@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -788,6 +788,11 @@ async function measureAttendanceWorkflowEditor(fixture){
 }
 
 const focusedSurfaces={
+ 'access-editor':{path:'/admin/users/access',actorIndexes:[0],witnesses:{
+  heading:'main :is(h1,h2)',
+  userGroups:'main nav[aria-label="User groups"] button',
+  userSearch:'main input[type="search"]',
+ }},
  'workflow-list':{path:'/admin/attendance/approval-workflow',witnesses:{
   heading:'main h1',
   workflowTable:'main table',
@@ -809,11 +814,11 @@ const focusedSurfaces={
 async function measureSurfaceProbe(fixture,surface){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
- const {path,witnesses}=focusedSurfaces[surface];
+ const {path,witnesses,actorIndexes=[0,1]}=focusedSurfaces[surface];
  report.surfaceProbes??={};
  const visits=[];
  report.surfaceProbes[surface]=visits;
- for(const actorIndex of [0,1]){
+ for(const actorIndex of actorIndexes){
   const actor=fixture.users[actorIndex],context=await signedInContext(actor);
   try{
    assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
@@ -842,11 +847,33 @@ async function measureSurfaceProbe(fixture,surface){
       await page.locator(`main a[href="${path}/new?applicationType=self_overtime"]`).waitFor({state:'visible',timeout:5000});
       row.overtimeTabMs=Math.round(performance.now()-tabStarted);
      }
+     if(surface==='access-editor'){
+      const title=page.getByRole('heading',{name:'Security & permissions',exact:true});
+      assert(await title.isVisible(),'Expected Security & permissions editor');
+      const search=page.getByRole('searchbox',{name:'Search users'});
+      const options=page.getByRole('combobox',{name:'User',exact:true}).locator('option');
+      await page.waitForLoadState('domcontentloaded',{timeout:8000});
+      row.initialUserChoices=await options.count();
+      assert(row.initialUserChoices>1,'The fictional editor must have a populated User control');
+      const selectionStarted=performance.now();
+      await search.fill('fictional-match-absent-from-the-access-test',{timeout:5000});
+      await options.nth(1).waitFor({state:'detached',timeout:5000});
+      assert.equal(await options.count(),1,'Search must preserve the selected user');
+      await search.clear({timeout:5000});
+      await options.nth(row.initialUserChoices-1).waitFor({state:'attached',timeout:5000});
+      assert.equal(await options.count(),row.initialUserChoices);
+      row.searchAndClearMs=Math.round(performance.now()-selectionStarted);
+     }
      row.status='observed';
+    }catch(error){
+     row.status='failed';
+     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+     if(surface!=='access-editor')throw error;
     }finally{save();}
    }
   }finally{await context.close();}
  }
+ assert(visits.every(row=>row.status==='observed'),'A focused surface did not become usable on each visit');
 }
 
 async function measurePayrollReadTrace(fixture){
