@@ -7388,6 +7388,8 @@
       },
       "reprocessNothingPayableFull": "Không xác định được khoản thu nhập phải trả trong kỳ lương này. Lương không được tính lại. Phiếu lương, danh sách của đợt lương, giao dịch và lịch sử hiện có được giữ nguyên.",
       "reprocessSucceededReason": "Đã lưu kết quả tính lương mới cho nhân viên này.",
+      "reprocessTaxBasisUpdated": "Đã tính lại lương theo thông tin cập nhật. Bản điều chỉnh thuế thu nhập trước đó được giữ lại.",
+      "reprocessTaxEvidenceIssue": "Cần kiểm tra chứng từ thuế tiền lương. {reason}",
       "reprocessChildConfigurationReason": "Mức giảm trừ con đã cấu hình không khớp với số con đủ điều kiện. Kiểm tra cấu hình PCB trước khi tính lại.",
       "reprocessConfigurationReason": "Cấu hình lương bắt buộc chưa đầy đủ. Kiểm tra hồ sơ lương của nhân viên này trước khi tính lại.",
       "reprocessNothingPayableShort": "Không có khoản phải trả trong kỳ lương này; đã bỏ qua việc tính lại.",

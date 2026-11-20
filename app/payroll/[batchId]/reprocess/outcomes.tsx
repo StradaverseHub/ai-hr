@@ -52,10 +52,11 @@ export async function ReprocessOutcomeRemarks({
     : outcome.status === 'excluded' || outcome.status === 'not_eligible'
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
-    : outcome.status === 'reprocessed' ? t('reprocessSucceededReason')
+    : outcome.status === 'reprocessed' ? t(outcome.taxBasisRecalculated ? 'reprocessTaxBasisUpdated' : 'reprocessSucceededReason')
     : outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? t('reprocessPayItemFormulaReason')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')
       ? tp(`taxSelection_${outcome.validationCode}`)
+    : outcome.validationCode === 'payroll_tax_evidence' && noncashReason ? t('reprocessTaxEvidenceIssue', { reason: noncashReason })
     : outcome.validationCode === 'pcb_non_cash_configuration_invalid'
       ? tp(NONCASH_CONFIGURATION_REASONS.has(noncashReason) ? `nonCash_${noncashReason}` : 'nonCash_configuration_invalid')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_CODES.has(outcome.validationCode ?? '')

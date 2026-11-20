@@ -6664,6 +6664,8 @@
       },
       "reprocessNothingPayableFull": "No payable earnings were resolved for this pay period. Payroll recalculation was not performed. Existing payslip, run membership, transactions and history were retained.",
       "reprocessSucceededReason": "A new payroll result was saved for this employee.",
+      "reprocessTaxBasisUpdated": "Payroll was recalculated using the updated details. The previous Income Tax Correction was retained.",
+      "reprocessTaxEvidenceIssue": "Payroll tax evidence needs attention. {reason}",
       "reprocessChildConfigurationReason": "The configured child relief and qualifying-child counts conflict. Review PCB configuration before recalculating.",
       "reprocessConfigurationReason": "Required payroll configuration is incomplete. Review this employee’s payroll records before recalculating.",
       "reprocessNothingPayableShort": "Nothing payable in this pay period; recalculation skipped.",

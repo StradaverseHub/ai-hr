@@ -467,9 +467,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10410,when:1795028007010,tag:'7010_payroll_history_point_read_plan'},
  {idx:10411,when:1795028007011,tag:'7011_payroll_tax_basis_picker_set'},
  {idx:10440,when:1795028007040,tag:'7040_payroll_original_employer_row_security'},
+ {idx:10460,when:1795028007060,tag:'7060_payroll_reprocess_tax_source'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '7060_payroll_reprocess_tax_source':'e6237d4418b007ba09a94b377294ebe65fd34fa3535af3b7cc882628f57150f8',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
@@ -940,7 +942,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
-export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'6375_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''},{tag:'6380_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'},{tag:'6990_individual_import_template_version',table:'payroll_individual_import_job',column:'template_version',value:1}] as const);
+export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'6375_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''},{tag:'6380_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'},{tag:'6990_individual_import_template_version',table:'payroll_individual_import_job',column:'template_version',value:1},{tag:'7060_payroll_reprocess_tax_source',table:'payroll_tax_basis_replacement',column:'recalculated',value:false}] as const);
 // Snapshot keys that name a widened table by another word.
 const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
 /** A retained row of a widened table, compared without the combined release's columns. Each one the row carries

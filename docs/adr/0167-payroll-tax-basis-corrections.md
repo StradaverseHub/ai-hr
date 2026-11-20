@@ -39,3 +39,21 @@ Payroll status and previously produced outputs are impact information for this m
 An open native payslip stays a mutable artifact of its original run. Maintenance captures a detached immutable copy under the existing history snapshot owner, with exact native source batch/payslip/version, SQL-owned source fingerprint and canonical value commitment. The mutable original is never adopted or referenced by the snapshot foreign key. Effective history suppresses only the proven original run/employment while a published historical source is effective; later independent runs remain visible. Narrow physical artifact portals retain the native run's original permissions, constraints and reset/regeneration/delete behavior. Withdrawal restores the retained copy, never a later regenerated live row. The copy keeps its original native cash, noncash and source-cadence evidence; its storage in a history batch does not classify it as an imported six-column source.
 
 Merged imported sources retain exact canonical effective item ownership in the same snapshot and reviewed plan. Historical tax review binds that item set and the full statutory source to the accepted revision, then uses the same imported-tax adapter and current flags. Noncash still requires its exact original source receipt, and imported recurring/one-off or regular-run cadence is never inferred. Missing cadence remains a named same-month calculation hold. Eligible open later calculations are marked for review through the existing payroll owner; closed sources, their artifacts and the statutory engine/rates remain unchanged.
+
+## Selective reprocessing after a changed source
+
+The open native run may recompute with the standard country-pack calculator when
+the currently locked payslip or its inputs changed after a correction. Exact
+corrections and validated lineage still apply where the original inputs match.
+A fresh replacement records the actual before and after hashes, the prior
+correction ID and the immutable payroll result history checkpoint. It preserves
+the original correction, including its source hash.
+
+For stale historical inputs the selected employee calculation may reconstruct
+tax inputs from the exact, visible employer and assessment-year payroll prefix.
+It uses the same reconstruction as Income Tax Correction and records the
+replayed source identities in the new open result. Historical source rows and
+correction records are read-only. Genuine missing evidence, invalid lineage and
+unprovable annual allocation produce a named employee outcome, rolling back that
+employee's calculation and retaining their previous result while the job
+continues. Other consumers keep the strict original source policy.

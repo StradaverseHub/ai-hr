@@ -7388,6 +7388,8 @@
       },
       "reprocessNothingPayableFull": "本工资期间未确定任何应付收入。未重新计算工资。现有工资单、工资批次成员、交易和历史记录均已保留。",
       "reprocessSucceededReason": "已为此员工保存新的工资计算结果。",
+      "reprocessTaxBasisUpdated": "已使用更新后的资料重新计算薪资。先前的所得税更正记录已保留。",
+      "reprocessTaxEvidenceIssue": "请检查薪资税务凭证。{reason}",
       "reprocessChildConfigurationReason": "已配置的子女减免与符合条件的子女人数不一致。重新计算前，请检查 PCB 配置。",
       "reprocessConfigurationReason": "所需的工资配置不完整。重新计算前，请检查此员工的工资记录。",
       "reprocessNothingPayableShort": "本工资期间无应付款项；已跳过重新计算。",

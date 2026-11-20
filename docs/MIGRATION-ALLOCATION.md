@@ -1,3 +1,15 @@
+# Open payroll reprocessing tax-source custody — 20 November 2026
+
+Candidate migration `7060_payroll_reprocess_tax_source`, journal index `10460`, timestamp `1795028007060`.
+SQL SHA-256 `e6237d4418b007ba09a94b377294ebe65fd34fa3535af3b7cc882628f57150f8`. The staging watermark checked during development was
+`1795028007040`. The draft order follows the known `7050` and `7051` payroll reservations.
+Recheck installed ledgers and competing reservations before admission.
+
+The existing append-only replacement table records whether reprocessing
+calculated a fresh result after a correction. Existing links default to false.
+The binding trigger retains its owner and checks the actual payroll history
+checkpoint, actor, open period, payslip identity and before/after version.
+
 # Payroll Process company access — 20 November 2026
 
 Reserve `7040_payroll_original_employer_row_security`, journal idx 10440, timestamp 1795028007040.

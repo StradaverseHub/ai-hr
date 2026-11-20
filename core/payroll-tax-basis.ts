@@ -19,7 +19,7 @@ import {assertModuleGate} from './module-gate';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {resolvePayrollPermission,parsePayrollHistorySource,markBatchNeedsRecalc} from '../packs/payroll/service';
-import {taxBasisSourceRowsTx,hashTaxBasisSource as importedSourceHash,createTaxBasisPreviewReadTx,readEffectiveTaxBasesTx,validatedTaxBasis} from './payroll-tax-basis-read';
+import {taxBasisSourceRowsTx,hashTaxBasisSource as importedSourceHash,createTaxBasisPreviewReadTx,readEffectiveTaxBasesTx,validatedTaxBasis,type TaxBasisSource,type EffectiveTaxBasis} from './payroll-tax-basis-read';
 const uuidArray=(ids:string[])=>sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -165,6 +165,50 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   return {...who,...(pcbComparison?{pcbComparison}:{}),status:changed?'ready':'unchanged',reason:null,recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
  }catch(error){if(error instanceof PayrollTaxBasisError||error instanceof Error&&['TaxBasisReplayError','ImportedTaxSourceError','NonCashBenefitConfigurationError'].includes(error.name))return blocked(error.message);throw error;}
 }
+/** Read-only replay for one authorized open-run employee. Only the exact prefix selected by payroll
+ * participates. The correction workflow still owns every persisted correction and preview. */
+export async function replayChangedPayrollHistoryTx(
+ tx:Tx,ctx:SessionContext,prefix:readonly TaxBasisSource[],changed:readonly TaxBasisSource[],
+ effective:ReadonlyMap<string,EffectiveTaxBasis>,
+):Promise<ReadonlyMap<string,TaxBasisValue>>{
+ const first=changed[0];
+ const year=Number(first.period.slice(0,4));
+ if(prefix.some(source=>source.companyId!==first.companyId||source.employmentId!==first.employmentId||Number(source.period.slice(0,4))!==year))
+  fail('Payroll tax replay requires a single employee, employer and assessment year.');
+ const ids=prefix.map(source=>source.id);
+ const slips=await tx.execute<SourceSlip>(sql`
+  select p.id,b.pay_period as period,
+    (row_number() over(partition by b.pay_period order by b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id))::integer as "runOrder",
+    p.gross_pay as gross,p.basic_salary as basic,p.allowance,p.overtime_pay as overtime,p.bonus,
+    p.other_deductions as deductions,p.statutory,b.payroll_cycle_id as "cycleId",
+    case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId"
+  from payslip p join payroll_batch b on b.id=p.batch_id
+  where p.id=any(${uuidArray(ids)}) and p.employment_id=${first.employmentId}::uuid
+    and b.company_id=${first.companyId}::uuid and b.status in ('processed','closed')
+  order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
+ if(slips.length!==ids.length)fail('The original payroll tax prefix is unavailable.');
+ const settings=await settingsTx(tx);
+ const cache:SourceCache=new Map();
+ cache.slips=new Map([[first.employmentId,slips]]);
+ cache.sourceHashes=new Map(prefix.map(source=>[source.id,importedSourceHash(source)]));
+ cache.effective=new Map(effective);
+ cache.superseded=new Map();
+ const upToMonth=Number(slips.at(-1)!.period.slice(5));
+ const replay=await employeeTx(tx,ctx,{companyId:first.companyId,year,upToMonth,employmentIds:[first.employmentId]},
+  {id:first.employmentId,employeeNo:'',name:''},settings,hash(settings),cache);
+ if(replay.status==='blocked')fail(replay.reason??'The original payroll tax inputs are unavailable.');
+ const changedIds=new Set(changed.map(source=>source.id));
+ const firstChangedPeriod=changed.reduce((min,source)=>source.period<min?source.period:min,first.period);
+ for(const month of replay.months){
+  if(changedIds.has(month.payslipId)||month.period<firstChangedPeriod)continue;
+  const saved=effective.get(month.payslipId),stat=slips.find(slip=>slip.id===month.payslipId)!.statutory;
+  const used=saved?.basis.exemptionUsed??stat.exemptionUsed??{};
+  if(canonical(used)!==canonical(month.basis.exemptionUsed))
+   fail(`${month.period}: the changed payroll inputs affect a later saved exemption allocation.`);
+ }
+ return new Map(replay.months.map(month=>[month.payslipId,month.basis]));
+}
+
 async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):Promise<Omit<TaxBasisPreview,'previewId'|'previewHash'|'createdAt'|'expiresAt'>>{
  await permission(tx,ctx,selection.companyId);
  const [company]=await tx.execute<{name:string;country:string}>(sql`select legal_name as name,country from company where id=${selection.companyId}::uuid and archived_at is null`);if(!company)fail('Company is unavailable.');

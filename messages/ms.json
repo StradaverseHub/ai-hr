@@ -7388,6 +7388,8 @@
       },
       "reprocessNothingPayableFull": "Tiada pendapatan yang perlu dibayar dikenal pasti bagi tempoh penggajian ini. Pengiraan semula tidak dilakukan. Slip gaji, keahlian dalam larian penggajian, transaksi dan sejarah sedia ada dikekalkan.",
       "reprocessSucceededReason": "Hasil penggajian baharu telah disimpan untuk pekerja ini.",
+      "reprocessTaxBasisUpdated": "Gaji dikira semula menggunakan butiran terkini. Pembetulan Cukai Pendapatan terdahulu dikekalkan.",
+      "reprocessTaxEvidenceIssue": "Bukti cukai gaji perlu disemak. {reason}",
       "reprocessChildConfigurationReason": "Pelepasan anak yang dikonfigurasi bercanggah dengan bilangan anak yang layak. Semak konfigurasi PCB sebelum mengira semula.",
       "reprocessConfigurationReason": "Konfigurasi penggajian yang diperlukan tidak lengkap. Semak rekod penggajian pekerja ini sebelum mengira semula.",
       "reprocessNothingPayableShort": "Tiada bayaran bagi tempoh penggajian ini; pengiraan semula dilangkau.",

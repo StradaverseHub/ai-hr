@@ -17,7 +17,7 @@ import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
-import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef} from './payroll-tax-basis-read';
+import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -480,6 +480,7 @@ export type ReprocessEmployeeOutcome = {
   /** 3244584c — an exclusion carries its cause and the effective date (`gap` = the cause, `date` = ISO). */
   validationDetails?: { gap: string; date?: string }[];
   resultRetained: boolean;
+  taxBasisRecalculated?: boolean;
   payslipId: string | null;
   versionBefore: number | null;
   versionAfter: number | null;
@@ -527,6 +528,10 @@ function taxSchemeOutcomeDetails(error:Error): Pick<ReprocessEmployeeOutcome,'co
 
 function employeeReprocessValidation(error: unknown): Pick<ReprocessEmployeeOutcome,
   'status' | 'reasonCode' | 'validationCode' | 'validationDetails' | 'configuredTaxScheme' | 'effectiveTaxScheme' | 'formulaFailure'> | null {
+  if (error instanceof PayrollTaxBasisError) return {
+    status:'validation_failed',reasonCode:'PAYROLL_CONFIGURATION_INCOMPLETE',
+    validationCode:'payroll_tax_evidence',validationDetails:[{gap:error.message}],
+  };
   if (error instanceof ReprocessNothingPayableError) return {status:'skipped',reasonCode:'NOTHING_PAYABLE'};
   // 792053e5 — the updated Pay Item formula could not price this employee's transactions: an outcome naming the item,
   // the dates and the reason (the savepoint rolled back their re-pricing; the previous result stays), never a run stop.
@@ -5160,12 +5165,36 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       : [];
     // Correct only the tax-input read. The saved payroll row and actual deducted PCB remain original.
     const taxOpeningPrefix=await taxBasisSourceRowsTx(tx,priorSlips.map(slip=>slip.id));
-    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true});
+    const replayTaxHistory = subset ? async (
+      sources: readonly (typeof taxOpeningPrefix)[number][],
+      changed: readonly (typeof taxOpeningPrefix)[number][],
+      effective: ReadonlyMap<string,EffectiveTaxBasis>,
+    ) => {
+      const {replayChangedPayrollHistoryTx}=await import('./payroll-tax-basis');
+      const prefix=[...new Map([...taxOpeningPrefix,...sources].map(source=>[source.id,source])).values()];
+      const result=new Map<string,import('../lib/payroll-tax-basis').TaxBasisValue>();
+      for(const employmentId of new Set(changed.map(source=>source.employmentId))){
+        const sourceChanges=changed.filter(source=>source.employmentId===employmentId);
+        const employeePrefix=prefix.filter(source=>source.employmentId===employmentId);
+        for(const [sourceId,basis] of await replayChangedPayrollHistoryTx(tx,ctx,employeePrefix,sourceChanges,effective))result.set(sourceId,basis);
+      }
+      return result;
+    } : undefined;
+    const reprocessTaxRead = subset ? {currentBatchId:p.batchId,replayHistory:replayTaxHistory} : undefined;
+    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
+    const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string}[]>();
+    const rememberReplayedTaxSource = (employmentId:string,payslipId:string,basis:EffectiveTaxBasis) => {
+      if(!basis.replayedSourceHash)return;
+      const sources=replayedTaxSourcesByEmp.get(employmentId)??[];
+      sources.push({payslipId,sourceHash:basis.replayedSourceHash});
+      replayedTaxSourcesByEmp.set(employmentId,sources);
+    };
     for (const slip of priorSlips) {
       const corrected = correctedPriorBases.get(slip.id);
       if (!corrected) continue;
       slip.statutory = corrected.statutory;
+      rememberReplayedTaxSource(slip.employmentId,slip.id,corrected);
       const refs = taxBasisCorrectionsByEmp.get(slip.employmentId) ?? [];
       if(corrected.correction)refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
     }
@@ -5373,9 +5402,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         })
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-        .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
+        .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId),
+          lt(payrollBatch.runSeq, batch.runSeq), subset ? inArray(payslip.employmentId, empIds) : undefined));
       for(const source of await taxBasisSourceRowsTx(tx,earlier.map(slip=>slip.id)))if(!taxOpeningPrefix.some(saved=>saved.id===source.id))taxOpeningPrefix.push(source);
-      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true,sameMonth:true});
+      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true,sameMonth:true,reprocess:reprocessTaxRead});
       for (const r of earlier) {
         // Read what the original payslip charged before applying any tax-input correction.
         const savedStatutory: unknown = r.statutory;
@@ -5390,6 +5420,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         const correction = correctedEarlier.get(r.id);
         if (correction) {
           r.statutory = correction.statutory;
+          rememberReplayedTaxSource(r.employmentId,r.id,correction);
           const refs = taxBasisCorrectionsByEmp.get(r.employmentId) ?? [];
           if(correction.correction)refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
         }
@@ -7800,6 +7831,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxBasisOpeningExemptionUsed: e.tp3Year === pYear
           ? Object.fromEntries(Object.entries(e.tp3ExemptionUsed ?? {}).map(([code,amount]) => [code,round2(Number(amount ?? 0))] as const).filter(([,amount]) => amount > 0))
           : {},
+        ...(replayedTaxSourcesByEmp.has(e.employmentId) ? {replayedTaxSources:replayedTaxSourcesByEmp.get(e.employmentId)} : {}),
         ...(taxBasisCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisCorrections: taxBasisCorrectionsByEmp.get(e.employmentId)} : {}),
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
@@ -8912,7 +8944,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         }).returning({ id: payrollEmployeeResultHistory.id });
         snapshotLinks[sl.employmentId] = history.id;
       }
-      await recordTaxBasisReplacementTx(tx,ctx,taxReplacement,snapshotLinks);
+      const recalculatedTaxSources = await recordTaxBasisReplacementTx(tx,ctx,taxReplacement,snapshotLinks);
       // Status history (status is unchanged processed→processed, but the reprocess IS a status-control
       // event the reporter wants captured with actor/timestamp/reason + before/after totals).
       await tx.insert(payrollStatusHistory).values({
@@ -8979,6 +9011,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
       return {
         snapshotLinks,
+        recalculatedTaxEmploymentIds: emps.filter(e=>recalculatedTaxSources.has(e.employmentId)||replayedTaxSourcesByEmp.has(e.employmentId)).map(e=>e.employmentId),
         // 792053e5 — the Pay Items re-priced with an updated formula, per employee, for the outcome remark.
         repriced: Object.fromEntries(repricedByEmp),
         reprocessed: emps.length,
@@ -10580,6 +10613,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   let historyId: string | null = null;
   let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'|'formulaFailure'>;
   let repricedItems: RepricedPayItem[] | undefined;
+  let taxBasisRecalculated = false;
   try {
     if (exclusion) throw exclusion;
     // Nested drizzle transaction is a SAVEPOINT on this same connection, never another tenant
@@ -10592,6 +10626,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     historyId = result.snapshotLinks?.[employmentId] ?? null;
     if (!historyId) throw new Error('Selected payroll result has no history checkpoint.');
     repricedItems = result.repriced?.[employmentId];
+    taxBasisRecalculated = result.recalculatedTaxEmploymentIds?.includes(employmentId)??false;
     outcomeState = {status:'reprocessed',reasonCode:null};
   } catch (error) {
     const validation = employeeReprocessValidation(error);
@@ -10634,6 +10669,7 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
     employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
     ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
       && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
+    ...(taxBasisRecalculated ? {taxBasisRecalculated} : {}),
     resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
     ...(repricedItems?.length ? {repricedItems} : {}),
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
@@ -10835,6 +10871,7 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
     if (r.status==='reprocessed' && (r.classification==='added'
       ? r.versionBefore!==null || r.versionAfter!==1
       : r.versionBefore===null || r.versionAfter!==r.versionBefore+1)) return null;
+    if (r.taxBasisRecalculated !== undefined && (r.taxBasisRecalculated !== true || r.status !== 'reprocessed')) return null;
     if (r.status === 'skipped' && r.reasonCode !== 'NOTHING_PAYABLE') return null;
     if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE','PAY_ITEM_FORMULA_FAILED'].includes(r.reasonCode ?? '')
       || typeof r.validationCode !== 'string')) return null;
