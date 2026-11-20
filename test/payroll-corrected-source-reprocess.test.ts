@@ -19,7 +19,7 @@ async function anotherEmployee(){
  await setStatutoryProfileMY(ctx,{personId:subject.personId,icNumber:'850202025556',taxCategory:1,numChildren:0});
  return subject.employmentId;
 }
-const tax=(row:Awaited<ReturnType<typeof slip>>)=>(row.statutory as {pcb:number;bases:{pcb:number};pcbMeta?:{replayedTaxSources?:unknown}});
+const tax=(row:Awaited<ReturnType<typeof slip>>)=>(row.statutory as {pcb:number;bases:{pcb:number};replayedTaxSources?:unknown});
 async function correct(){const p=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:[employmentId]});expect(p.blockedCount).toBe(0);expect(p.eligibleCount).toBe(1);const result=await confirmTaxBasisRecalculation(ctx,{previewId:p.previewId,previewHash:p.previewHash});const batch=await getTaxBasisBatch(ctx,result.id);expect(batch?.employees.map(e=>({status:e.status,reason:e.reason}))).toEqual([{status:'completed',reason:null}]);return result;}
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');await setModule(b.tenantId,'typed_pay_components','active');await setModule(b.tenantId,'multi_cycle_payroll','active');ctx=await entitledCtx(b);
@@ -106,7 +106,7 @@ describe('corrected native payslip replacement custody',()=>{
   expect(result.status).toBe('completed');
   const refreshed=await slip(feb);
   expect(tax(refreshed).pcb).toBe(tax(originalFeb).pcb);
-  expect(tax(refreshed).pcbMeta?.replayedTaxSources).toEqual([{payslipId:old.id,sourceHash:hashTaxBasisSource(source)}]);
+  expect(tax(refreshed).replayedTaxSources).toEqual([expect.objectContaining({payslipId:old.id,sourceHash:hashTaxBasisSource(source),rulesHash:expect.stringMatching(/^[a-f0-9]{64}$/),settingsHash:expect.stringMatching(/^[a-f0-9]{64}$/)})]);
   expect(await slip()).toEqual(changed);
   expect(await owner.db.select().from(S.payrollTaxBasisRevision)).toEqual([revision]);
  });
@@ -125,7 +125,7 @@ describe('corrected native payslip replacement custody',()=>{
   expect(refreshed.version).toBe(before.version+1);
   expect(tax(before).pcb).toBeGreaterThan(0);
   expect(tax(refreshed).pcb).toBe(tax(before).pcb);
-  expect(tax(refreshed).pcbMeta?.replayedTaxSources).toEqual([expect.objectContaining({payslipId:earlier.id})]);
+  expect(tax(refreshed).replayedTaxSources).toEqual([expect.objectContaining({payslipId:earlier.id})]);
   expect(await slip()).toEqual(changed);
  });
  it('continues to refuse unauthorized and closed-run reprocess attempts',async()=>{

@@ -5182,11 +5182,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const reprocessTaxRead = replayTaxHistory ? {kind:'history' as const,replay:replayTaxHistory} : undefined;
     const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
-    const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string}[]>();
+    const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string;rulesHash:string;settingsHash?:string}[]>();
     const rememberReplayedTaxSource = (employmentId:string,payslipId:string,basis:EffectiveTaxBasis) => {
       if(!basis.replayedSourceHash)return;
       const sources=replayedTaxSourcesByEmp.get(employmentId)??[];
-      sources.push({payslipId,sourceHash:basis.replayedSourceHash});
+      sources.push({payslipId,sourceHash:basis.replayedSourceHash,rulesHash:basis.basis.rulesHash,
+        ...(typeof basis.basis.settingsHash==='string'?{settingsHash:basis.basis.settingsHash}:{})});
       replayedTaxSourcesByEmp.set(employmentId,sources);
     };
     for (const slip of priorSlips) {

@@ -90,8 +90,9 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
   if(!before||!next||!historyByEmployment[next.employmentId])throw new PayrollTaxBasisError('The corrected payroll replacement is incomplete.');
   const basis=validatedTaxBasis(correction.basis),stat=next.source.statutory;
   const beforeCash=cashEvidence(before),afterCash=cashEvidence(next);
-  if(!afterCash||!object(stat)||!object(stat.bases))throw new PayrollTaxBasisError('Reprocessed payroll tax evidence is unavailable.');
-  const recalculated=correction.sourceChanged||!beforeCash||canonical(beforeCash)!==canonical(afterCash)
+  if(!object(stat)||!object(stat.bases)||typeof stat.bases.pcb!=='number'||!Number.isFinite(stat.bases.pcb))
+   throw new PayrollTaxBasisError('Reprocessed payroll tax evidence is unavailable.');
+  const recalculated=correction.sourceChanged||!beforeCash||!afterCash||canonical(beforeCash)!==canonical(afterCash)
    ||stat.bases.pcb!==basis.pcb||canonical(stat.exemptionUsed??{})!==canonical(basis.exemptionUsed)||Number(stat.lp??0)!==Number(basis.lp??0);
   if(recalculated)recalculatedEmployments.add(next.employmentId);
   await tx.execute(sql`insert into payroll_tax_basis_replacement(tenant_id,company_id,employment_id,payslip_id,correction_id,history_id,before_hash,after_hash,before_source,after_source,created_by,recalculated)

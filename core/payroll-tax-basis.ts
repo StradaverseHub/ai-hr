@@ -38,8 +38,12 @@ async function permission(tx:Tx,ctx:SessionContext,companyId:string,write=false)
  if(!authority?.ok)fail('Your payroll authority changed. Sign in again.');
 }
 type Settings=ImportedTaxSetting;
-async function settingsTx(tx:Tx,lock=false){if(lock)await tx.execute(sql`select id from pay_component order by id for share`);return importedTaxSettingsTx(tx);}
-const basicSetting=SYSTEM_BASIC_TAX_SETTING;
+async function settingsTx(tx:Tx,lock=false){
+ if(lock)await tx.execute(sql`select id from pay_component order by id for share`);
+ const settings=await importedTaxSettingsTx(tx);
+ if(!settings.some(setting=>setting.code.toUpperCase()==='BASIC'))settings.push(SYSTEM_BASIC_TAX_SETTING);
+ return settings;
+}
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
 type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
 type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
@@ -187,6 +191,8 @@ export async function replayChangedPayrollHistoryTx(
     and b.company_id=${first.companyId}::uuid and b.status in ('processed','closed')
   order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
  if(slips.length!==ids.length)fail('The original payroll tax prefix is unavailable.');
+ const missingStatutory=slips.find(slip=>!object(slip.statutory));
+ if(missingStatutory)fail(`${missingStatutory.period}: original statutory payroll inputs are unavailable.`);
  const settings=await settingsTx(tx);
  const cache:SourceCache=new Map();
  cache.slips=new Map([[first.employmentId,slips]]);
@@ -212,7 +218,7 @@ export async function replayChangedPayrollHistoryTx(
 async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):Promise<Omit<TaxBasisPreview,'previewId'|'previewHash'|'createdAt'|'expiresAt'>>{
  await permission(tx,ctx,selection.companyId);
  const [company]=await tx.execute<{name:string;country:string}>(sql`select legal_name as name,country from company where id=${selection.companyId}::uuid and archived_at is null`);if(!company)fail('Company is unavailable.');
- const settings=await settingsTx(tx);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);const settingsHash=hash(settings);
+ const settings=await settingsTx(tx);const settingsHash=hash(settings);
  const employees=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) ${selection.employmentIds===null?sql``:sql`where id=any(${uuidArray(selection.employmentIds)})`} order by "employeeNo",id limit 1001`);
  if(selection.employmentIds!==null&&employees.length!==selection.employmentIds.length)fail('An employee is unavailable, belongs to another company, or has no history in the selected period.');
  if(employees.length>1000)fail('Select up to 1,000 employees per preview. Split a larger company into selected employee groups.');
@@ -278,7 +284,7 @@ export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:
  * the income-tax corrections and imported history snapshots and revisions on them. Read set-wise, under the caller's
  * row security, so the batch can open after a short check instead of a full recomputation under the write locks. */
 async function taxBasisInputsDigestTx(tx:Tx,selection:TaxBasisSelection){
- const settings=await settingsTx(tx);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);
+ const settings=await settingsTx(tx);
  const subjects=await tx.execute(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) order by id`);
  const [company]=await tx.execute<{country:string;row:string}>(sql`select country,legal_name||':'||coalesce(archived_at::text,'')||':'||xmin::text as row from company where id=${selection.companyId}::uuid`);
  const pack=company?requirePackFor(company.country):null;const rules:unknown[]=[];
@@ -340,7 +346,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);
    await tx.execute(sql`select id from payroll_tax_basis_batch where id=${opened.id}::uuid for update`);
    const prior=await tx.execute(sql`select id from payroll_tax_basis_event where batch_id=${opened.id}::uuid and ((employment_id=${reviewed.id}::uuid and kind in ('employee_completed','employee_failed')) or kind in ('completed','completed_with_errors','failed'))`);if(prior.length)return;
-   const settings=await settingsTx(tx,true);if(!settings.some(s=>s.code.toUpperCase()==='BASIC'))settings.push(basicSetting);if(hash(settings)!==opened.preview.settingsHash)fail('Pay Item settings changed. Create a new preview for remaining employees.');
+   const settings=await settingsTx(tx,true);if(hash(settings)!==opened.preview.settingsHash)fail('Pay Item settings changed. Create a new preview for remaining employees.');
    cache.rules=new Map();cache.codes=undefined;cache.rulesStates=undefined;
    const fresh=await employeeTx(tx,ctx,opened.selection,{id:reviewed.id,name:reviewed.name,employeeNo:reviewed.employeeNo},settings,opened.preview.settingsHash,cache);
    if(hash(fresh)!==hash(reviewed))fail('Employee history, rules or opening balances changed. Create a new preview.');
