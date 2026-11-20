@@ -45,7 +45,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  measuredPreflightLockTiming,measuredPreflightLockWitnesses,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {createMeasuredPreflightAttribution,createPreflightLockWorkload,createPreflightRequestTimeline,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {createLoadedAdvisoryDiagnostics,createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
@@ -220,6 +220,7 @@ const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics(loa
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 const stageEvidence=process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&!nativePreflight;
 const attributePreflightLocks=fullDevelopmentRoutes||(stageEvidence&&!serialComparison&&suite==='whole-system');
+const mixedPreflightRequests=stageEvidence&&suite==='whole-system'?createPreflightRequestTimeline():null;
 function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
 
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
@@ -301,12 +302,13 @@ const ownedRequestFailures=new WeakMap();
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
  const attempt={stage:comparisonStage,role:user?.role??null,route:mixedActionRoute(readRouteForMeasurement(path),action),method:fields?'POST':'GET',
   startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
+ const finish=!preflightCadenceClosed?mixedPreflightRequests?.begin({role:attempt.role,path,method:attempt.method,channel:'http'},attempt.startedMs):undefined;
  try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
  catch(error){
   if(error!==null&&typeof error==='object'&&!ownedRequestFailures.has(error))
    ownedRequestFailures.set(error,{...attempt,elapsedMs:performance.now()-attempt.startedMs});
   throw error;
- }
+ }finally{finish?.(performance.now());}
 }
 function recordPrimaryRequestFailure(){
  const {failed,reason}=failures.primary(),facts=failed&&reason!==null&&typeof reason==='object'?ownedRequestFailures.get(reason):undefined;
@@ -613,6 +615,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
      ...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
     wait.firstAppLockWaitCategories=firstAppLockWaitCategories(activity,appConnections.waitingOnLock);
+    if(mixedPreflightRequests)wait.preflightRequestOverlap=mixedPreflightRequests.overlapping(probe.startedMs,probe.coreCompletedMs);
    }
    if(!measureDevelopment){await captureRootStatements(db,holders,queuedLocks);return;}
    // Keep at most one optional lookup in flight per phase. The sampled lock counts already stand.
@@ -730,6 +733,18 @@ async function main(){
    nativeBrowserFailures?.observe(page);
    const observe=(name,callback)=>page.on(name,(...args)=>noteEvidence(()=>callback(...args)));
    const pending=new Map(),pdfRequests=[];pendingBrowserRequests.set(page,pending);browserPdfRequests.set(page,pdfRequests);
+   if(mixedPreflightRequests&&!preflightCadenceClosed){
+    const requests=new WeakMap();
+    observe('request',request=>{
+     if(preflightCadenceClosed||!['document','fetch','xhr'].includes(request.resourceType()))return;
+     const url=new URL(request.url());
+     if(url.origin!==base)return;
+     requests.set(request,mixedPreflightRequests.begin({role:user.role,path:url.pathname,method:request.method(),channel:'browser'},performance.now()));
+    });
+    const settled=request=>requests.get(request)?.(performance.now());
+    observe('requestfinished',settled);
+    observe('requestfailed',settled);
+   }
    const pdfRequest=req=>new URL(req.url()).origin===base&&new URL(req.url()).pathname.endsWith('/pdf');
    const pdfResult=(req,outcome,extra={})=>{if(!pdfRequest(req))return;const row=pending.get(req);pdfRequests.push({path:new URL(req.url()).pathname,type:req.resourceType(),outcome,elapsedMs:row?performance.now()-row.startedMs:null,...extra});if(pdfRequests.length>40)pdfRequests.shift();};
    // Keep bounded transport facts only: no cookies, queries, file names or document bytes.
