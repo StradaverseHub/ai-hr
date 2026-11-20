@@ -1,3 +1,4 @@
+import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {correctionAuditLabelsTx} from './information-correction-audit';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
@@ -14,7 +15,7 @@ import {deriveEmploymentStatus} from './employment-status';
 import {publicErrorMessage} from '../lib/public-error';
 import {EMPLOYMENT_PERIOD_UNITS} from '../lib/employment-period';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import {lockEmploymentStatutoryOwnerTx,wouldCreateAdminCycle} from './org';
+import {lockEmploymentStatutoryOwnerTx,wouldCreateAdminCycle,writeDirectSuperiorTx} from './org';
 import {assertWorkforceEmploymentTx,assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {withAccessDisplayRead} from './access-configuration-lock';
 import {allocationCompanyCode} from './cost-allocation-import';
@@ -587,6 +588,34 @@ async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,ma
  return{supersededId,replacementId:row.id,validFrom:from,validTo:end,...(removed.length?{replacedLineIds:removed.map(l=>l.id)}:{})};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
+export function amendDirectSuperior(ctx: SessionContext, input: {
+  employmentId: string; managerEmploymentId: string | null; expectedLineId: string | null; reason: string;
+}) {
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 200) fail('Enter a correction reason of up to 200 characters.');
+  return withTenant(ctx, async tx => {
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    const [subject] = await tx.select({ companyId: employment.companyId }).from(employment)
+      .where(and(eq(employment.id, input.employmentId), eq(employment.tenantId, ctx.tenantId))).limit(1);
+    if (!subject) fail('Employee record is unavailable.');
+    await administratorTx(tx, ctx, subject.companyId);
+    const corrected = await writeDirectSuperiorTx(tx, ctx, input);
+
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId, actor: actorOf(ctx), subjectEmploymentId: input.employmentId,
+      aggregateType: 'employment', aggregateId: input.employmentId, eventType: INFORMATION_CORRECTED_EVENT,
+      payload: {
+        source: 'direct-superior', method: 'manual', reason, effectiveOn: corrected.from, dated: true,
+        fields: ['managerEmploymentId'], before: { managerEmploymentId: corrected.previousManagerEmploymentId },
+        after: { managerEmploymentId: input.managerEmploymentId },
+        nextBoundary: corrected.until, until: { managerEmploymentId: corrected.until },
+        reportingLine: { supersededId: corrected.supersededId, replacementId: corrected.replacementId,
+          validFrom: corrected.from, validTo: corrected.until },
+      },
+    });
+  });
+}
+
 export function informationCorrectionHistory(ctx: SessionContext, employmentId: string) {
   return withAccessDisplayRead(() => withTenant(ctx, async tx => {
     await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');

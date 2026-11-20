@@ -1,3 +1,4 @@
+import { assertDirectSuperiorCandidateTx, writeDirectSuperiorTx } from './org';
 import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {readMovementHistoryPayTx} from './movement-history-pay';
 import {movementGradeEvidence} from '../lib/movement-grade-evidence';
@@ -249,6 +250,9 @@ export function movementRecordedExitOf(event: {
 /** One row of the Employment History list. `id` is the domain_event id, or the pseudo-id 'hired' when
  *  the Hired row is synthesized from employment.hiredOn (seed/legacy employments with no hired event —
  *  computed each render from the CURRENT hiredOn, so a hire-date correction can never leave a stale row). */
+type SuperiorFact = { kind: 'named'; name: string } | { kind: 'none' | 'unrecorded' | 'unavailable' };
+type SuperiorChange = { before: SuperiorFact; after: SuperiorFact };
+
 export type MovementHistoryRow = {
   id: string;
   recordedAt?: string | null;
@@ -339,6 +343,7 @@ export type MovementHistoryRow = {
   recordedResignation?: MovementRecordedResignation | null;
   /** Board 511aa74a — on a Rehired row only: the previous period it started from, as recorded on the event. */
   rehiredFrom?: { employmentId: string; employeeCode: string | null } | null;
+  superiorChange?: SuperiorChange;
 };
 
 /**
@@ -436,6 +441,7 @@ export type MovementDetail = {
     previousCompany: string | null; correctedCompany: string | null;
   }[];
   row: MovementRowSummary;
+  superiorChange?: SuperiorChange;
   recordedResignation?:MovementRecordedResignation|null;
   /** Full name of the user who recorded the change; null for SYSTEM/import writes and the synthesized row. */
   actorName: string | null;
@@ -522,7 +528,9 @@ const MOVEMENT_EVENT_TYPES = [
   'employment.terminated',
   'employment.blacklisted',
   'employment.blacklist.cleared',
+  'reporting-line.superseded',
   'reporting-line.set',
+  'reporting-line.ended',
   'employment.movement.recorded',
   // 66a63bd6 — marks an EXISTING row as rolled back; it never projects a row of its own.
   'employment.movement.reversed',
@@ -776,7 +784,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
     const tag = tagOf(event), payload = event.payload;
     if (!tag?.groupId || !payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
     const dateKey = event.eventType === 'compensation.set' ? 'effectiveFrom'
-      : event.eventType === 'reporting-line.set' ? 'validFrom'
+      : isReportingMovementLeg(event) ? 'validFrom'
       : ['assignment.transferred', 'employment.assignment.changed', 'employment.company.transferred'].includes(event.eventType)
         ? 'effectiveDate' : null;
     if (!dateKey || (event.eventType === 'reporting-line.set' && 'lineType' in payload && payload.lineType === 'delegate')) continue;
@@ -1006,6 +1014,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         rows.push({ ...base, kind: 'blacklistCleared', effectiveDate: occDate, endDate: null, remarks: null });
         break;
       case 'reporting-line.set':
+      case 'reporting-line.ended':
         // Delegations are approver cover, not employment movement — structural lines only.
         if (p.lineType === 'delegate') break;
         // 30325fc1 — GENERIC WRITER, TAG REQUIRED. Direct Superior stays editable outside Movement (r78's
@@ -1014,13 +1023,13 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         // That writer is now TAGGED at source instead — setDirectSuperiorAction passes a
         // `reportingLineChange` tag — so the row it has always produced is unchanged, and it is now backed
         // by a recorded intent rather than by a fallback label.
-        if (!knownKind(mv?.type)) break;
+        if (!knownKind(mv?.type) || !isReportingMovementLeg(e)) break;
         rows.push({
           ...base,
           kind: mv.type,
           effectiveDate: p.validFrom ?? occDate,
           endDate: null,
-          remarks: null,
+          remarks: mv.remarks ?? null,
         });
         break;
       case 'employment.movement.recorded':
@@ -1242,6 +1251,64 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
 
 /** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
  *  groupId), or the single event a legacy / one-leg movement projects. Empty for the synthesized Hired row. */
+function isReportingMovementLeg(event: RawEvent): boolean {
+  if (event.eventType === 'reporting-line.set') return true;
+  return event.eventType === 'reporting-line.ended' && !!tagOf(event);
+}
+
+type SuperiorReferences = { before: string | null | undefined; after: string | null | undefined };
+
+function reportingReferencesByEvent(events: RawEvent[]): Map<string, SuperiorReferences> {
+  type ReportingPayload = { lineType?: string; validFrom?: string; endDate?: string; managerEmploymentId?: string | null;
+    previousManagerEmploymentId?: string | null; supersededBy?: { lineType?: string; managerEmploymentId?: string };
+    input?: { managerEmploymentId?: string | null }; retainedDecision?: boolean };
+  const added = new Map<string, string | null>();
+  const references = new Map<string, SuperiorReferences>();
+  let previous: RawEvent | undefined;
+  for (const event of events) {
+    const payload = (event.payload ?? {}) as ReportingPayload;
+    if (isReportingMovementLeg(event) && payload.lineType === 'administrative') {
+      const closure = previous?.eventType === 'reporting-line.superseded' ? previous : undefined;
+      const boundary = closure?.payload as ReportingPayload | undefined;
+      const legacyBefore = closure && boundary?.endDate === payload.validFrom &&
+        boundary?.supersededBy?.lineType === 'administrative' &&
+        boundary.supersededBy.managerEmploymentId === payload.managerEmploymentId
+        ? added.get(closure.aggregateId) : undefined;
+      references.set(event.id, {
+        before: Object.hasOwn(payload, 'previousManagerEmploymentId') ? payload.previousManagerEmploymentId : legacyBefore,
+        after: payload.managerEmploymentId,
+      });
+      if (event.eventType === 'reporting-line.set' && typeof payload.managerEmploymentId === 'string') {
+        added.set(event.aggregateId, payload.managerEmploymentId);
+      }
+    } else if ((event.eventType === 'employment.movement.scheduled' ||
+      (event.eventType === 'employment.movement.recorded' && payload.retainedDecision === true)) &&
+      payload.input && Object.hasOwn(payload.input, 'managerEmploymentId')) {
+      references.set(event.id, { before: payload.previousManagerEmploymentId, after: payload.input.managerEmploymentId });
+    }
+    previous = event;
+  }
+  return references;
+}
+
+/** Resolve historic references in one scoped read. A restricted name is distinct from an absent assignment. */
+async function superiorChangeLabelsTx(tx: Tx, tenantId: string, references: SuperiorReferences[]) {
+  const ids = [...new Set(references.flatMap(ref => [ref.before, ref.after])
+    .filter((id): id is string => typeof id === 'string' && /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)))];
+  const names = ids.length ? await tx.select({ id: employment.id, name: person.fullName })
+    .from(employment).innerJoin(person, and(eq(person.id, employment.personId), eq(person.tenantId, tenantId)))
+    .where(and(eq(employment.tenantId, tenantId), inArray(employment.id, ids),
+      workforceEmploymentPredicate(sql`${employment.id}`))) : [];
+  const byId = new Map(names.map(({ id, name }) => [id, name]));
+  const fact = (id: string | null | undefined): SuperiorFact => {
+    if (id === undefined) return { kind: 'unrecorded' };
+    if (id === null) return { kind: 'none' };
+    const name = byId.get(id);
+    return name ? { kind: 'named', name } : { kind: 'unavailable' };
+  };
+  return (ref: SuperiorReferences): SuperiorChange => ({ before: fact(ref.before), after: fact(ref.after) });
+}
+
 const groupEventsOf = (events: RawEvent[], row: ProjectedRow): RawEvent[] =>
   row.groupId ? events.filter((e) => tagOf(e)?.groupId === row.groupId) : events.filter((e) => e.id === row.id);
 
@@ -1264,6 +1331,7 @@ const REVERSIBLE_EVENT_TYPES = new Set([
   'employment.payment-method.changed',
   'employment.info.updated',
   'reporting-line.set',
+  'reporting-line.ended',
   'employment.movement.recorded',
   // 941c9dac — the scheduling event itself is always "undoable" because it changed nothing. Listing it
   // here is what makes a PENDING movement cancellable (its group is this event alone) and keeps an
@@ -1472,7 +1540,7 @@ function flatValueAtSequence(
  * correction applied from the join date): read the company from the dated version, not the sequence replay. */
 // Board 4604dccc — and any correction dated before the day it was made (`dated`): its company holds only over its own period.
 const hasDatedCompanyHistory = (events: RawEvent[]): boolean =>
-  events.some((e) => e.eventType === MOVEMENT_HISTORY_EVENT || (e.eventType === 'employment.information.corrected' && ((e.payload as { fromJoinDate?: boolean } | null)?.fromJoinDate === true || (e.payload as { dated?: boolean } | null)?.dated === true)));
+  events.some((e) => e.eventType === MOVEMENT_HISTORY_EVENT || (e.eventType === 'employment.information.corrected' && ((e.payload as { fromJoinDate?: boolean } | null)?.fromJoinDate === true || ((e.payload as { dated?: boolean; source?: string } | null)?.dated === true && (e.payload as { source?: string }).source !== 'direct-superior'))));
 
 const isCompanyReplayEvent = (e: RawEvent): boolean =>
   e.eventType === 'employment.information.corrected' ||
@@ -1633,7 +1701,9 @@ export async function recordedMovementChangesTx(tx:Tx,tenantId:string,employment
       else if(e.eventType==='assignment.transferred'){for(const f of ['departmentId','locationId'])if(p.to?.[f]!==p.from?.[f])set(f,p.from?.[f],p.to?.[f]);}
       else if(e.eventType==='employment.company.transferred'){if(p.after?.companyId!==p.before?.companyId)set('companyId',p.before?.companyId,p.after?.companyId);}
       else if(e.eventType==='employment.info.updated'){for(const f of Array.isArray(p.fields)?p.fields:[])set(f,p.before?.[f],p.after?.[f]);}
-      else if(e.eventType==='reporting-line.set'&&r.kind!=='hired'){set('managerEmploymentId',undefined,p.managerEmploymentId,false);}
+      else if(isReportingMovementLeg(e)&&r.kind!=='hired'){
+        set('managerEmploymentId',p.previousManagerEmploymentId,p.managerEmploymentId,Object.hasOwn(p,'previousManagerEmploymentId'));
+      }
       else if(e.eventType===MOVEMENT_HISTORY_EVENT){for(const f of Array.isArray(p.fields)?p.fields:[])set(f,p.before?.[f],p.after?.[f]);}
     }
     out.push({id:r.id,kind:r.kind,label:resolvedTypes.get(r.kind)?.label??null,effectiveDate:r.effectiveDate,history:!!r.history,fields:[...fields],before,after});
@@ -1807,6 +1877,16 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
     const salaryValues=salaryIds.length?await tx.select({id:compensation.id,amount:compensation.basicSalary,currency:compensation.currency}).from(compensation).where(inArray(compensation.id,salaryIds)):[];
     const salaryValueById=new Map(salaryValues.map(value=>[value.id,`${value.currency} ${value.amount}`]));
     const dateConflicts=movementDateConflicts(rows,events);
+    const reportingReferences = reportingReferencesByEvent(events);
+    const superiorByRow = new Map<string, SuperiorReferences>();
+    for (const row of rows) {
+      const primary = eventsById.get(row.id);
+      const group = row.groupId ? eventsByGroup.get(row.groupId) ?? [] : primary ? [primary] : [];
+      if (resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind !== 'reportingLineChange') continue;
+      const reference = [...group].reverse().map(event => reportingReferences.get(event.id)).find(Boolean);
+      if (reference) superiorByRow.set(row.id, reference);
+    }
+    const superiorLabels = await superiorChangeLabelsTx(tx, ctx.tenantId, [...superiorByRow.values()]);
     const movements: MovementHistoryRow[] = rows.map((r) => {
       const primaryEvent = eventsById.get(r.id);
       const g = r.groupId ? eventsByGroup.get(r.groupId) ?? [] : primaryEvent ? [primaryEvent] : [];
@@ -1832,6 +1912,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       const salaryLeg=[...g].reverse().find(event=>event.eventType==='compensation.set');
       const hireSalaryApplies=latestHireSalary?.replacementId&&(r.kind==='hired'||r.effectiveDate>=(latestHireSalary.validFrom??emp.hiredOn)&&(!latestHireSalary.until||r.effectiveDate<latestHireSalary.until));
       const salaryReference=salaryLeg?.aggregateId??(hireSalaryApplies?latestHireSalary?.replacementId:null);
+      const superiorReference = superiorByRow.get(r.id);
       const corrected=correctionView.apply(r.id,{company:placement.company,businessUnit:null,department:null,position:null,grade:null,employmentType:null,manager:null,salary:null});
       return {
         id: r.id,
@@ -1846,6 +1927,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
         remarks: r.remarks,
         reversed: r.reversed,
         correctionKind:recordedMovementKind(r,g),
+        ...(superiorReference ? { superiorChange: superiorLabels(superiorReference) } : {}),
         ...(r.history?{history:true}:{}),
         canEdit: c.canEdit && !terminal,
         canReverse: c.canReverse && (!terminal||cancellableConflict),
@@ -2177,7 +2259,7 @@ export function ownMovementDetail(ctx:SessionContext,employmentId:string,movemen
 }
 
 async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string):Promise<MovementDetail|null>{
-    const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
+    const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
     const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed'||isGradeInformationCorrection(e)).map(e=>e.eventType==='employment.information.corrected'?{...e,payload:{before:(e.payload as {before: {gradeId:string|null}}).before.gradeId,after:(e.payload as {after: {gradeId:string|null}}).after.gradeId}}:e);
@@ -2202,6 +2284,10 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     // that owns the row, and bounding on the primary alone would drop the grade change from the After
     // column. A legacy/single-leg row has no group, so both bounds collapse to its own sequence.
     const group = groupEventsOf(events,row);
+    const references = resolvedTypes.get(recordedMovementKind(row, group))?.behaviourKind === 'reportingLineChange'
+      ? reportingReferencesByEvent(events) : null;
+    const reference = references && [...group].reverse().map(event => references.get(event.id)).find(Boolean);
+    const superiorChange = reference ? (await superiorChangeLabelsTx(tx, ctx.tenantId, [reference]))(reference) : undefined;
     const seqs = group.length ? group.map((e) => e.sequence) : [row.sequence];
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
@@ -2297,6 +2383,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         return (review?.periods??[]).filter((period):period is string=>typeof period==='string'&&/^\d{4}-\d{2}$/.test(period));
       }))].sort()}}:{}),
       actorName,
+      superiorChange,
       recordedResignation:ev?movementRecordedResignationOf(ev):null,
       occurredAt: row.occurredAt,
       before,
@@ -2720,7 +2807,7 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     dDept !== undefined || dPos !== undefined || dBu !== undefined || dLoc !== undefined || !!dType;
   const gradeChanged = dGrade !== undefined;
   const flatChanged = Object.keys(flat).length > 0;
-  const managerChanged = dManager != null; // clearing the superior is the Employment tab's job, not a movement
+  const managerChanged = dManager != null || (p.kind === 'reportingLineChange' && dManager === null);
   // An employee with no salary record yet has null currency / pay mode / payment term, so the form's
   // defaults would read as deltas and demand a salary the movement was never about. Structure-only
   // changes therefore need an existing record; setting the FIRST one stays the Basic Salary screen's job.
@@ -2932,7 +3019,8 @@ async function applyComparisonLegsTx(
   const groupId = opts?.groupId ?? randomUUID();
 
   {
-    const cur = {...await currentStateTx(tx,p.employmentId,opts?.allSecondary?p.effectiveDate:todayInKualaLumpur()),paymentMethod:await employmentPaymentMethodOnTx(tx,p.employmentId,p.effectiveDate)};
+    const baselineDate = opts?.allSecondary || kind === 'reportingLineChange' ? p.effectiveDate : todayInKualaLumpur();
+    const cur = {...await currentStateTx(tx, p.employmentId, baselineDate), paymentMethod: await employmentPaymentMethodOnTx(tx, p.employmentId, p.effectiveDate)};
     const d = movementDeltas(p, cur);
     const {
       periods, periodsChanged,
@@ -3093,7 +3181,12 @@ async function applyComparisonLegsTx(
     // `dManager != null` rather than the equivalent `managerChanged` flag purely so TypeScript keeps the
     // narrowing to a non-null string through the call below (the flag is computed in movementDeltas, so
     // control-flow analysis cannot tie the two together).
-    if (dManager != null) {
+    if (dManager !== undefined && kind === 'reportingLineChange') {
+      await writeDirectSuperiorTx(tx, ctx, {
+        employmentId: p.employmentId, managerEmploymentId: dManager,
+        effectiveDate: p.effectiveDate, movement: tag({ withRemarks: true }),
+      });
+    } else if (dManager != null) {
       await setReportingLine(
         ctx,
         {
@@ -3183,7 +3276,13 @@ async function scheduleMovementTx(
   // Always reread the real subject under current RLS. Only the canonical rollback rehearsal below can
   // supply a verified predecessor state for a future sequence; ordinary New Event/Edit use live state.
   await lockMovementSubjectTx(tx,p.employmentId);
-  const live = await currentStateTx(tx, p.employmentId, admission?.capture ? p.effectiveDate : todayInKualaLumpur());
+  const live = await currentStateTx(tx, p.employmentId,
+    admission?.capture || kind === 'reportingLineChange' ? p.effectiveDate : todayInKualaLumpur());
+  if (kind === 'reportingLineChange' && p.managerEmploymentId) {
+    await assertDirectSuperiorCandidateTx(tx, ctx, {
+      employmentId: p.employmentId, managerEmploymentId: p.managerEmploymentId, from: p.effectiveDate,
+    });
+  }
   const cur = admission?.baseline ?? live;
   const d = movementDeltas(p, cur);
   if (d.nothingChanged) throw new MovementNoChangeError();
@@ -3209,6 +3308,7 @@ async function scheduleMovementTx(
       remarks,
       /** The conflict key — the fields this movement intends to move (see supersededScheduledIds). */
       fields: d.fields,
+      ...(kind === 'reportingLineChange' ? { previousManagerEmploymentId: cur.managerEmploymentId } : {}),
       /** What HR typed, replayed verbatim by the sweep on the effective date. */
       input: scheduledInputOf(p),
       // The tag is what makes this event the OWNER of the history row: the sweep's legs share this
@@ -3686,6 +3786,7 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     ? await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,p.employmentId)).limit(1)
     : [];
   const execute=async()=>{
+  if (p.kind === 'reportingLineChange' && !isCalendarDate(p.effectiveDate)) throw new Error('Enter a valid Effective Date.');
   if (p.kind !== 'blacklist' && !/^\d{4}-\d{2}-\d{2}$/.test(p.effectiveDate ?? '')) {
     throw new Error('A valid effective date (YYYY-MM-DD) is required.');
   }
@@ -4288,7 +4389,7 @@ function changedMovementFields(row:ProjectedRow,events:RawEvent[]):string[]{
   if(event.eventType==='compensation.set')for(const field of payload.fieldsChanged??['basicSalary'])fields.add(field);
   else if(event.eventType==='employment.grade.changed')fields.add('gradeId');
   else if(event.eventType==='employment.payment-method.changed')fields.add('paymentMethod');
-  else if(event.eventType==='reporting-line.set')fields.add('managerEmploymentId');
+  else if(isReportingMovementLeg(event))fields.add('managerEmploymentId');
   else if(event.eventType==='employment.info.updated')for(const field of payload.fields??[])fields.add(field);
   else if(['employment.assignment.changed','employment.company.transferred','assignment.transferred'].includes(event.eventType)){
    const before=payload.before??payload.from??{},after=payload.after??payload.to??{};
@@ -4309,7 +4410,11 @@ function movementDateConflicts(rows:ProjectedRow[],events:RawEvent[]):Set<string
  return conflicts;
 }
 async function assertMovementDateOrderTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,fields:readonly string[]){
- const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+ const {emp,events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+ if (p.kind === 'reportingLineChange' && (p.effectiveDate < emp.hiredOn ||
+   (emp.terminatedOn && p.effectiveDate >= emp.terminatedOn))) {
+   throw new Error('The Effective Date must fall within the employee’s employment.');
+ }
  for(const row of rows){
   if(row.kind==='hired'||row.reversed||row.effectiveDate!==p.effectiveDate)continue;
   if(statusOf(row)==='superseded'&&!row.scheduled)continue;
@@ -4493,6 +4598,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
         input.gradeId = p.after ?? null;
         break;
       case 'reporting-line.set':
+      case 'reporting-line.ended':
         input.managerEmploymentId = p.managerEmploymentId ?? null;
         break;
       case 'employment.payment-method.changed':
@@ -4853,6 +4959,35 @@ async function reverseLegTx(
       return;
     }
 
+    case 'reporting-line.ended': {
+      if (!isReportingMovementLeg(e)) return;
+      const endedOn: unknown = p.validFrom;
+      if (typeof endedOn !== 'string' || typeof p.previousReportingLineId !== 'string') {
+        throw new MovementNotCorrectableError('The prior Direct Superior assignment was not recorded.');
+      }
+      const preceding = liveIncarnationOf(p.previousReportingLineId, hireCorrections);
+      const [prior] = await tx.select().from(reportingLine).where(and(eq(reportingLine.id, preceding),
+        eq(reportingLine.subordinateEmploymentId, employmentId), isNull(reportingLine.supersededAt))).limit(1);
+      if (!prior || prior.validTo !== endedOn) throw new MovementNotCorrectableError('The prior Direct Superior assignment changed.');
+      const [next] = await tx.select({ date: reportingLine.validFrom }).from(reportingLine)
+        .where(and(eq(reportingLine.subordinateEmploymentId, employmentId), eq(reportingLine.lineType, 'administrative'),
+          isNull(reportingLine.supersededAt), sql`${reportingLine.validFrom} >= ${endedOn}::date`,
+          sql`(${reportingLine.validTo} is null or ${reportingLine.validTo} > ${reportingLine.validFrom})`))
+        .orderBy(reportingLine.validFrom).limit(1);
+      const until = [p.previousValidTo, next?.date].filter((date): date is string => typeof date === 'string').sort()[0] ?? null;
+      if (!until || until > endedOn) {
+        await assertDirectSuperiorCandidateTx(tx, ctx, { employmentId, managerEmploymentId: prior.managerEmploymentId,
+          from: endedOn, until });
+      }
+      await tx.update(reportingLine).set({ validTo: until }).where(eq(reportingLine.id, prior.id));
+      await appendEvent(tx, {
+        tenantId: ctx.tenantId, actor: actorOf(ctx), subjectEmploymentId: employmentId,
+        aggregateType: 'reporting-line', aggregateId: prior.id, eventType: 'reporting-line.reverted',
+        payload: { subordinateEmploymentId: employmentId, restoredReportingLineId: prior.id, reversalOf: e.id },
+      });
+      return;
+    }
+
     case 'reporting-line.set': {
       const [row] = await tx
         .select()
@@ -4875,6 +5010,9 @@ async function reverseLegTx(
             eq(reportingLine.lineType, row.lineType),
             isNull(reportingLine.supersededAt),
             eq(reportingLine.validTo, row.validFrom),
+            typeof p.previousReportingLineId === 'string'
+              ? eq(reportingLine.id, liveIncarnationOf(p.previousReportingLineId, hireCorrections))
+              : p.previousReportingLineId === null ? sql`false` : undefined,
           ),
         )
         .orderBy(desc(reportingLine.validFrom))
@@ -5076,7 +5214,7 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     if(event.eventType==='employment.info.updated')for(const field of ((event.payload??{}) as {fields?:string[]}).fields??[])protectedFields.add(field);
     // ccd3a65c — the organisation dimensions and the Direct Superior an information-only correction can now set.
     if(event.eventType==='employment.assignment.changed'){const p=(event.payload??{}) as {before?:Record<string,unknown>;after?:Record<string,unknown>};for(const field of ['departmentId','positionId','businessUnitId'])if(p.before?.[field]!==p.after?.[field])protectedFields.add(field);}
-    if(event.eventType==='reporting-line.set')protectedFields.add('managerEmploymentId');
+    if(isReportingMovementLeg(event))protectedFields.add('managerEmploymentId');
   }
   const conflictingCorrection=events.find(event=>{
     if(event.eventType!=='employment.information.corrected'||event.sequence<=row.sequence)return false;

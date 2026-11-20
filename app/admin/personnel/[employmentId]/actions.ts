@@ -9,6 +9,8 @@ import { MovementHistoryError, type HistoryDateFacts } from '@/core/movement-his
 import { movementImportIssueText } from '@/lib/movement-import-issues';
 import {setEmploymentBlacklist,setEmploymentInfo,setReportingLine} from '@/core/workforce-commands';
 import { publicErrorMessage } from '@/lib/public-error';
+import { amendDirectSuperior } from '@/core/information-correction';
+import { isCalendarDate } from '@/lib/calendar-date';
 import {movementNeedsEntitlementReprojection} from '@/core/movement-kinds';
 import { randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
@@ -766,48 +768,37 @@ export async function correctHireDetailsAction(formData: FormData) {
   redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
 }
 
-/** Direct Superior (dce55aff) — the Reporting Lines management UI is replaced by ONE field. Saving
- *  writes the administrative reporting line through the existing service path: setReportingLine
- *  supersedes (CLOSE + INSERT) any prior active admin line, refuses self-assignment and cycles
- *  (ReportingCycleError), and appends the reporting-line.set / .superseded DomainEvents — so the full
- *  audit trail (previous superior, new superior, actor, timestamp) is preserved without effort.
- *  Effective-dating stays internal: validFrom is always "today". An EMPTY selection clears the
- *  current superior (the employee becomes a hierarchy top) via endReportingLine. Line types
- *  functional/project/dotted are no longer maintainable from this screen. */
+/** Employment delegates dated reassignment and correction to their canonical owners. */
 export async function setDirectSuperiorAction(formData: FormData) {
-  const s = await requireAdmin();
-  const employmentId = String(formData.get('employmentId'));
-  const superiorEmploymentId = String(formData.get('superiorEmploymentId') ?? '').trim();
-  const currentSuperiorEmploymentId = String(formData.get('currentSuperiorEmploymentId') ?? '').trim();
-  const currentLineId = String(formData.get('currentLineId') ?? '').trim();
-  const today = todayInKualaLumpur();
+  const session = await requireAdmin();
+  const employmentId = String(formData.get('employmentId') ?? '');
+  const href = `/admin/personnel/${encodeURIComponent(employmentId)}?tab=job`;
+  const mode = formData.get('superiorChangeMode');
+  const superior = formData.get('superiorEmploymentId');
+  const reason = String(formData.get('superiorChangeReason') ?? '').trim();
+  const t = await getTranslations('people.detail');
   try {
-    if (superiorEmploymentId === currentSuperiorEmploymentId) {
-      // No change — skip the write so the audit trail records only genuine superior moves.
-    } else if (superiorEmploymentId === '') {
-      if (currentLineId) await endReportingLine(s, { reportingLineId: currentLineId, endDate: today });
-    } else {
-      await setReportingLine(s, {
-        subordinateEmploymentId: employmentId,
-        managerEmploymentId: superiorEmploymentId,
-        lineType: 'administrative',
-        validFrom: today,
-        // 30325fc1 — TAG THIS WRITE. Employment History now requires a movement tag on every generic
-        // writer's event (core/movement.ts projectRows), because an untagged event is an ordinary edit and
-        // the fallback labels that invented a kind for one are gone. Direct Superior is the one generic
-        // writer r78 deliberately left outside the Movement module (the CLEAR path emits
-        // `reporting-line.ended`, not a movement event type, so routing only the SET path through Movement
-        // would remove the only way to clear a superior). Tagging it at source keeps the Reporting Line
-        // Change row it has always produced — now backed by a recorded intent instead of a guess — without
-        // touching the clear path. This EXTENDS r78's tagging; it untags nothing.
-        movement: { type: 'reportingLineChange', groupId: randomUUID() },
-      });
+    if (typeof superior !== 'string' || (mode !== 'amend' && mode !== 'movement')) {
+      throw new Error(t('directSuperiorChangeTitle'));
     }
-  } catch (e) {
-    redirect(withTab(formData, `/admin/personnel/${employmentId}?error=${encodeURIComponent(publicErrorMessage(e))}`));
+    if (!reason || reason.length > 200) throw new Error(t('directSuperiorReasonRequired'));
+    const managerEmploymentId = superior.trim() || null;
+    if (mode === 'amend') {
+      await amendDirectSuperior(session, {
+        employmentId, managerEmploymentId, reason,
+        expectedLineId: String(formData.get('currentLineId') ?? '').trim() || null,
+      });
+    } else {
+      const effectiveDate = String(formData.get('superiorEffectiveDate') ?? '').trim();
+      if (!isCalendarDate(effectiveDate)) throw new Error(t('directSuperiorDateRequired'));
+      await createMovementEvent(session, { employmentId, managerEmploymentId, effectiveDate, remarks: reason,
+        kind: 'reportingLineChange' });
+    }
+  } catch (error) {
+    redirect(`${href}&error=${encodeURIComponent(publicErrorMessage(error))}`);
   }
   revalidatePath(`/admin/personnel/${employmentId}`);
-  redirect(withTab(formData, `/admin/personnel/${employmentId}?toast=Saved`));
+  redirect(`${href}&toast=Saved`);
 }
 
 /** Hierarchy Management (ADR-0052): create an approval delegation FROM this employment (the delegator

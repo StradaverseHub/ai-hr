@@ -381,7 +381,12 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       const history = formTags(stripComments(read('app/admin/personnel/[employmentId]/movement-history-actions.tsx')));
       expect(history.filter((tag) => /action=\{reverseAction\}/.test(tag))).toHaveLength(1);
       for (const tag of history) expect(tag).not.toContain('data-save-section');
-      const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction']
+      expect(PAGE()).toContain('currentLineId={currentSuperior?.id ?? null}');
+      expect(PAGE()).toContain('action={setDirectSuperiorAction}');
+      const superior = formTags(stripComments(read('app/admin/personnel/[employmentId]/direct-superior-change-form.tsx')));
+      expect(superior.filter(tag => /action=\{action\}/.test(tag))).toHaveLength(1);
+      for (const tag of superior) expect(tag).not.toContain('data-save-section');
+      const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction', 'setDirectSuperiorAction']
         .join(' | ');
       for (const action of BUCKET_B) {
         expect(bound, `${action} must still be bound to a <form action={…}>`).toContain(action);

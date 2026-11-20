@@ -1530,6 +1530,97 @@ async function setReportingLineBody(
   return outerTx ? run(outerTx) : withTenant(ctx, run);
 }
 
+/** One administrative reporting interval, using the same relationship and payroll locks as Org. */
+export async function writeDirectSuperiorTx(tx: Tx, ctx: SessionContext, input: {
+  employmentId: string;
+  managerEmploymentId: string | null;
+} & (
+  | { effectiveDate: string; movement: MovementTag }
+  | { expectedLineId: string | null }
+)) {
+  const { employmentId, managerEmploymentId } = input;
+  const amendment = 'expectedLineId' in input;
+  const date = amendment ? todayInKualaLumpur() : input.effectiveDate;
+  if (!isCalendarDate(date)) throw new Error('Enter a valid Effective Date.');
+  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'maintain');
+  await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [employmentId], { configuration: true });
+  await lockOrgReportingTx(tx, ctx.tenantId);
+  await lockPayrollInputsTx(tx, { employmentIds: [employmentId] });
+  await lockEmploymentStatutoryOwnerTx(tx, employmentId);
+  const [subject] = await tx.select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn })
+    .from(employment).where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.id, employmentId))).for('update');
+  if (!subject || date < subject.hiredOn || (subject.terminatedOn && date >= subject.terminatedOn)) {
+    throw new Error('The Effective Date must fall within the employee’s employment.');
+  }
+  const lines = and(eq(reportingLine.tenantId, ctx.tenantId), eq(reportingLine.subordinateEmploymentId, employmentId),
+    eq(reportingLine.lineType, 'administrative'), isNull(reportingLine.supersededAt),
+    sql`(${reportingLine.validTo} is null or ${reportingLine.validTo} > ${reportingLine.validFrom})`);
+  const current = await tx.select().from(reportingLine).where(and(lines, lte(reportingLine.validFrom, date),
+    or(isNull(reportingLine.validTo), gt(reportingLine.validTo, date)))).limit(2);
+  if (current.length > 1) throw new Error('More than one Direct Superior is recorded for this date. Review the reporting history first.');
+  const prior = current[0];
+  if (amendment && (prior?.id ?? null) !== input.expectedLineId) {
+    throw new Error('The Direct Superior changed after this page opened. Reload and review the assignment.');
+  }
+  const previousManagerEmploymentId = prior?.managerEmploymentId ?? null;
+  if (managerEmploymentId === previousManagerEmploymentId) throw new Error('Select a different Direct Superior.');
+
+  const [next] = await tx.select({ date: reportingLine.validFrom }).from(reportingLine)
+    .where(and(lines, gt(reportingLine.validFrom, date))).orderBy(reportingLine.validFrom).limit(1);
+  const [last] = amendment && !prior ? await tx.select({ date: reportingLine.validTo }).from(reportingLine)
+    .where(and(lines, lte(reportingLine.validTo, date))).orderBy(desc(reportingLine.validTo)).limit(1) : [];
+  const from = amendment ? prior?.validFrom ?? last?.date ?? subject.hiredOn : date;
+  const until = [prior?.validTo, next?.date, subject.terminatedOn].filter((day): day is string => !!day).sort()[0] ?? null;
+  const [historicalAssignment] = await tx.select({ companyId: assignment.companyId }).from(assignment)
+    .where(and(eq(assignment.employmentId, employmentId), isNull(assignment.supersededAt),
+      lte(assignment.validFrom, from), or(isNull(assignment.validTo), gt(assignment.validTo, from)))).limit(1);
+  if (historicalAssignment?.companyId) await assertWorkforceCompanyTx(tx, ctx, historicalAssignment.companyId, 'maintain');
+  if (managerEmploymentId) await assertDirectSuperiorCandidateTx(tx, ctx, { employmentId, managerEmploymentId, from, until });
+
+  if (amendment) await preserveMovementPayrollTx(tx, employmentId, message => new Error(message));
+  if (prior) {
+    // A dated decision can leave a zero-length version at an explicitly ordered same-day boundary.
+    // Its inverse needs that predecessor. An amendment supersedes the existing version instead.
+    await tx.update(reportingLine).set(amendment ? { supersededAt: new Date() } : { validTo: from })
+      .where(eq(reportingLine.id, prior.id));
+  }
+  const [replacement] = managerEmploymentId ? await tx.insert(reportingLine).values({
+    tenantId: ctx.tenantId, subordinateEmploymentId: employmentId, managerEmploymentId,
+    lineType: 'administrative', validFrom: from, validTo: until,
+  }).returning({ id: reportingLine.id }) : [];
+  if (!amendment) {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId, actor: actorOf(ctx), subjectEmploymentId: employmentId,
+      aggregateType: 'reporting-line', aggregateId: replacement?.id ?? prior!.id,
+      eventType: replacement ? 'reporting-line.set' : 'reporting-line.ended',
+      payload: { subordinateEmploymentId: employmentId, managerEmploymentId, previousManagerEmploymentId,
+        previousReportingLineId: prior?.id ?? null, previousValidTo: prior?.validTo ?? null,
+        lineType: 'administrative', validFrom: from, validTo: until,
+        ...(!replacement ? { endDate: from } : {}), movement: input.movement },
+    });
+  }
+  await markWorkforcePayrollInputsChangedTx(tx, ctx, { employmentId, from, until });
+  return { previousManagerEmploymentId, supersededId: prior?.id ?? null, replacementId: replacement?.id ?? null, from, until };
+}
+
+export async function assertDirectSuperiorCandidateTx(tx: Tx, ctx: SessionContext, input: {
+  employmentId: string; managerEmploymentId: string; from: string; until?: string | null;
+}) {
+  if (input.employmentId === input.managerEmploymentId) throw new ReportingCycleError();
+  await assertWorkforceEmploymentTx(tx, ctx, input.managerEmploymentId, 'view');
+  const [manager] = await tx.select({ hiredOn: employment.hiredOn, terminatedOn: employment.terminatedOn,
+    isTestRecord: employment.isTestRecord }).from(employment)
+    .where(and(eq(employment.tenantId, ctx.tenantId), eq(employment.id, input.managerEmploymentId))).limit(1);
+  if (!manager || manager.isTestRecord || manager.hiredOn > input.from ||
+    (manager.terminatedOn && manager.terminatedOn <= input.from)) {
+    throw new Error('The selected Direct Superior must be active on the Effective Date.');
+  }
+  if (await wouldCreateAdminCycle(tx, input.employmentId, input.managerEmploymentId, input.from, input.until)) {
+    throw new ReportingCycleError();
+  }
+}
+
 /** Reviewed structural reporting only. The calling principal remains the HR user, never the target
  * employee. No delegation hand-over, Movement classification or close-date proposal is accepted. */
 export type ReviewedReportingLineSelection={subordinateEmploymentId:string;managerEmploymentId:string;lineType:'administrative'|'functional';validFrom:string};
