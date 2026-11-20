@@ -162,7 +162,20 @@ async function measureMixedLoad(){
    PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
   },1800000);
  }finally{
-  if(existsSync(resultPath)){
+  if(!existsSync(resultPath)){
+   // Startup errors occur before the driver writes its structured report.
+   // Preserve only bounded codes and source frames from the private runner log.
+   const log=readFileSync(join(privateDir,'measure-500-user-mixed-load.log'),'utf8').slice(-32000);
+   const codes=log.matchAll(/\bERR_[A-Z_]{2,60}\b/g);
+   const frames=log.matchAll(/\/source\/((?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_./-]{1,140}:\d{1,5}(?::\d{1,5})?)(?=[)\s]|$)/gm);
+   const kind=/^\s*(AssertionError|SyntaxError|TypeError|ReferenceError|Error)(?=[: ])/m.exec(log)?.[1];
+   report.mixedLoadStartupFailure={
+    kind:kind??'unknown',
+    codes:[...new Set(Array.from(codes,match=>match[0]))].slice(0,5),
+    locations:[...new Set(Array.from(frames,match=>match[1]))].slice(0,8),
+   };
+   save();
+  }else{
    const data=JSON.parse(readFileSync(resultPath,'utf8'));
    const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
    const counts=(obj,keys)=>Object.fromEntries(keys.map(key=>[key,nonnegative(obj?.[key])]));
