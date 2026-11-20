@@ -9,9 +9,9 @@ import th from '../messages/th.json';
 import viLocale from '../messages/vi.json';
 import zh from '../messages/zh.json';
 import type { AttendanceWorkflowInput, AttendanceWorkflowOptions } from '../lib/attendance-workflow';
-const { save, preview, router } = vi.hoisted(() => ({ save: vi.fn(), preview: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() } }));
+const { save, preview, loadAssignmentOptions, router } = vi.hoisted(() => ({ save: vi.fn(), preview: vi.fn(), loadAssignmentOptions: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() } }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/approval-workflow/new' }));
-vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ saveAttendanceWorkflowAction: save, previewAttendanceWorkflowAction: preview }));
+vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ saveAttendanceWorkflowAction: save, previewAttendanceWorkflowAction: preview, loadAttendanceAssignmentOptionsAction: loadAssignmentOptions }));
 import { WorkflowForm } from '../app/admin/attendance/approval-workflow/workflow-form';
 import { __resetUnsavedGuards } from '../lib/unsaved-changes';
 const companyId = '00000000-0000-0000-0000-000000000001';
@@ -21,6 +21,32 @@ function form(value: AttendanceWorkflowInput | null = initial(), messages = en, 
 beforeEach(() => { vi.clearAllMocks(); save.mockResolvedValue({ ok: true, lineageId: 'saved-lineage' }); preview.mockResolvedValue({ ok: true, preview: { total: 1, rows: [{ employmentId: 'employee', name: 'Example employee', selectedCode: 'OVERTIME', problem: null }], truncated: false } }); vi.spyOn(window, 'confirm').mockReturnValue(false); });
 afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); });
 describe('company workflow editor outcomes', () => {
+  it('loads assignment options only on demand and keeps entered values across a failed read', async () => {
+    loadAssignmentOptions.mockRejectedValueOnce(new Error('Fictional unavailable read'))
+      .mockResolvedValueOnce(options.departments).mockResolvedValueOnce(options.businessUnits);
+    render(<NextIntlClientProvider locale="en" messages={en}><WorkflowForm context={{companyId,applicationType:'self_overtime'}} initial={null} lineageId={null}
+      options={{companies:options.companies,departments:[],businessUnits:[],grades:[],divisions:[]}} deferAssignmentOptions /></NextIntlClientProvider>);
+    fireEvent.change(screen.getByLabelText('Workflow name'),{target:{value:'Fictional review'}});
+    fireEvent.click(screen.getByRole('button',{name:en.attendanceWorkflow.employmentType}));
+    expect(loadAssignmentOptions).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder),{key:'Escape'});
+    fireEvent.click(screen.getByRole('button',{name:'Department'}));
+    expect(loadAssignmentOptions).toHaveBeenNthCalledWith(1,'departmentIds');
+    expect(screen.getByText(en.common.loading)).toBeVisible();
+    await screen.findByText(en.attendanceWorkflow.requestFailed);
+    fireEvent.click(screen.getByRole('button',{name:en.attendanceWorkflow.retryEmployees}));
+    fireEvent.click(await screen.findByRole('checkbox',{name:'Finance'}));
+    expect(screen.getByRole('button',{name:'Remove Finance'})).toBeVisible();
+    expect(screen.getByLabelText('Workflow name')).toHaveValue('Fictional review');
+    fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder),{key:'Escape'});
+    fireEvent.click(screen.getByRole('button',{name:'Business Unit'}));
+    expect(await screen.findByRole('checkbox',{name:'Operations'})).toBeVisible();
+    expect(loadAssignmentOptions).toHaveBeenNthCalledWith(2,'departmentIds');
+    expect(loadAssignmentOptions).toHaveBeenNthCalledWith(3,'businessUnitIds');
+    fireEvent.click(screen.getByRole('button',{name:'Department'}));
+    expect(screen.getByRole('checkbox',{name:'Finance',checked:true})).toBeVisible();
+    expect(loadAssignmentOptions).toHaveBeenCalledTimes(3);
+  });
   it('fixes company/type for creation and saves all four multi-valued criteria without losing values when searching', async () => {
     form(null);
     expect(screen.getByRole('button',{name:'Company'})).toBeEnabled();

@@ -9,6 +9,8 @@ import { pgSqlState } from '@/lib/db-error';
 import { isWorkflowId } from './navigation';
 import { scopedAdmin } from '@/lib/scope';
 import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, generateAttendanceWorkflowPreview, AttendanceWorkflowError, type AttendanceWorkflowCopySource } from '@/packs/attendance/service';
+import { isWorkflowAssignmentField, type WorkflowAssignmentField } from './assignment-field';
+import { readWorkflowAssignmentOptions } from './assignment-options';
 const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('usedCannotDelete');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
 export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false, saveRequestId?:string, copiedFrom?: AttendanceWorkflowCopySource) {
@@ -75,6 +77,12 @@ export async function searchAttendanceApproversAction(input:{companyIds:string[]
   const {searchAttendanceApprovers}=await import('@/packs/attendance/service');
   return {ok:true as const,value:await searchAttendanceApprovers(s,input)};
  }catch(error){return {ok:false as const,error:await publicError(error)};}
+}
+
+export async function loadAttendanceAssignmentOptionsAction(field: WorkflowAssignmentField) {
+ if(!isWorkflowAssignmentField(field))throw new Error('Unknown attendance assignment field.');
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ return readWorkflowAssignmentOptions(s,allowedCompanyIds??scopeIds,field);
 }
 
 export async function archiveAttendanceWorkflowAction(lineageId:string,version:number){
