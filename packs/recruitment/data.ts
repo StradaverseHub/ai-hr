@@ -31,7 +31,7 @@ import {
 } from './model';
 import {
   recruitmentApplication, recruitmentApplicationEvent, recruitmentArchiveReason, recruitmentCandidate, recruitmentCompanySetting,
-  recruitmentEvaluationForm, recruitmentJobMember, recruitmentJobOpening, recruitmentOfferField, recruitmentProcess, recruitmentProcessStage,
+  recruitmentEvaluationForm, recruitmentJobMember, recruitmentJobOpening, recruitmentProcess, recruitmentProcessStage,
   recruitmentRequisitionJob, recruitmentStage, recruitmentCandidateRestricted,
 } from './schema';
 import { DEFAULT_EVALUATION_FORM, DEFAULT_OFFER_FIELDS } from './hiring-model';
@@ -173,73 +173,117 @@ export async function recruitmentCompanies(s: SessionContext, scopeIds: readonly
   });
 }
 
-/**
- * Give a company its editable defaults, once: the stage catalogue, the "Recruitment process" with its nine
- * ordered stages, and the seven default archive reasons. Idempotent and concurrency-safe — every insert is
- * keyed by a per-company seed key and skips on conflict, so a renamed or disabled default is never restored.
- */
-export async function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, companyId: string): Promise<void> {
-  await assertCompanyTx(tx, companyId);
-  const user = actorId(s);
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`recruitment-seed:${s.tenantId}:${companyId}`}, 0))`);
-  for (const stage of DEFAULT_STAGES) {
-    await tx.insert(recruitmentStage).values({
-      tenantId: s.tenantId, companyId, name: stage.name, stageType: stage.type, systemKey: stage.systemKey ?? null,
-      seedKey: stage.seedKey, createdByUserId: user, updatedByUserId: user,
-    }).onConflictDoNothing();
+const defaultStageKeys = DEFAULT_STAGES.map(stage => stage.seedKey);
+const defaultReasonKeys = DEFAULT_ARCHIVE_REASONS.map(reason => reason.seedKey);
+const defaultFieldKeys = DEFAULT_OFFER_FIELDS.map(field => field.seedKey);
+const defaultStageRows = JSON.stringify(DEFAULT_STAGES.map(stage => ({
+  seed_key: stage.seedKey, name: stage.name, stage_type: stage.type, system_key: stage.systemKey ?? null,
+})));
+const defaultReasonRows = JSON.stringify(DEFAULT_ARCHIVE_REASONS.map((reason, index) => ({
+  seed_key: reason.seedKey, internal_reason: reason.internal, external_reason: reason.external, position: (index + 1) * 10,
+})));
+const defaultFieldRows = JSON.stringify(DEFAULT_OFFER_FIELDS.map((field, index) => ({
+  seed_key: field.seedKey, label: field.label, field_type: field.type, required: field.required,
+  needs_approval: field.needsApproval, private_field: field.private, position: (index + 1) * 10,
+})));
+const seedKeyArray = (keys: readonly string[]) => sql`array[${sql.join(keys.map(key => sql`${key}`), sql`, `)}]::text[]`;
+
+/** The page path reads completeness once. Existing seeded records count even after users edit or disable them. */
+async function recruitmentDefaultsMissingTx(tx: Tx, tenantId: string, companyIds: readonly string[]): Promise<string[]> {
+  const rows = await tx.execute<{ id: string; allowed: boolean; incomplete: boolean }>(sql`
+    select requested.id, app.can_admin_recruitment_for(requested.id) as allowed,
+      (select count(*) from recruitment_stage where tenant_id = ${tenantId}::uuid and company_id = requested.id
+        and seed_key = any(${seedKeyArray(defaultStageKeys)})) < ${defaultStageKeys.length}
+      or not exists (select 1 from recruitment_process where tenant_id = ${tenantId}::uuid and company_id = requested.id
+        and seed_key = ${DEFAULT_PROCESS.seedKey})
+      or (select count(*) from recruitment_archive_reason where tenant_id = ${tenantId}::uuid and company_id = requested.id
+        and seed_key = any(${seedKeyArray(defaultReasonKeys)})) < ${defaultReasonKeys.length}
+      or not exists (select 1 from recruitment_company_setting where tenant_id = ${tenantId}::uuid and company_id = requested.id)
+      or not exists (select 1 from recruitment_evaluation_form where tenant_id = ${tenantId}::uuid and company_id = requested.id
+        and seed_key = ${DEFAULT_EVALUATION_FORM.seedKey})
+      or (select count(*) from recruitment_offer_field where tenant_id = ${tenantId}::uuid and company_id = requested.id
+        and seed_key = any(${seedKeyArray(defaultFieldKeys)})) < ${defaultFieldKeys.length} as incomplete
+    from unnest(${uuidArray(companyIds)}::uuid[]) as requested(id)
+    order by requested.id`);
+  if (rows.length !== companyIds.length || rows.some(row => row.allowed !== true)) {
+    throw new RecruitmentError('forbidden');
   }
-  const [existingProcess] = await tx.select({ id: recruitmentProcess.id }).from(recruitmentProcess)
-    .where(and(eq(recruitmentProcess.tenantId, s.tenantId), eq(recruitmentProcess.companyId, companyId), eq(recruitmentProcess.seedKey, DEFAULT_PROCESS.seedKey)));
-  if (!existingProcess) {
-    const [process] = await tx.insert(recruitmentProcess).values({
-      tenantId: s.tenantId, companyId, name: DEFAULT_PROCESS.name, seedKey: DEFAULT_PROCESS.seedKey, createdByUserId: user, updatedByUserId: user,
-    }).onConflictDoNothing().returning({ id: recruitmentProcess.id });
-    if (process) {
-      const stages = await tx.select({ id: recruitmentStage.id, seedKey: recruitmentStage.seedKey }).from(recruitmentStage)
-        .where(and(eq(recruitmentStage.tenantId, s.tenantId), eq(recruitmentStage.companyId, companyId)));
-      const bySeed = new Map(stages.map((r) => [r.seedKey, r.id]));
-      let position = 0;
-      for (const stage of DEFAULT_STAGES) {
-        const stageId = bySeed.get(stage.seedKey);
-        if (!stageId) continue;
-        position += 1;
-        await tx.insert(recruitmentProcessStage).values({ tenantId: s.tenantId, companyId, processId: process.id, stageId, position });
-      }
-    }
-  }
-  let position = 0;
-  for (const reason of DEFAULT_ARCHIVE_REASONS) {
-    position += 10;
-    await tx.insert(recruitmentArchiveReason).values({
-      tenantId: s.tenantId, companyId, internalReason: reason.internal, externalReason: reason.external, kind: 'default',
-      position, seedKey: reason.seedKey, createdByUserId: user, updatedByUserId: user,
-    }).onConflictDoNothing();
-  }
-  // Slice 2: the settings row (scorecards private, edit lock "until the stage is left", result required) and the
-  // generic default evaluation form. Slice 3: the generic offer-field set (offer validity 15 days, automation off).
-  await tx.insert(recruitmentCompanySetting).values({ tenantId: s.tenantId, companyId, createdByUserId: user, updatedByUserId: user }).onConflictDoNothing();
-  const [hasDefaultForm] = await tx.select({ id: recruitmentEvaluationForm.id }).from(recruitmentEvaluationForm)
-    .where(and(eq(recruitmentEvaluationForm.tenantId, s.tenantId), eq(recruitmentEvaluationForm.companyId, companyId), eq(recruitmentEvaluationForm.isDefault, true)));
-  await tx.insert(recruitmentEvaluationForm).values({
-    tenantId: s.tenantId, companyId, name: DEFAULT_EVALUATION_FORM.name, definition: DEFAULT_EVALUATION_FORM.definition, isDefault: !hasDefaultForm,
-    seedKey: DEFAULT_EVALUATION_FORM.seedKey, createdByUserId: user, updatedByUserId: user,
-  }).onConflictDoNothing();
-  position = 0;
-  for (const field of DEFAULT_OFFER_FIELDS) {
-    position += 10;
-    await tx.insert(recruitmentOfferField).values({
-      tenantId: s.tenantId, companyId, label: field.label, fieldType: field.type, choices: [], required: field.required,
-      needsApproval: field.needsApproval, private: field.private, position, seedKey: field.seedKey, createdByUserId: user, updatedByUserId: user,
-    }).onConflictDoNothing();
-  }
+  return rows.filter(row => row.incomplete).map(row => row.id);
 }
 
-/** Seed every listed company the caller administers (the pages call this when Recruitment opens). */
+async function ensureRecruitmentDefaultsForCompaniesTx(tx: Tx, s: SessionContext, requested: readonly string[]): Promise<void> {
+  if (!requested.every(isUuid)) throw new RecruitmentError('forbidden');
+  const user = actorId(s), tenantId = s.tenantId;
+  const companies = await recruitmentDefaultsMissingTx(tx, tenantId, [...new Set(requested)]);
+  if (!companies.length) return;
+
+  // Share the existing company lock with every setup caller. Sorted acquisition prevents
+  // two overlapping bootstrap requests from taking the same company locks in opposite order.
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'recruitment-seed:' + tenantId + ':'} || ordered.id::text, 0))
+    from (select id from unnest(${uuidArray(companies)}::uuid[]) as missing(id) order by id) ordered`);
+  const remaining = await recruitmentDefaultsMissingTx(tx, tenantId, companies);
+  if (!remaining.length) return;
+
+  const ids = uuidArray(remaining);
+  const author = sql`${user}::uuid, ${user}::uuid`;
+  await tx.execute(sql`
+    insert into recruitment_stage (tenant_id, company_id, name, stage_type, system_key, seed_key, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, stage.name, stage.stage_type, stage.system_key, stage.seed_key, ${author}
+    from unnest(${ids}::uuid[]) target(id)
+    cross join jsonb_to_recordset(${defaultStageRows}::jsonb) stage(seed_key text, name text, stage_type text, system_key text)
+    where true on conflict do nothing`);
+
+  const processes = await tx.execute<{ id: string; company_id: string }>(sql`
+    insert into recruitment_process (tenant_id, company_id, name, seed_key, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, ${DEFAULT_PROCESS.name}, ${DEFAULT_PROCESS.seedKey}, ${author}
+    from unnest(${ids}::uuid[]) target(id)
+    on conflict do nothing returning id, company_id`);
+  if (processes.length) {
+    await tx.execute(sql`
+      insert into recruitment_process_stage (tenant_id, company_id, process_id, stage_id, position)
+      select stage.tenant_id, process.company_id, process.id, stage.id,
+        (row_number() over (partition by process.id order by seeded.position))::int
+      from jsonb_to_recordset(${JSON.stringify(processes)}::jsonb) process(id uuid, company_id uuid)
+      join recruitment_stage stage on stage.tenant_id = ${tenantId}::uuid and stage.company_id = process.company_id
+      join unnest(${seedKeyArray(defaultStageKeys)}) with ordinality seeded(seed_key, position) on seeded.seed_key = stage.seed_key`);
+  }
+
+  await tx.execute(sql`
+    insert into recruitment_archive_reason (tenant_id, company_id, internal_reason, external_reason, kind, position, seed_key, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, reason.internal_reason, reason.external_reason, 'default', reason.position, reason.seed_key, ${author}
+    from unnest(${ids}::uuid[]) target(id)
+    cross join jsonb_to_recordset(${defaultReasonRows}::jsonb) reason(seed_key text, internal_reason text, external_reason text, position integer)
+    where true on conflict do nothing`);
+  await tx.execute(sql`
+    insert into recruitment_company_setting (tenant_id, company_id, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, ${author} from unnest(${ids}::uuid[]) target(id)
+    on conflict do nothing`);
+  await tx.execute(sql`
+    insert into recruitment_evaluation_form (tenant_id, company_id, name, definition, is_default, seed_key, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, ${DEFAULT_EVALUATION_FORM.name}, ${JSON.stringify(DEFAULT_EVALUATION_FORM.definition)}::jsonb,
+      not exists (select 1 from recruitment_evaluation_form f where f.tenant_id = ${tenantId}::uuid and f.company_id = target.id and f.is_default),
+      ${DEFAULT_EVALUATION_FORM.seedKey}, ${author}
+    from unnest(${ids}::uuid[]) target(id)
+    on conflict do nothing`);
+  await tx.execute(sql`
+    insert into recruitment_offer_field (tenant_id, company_id, label, field_type, choices, required,
+      needs_approval, "private", position, seed_key, created_by_user_id, updated_by_user_id)
+    select ${tenantId}::uuid, target.id, field.label, field.field_type, '{}'::text[], field.required,
+      field.needs_approval, field.private_field, field.position, field.seed_key, ${author}
+    from unnest(${ids}::uuid[]) target(id)
+    cross join jsonb_to_recordset(${defaultFieldRows}::jsonb)
+      field(seed_key text, label text, field_type text, required boolean, needs_approval boolean, private_field boolean, position integer)
+    where true on conflict do nothing`);
+}
+
+/** Provision the editable starting catalogue on first use, preserving existing values and identifiers. */
+export function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, companyId: string): Promise<void> {
+  return ensureRecruitmentDefaultsForCompaniesTx(tx, s, [companyId]);
+}
+
 export async function ensureRecruitmentDefaults(s: SessionContext, companyIds: readonly string[]): Promise<void> {
   if (!companyIds.length) return;
-  await withRecruitmentTenant(s, async (tx) => {
-    for (const companyId of companyIds) await ensureRecruitmentDefaultsTx(tx, s, companyId);
-  });
+  await withRecruitmentTenant(s, tx => ensureRecruitmentDefaultsForCompaniesTx(tx, s, companyIds));
 }
 
 // ── Reads shared by several screens ─────────────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { appUser, company, domainEvent, jobGrade, roleAssignment } from '../db/s
 import { pgSqlState } from '../lib/db-error';
 import { ModuleNotEnabledError } from '../core/entitlements';
 import { deleteCompany } from '../core/admin';
+import { ensureRecruitmentDefaultsTx } from '../packs/recruitment/data';
 import {
   addApplication, applicationHistory, candidateBoard, changeJobStatus, createJob, ensureRecruitmentDefaults, listJobs, moveApplication,
   recruitmentCompanies, recruitmentPipelineCounts, recruitmentSettings, rejectApplication, updateJob, updateStage, RecruitmentError,
@@ -112,6 +113,42 @@ describe('case 2 — seeded, editable defaults', () => {
     const review = again.stages.find((s) => s.systemKey === 'application_review')!;
     expect(await code(updateStage(admin, review.id, { name: review.name, type: 'system_default', enabled: false }))).toBe('system_stage');
   });
+  it('seeds an overlapping 71-company scope atomically and takes no setup lock on a warm read', async () => {
+    const added = await owner.db.insert(company).values(Array.from({ length: 69 }, (_, i) => ({
+      tenantId: base.tenantId, legalName: 'Fictional recruitment group ' + (i + 1),
+    }))).returning({ id: company.id });
+    const selected = [base.companyId, otherCompanyId, ...added.map(row => row.id)];
+    const inventory = async () => (await owner.client`
+      select
+        (select count(*)::int from recruitment_stage where tenant_id = ${base.tenantId}::uuid) as stages,
+        (select count(*)::int from recruitment_process where tenant_id = ${base.tenantId}::uuid) as processes,
+        (select count(*)::int from recruitment_process_stage where tenant_id = ${base.tenantId}::uuid) as links,
+        (select count(*)::int from recruitment_archive_reason where tenant_id = ${base.tenantId}::uuid) as reasons,
+        (select count(*)::int from recruitment_company_setting where tenant_id = ${base.tenantId}::uuid) as settings,
+        (select count(*)::int from recruitment_evaluation_form where tenant_id = ${base.tenantId}::uuid and is_default) as forms
+    `)[0];
+    const before = await inventory();
+    expect(await code(ensureRecruitmentDefaults(partner, [base.companyId, otherCompanyId]))).toBe('forbidden');
+    expect(await inventory()).toEqual(before);
+    await Promise.all([
+      ensureRecruitmentDefaults(admin, selected),
+      ensureRecruitmentDefaults(admin, [...selected.slice(0, 4)].reverse()),
+    ]);
+    expect(await inventory()).toEqual({ stages: 71 * 9, processes: 71, links: 71 * 9, reasons: 71 * 7, settings: 71, forms: 71 });
+    await ensureRecruitmentDefaults(partner, [base.companyId]);
+    expect(await inventory()).toEqual({ stages: 71 * 9, processes: 71, links: 71 * 9, reasons: 71 * 7, settings: 71, forms: 71 });
+    await withTenant(admin, async tx => {
+      await ensureRecruitmentDefaultsTx(tx, admin, base.companyId);
+      const [lock] = await tx.execute<{ locked: boolean }>(sql`
+        select exists (
+          select 1 from pg_locks where pid = pg_backend_pid() and locktype = 'advisory' and objsubid = 1
+            and ((classid::bigint << 32) | objid::bigint) = hashtextextended(${'recruitment-seed:' + base.tenantId + ':' + base.companyId}, 0)
+        ) as locked
+      `);
+      expect(lock.locked).toBe(false);
+    }, { readOnlySnapshot: true });
+  });
+
 });
 
 describe('cases 3 and 4 — jobs', () => {
