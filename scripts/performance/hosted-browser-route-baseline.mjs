@@ -23,6 +23,7 @@ import {prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
+import {measureApprovalsLeaveBrowser,seedApprovalsLeaveBrowserFixture} from './approvals-leave-browser.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -30,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox'].includes(surfaceProbe),'Unknown browser surface');
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -42,6 +43,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
+assert(surfaceProbe!=='leave-inbox'||groupShape,'The Leave inbox comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1968,6 +1970,11 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
+   if(surfaceProbe==='leave-inbox'){
+    fixture.approvalsLeave=await seedApprovalsLeaveBrowserFixture(owner,fixture);
+    const {requests,companyRequests,dates}=fixture.approvalsLeave;
+    report.fixture.approvalsLeave={requests,companyRequests,dates};
+   }
    save();
   }finally{await owner.end({timeout:5});}
  }
@@ -2000,6 +2007,11 @@ try{
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='leave-inbox'){
+   const require=createRequire(join(process.cwd(),'package.json'));
+   browser??=await require('playwright').chromium.launch();
+   await measureApprovalsLeaveBrowser({origin,signedInContext,fixture,report,save,assertContentAvailable});
+  }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
     :surfaceProbe==='rewards'?['rewards-salary','rewards-uploaded']:[surfaceProbe];
