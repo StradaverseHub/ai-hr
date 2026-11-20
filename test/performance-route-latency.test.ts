@@ -2,7 +2,7 @@ import {expect,it} from 'vitest';
 import {routeLatency} from '../scripts/performance/route-latency.mjs';
 const read=(role:string,route:string,durationMs:number,startedMs=20,action?:string)=>({role,route,durationMs,startedMs,action,method:'GET'});
 const navigation=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs});
-const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
+const input=()=>({plannedWrites:[] as {role:string;route:string;action:string}[],samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
 it('refuses a slow minority route even when the pooled role p95 is fast',()=>{
  const fixture=input();fixture.routePools.employee.push('/slow');
  fixture.samples=Array.from({length:100},()=>read('employee','/',100));fixture.samples.push(read('employee','/slow',1500));
@@ -28,8 +28,13 @@ it('refuses missing steady-window coverage and excludes warmup and post-hold sam
 it('retains strict existing read/navigation and write ceilings and exposes sample counts',()=>{
  const fixture=input();fixture.samples.push({...read('employee','/claims',500),method:'POST'});
  let result=routeLatency(fixture);expect(result.targetMet).toBe(false);expect(result.slow[0]).toMatchObject({kind:'write',samples:1,p95Ms:500,targetMs:500});
- fixture.samples[1].durationMs=499;result=routeLatency(fixture);expect(result.targetMet).toBe(true);expect(result.sparse).toHaveLength(3);
- fixture.pageInteractions[0].durationMs=1000;expect(routeLatency(fixture).targetMet).toBe(false);
+ fixture.samples[1].durationMs=499;result=routeLatency(fixture);expect(result.targetMet).toBe(false);
+ expect(result.slow).toHaveLength(0);expect(result.sparse).toHaveLength(3);
+ fixture.samples=Array.from({length:20},()=>fixture.samples.slice(0,2)).flat();
+ fixture.pageInteractions=Array.from({length:20},()=>navigation('employee','/',150));
+ expect(routeLatency(fixture).targetMet).toBe(true);
+ fixture.pageInteractions[0].durationMs=1000;fixture.pageInteractions[1].durationMs=1000;
+ expect(routeLatency(fixture).targetMet).toBe(false);
 });
 it('reports distinct write actions on the same route and requires observed actions in the steady window',()=>{
  const fixture=input();
@@ -46,4 +51,22 @@ it('reports distinct write actions on the same route and requires observed actio
 it('does not conceal an invalid measurement as a passing sample',()=>{
  const fixture=input();fixture.samples[0].durationMs=NaN;expect(()=>routeLatency(fixture)).toThrow(RangeError);
  fixture.steadyUntil=fixture.steadyStart;expect(()=>routeLatency(fixture)).toThrow(RangeError);
+});
+
+it('exposes a planned write even when no POST arrives and combines record instances by action route',()=>{
+ const fixture=input();
+ fixture.plannedWrites.push(
+  {role:'companyHR',route:'/attendance/application-history/[id]',action:'attendanceApprove'},
+  {role:'groupHR',route:'/payroll/[batchId]',action:'payrollProcess'},
+ );
+ fixture.samples.push(
+  {...read('companyHR','/attendance/application-history/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',125),method:'POST',action:'attendanceApprove'},
+  {...read('companyHR','/attendance/application-history/bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb?review=yes',150),method:'POST',action:'attendanceApprove'},
+ );
+ const result=routeLatency(fixture);
+ const writes=result.rows.filter(row=>row.kind==='write');
+ expect(writes.map(row=>[row.role,row.route,row.samples])).toEqual([
+  ['companyHR','/attendance/application-history/[id]',2],['groupHR','/payroll/[batchId]',0],
+ ]);
+ expect(result.missing.some(row=>row.action==='payrollProcess')).toBe(true);
 });

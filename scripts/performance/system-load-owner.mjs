@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
-import {routeLatency} from './route-latency.mjs';
+import {routeLatency,writeRouteTemplate} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
@@ -321,7 +321,7 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
   throw error;
  });
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:fields?writeRouteTemplate(path,action):readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -1611,6 +1611,13 @@ async function main(){
   preflightComplete=true;return;
  }
  markComparisonStage('steady-plan');
+ const claimWriteRoles=mixedWorkflows?['manager']:Object.keys(measuredRoutePools);
+ const plannedWrites=[
+  ...claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete'].map(action=>({role,route:'/claims',action}))),
+  ...(mixedWorkflows?.plannedWrites??[]),
+ ].map(row=>({...row,route:writeRouteTemplate(row.route,row.action)}));
+ report.plannedSteadyWrites=plannedWrites;
+ save();
  const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
  report.navigationCapacityPlan=navigationPlan; // Planning is not measured acceptance.
  requireCleanDriver();
@@ -1843,7 +1850,8 @@ async function main(){
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
- report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
+ report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
+  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedWrites,steadyStart,steadyUntil});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;

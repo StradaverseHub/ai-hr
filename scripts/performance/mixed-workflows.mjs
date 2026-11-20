@@ -431,5 +431,18 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return false;
  }
- return {run,verifyFailedAttendanceActions};
+ const attendanceApproverRoles=new Set(fixture.users.filter(user=>user.role==='employee'&&user.index%2===1)
+  .map(user=>approverFor(user)?.role).filter(Boolean));
+ const importRoles=new Set(fixture.users.filter(user=>['companyHR','groupHR'].includes(user.role)&&user.index%50===1)
+  .map(user=>user.role));
+ const writesFor=(roles,actions)=>[...roles].flatMap(role=>actions.map(action=>({role,action,route:templates[action].path})));
+ const plannedWrites=[
+  ...writesFor(['employee'],['leaveCreate','leaveEdit','leaveCancel']),
+  {role:'employee',action:'attendanceCreate',route:'/attendance/my-records/[date]'},
+  ...[...attendanceApproverRoles].map(role=>({role,action:'attendanceApprove',route:'/attendance/application-history/[id]'})),
+  ...writesFor(['companyHR','groupHR'],['personnelCreate','personnelEdit','personnelDelete']),
+  ...writesFor(importRoles,['importValidate','importCommit']),
+  {role:'groupHR',action:'payrollProcess',route:'/payroll/[batchId]'},
+ ];
+ return {run,verifyFailedAttendanceActions,plannedWrites};
 }
