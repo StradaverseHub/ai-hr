@@ -72,6 +72,10 @@ on:
         description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor), Access editor Rewards setup, or intent-link tab traffic
         default: ''
         type: string
+      reuse_intent_tab_control_build:
+        description: Use the pinned integrated application build as the tab traffic control
+        default: false
+        type: boolean
       browser_static_shard:
         description: Static browser census shard (0–7), or all to cover the compiled inventory
         default: ''
@@ -149,6 +153,12 @@ jobs:
           }; then
             exit 2
           fi
+          if [[ "$REUSE_INTENT_TAB_CONTROL" == true ]] && {
+            [[ "$BROWSER_SURFACE_PROBE" != intent-tabs || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+            [[ "$EXPECTED_SHA" != e366a225e20215e0b7d4be01d352a914a0a4c84c ]];
+          }; then
+            exit 2
+          fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
           else
@@ -161,6 +171,10 @@ jobs:
           BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
           BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
+          REUSE_INTENT_TAB_CONTROL: ${{ inputs.reuse_intent_tab_control_build }}
+          BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
+          RUN_BUILD: ${{ inputs.run_build }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
@@ -176,7 +190,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_intent_tab_control_build || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -238,10 +252,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_intent_tab_control_build }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
+      - name: Retrieve the pinned tab comparison control build
+        if: ${{ inputs.reuse_intent_tab_control_build }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$AIHR_CI_HEAD" = e366a225e20215e0b7d4be01d352a914a0a4c84c
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136410656904 --jq '
+            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+            .run_id == 44771584348 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/intent-tab-control-build.XXXXXX")"
+          trap 'rm -f "$archive"' EXIT
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14648282852/zip > "$archive"
+          printf '%s  %s\n' '5fc5554378e55da7e2bb654af092ad786d5f73a249bdc004a620a1bd31d74768' "$archive" | sha256sum -c -
+          test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
+          install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
+          unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
@@ -260,6 +291,7 @@ jobs:
           AIHR_BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
           AIHR_BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           AIHR_BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
+          AIHR_BROWSER_INTENT_TAB_CONTROL: ${{ inputs.reuse_intent_tab_control_build }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
@@ -319,7 +351,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
+    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_intent_tab_control_build) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
