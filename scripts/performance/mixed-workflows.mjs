@@ -181,11 +181,27 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  // A real correction workflow and Payroll processing/export, not page-render timing.
  const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
  async function assertProcessed(batchId){
-  const [batch]=await db`select status,employee_count from payroll_batch where id=${batchId}::uuid`;
-  assert.equal(batch.status,'processed');assert.equal(batch.employee_count,50);
+  const started=performance.now();
+  const [ack]=await db`select job.id from bulk_job job join payroll_batch batch on batch.tenant_id=job.tenant_id
+   where batch.id=${batchId}::uuid and job.kind='payroll_process' and job.input->>'batchId'=batch.id::text
+   order by job.created_at desc,job.id desc limit 1`;
+  assert(ack,'Payroll processing did not acknowledge a durable job');
+  let batch;
+  while(performance.now()-started<90000){
+   const [observed]=await db`select batch.status,batch.employee_count,job.state
+    from payroll_batch batch join bulk_job job on job.tenant_id=batch.tenant_id
+    where batch.id=${batchId}::uuid and job.id=${ack.id}::uuid`;
+   assert(observed&&!['failed','cancelled','discarding'].includes(observed.state),'Payroll processing job did not succeed');
+   if(observed.status==='processed'&&observed.state==='completed'){batch=observed;break;}
+   await pause(250);
+  }
+  assert(batch,'Payroll processing did not finish within the workflow budget');
+  const completionObservedMs=Math.round(performance.now()-started);
+  assert.equal(batch.employee_count,50);
   const rows=await db`select employment_id,basic_salary,gross_pay,total_deductions,net_pay from payslip where batch_id=${batchId}::uuid`;
   assert.equal(rows.length,50);assert.equal(new Set(rows.map(row=>row.employment_id)).size,50);
   for(const row of rows){assert.equal(Number(row.basic_salary),5000);assert(Number.isFinite(Number(row.net_pay)));assert.equal(Math.round(Number(row.gross_pay)*100)-Math.round(Number(row.total_deductions)*100),Math.round(Number(row.net_pay)*100));}
+  return completionObservedMs;
  }
  async function exportPayroll(user,batchId,company){
   const response=await request(user,`/payroll/${batchId}/export?format=csv`,undefined,200,true);
@@ -281,9 +297,9 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
-   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');await page.waitForLoadState('networkidle');
-   await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
-   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');
+   const completionObservedMs=await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
+   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs});save();
   });
  }
  // Publish a separate completed past-month run; current-month mutations retain their open period.
@@ -296,7 +312,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
-   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');await page.waitForLoadState('networkidle');
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');
    await assertProcessed(batchId);
    const [slip]=await db`select id from payslip where batch_id=${batchId}::uuid and employment_id=${employee.employmentId}::uuid`;assert(slip);slipId=slip.id;
    await request(employee,'/me/payslip/'+slipId+'/pdf',undefined,404,false);
@@ -431,5 +447,18 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return false;
  }
- return {run,verifyFailedAttendanceActions};
+ const attendanceApproverRoles=new Set(fixture.users.filter(user=>user.role==='employee'&&user.index%2===1)
+  .map(user=>approverFor(user)?.role).filter(Boolean));
+ const importRoles=new Set(fixture.users.filter(user=>['companyHR','groupHR'].includes(user.role)&&user.index%50===1)
+  .map(user=>user.role));
+ const writesFor=(roles,actions)=>[...roles].flatMap(role=>actions.map(action=>({role,action,route:templates[action].path})));
+ const plannedWrites=[
+  ...writesFor(['employee'],['leaveCreate','leaveEdit','leaveCancel']),
+  {role:'employee',action:'attendanceCreate',route:'/attendance/my-records/[date]'},
+  ...[...attendanceApproverRoles].map(role=>({role,action:'attendanceApprove',route:'/attendance/application-history/[id]'})),
+  ...writesFor(['companyHR','groupHR'],['personnelCreate','personnelEdit','personnelDelete']),
+  ...writesFor(importRoles,['importValidate','importCommit']),
+  {role:'groupHR',action:'payrollProcess',route:'/payroll/[batchId]'},
+ ];
+ return {run,verifyFailedAttendanceActions,plannedWrites};
 }

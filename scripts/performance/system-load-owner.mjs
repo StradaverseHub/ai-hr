@@ -2,8 +2,9 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
+import {waitForTodayBrowserReadiness} from './today-browser-readiness.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
-import {routeLatency} from './route-latency.mjs';
+import {routeLatency,writeRouteTemplate} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
@@ -24,7 +25,7 @@ import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
-import {closeSync,constants as fsFlags,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,writeFileSync,writeSync} from 'node:fs';
+import {closeSync,constants as fsFlags,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,renameSync,writeFileSync,writeSync} from 'node:fs';
 import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import https from 'node:https';
@@ -42,7 +43,7 @@ import {closePerformanceDbPools,performanceNativeDbClient,closedChromiumEnvironm
  measuredPreflightLockTiming,measuredPreflightLockWitnesses,
  drainDriverLanes,settleDriverBrowser,settleDriverResources} from './driver-shutdown.mjs';
 import {protectedLockObserverObservedCounts,protectedLockObserverQuery} from './protected-lock-observer.mjs';
-import {createMeasuredPreflightAttribution,createPreflightLockWorkload,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
+import {createMeasuredPreflightAttribution,createPreflightLockWorkload,createPreflightRequestTimeline,firstAppLockWaitCategories,measuredPreflightAttribution,mergeAdvisoryEdges,observeSampledAdvisoryBlockers,originalAdvisoryAttribution} from './lock-sample-attribution.mjs';
 import {createWorkerLoadedDiagnostics,homeCardFailureFacts,homeFailureMessageCatalog,projectWorkerDriverFailure,workerDriverFailureFile,workerRequestFailureFact,workerStageFailureFact} from './worker-comparison-failure.mjs';
 import {isWorkerComparisonCourse} from './worker-comparison.mjs';
 import {readMeasuredClockCs,readMeasuredClockIdentity} from './measured-lock-clock.mjs';
@@ -193,7 +194,7 @@ const measuredRoutePools=suite==='whole-system'?routePools:{employee:['/me','/cl
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:nativePreflight?'NATIVE_RENDERED_UNION_WORKFLOW_SLICE':suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by unchanged heading, fixture data and complete Home card assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',navigationProtocol:suite==='whole-system'?navigationProtocol:'unchanged-claims-cycle',navigationScheduling:'shared per-role pending/inflight/completed steady obligations; minimum seven, maximum twelve group-HR reads per cycle; three other reads; same complete mutations and activity pauses; higher read share lowers write iteration frequency; compare only identical frozen v2 protocols',driverMaxSockets:4000,preflightHttpActorLanes:4,browserVisitReadiness:'domcontentloaded followed by heading, fixture data and complete Home surface assertions',tls:'fixture-only self-signed localhost',browserContexts:6,loadedBrowserSignIns:4,preflightBrowserSignIns:4,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:wholeSystemRouteCount,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],browserMutations:suite==='claims-heavy'?[]:['Generic Reports saved-definition create/edit/delete (group HR, baseline'+(suite==='whole-system'?' and loaded':'')+')','Service Movement Secondment (group HR, '+(suite==='whole-system'?'loaded':'preflight')+')'],preflightOnly:suite==='workflow-preflight'?['Active Personnel contact edit/restore','E-Letter draft create/edit/withdraw','Concurrent Payroll close/publish','Performance review-cycle draft creation','Rewards annual unit draft creation']:[],processing:['Payroll calculation','Payroll close/employee publication preflight','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Navigation destinations outside the reviewed scenario plan',...(suite==='workflow-preflight'?[]:['concurrent Payroll close/publish','active Personnel contact edit/restore','E-Letter draft mutations']),'Lifecycle mutations',...(suite==='workflow-preflight'?['Performance and Rewards mutations beyond draft creation']:['Performance mutations','Rewards mutations']),'large Personnel imports',...(suite==='claims-heavy'?['report-definition CRUD']:['Employee Master and Payroll Comparison definition CRUD','500-principal Reports write mix']),'long-running document jobs','external email delivery'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],homeCardFailures:[],browserHomeRequests:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -203,7 +204,19 @@ const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
 const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
-function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
+const stageEvidence=process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&!nativePreflight;
+const attributePreflightLocks=fullDevelopmentRoutes||(stageEvidence&&!serialComparison&&suite==='whole-system');
+const mixedPreflightRequests=stageEvidence&&suite==='whole-system'?createPreflightRequestTimeline():null;
+function markComparisonStage(stage){
+ comparisonStage=stage;
+ comparisonWorkload=null;
+ if(stageEvidence){
+  const receipt=join(out,'driver-stage.json'),pending=receipt+'.next';
+  writeFileSync(pending,JSON.stringify({stage,elapsedMs:Math.round(performance.now()-driverStarted)}),{mode:0o600});
+  renameSync(pending,receipt);
+ }
+}
+if(stageEvidence)markComparisonStage(comparisonStage);
 
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
 let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false,developmentLoad=null;
@@ -273,7 +286,9 @@ function rejectBusyPage(user,path,channel){
 }
 
 const claimRestorationKey=Symbol('owned claim restoration');
-const homeHttp=createHomeHttpReplay({base,request,report});
+const useTodayHome=suite==='whole-system';
+const personalCalendarPath='/me/calendar';
+const homeHttp=createHomeHttpReplay({base,request,report,browserRoute:useTodayHome?personalCalendarPath:'/'});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
 function readRoute(user,route){return readManifestRoute(route,(path,status)=>request(user,path,undefined,status));}
 // Private request facts keyed by the error an owned request threw. Only the primary failure's facts are
@@ -282,12 +297,13 @@ const ownedRequestFailures=new WeakMap();
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
  const attempt={stage:comparisonStage,role:user?.role??null,route:readRouteForMeasurement(path),method:fields?'POST':'GET',
   startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
+ const finish=!preflightCadenceClosed?mixedPreflightRequests?.begin({role:attempt.role,path,method:attempt.method,channel:'http'},attempt.startedMs):undefined;
  try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
  catch(error){
   if(error!==null&&typeof error==='object'&&!ownedRequestFailures.has(error))
    ownedRequestFailures.set(error,{...attempt,elapsedMs:performance.now()-attempt.startedMs});
   throw error;
- }
+ }finally{finish?.(performance.now());}
 }
 function recordPrimaryRequestFailure(){
  const {failed,reason}=failures.primary(),facts=failed&&reason!==null&&typeof reason==='object'?ownedRequestFailures.get(reason):undefined;
@@ -321,7 +337,7 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
   throw error;
  });
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:fields?writeRouteTemplate(path,action):readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -516,7 +532,7 @@ async function prepareDatabaseLockScope(){
 const waits=[];
 const preflightAttribution=createMeasuredPreflightAttribution();
 const preflightLockWorkload=createPreflightLockWorkload(preflightAttribution.setWorkload);
-const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:serialComparison?async (stage,work)=>{
+const withLockWorkload=attributePreflightLocks?preflightLockWorkload.within:serialComparison?async (stage,work)=>{
  comparisonWorkload=stage;
  const result=await work();
  comparisonWorkload=null;
@@ -582,13 +598,14 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
      .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
    }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;
-   if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
+   if(wait&&probe&&attributePreflightLocks&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
     wait.observerSequence=probe.sequence;
     attribution={...measuredPreflightAttribution(probe.attributionStart,probe.attributionEnd),
      ...originalAdvisoryAttribution(locks,lockLabels)};
     wait.appAdvisoryAttribution=attribution;
     wait.firstAppLockWaitCategories=firstAppLockWaitCategories(activity,appConnections.waitingOnLock);
+    if(mixedPreflightRequests)wait.preflightRequestOverlap=mixedPreflightRequests.overlapping(probe.startedMs,probe.coreCompletedMs);
    }
    if(!measureDevelopment){await captureRootStatements(db,holders,queuedLocks);return;}
    // Keep at most one optional lookup in flight per phase. The sampled lock counts already stand.
@@ -706,6 +723,18 @@ async function main(){
    nativeBrowserFailures?.observe(page);
    const observe=(name,callback)=>page.on(name,(...args)=>noteEvidence(()=>callback(...args)));
    const pending=new Map(),pdfRequests=[];pendingBrowserRequests.set(page,pending);browserPdfRequests.set(page,pdfRequests);
+   if(mixedPreflightRequests&&!preflightCadenceClosed){
+    const requests=new WeakMap();
+    observe('request',request=>{
+     if(preflightCadenceClosed||!['document','fetch','xhr'].includes(request.resourceType()))return;
+     const url=new URL(request.url());
+     if(url.origin!==base)return;
+     requests.set(request,mixedPreflightRequests.begin({role:user.role,path:url.pathname,method:request.method(),channel:'browser'},performance.now()));
+    });
+    const settled=request=>requests.get(request)?.(performance.now());
+    observe('requestfinished',settled);
+    observe('requestfailed',settled);
+   }
    const pdfRequest=req=>new URL(req.url()).origin===base&&new URL(req.url()).pathname.endsWith('/pdf');
    const pdfResult=(req,outcome,extra={})=>{if(!pdfRequest(req))return;const row=pending.get(req);pdfRequests.push({path:new URL(req.url()).pathname,type:req.resourceType(),outcome,elapsedMs:row?performance.now()-row.startedMs:null,...extra});if(pdfRequests.length>40)pdfRequests.shift();};
    // Keep bounded transport facts only: no cookies, queries, file names or document bytes.
@@ -722,7 +751,7 @@ async function main(){
    observe('requestfailed',req=>{if(homeRequest(req))report.browserHomeRequests.push({role:user.role,path:new URL(req.url()).pathname,elapsedMs:performance.now()-(started.get(req)??performance.now()),outcome:'failed',error:req.failure()?.errorText});});
    observe('response',response=>{if(homeRequest(response.request())&&!response.ok())report.browserHomeRequests.push({role:user.role,path:new URL(response.url()).pathname,status:response.status(),outcome:'http-error'});});
    // Associate failures with a route and monotonic time without publishing query parameters.
-   const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now()};};
+   const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now(),...(stageEvidence?{stage:comparisonStage}:{})};};
    const recordError=(kind,message,error)=>report.browserErrors.push({...errorContext(),kind,error,
     ...(fullDevelopmentRoutes?{fingerprint:browserPreflightErrorFingerprint(message)}:{})});
    observe('pageerror',error=>recordError('pageerror',error.message,error.name+': '+error.message.slice(0,300)));
@@ -922,7 +951,25 @@ async function main(){
   }
   let homeCards=null,homeCardIds=[],todaySectionIds=[],cardFailures=0;
   visitStage='home-cards';
-  if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
+  if(path==='/'&&useTodayHome){
+   const today=await waitForTodayBrowserReadiness(page,user.role,timeout);
+   homeCardIds=today.panels;
+   todaySectionIds=today.required;
+   homeCards=homeCardIds.length;
+   const failureNodes=await page.locator('main [role="alert"], main [data-today-page-unavailable], main [data-today-unavailable], main [data-read-unavailable]').evaluateAll(nodes=>nodes.map(node=>({
+    card:null,
+    marker:node.hasAttribute('data-read-unavailable')?'read-unavailable':node.hasAttribute('role')&&node.getAttribute('role')==='alert'?'alert':'today-unavailable',
+    section:node.closest('[data-today-panel]')?.getAttribute('data-today-panel')??null,
+    text:node.textContent??'',
+   })));
+   cardFailures=failureNodes.length;
+   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,cards:homeCardFailureFacts(failureNodes,homeFailureMessages)});
+   if(signIn){
+    const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
+    assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'The required Today panels changed during sign-in');
+   }
+   if(cardFailures===0)witness='home-card-inventory';
+  }else if(path==='/'||(path===personalCalendarPath&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
    await cards.first().waitFor({timeout:timeout()});
@@ -1099,6 +1146,9 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();
   const routes=strictRenderedPreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
   for(const route of routes)await visit(page,user,route);
+  if(useTodayHome&&['employee','manager'].includes(user.role)&&!routes.includes(personalCalendarPath)){
+   await visit(page,user,personalCalendarPath);
+  }
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
  },failures));
@@ -1281,7 +1331,9 @@ async function main(){
  save();
  requireCleanDriver();
  markComparisonStage('workflow-baseline');
+ const markWorkflow=(step)=>{if(stageEvidence)markComparisonStage(step);};
  if(suite==='whole-system'||strictRenderedPreflight){
+  markWorkflow('baseline-org-explorer');
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    let stage='org-explorer-workflow';
@@ -1289,9 +1341,11 @@ async function main(){
     requireNativeBusiness();
     await withLockWorkload('org-explorer',()=>exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='personnel-switcher-workflow';
+    markWorkflow('baseline-personnel-switcher');
     requireNativeBusiness();
     await withLockWorkload('personnel-switcher',()=>exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='payroll-readiness-workflow';
+    markWorkflow('baseline-payroll-group');
     requireNativeBusiness();
     await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'}));
    }catch(reason){notePreflightStageFailure(reason,stage,group,page);throw reason;}
@@ -1299,16 +1353,20 @@ async function main(){
   requireCleanDriver();
  }
  if(suite==='whole-system'||suite==='workflow-preflight'){
+  markWorkflow('baseline-movement');
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    requireNativeBusiness();
    await withLockWorkload('movement',()=>exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'}));
+   markWorkflow('baseline-payroll-register');
    requireNativeBusiness();
    await withLockWorkload('payroll-register',()=>exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save}));
+   markWorkflow('baseline-saved-reports');
    requireNativeBusiness();
    await withLockWorkload('saved-reports',()=>exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save}));
   });
   requireCleanDriver();
+  markWorkflow('baseline-register-authority');
   const foreignGroup=fixture.users.find(user=>user.role==='groupHR'&&user.tenant!==group.tenant);
   assert(foreignGroup,'Payroll register needs a foreign group HR boundary actor');
   for(const actor of [hr,foreignGroup]){
@@ -1318,6 +1376,7 @@ async function main(){
   }
  }
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
+ markWorkflow('baseline-ai-authority');
  {
   const ctx=await context(hr);
   await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
@@ -1327,6 +1386,7 @@ async function main(){
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
   }
   if(suite==='whole-system'||strictRenderedPreflight){
+   markWorkflow('baseline-payroll-company');
    requireNativeBusiness();
    await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'}));
   }
@@ -1334,6 +1394,7 @@ async function main(){
   requireCleanDriver();
  }
  // Locale projection and real client navigation must work before any capacity claim.
+ markWorkflow('baseline-claims-language');
  for(const locale of ['en','ms','zh','ta','th','vi']){
   const ctx=await context(employee,locale);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/claims');
@@ -1346,6 +1407,7 @@ async function main(){
   requireCleanDriver();
  }
  {
+  markWorkflow('baseline-client-navigation');
   const ctx=await context(employee);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
@@ -1363,6 +1425,7 @@ async function main(){
   });
   requireCleanDriver();save();
  }
+ markWorkflow('baseline-language-switch');
  for(const [user,path]of [[employee,'/claims'],[hr,'/admin/personnel']]){
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,user,path);await languageJourney(page,user,path,'baseline');});
@@ -1397,36 +1460,45 @@ async function main(){
   return request(user,'/claims',fields,template.status,false,template.headers,template.fieldOrder,undefined,attempt);
  }
  async function browserClaimJourney(page,user,description,phase){
+  const markClaim=step=>{if(phase==='baseline')markWorkflow(step);};
   await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
+  markClaim('baseline-claim-draft-fields');
   const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
   let started,draft,deleteTemplate;
   const requireRestore=()=>requireNativeClaimRestoration(user,draft.id);
   async function deleteDraft(custody){
+   markClaim('baseline-claim-delete');
    requireRestore();
    await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
    requireRestore();
    custody?.begin('delete');
    if(custody)requireRestore();
    const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+   markClaim('baseline-claim-delete-response');
    deleteTemplate=await capturedAction(deleteResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
    assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
    custody?.verify('delete');
   }
   return ownClaimDraft('browser',user,description,async custody=>{
+   markClaim('baseline-claim-create');
    started=performance.now();
    requireNativeBusiness();
    custody?.begin('create');
    if(custody)requireNativeBusiness();
-   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);
+   markClaim('baseline-claim-create-response');
+   const createTemplate=await capturedAction(createResponse);
+   markClaim('baseline-claim-create-persistence');
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
    const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
    [draft]=drafts;assert(draft,'browser create did not persist');
    if(custody)assert.equal(drafts.length,1,'Protected browser draft identity is ambiguous');
    custody?.verify('create',draft.id);
    if(phase==='loaded')await pause(thinkTimeMs);
+   markClaim('baseline-claim-edit');
    requireNativeBusiness();
    await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
    requireNativeBusiness();
@@ -1447,10 +1519,14 @@ async function main(){
   });
  }
  {
+  markWorkflow('baseline-claim-draft-open');
   const ctx=await context(employee);
-  await withContext(ctx,async()=>{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');});
+  await withContext(ctx,async()=>{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');
+   markWorkflow('baseline-claim-draft-close');
+  });
   requireCleanDriver();
  }
+ markWorkflow('baseline-claim-action-protocol');
  const {createTemplate,deleteTemplate}=contextTemplates;
  async function restoreKnownClaimDraft(user,draft,custody){
   const fields={...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:user.employmentId,[deleteTemplate.prefix+'id']:draft.id};
@@ -1472,13 +1548,16 @@ async function main(){
   delete fields[createTemplate.prefix+'draftId'];
   let draft;
   await ownClaimDraft('http',employee,description,async custody=>{
+   markWorkflow('baseline-claim-http-response');
    const response=await claimRequest(employee,createTemplate,fields,custody,'create');
    report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
     publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1]).filter(value=>value!=='$undefined')};save();
+   markWorkflow('baseline-claim-http-persistence');
    const drafts=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
    [draft]=drafts;assert(draft,'same-actor HTTP action preflight did not persist');
    if(custody)assert.equal(drafts.length,1,'Protected HTTP draft identity is ambiguous');
    custody?.verify('create',draft.id);
+   markWorkflow('baseline-claim-http-cleanup');
    await restoreKnownClaimDraft(employee,draft,custody);
    report.actionPreflight.persisted=true;save();
   },custody=>restoreKnownClaimDraft(employee,draft,custody));
@@ -1492,11 +1571,13 @@ async function main(){
   const scope=actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'same-company';
   let protectedDraft;
   await ownClaimDraft(scope,victim,description,async custody=>{
+   markWorkflow('baseline-claim-boundary-fixture');
    await claimRequest(victim,createTemplate,fields,custody,'create');
    const drafts=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
    [protectedDraft]=drafts;assert(protectedDraft,'boundary fixture did not persist through HTTP');
    if(custody)assert.equal(drafts.length,1,'Protected boundary draft identity is ambiguous');
    custody?.verify('create',protectedDraft.id);
+   markWorkflow('baseline-claim-boundary-denial');
    for(const selector of [actor.employmentId,victim.employmentId]){
     requireNativeBusiness();
     const stage=selector===actor.employmentId?'foreign-own':'foreign-other';
@@ -1508,16 +1589,19 @@ async function main(){
     custody?.verify(stage);
     report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
    }
+   markWorkflow('baseline-claim-boundary-cleanup');
    await restoreKnownClaimDraft(victim,protectedDraft,custody);
   },custody=>restoreKnownClaimDraft(victim,protectedDraft,custody));
  }
  if(suite!=='claims-heavy'){
+  markWorkflow('baseline-mixed-workflows');
   requireNativeBusiness();
   mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}));
  }
  requireCleanDriver();
  let loadedAttendanceRejection;
  if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
+  markWorkflow('baseline-attendance-rejection');
   const baseline=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
   requireNativeBusiness();
   await withLockWorkload('attendance-rejection',()=>baseline.run());
@@ -1525,6 +1609,7 @@ async function main(){
   if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
  }
  if(suite!=='claims-heavy'){
+  markWorkflow('baseline-own-payslip');
   const ctx=await context(employee);
   await withContext(ctx,async()=>{
   const page=await ctx.newPage();let automaticPdfRequests=0;
@@ -1611,6 +1696,13 @@ async function main(){
   preflightComplete=true;return;
  }
  markComparisonStage('steady-plan');
+ const claimWriteRoles=mixedWorkflows?['manager']:Object.keys(measuredRoutePools);
+ const plannedWrites=[
+  ...claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete'].map(action=>({role,route:'/claims',action}))),
+  ...(mixedWorkflows?.plannedWrites??[]),
+ ].map(row=>({...row,route:writeRouteTemplate(row.route,row.action)}));
+ report.plannedSteadyWrites=plannedWrites;
+ save();
  const navigationPlan=suite==='whole-system'?planSteadyRouteCoverage({pools:routePools,users:fixture.users,thinkTimeMs,steadyHoldMs}):null;
  report.navigationCapacityPlan=navigationPlan; // Planning is not measured acceptance.
  requireCleanDriver();
@@ -1843,7 +1935,8 @@ async function main(){
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.steady.navigationCoverage=navigationScheduler?.snapshot()??null;
- report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],steadyStart,steadyUntil});
+ report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
+  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedWrites,steadyStart,steadyUntil});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;
@@ -1925,6 +2018,18 @@ try{
  if(measureDevelopment)developmentWorkCompleted=true;
 }catch(reason){
  if(reason!==lifecycleRefused){
+  if(stageEvidence&&reason instanceof Error&&typeof reason.stack==='string'){
+   // Retain only locations under this diagnostic directory. Error text and
+   // request data can include fixture identifiers and stay in the owned realm.
+   const directory=new URL('./',import.meta.url).href;
+   report.driverFailureLocations=reason.stack.split('\n').slice(1,12).flatMap(frame=>{
+    if(!/^\s+at /.test(frame))return [];
+    const start=frame.lastIndexOf(directory);
+    if(start<0)return [];
+    const location=frame.slice(start+directory.length).match(/^([a-z0-9-]+\.(?:mjs|ts)):(\d{1,5}):\d{1,4}\)?$/);
+    return location?[{file:location[1],line:Number(location[2])}]:[];
+   }).slice(0,6);
+  }
   failures.notePrimary(reason);
   nativeAdmission?.close(reason);
  }

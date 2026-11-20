@@ -1,8 +1,48 @@
 /** Optional fictional-run diagnostic. The original blocking sample is already retained. */
+import {routePools} from './system-route-manifest.mjs';
+
+const preflightRoles=new Set(Object.keys(routePools));
+const preflightPaths=new Set([...Object.values(routePools).flat().map(route=>route.split('?',1)[0]),
+ '/login','/login/start','/login/api/login','/login/api/password','/login/api/mfa','/login/api/activity',
+ '/admin/personnel/search','/api/personnel/search','/admin/personnel/[employmentId]']);
+const personnelRecord=/^\/admin\/personnel\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+export function lockRequestCategory({role,path,method,channel}){
+ if(!preflightRoles.has(role)||!['GET','POST'].includes(method)||!['http','browser'].includes(channel)
+  ||typeof path!=='string')return null;
+ const pathname=path.split('?',1)[0];
+ const route=preflightPaths.has(pathname)?pathname:personnelRecord.test(pathname)?'/admin/personnel/[employmentId]':null;
+ return route?{role,route,method,channel}:null;
+}
+
+export function createPreflightRequestTimeline(){
+ const recent=[];
+ return {
+  begin(raw,started){
+   const request=lockRequestCategory(raw);
+   if(!request)return ()=>{};
+   const row={request,started,ended:Infinity};
+   recent.push(row);
+   if(recent.length>512)recent.shift();
+   return ended=>{row.ended=ended;};
+  },
+  overlapping(started,ended){
+   const byCategory=new Map();
+   for(const row of recent){
+    if(row.started>ended||row.ended<started)continue;
+    byCategory.set(JSON.stringify(row.request),row.request);
+   }
+   return [...byCategory.values()].slice(0,12);
+  },
+ };
+}
 const families=new Set(['access-configuration','ai-control','audit-chain','employment','leave-dependency-configuration','leave-dependency-employment','payroll-history','pay-component-catalog','unclassified']);
 const modes=new Set(['ShareLock','ExclusiveLock']);
 const categories=new Set(['advisory-exclusive','advisory-shared','rewards-authority','rewards-library','rewards-company','audit-append','ai-action-pause','unknown']);
 const originalAuditCategories=new Set(['auth-audit-append','rewards-access-observe','audit-append']);
+const originalAccessCategories=new Set(['access-acquire-shared','access-acquire-exclusive','access-owner-entry',
+ 'personnel-search-token','personnel-search-read','ai-control','rewards-access','attendance','leave',
+ 'payroll','bulk-job','role-assignment','account','transaction-end','web-transaction-end',
+ 'worker-transaction-end','probation-reconciliation','reward-plan-outbox','session-context']);
 const states=new Set(['granted','queued']);
 const maxEdges=8;
 const lockKey=row=>row.classid+':'+row.objid+':'+row.objsubid;
@@ -11,6 +51,11 @@ const lockFamily=(key,labels)=>{
  return families.has(family)?family:'unclassified';
 };
 export const originalAuditQueryCategory=value=>originalAuditCategories.has(value)?value:'unknown';
+export const originalProbeQueryCategory=value=>originalAccessCategories.has(value)?value:originalAuditQueryCategory(value);
+export function originalAdvisoryQueryCategory(family,value){
+ if(family==='access-configuration'&&originalAccessCategories.has(value))return value;
+ return family==='audit-chain'?originalAuditQueryCategory(value):'unknown';
+}
 
 const preflightWorkloads=new Set(['ai-baseline','org-explorer','personnel-switcher','payroll-readiness',
  'movement','payroll-register','saved-reports','mixed-workflows','payroll-close-pair','attendance-rejection',
@@ -76,7 +121,7 @@ export function originalAdvisoryAttribution(locks,labels){
    if(waiters.length===maxEdges)break;
    if(waiter.granted!==false||waiter.app_session!==true||!modes.has(waiter.mode))continue;
    const key=lockKey(waiter),family=lockFamily(key,labels);
-   const waiterCategory=family==='audit-chain'?originalAuditQueryCategory(waiter.category):'unknown';
+   const waiterCategory=originalAdvisoryQueryCategory(family,waiter.category);
    waiters.push({family,mode:waiter.mode,...(waiterCategory==='unknown'?{}:{category:waiterCategory})});
    for(const pid of new Set((waiter.blockers??[]).slice(0,4))){
     if(edges.length===maxEdges)break;
@@ -87,7 +132,7 @@ export function originalAdvisoryAttribution(locks,labels){
     if(!blocker)continue;
     edges.push({source:'original-sample',family,waiterMode:waiter.mode,blockerMode:blocker.mode,
      blockerState:blocker.granted?'granted':'queued',waiterCategory,
-     blockerCategory:family==='audit-chain'?originalAuditQueryCategory(blocker.category):'unknown'});
+     blockerCategory:originalAdvisoryQueryCategory(family,blocker.category)});
    }
   }
   return {waiters:waiters.length?waiters:null,edges:edges.length?edges:null};
