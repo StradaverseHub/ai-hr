@@ -632,13 +632,14 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
 
  const matches=(url,next)=>url.origin===origin&&url.pathname===path&&url.searchParams.get('companyId')===own.companyId
   &&url.searchParams.get('query')===query&&url.searchParams.get('status')===next;
- const empty=table.getByText('No applications match these filters.',{exact:true});
+ const empty=main.getByText('No applications match these filters.',{exact:true});
  started=performance.now();
  await Promise.all([
   page.waitForURL(url=>matches(url,'pending'),{waitUntil:'commit',timeout:15000}),
   main.getByRole('button',{name:'Apply filters',exact:true}).click({timeout:15000}),
  ]);
  await empty.waitFor({state:'visible',timeout:15000});
+ assert.equal(await table.locator('tbody tr').count(),0,'The filters must clear the result rows');
  mark('query-results-ready',started);
 
  const approved=status.getByRole('link',{name:/^Approved [0-9]+$/});
@@ -649,6 +650,7 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  ]);
  await approved.and(status.locator('[aria-current="page"]')).waitFor({state:'visible',timeout:15000});
  await empty.waitFor({state:'visible',timeout:15000});
+ assert.equal(await table.locator('tbody tr').count(),0,'The status tab must retain the filtered result set');
  mark('approved-with-filters-ready',started);
 }
 
