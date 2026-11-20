@@ -22,7 +22,7 @@ const data: MobilePreviewData = {
   employment: { id: 'own', company: 'Test Company', department: null, position: null },
   clock: { status: 'ready', data: { date: '2026-10-10', clockedIn: false, shiftStart: null, shiftEnd: null, events: [] } },
   leave: { status: 'ready', data: Array.from({ length: 6 }, (_, n) => ({ id: String(n), name: `Leave ${n}`, available: n, balance: n, taken: 0, pending: 0, takenOnly: false, sharedWith: [], canRequest: true, notice: null, cycleStart: '2026-01-01', cycleEnd: '2026-12-31' })) },
-  requests: { status: 'ready', data: { items: [], total: 0 } }, claims: { status: 'disabled' }, team: { status: 'disabled' }, tasks: { status: 'ready', data: [] }, inbox: { status: 'disabled' }, payslips: { status: 'disabled' },
+  requests: { status: 'ready', data: { items: [], total: 0 } }, claims: { status: 'disabled' }, team: { status: 'disabled' }, tasks: { status: 'ready', data: { items: [], total: 0 } }, inbox: { status: 'disabled' }, payslips: { status: 'disabled' },
 };
 const state = (): MobileBuilderState => ({ tenantName: 'Test Tenant', draft: structuredClone(DEFAULT_MOBILE_DESIGN), draftRevision: 0, releases: [] });
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
