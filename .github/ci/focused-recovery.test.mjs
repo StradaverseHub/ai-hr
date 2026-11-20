@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
-function input(){
- const f=fixture(),plan=f.expectedPlan,unit=plan.units.find(u=>u.kind==='nodb');
+function input(database=false){
+ const f=fixture(),plan=f.expectedPlan,unit=plan.units.find(u=>u.kind===(database?'db':'nodb'));
  for(const r of f.reports)for(const b of r.batches)for(const file of b.result.testResults)for(const a of file.assertionResults)a.fullName='original behavioral case: '+file.name;
  const failed=f.reports.find(r=>r.id===unit.id);failed.exitCode=1;failed.batches[0].exitCode=1;failed.batches[0].result.success=false;
  f.jobs.find(j=>j.name===`test (${unit.id})`).conclusion='failure';
@@ -19,12 +19,52 @@ function input(){
  const jobs=names.map((name,i)=>({id:300+i,name,run_id:run.id,run_attempt:1,head_sha:run.head_sha,head_branch:run.head_branch,status:'completed',conclusion:i<2?'success':'skipped',started_at:time(3),completed_at:time(2)}));
  const artifact={id:400,name:'focused-development-evidence',size_in_bytes:100,digest:'sha256:'+'b'.repeat(64),expired:false,created_at:time(2.5),expires_at:time(-60),workflow_run:{id:run.id,repository_id:1333414856,head_repository_id:1333414856,head_sha:run.head_sha,head_branch:run.head_branch}};
  const report={kind:'FOCUSED_ONLY',releaseEligible:false,schemaVersion:1,sha:plan.sha,controller:plan.controller,runId:String(run.id),attempt:'1',runtime:plan.runtime,files:unit.files,groups:{NODB:unit.files,DB:[]},manifestHash:hash(JSON.stringify(unit.files)),classifierHash:'classifier',startedAt:time(2.9),endedAt:time(2.1),exitCode:0,healthBefore:{ok:true},healthAfter:{ok:true},batches:[{kind:'NODB',files:unit.files,exitCode:0,processExitCode:0,signal:null,assertions:1}]};
+ if(database){report.groups={NODB:[],DB:unit.files};report.batches[0].kind='DB';report.databaseTerminalEvidence={...structuredClone(failed.databaseTerminalEvidence),name:'aihr-ci-200-1-db-1',capturedAt:time(2.2)};}
+ report.batches[0].startedAt=report.startedAt;
+ report.execution={workers:plan.execution.workers,postgres:database?plan.execution.postgres:null};
+ report.policyVersion=plan.policyVersion;
+ report.fingerprint=hash(JSON.stringify({policyVersion:report.policyVersion,sha:report.sha,controller:report.controller,files:report.files,groups:report.groups,classifierHash:report.classifierHash,execution:report.execution}));
  const result=structuredClone(failed.batches[0].result);result.success=true;result.testResults[0].name='/home/runner/work/ai-hr/ai-hr/source/'+unit.files[0];
- return {plan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],report,result}],classifierHash:'classifier',verificationController:'e'.repeat(40)};
+ return {plan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],report,result}],classifierHash:'classifier',verificationController:'e'.repeat(40),reviewedController:'e'.repeat(40)};
 }
-const certificate=f=>({...verifyFocusedRecovery(f),verificationDiagnostic:{runId:501,controller:f.verificationController}});
+const certificate=f=>({...verifyFocusedRecovery(f),verificationDiagnostic:{runId:501,controller:f.verificationController},history:{kind:'AUTHENTICATED_UNCHANGED_SOURCE_HISTORY',sourceRunId:f.run.id,runIds:f.focused.map(x=>x.run.id).sort((a,b)=>a-b)}});
 test('Recovery retains every successful unit and every original failure without mutating reports',()=>{
  const f=input(),before=structuredClone(f.reports),c=certificate(f);assert.deepEqual(f.reports,before);assert.equal(f.run.conclusion,'failure');assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(c.tests,5);assert.equal(c.originalConclusion,'failure');assert.equal(c.units.length,f.plan.units.length);
+});
+test('Exact-source DB recovery retains the original failed process and validates its fresh owned PostgreSQL evidence',()=>{
+ const f=input(true),before=structuredClone(f.reports),c=certificate(f);
+ assert.deepEqual(f.reports,before);assert.equal(c.tests,5);assert.equal(c.recoveryPolicy,'aihr-focused-recovery/v2');
+ assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(f.plan.sha,f.focused[0].report.sha);
+});
+for(const [name,mutate] of [
+ ['missing database evidence',f=>delete f.focused[0].report.databaseTerminalEvidence],
+ ['foreign database',f=>f.focused[0].report.databaseTerminalEvidence.name='foreign'],
+ ['old capture',f=>f.focused[0].report.databaseTerminalEvidence.capturedAt=time(20)],
+ ['different actual PostgreSQL version',f=>f.focused[0].report.databaseTerminalEvidence.settings.serverVersionNum='160014'],
+ ['OOM',f=>f.focused[0].report.databaseTerminalEvidence.memoryEvents.oom_kill=1],
+ ['excess peak',f=>f.focused[0].report.databaseTerminalEvidence.memoryPeak=2147483649],
+ ['disabled JIT',f=>f.focused[0].report.databaseTerminalEvidence.settings.jit='off'],
+ ['foreign selected DB file',f=>f.focused[0].report.files=['test/foreign.test.ts']],
+ ['mixed partitions',f=>f.focused[0].report.groups.NODB=f.focused[0].report.files],
+ ['wrong execution workers',f=>f.focused[0].report.execution.workers=8],
+ ['altered execution fingerprint',f=>f.focused[0].report.fingerprint='0'.repeat(64)],
+])test('DB recovery refuses '+name,()=>{const f=input(true);mutate(f);assert.throws(()=>verifyFocusedRecovery(f));});
+test('An unreviewed exact-source certificate cannot authorize installation',()=>{
+ const f=input(true);f.reviewedController=null;const c=certificate(f),e={...c,recovery:c,fingerprint:hash(c)};
+ assert.equal(c.pendingReview,true);assert.throws(()=>validateRecoveryGrantEvidence(e,f.run));
+ assert.throws(()=>requireReviewedFocusedController({execute:true,controller:f.verificationController}));
+ assert.doesNotThrow(()=>requireReviewedFocusedController({execute:false,controller:f.verificationController}));
+ assert.doesNotThrow(()=>requireReviewedFocusedController({execute:true,controller:f.verificationController,reviewedController:f.verificationController}));
+});
+test('Separate published producer is admitted only with both immutable ancestry proofs',()=>{
+ const f=input(),x={run:f.run,candidate:f.plan.sha,verificationController:f.verificationController,producerAncestorOfCandidate:true,producerAncestorOfVerifier:true};
+ assert.equal(validateRecoveryProducer(x),f.plan.controller);
+ for(const change of [x=>x.producerAncestorOfCandidate=false,x=>x.producerAncestorOfVerifier=false,x=>x.run.event='pull_request',x=>x.run.head_branch='feature']){const y=structuredClone(x);change(y);assert.throws(()=>validateRecoveryProducer(y));}
+});
+test('Latest focused history refuses later failures, unknown overlapping runs, omissions and conflicting snapshots',()=>{
+ const f=input(),sourceRun={...f.run,display_title:'Alpha CI · codex/candidate'},focusedRuns=f.focused.map(x=>({...x.run,display_title:'Focused only · codex/candidate-part-1'}));
+ const x={sourceRun,focusedRuns,rows:focusedRuns};assert.deepEqual(validateFocusedHistory(x).runIds,[200]);
+ for(const change of [x=>x.rows=[],x=>x.rows[0].conclusion='failure',x=>x.rows.push({...x.rows[0],id:201}),x=>x.rows[0].status='in_progress',x=>x.rows.push({...x.rows[0],updated_at:time(0)})]){const y=structuredClone(x);change(y);assert.throws(()=>validateFocusedHistory(y));}
 });
 for(const [name,mutate] of [
  ['missing focused coverage',f=>f.focused=[]],['duplicate focused coverage',f=>f.focused.push(structuredClone(f.focused[0]))],

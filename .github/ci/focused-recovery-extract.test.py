@@ -1,12 +1,16 @@
-import pathlib,subprocess,sys,tempfile,unittest,zipfile,stat
+import json,pathlib,subprocess,sys,tempfile,unittest,zipfile,stat
 SCRIPT=pathlib.Path(__file__).with_name('focused-recovery-extract.py')
 class FocusedExtraction(unittest.TestCase):
-    def invoke(self,extra=(),missing=None):
+    def invoke(self,extra=(),missing=None,database=False):
         with tempfile.TemporaryDirectory() as root:
             root=pathlib.Path(root);archive=root/'in.zip';destination=root/'out'
             with zipfile.ZipFile(archive,'w') as z:
-                for name in ['focused.json','nodb.vitest.json']:
-                    if name!=missing:z.writestr(name,'{}')
+                result='db.vitest.json' if database else 'nodb.vitest.json'
+                report=json.dumps({'groups':{'DB':['test/db.test.ts'] if database else [],'NODB':[] if database else ['test/plain.test.ts']}})
+                for name in ['focused.json',result]:
+                    if name!=missing:z.writestr(name,report if name=='focused.json' else '{}')
+                if database:
+                    for name in ['postgres.log','postgres-state.json','postgres-stats.txt']:z.writestr(name,'{}')
                 for name,data in extra:z.writestr(name,data)
             r=subprocess.run([sys.executable,str(SCRIPT),str(archive),str(destination)],capture_output=True)
             return r.returncode,sorted(p.name for p in destination.iterdir()) if destination.exists() else []
@@ -20,6 +24,12 @@ class FocusedExtraction(unittest.TestCase):
     def test_unknown_binary(self):self.assertNotEqual(self.invoke([('ui-screenshots/code.sh',b'exit')])[0],0)
     def test_duplicate(self):self.assertNotEqual(self.invoke([('focused.json','{}')])[0],0)
     def test_backslash(self):self.assertNotEqual(self.invoke([('ui-screenshots\\escape.png',b'x')])[0],0)
+    def test_database_packet(self):self.assertEqual(self.invoke(database=True),(0,['db.vitest.json','focused.json']))
+    def test_database_role_receipt(self):
+        name='personnel-draft-discard-premigration-role-prerequisites.json'
+        self.assertEqual(self.invoke([(name,'{}')],database=True),(0,['db.vitest.json','focused.json',name]))
+    def test_nodb_cannot_include_database_diagnostics(self):self.assertNotEqual(self.invoke([('postgres.log','{}')])[0],0)
+    def test_database_cannot_include_nodb_result(self):self.assertNotEqual(self.invoke([('nodb.vitest.json','{}')],database=True)[0],0)
     def test_symlink(self):
         info=zipfile.ZipInfo('ui-screenshots/link.png');info.create_system=3;info.external_attr=(stat.S_IFLNK|0o777)<<16
         self.assertNotEqual(self.invoke([(info,b'/etc/passwd')])[0],0)

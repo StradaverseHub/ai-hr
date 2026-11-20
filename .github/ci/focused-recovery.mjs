@@ -5,7 +5,7 @@ import {mkdirSync,readFileSync,writeFileSync,readdirSync,mkdtempSync,rmSync,exis
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {cleanHead,controllerRoot,sourceBoundBuild} from './release-ci.mjs';
@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -44,9 +44,9 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({run:api(`actions/runs/${diagnosticId}`),jobs:pages(`actions/runs/${diagnosticId}/jobs?filter=all`,'jobs'),controller:verificationController});
  assert(git(candidatePath,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Unexpected repository');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
- // Exact-source v1: the build/test controller remains the original canonical candidate. The separately
- // frozen operator verification controller is recorded honestly, never relabelled as that producer.
- const controller=candidate,p={candidate,controller,baseline,runId};
+ const originalRun=api(`actions/runs/${runId}`);
+ const ancestor=(a,b)=>{try{execFileSync('git',['merge-base','--is-ancestor',a,b],{cwd:controllerRoot,stdio:'ignore'});return true;}catch{return false;}};
+ const controller=validateRecoveryProducer({run:originalRun,candidate,verificationController,producerAncestorOfCandidate:ancestor(originalRun.head_sha,candidate),producerAncestorOfVerifier:ancestor(originalRun.head_sha,verificationController)}),p={candidate,controller,baseline,runId};
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-recovery-${runId}-${randomUUID()}`);
  const source=await collect(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  const plan=source.parsed.get('gate-plan')?.get('ci-plan.json'),local=createPlan(candidatePath);assert(plan,'Missing original archived plan');
@@ -61,16 +61,28 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   const f=await collect(id,sub,{reuse,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
-  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json','nodb.vitest.json']),'Exact focused no-DB packet members required');
-  focused.push({...f,producer,artifact,report:packet.get('focused.json'),result:packet.get('nodb.vitest.json')});
+  const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
+  const roleName='personnel-draft-discard-premigration-role-prerequisites.json',role=packet.get(roleName);
+  const requiresRole=database&&readFileSync(join(candidatePath,'package.json'),'utf8').includes('scripts/migrate-with-focused-prerequisites.ts');
+  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(requiresRole?[roleName]:[])].sort()),'Exact homogeneous focused packet members required');
+  if(requiresRole){
+   assert(role.kind==='PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'&&role.phase==='before_initial_candidate_migration'&&role.candidate===candidate&&role.controller===controller&&role.runId===String(id)&&role.attempt==='1','Disposable role receipt identity differs');
+   for(const [key,path] of [['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']])assert(role[key]===createHash('sha256').update(readFileSync(join(candidatePath,path))).digest('hex'),'Role prerequisite source differs');
+  }
+  focused.push({...f,producer,artifact,report,result:packet.get(resultName)});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController});
+ const reviewedController=process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER??null;
+ const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'))),verificationController,reviewedController});
  recovery.verificationDiagnostic=verificationDiagnostic;
+ const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
+ const history=[...pages('actions/workflows/alpha-staging.yml/runs?'+query,'workflow_runs'),...pages('actions/workflows/alpha-focused-checks.yml/runs?'+query,'workflow_runs')];
+ for(const status of ['queued','in_progress','waiting','requested','pending'])history.push(...pages('actions/runs?status='+status,'workflow_runs').filter(r=>['.github/workflows/alpha-staging.yml','.github/workflows/alpha-focused-checks.yml'].includes(r.path)));
+ recovery.history=validateFocusedHistory({sourceRun:source.run,focusedRuns:focused.map(f=>f.run),rows:history});
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');
  const alpha=api('git/ref/heads/alpha');assert([baseline,candidate].includes(alpha.object?.sha),'Canonical alpha moved away from recovery source');
- const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const result={...recovery,tier:recovery.pendingReview?'diagnostic':'ci',result:recovery.pendingReview?'DIAGNOSTIC_NONINSTALLABLE':'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);
  return result;
 }

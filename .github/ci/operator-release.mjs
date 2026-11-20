@@ -11,6 +11,7 @@ import {stagingEnvironmentProbeCommand} from './staging-environment.mjs';
 import {openNormalCleanupChannel,driveNormalCleanup} from './normal-cleanup-operator.mjs';
 import {assertRsyncPacketCapability} from './rsync-packet-capability.mjs';
 import {verifyRecoveredCi,revalidateRecoveredCi} from './focused-recovery.mjs';
+import {requireReviewedFocusedController} from './focused-recovery-policy.mjs';
 import {verifyRepairedCi,revalidateRepairedCi} from './repair-recovery.mjs';
 import {requireReviewedRepairController} from './repair-recovery-policy.mjs';
 import {requireReviewedBrowserController} from './browser-recovery-policy.mjs';
@@ -56,6 +57,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const expectedBaseline=expectedBaselineMigrationLedger(candidatePath,baseline);
  const baselineLedger=verifyBaselineMigrationPreflight({candidatePath,baseline,ssh});
  const recovering=recoveryRunIds.length>0;
+ if(recovering)requireReviewedFocusedController({execute,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER});
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
  const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});

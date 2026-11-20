@@ -2,6 +2,14 @@
 
 ## Owner recovery decision — 30 October 2026
 
+### Unchanged source recovery v2 — reviewed operator extension
+
+`aihr-focused-recovery/v2` extends the original no-DB-only adapter to an unchanged candidate's failed ordinary database units. It does not admit source repairs, browser/PDF-tooling failures or failed build/compiler/migration/controller prerequisites. Every failed process is replaced in full, including all original files and named assertions. A database replacement is one entire original unit on its own fresh database, with the same actual PostgreSQL version, execution profile, JIT, memory/peak limits, healthy state and zero OOM events. The source-bound disposable role-setup receipt is authenticated separately; it is not installed migration proof. Original failures remain failed.
+
+Manual main/alpha witnesses may have separate candidate and producer commits. Their authenticated producer must be an ancestor of both the candidate and the reviewed verifier. The existing complete source-plan reconstruction, GitHub run/job/artifact provenance, digest checks, successful original build packet, baseline/profile/ledger probes and guarded installer remain mandatory. Focused execution fingerprints and complete latest execution history are checked independently. No source hash, assertion, timeout or production build is rewritten or relabelled.
+
+The operator verifier itself must pass its exact hosted controller-only integrity diagnostic. Read-only verification without review returns `DIAGNOSTIC_NONINSTALLABLE`; installation and grant creation require `AIHR_FOCUSED_REVIEWED_CONTROLLER` to identify the explicitly approved verifier commit. This extension needs independent review and actual authenticated original/replacement evidence before use. It neither changes the frozen application's full-gate witness nor asks for a duplicate application gate after failed-area-only recovery. Staging queue/lease, actual arrival and rendered acceptance remain separate requirements; production authority is unchanged.
+
 The owner reaffirmed failed-area-only recovery in the Board chat: after the complete frozen run finishes, rerun failed areas and repair-invalidated checks, retaining valid successful evidence. Do not dispatch a new whole gate as the default response to one failure. This decision supersedes the older blanket fresh-whole-run language below for recovery after that completed gate. A broader run must be justified by actual invalidation or a new owner instruction.
 
 Preserve original failing runs and raw errors. Every retained/replacement result must bind authenticated producing jobs/artifacts, exact candidate/controller/baseline, runtime and complete non-overlapping coverage. A failed run stays failed; replacement evidence must retain its own identity. A focused pass alone is not a release receipt.

@@ -4,13 +4,38 @@ import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
+import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
-export const RECOVERY_POLICY='aihr-focused-recovery/v1';
+export const RECOVERY_POLICY='aihr-focused-recovery/v2';
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
 const focusedJobs=['resolve','selected-tests','typecheck','linux-build','native-typecheck','native-swift-models','native-bundle'];
+export function validateRecoveryProducer({run,candidate,verificationController,producerAncestorOfCandidate,producerAncestorOfVerifier}){
+ assert(sha(candidate)&&sha(verificationController)&&sha(run.head_sha),'Exact source/producer/verifier identities required');
+ if(run.head_sha!==candidate)assert(run.event==='workflow_dispatch'&&['main','alpha'].includes(run.head_branch)&&producerAncestorOfCandidate===true&&producerAncestorOfVerifier===true,'Separate producer must be published and ancestral to both frozen sources');
+ return run.head_sha;
+}
+export function requireReviewedFocusedController({execute,controller,reviewedController}){
+ if(execute)assert(sha(controller)&&reviewedController===controller,'Exact focused recovery verifier review required before installation');
+}
+export function validateFocusedHistory({sourceRun,focusedRuns,rows}){
+ assert(sourceRun.display_title?.startsWith('Alpha CI · ')&&Array.isArray(rows)&&rows.length<=8000,'Bounded original source history required');
+ const branch=sourceRun.display_title.slice('Alpha CI · '.length);
+ const titles=new Set([sourceRun.display_title,`Canonical build only · ${branch}`,`Focused only · ${branch}`,...focusedRuns.map(r=>r.display_title)]);
+ assert(focusedRuns.every(r=>r.display_title?.startsWith('Focused only · ')),'Focused branch identity missing');
+ const known=new Set(focusedRuns.map(r=>r.id)),found=new Map();
+ for(const r of rows){if(r.id===sourceRun.id||!titles.has(r.display_title))continue;
+  assert(positive(r.id)&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at),'Malformed relevant history');
+  if(r.status==='completed'&&Date.parse(r.updated_at)<Date.parse(sourceRun.updated_at))continue;
+  assert(known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.run_attempt===1,'Unaccounted, pending, failed or superseding source execution');
+  const record={id:r.id,controller:r.head_sha,title:r.display_title,createdAt:r.created_at,updatedAt:r.updated_at};
+  assert(!found.has(r.id)||isDeepStrictEqual(found.get(r.id),record),'Conflicting history snapshots');found.set(r.id,record);
+ }
+ same([...found.keys()].sort((a,b)=>a-b),[...known].sort((a,b)=>a-b),'Incomplete focused execution history');
+ return {kind:'AUTHENTICATED_UNCHANGED_SOURCE_HISTORY',sourceRunId:sourceRun.id,runIds:[...known].sort((a,b)=>a-b),metadataFingerprint:hash([...found.values()].sort((a,b)=>a.id-b.id))};
+}
 export function validateRecoveryControllerDiagnostic({run,jobs,controller,now=Date.now()}){
  assert(sha(controller)&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID&&positive(run.id),'Foreign verification-controller diagnostic');
  assert(run.workflow_id===WORKFLOW_ID&&run.path===WORKFLOW_PATH&&run.event==='workflow_dispatch'&&run.head_sha===controller&&run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1&&run.display_title?.startsWith('CI controller checks · '),'Exact successful controller-only diagnostic required');
@@ -52,7 +77,8 @@ function cases(result,files,cwd){
  assert(positive(count)&&result.numTotalTests===count&&result.numPassedTests===count,'Focused assertion totals differ');return found;
 }
 /** All metadata and archives must first be authenticated by the API/byte adapter. */
-export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController}){
+export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,classifierHash,verificationController,reviewedController=null}){
+ assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity differs');
  assert(sha(verificationController)&&assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint,'Recovery source identity differs');
  assert(run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1,'Original failed first attempt must remain failed');
  const required=requiredEvidence(plan),failed=new Set(assessment.rerun.map(x=>x.id));
@@ -62,7 +88,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   if(j.name==='runner-diagnostics'){assert(j.conclusion==='skipped');continue;}
   assert(required.jobs.includes(j.name),'Unknown source job');
   if(j.name==='verify'){assert(j.conclusion==='failure','Original dependent verifier must remain failed');continue;}
-  if(unit&&failed.has(unit.id)){assert(unit.kind==='nodb'&&j.conclusion==='failure','v1 recovers failed no-DB test units only');continue;}
+  if(unit&&failed.has(unit.id)){assert(['nodb','db'].includes(unit.kind)&&!unit.pdfTools&&j.conclusion==='failure','Only failed ordinary Node/DOM units can be recovered');continue;}
   assert(j.conclusion==='success','A failed build/compiler/migration/controller/browser prerequisite cannot be recovered by focused tests');
  }
  assert(Array.isArray(reports)&&reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original report inventory required');
@@ -74,15 +100,27 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   assert(r.healthBefore?.ok===true&&r.healthAfter?.ok===true,'Focused runner health did not pass');
   assert(r.classifierHash===classifierHash&&r.manifestHash===hash(JSON.stringify(r.files)),'Focused selection/classifier hash differs');
   assert(Array.isArray(r.files)&&r.files.length>0&&r.files.length<=64&&new Set(r.files).size===r.files.length,'Bounded distinct focused files required');
-  same(r.files,[...r.files].sort(),'Focused selection must be canonical');same(r.groups,{NODB:r.files,DB:[]},'Only no-DB focused recovery is supported');
-  assert(r.batches?.length===1&&r.batches[0].kind==='NODB'&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Focused process did not pass');
+  same(r.files,[...r.files].sort(),'Focused selection must be canonical');
+  const database=r.groups?.DB?.length>0,kind=database?'DB':'NODB';
+  same(r.groups,database?{NODB:[],DB:r.files}:{NODB:r.files,DB:[]},'One homogeneous focused partition required');
+  const execution={workers:plan.execution.workers,postgres:database?plan.execution.postgres:null};
+  same(r.execution,execution,'Focused execution profile differs');
+  assert(r.policyVersion===plan.policyVersion&&r.fingerprint===hash(JSON.stringify({policyVersion:r.policyVersion,sha:r.sha,controller:r.controller,files:r.files,groups:r.groups,classifierHash:r.classifierHash,execution:r.execution})),'Focused execution fingerprint differs');
+  assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Focused process did not pass');
   same(r.batches[0].files,r.files,'Focused batch omitted files');
+  if(database){
+   const unit=plan.units.find(u=>u.kind==='db'&&isDeepStrictEqual(u.files.slice().sort(),r.files));
+   assert(unit&&failed.has(unit.id),'DB recovery must execute one entire failed unit in its own fresh database');
+   validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
+   const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
+   assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&Date.parse(e.capturedAt)>=Date.parse(r.batches[0].startedAt)&&Date.parse(e.capturedAt)<=Date.parse(f.producer.completed_at)&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'Database ownership, capture interval or actual version differs');
+  }
   assert(Date.parse(r.startedAt)>=Date.parse(f.producer.started_at)&&Date.parse(r.endedAt)<=Date.parse(f.producer.completed_at)&&Date.parse(r.endedAt)>=Date.parse(r.startedAt),'Focused execution outside producing job');
   const verified=cases(f.result,r.files,'/home/runner/work/ai-hr/ai-hr/source');
   assert(r.batches[0].assertions===[...verified.values()].reduce((n,x)=>n+x.tests,0),'Focused summary assertion count differs');
   for(const [path,value] of verified){
    const unit=plan.units.find(u=>u.files.includes(path));
-   assert(unit&&failed.has(unit.id)&&!replacements.has(path),'Focused recovery repeats or includes an unaffected file');
+   assert(unit&&unit.kind===(database?'db':'nodb')&&failed.has(unit.id)&&!replacements.has(path),'Focused recovery repeats, misclassifies or includes an unaffected file');
    replacements.set(path,{...value,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});
   }
   focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result)});
@@ -108,11 +146,14 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   tests+=count;units.push({id:unit.id,kind:'focused-recovery',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>failed.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
- return {kind:'AUTHENTICATED_FOCUSED_RECOVERY',recoveryPolicy:RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ return {kind:'AUTHENTICATED_FOCUSED_RECOVERY',recoveryPolicy:RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,reviewedController,pendingReview:reviewedController!==verificationController,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 /** Installation grant keeps the original failed run and build tuple; its fingerprint binds this distinct certificate. */
 export function validateRecoveryGrantEvidence(evidence,run){
  const c=evidence.recovery;
+ assert(c?.pendingReview===false&&c.reviewedController===c.verificationController,'Exact reviewed focused verifier required for grant');
+ assert(c.history?.kind==='AUTHENTICATED_UNCHANGED_SOURCE_HISTORY'&&c.history.sourceRunId===c.runId,'Complete recovery history required for grant');
+ same(c.history.runIds,c.focusedSources.map(s=>s.runId).sort((a,b)=>a-b),'Recovery history differs from producing runs');
  assert(c?.kind==='AUTHENTICATED_FOCUSED_RECOVERY'&&c.recoveryPolicy===RECOVERY_POLICY&&c.originalConclusion==='failure'&&evidence.fingerprint===hash(c),'Authenticated recovery certificate required');
  for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests'])same(evidence[key],c[key],'Recovery grant identity differs: '+key);
  assert(sha(c.verificationController)&&c.runId===run.id&&c.controller===run.head_sha&&run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1&&c.focusedSources?.length>0&&c.units?.some(u=>u.kind==='focused-recovery'),'Original failure/recovery provenance required');
