@@ -7,10 +7,10 @@ import {defaultContractWorkflows} from '../lib/contract-management-workflow';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/lifecycle/contracts/workflows/actions',()=>({saveWorkflowAction:vi.fn(),previewWorkflowAction:vi.fn()}));
 let counter=0;const id=()=>`10000000-0000-4000-8000-${String(++counter).padStart(12,'0')}`;
-it('loads reviewers only for the selected Contract company and searches through its owner',async()=>{
+it.each([true,false])('loads reviewers only for the selected Contract company (embedded %s)',async embedded=>{
  const companyA=id(),companyB=id(),ids=[id(),id(),id(),id(),id()],drafts=defaultContractWorkflows(ids,id),load=vi.fn().mockResolvedValue({ok:true,result:[]});
  const rows=drafts.slice(0,2).map((draft,index)=>({id:draft.id,companyId:index?companyB:companyA,revision:1,draft,publishedVersion:null,enabled:true,required:true}));
- render(<NextIntlClientProvider locale="en" messages={messages}><ContractWorkflowEditor embedded workflows={rows} companies={[{id:companyA,name:'Company A'},{id:companyB,name:'Company B'}]} cases={[]} directories={[]} loadDirectory={load}/></NextIntlClientProvider>);
+ render(<NextIntlClientProvider locale="en" messages={messages}><ContractWorkflowEditor embedded={embedded} workflows={rows} companies={[{id:companyA,name:'Company A'},{id:companyB,name:'Company B'}]} cases={[]} directories={[]} loadDirectory={load}/></NextIntlClientProvider>);
  await waitFor(()=>expect(load).toHaveBeenCalledOnce());
  expect(load.mock.calls[0][0]).toMatchObject({companyId:companyA,query:''});
  fireEvent.change(screen.getByRole('textbox',{name:'Find named reviewers'}),{target:{value:'Fictional'}});
@@ -18,4 +18,8 @@ it('loads reviewers only for the selected Contract company and searches through 
  await waitFor(()=>expect(load).toHaveBeenCalledTimes(2));
  expect(load.mock.calls[1][0]).toMatchObject({companyId:companyA,query:'Fictional'});
  expect(load.mock.calls.some(call=>call[0].companyId===companyB)).toBe(false);
+ expect(screen.getByRole('heading',{name:'Contract workflows',level:embedded?2:1})).toBeVisible();
+ fireEvent.change(screen.getByRole('combobox',{name:messages.contractWorkflow.choose}),{target:{value:rows[1].id}});
+ await waitFor(()=>expect(load).toHaveBeenCalledTimes(3));
+ expect(load.mock.calls[2][0]).toMatchObject({companyId:companyB,query:''});
 });
