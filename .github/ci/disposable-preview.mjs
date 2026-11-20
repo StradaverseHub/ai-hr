@@ -111,7 +111,8 @@ try {
     }
     throw new Error('Preview login page failed readiness');
   });
-  assert.equal((await fetch(base + '/analytics', {redirect: 'manual'})).status, 401);
+  // The production demo challenges network users. The development server is runner-loopback only.
+  if (production) assert.equal((await fetch(base + '/analytics', {redirect: 'manual'})).status, 401);
   await phase('verifyAnalytics', async () => {
     browser = await require('playwright').chromium.launch();
     const page = await browser.newPage({
@@ -126,6 +127,8 @@ try {
     const admin = '22222222-2222-2222-2222-222222222222';
     await page.locator(`form[action="/login/as"]:has(input[value="${admin}"]) button`).click();
     await page.waitForURL(url => !url.pathname.startsWith('/login'));
+    const session = (await page.context().cookies(base)).find(cookie => cookie.name === 'dev_user');
+    assert.equal(session?.value, admin, 'Fixture admin selection did not commit a session');
     const response = await page.goto(base + '/analytics');
     assert.equal(response.status(), 200);
     assert.equal(new URL(page.url()).pathname, '/analytics');
