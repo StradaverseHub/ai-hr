@@ -53,8 +53,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44722987389,artifactId:14623770794,
-  sourceSha:'0142e6d8aaeb6bbf96caaf58e1d9c99387ce9100'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44748780993,artifactId:14636030056,
+  sourceSha:'488a47476c4c7c8a0f40b982ec712e40ea7abc74'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
