@@ -2,12 +2,13 @@ import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {type SessionContext} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll,createAppUser,seedBase,adminCtx,setModule} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {hireEmployee} from '../core/org';
 import {listPersonnelPostings,loadOffboardingPostingApprovers} from '../packs/personnel-postings/service';
 import {observeNativeRead} from './helpers/native-read-observer';
+import {PROJECT_INSTALLED_OWNERSHIP} from './helpers/installed-owner-projection';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 
 it('keeps waiting labels and the existing queue equivalent across 70 companies and 1000 employments, scopes and roles',async()=>{
@@ -48,32 +49,61 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
   }
   expect(got,actor.name+' complete ordering/count').toEqual(actor.wanted.map(row=>row.id));
  }
- const queueProof=readFileSync(new URL('./fixtures/offboarding-posting-queue-set-proof.sql',import.meta.url),'utf8');
- await owner.db.execute(sql.raw(queueProof));
- try{
-  const expected=[true,true,true,true,false,false,false];
-  for(const [index,actor] of actors.entries()){
-   const [row]=await withTenant(actor.ctx,tx=>tx.execute<{canonical:boolean;candidate:boolean}>(sql`
-    select app.offboarding_posting_queue_access() as canonical,
-           app.offboarding_posting_queue_access_set_proof() as candidate
-   `),{readOnlySnapshot:true});
-   expect(row,actor.name).toEqual({canonical:expected[index],candidate:expected[index]});
-  }
-  const execution=await withTenant(f.watcher,async tx=>{
-   const [canonical]=await tx.execute<{['QUERY PLAN']:[{'Execution Time':number}]}>(sql`
+ const queueReplacement=readFileSync(new URL('./fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
+ const rollback=new Error('Roll back the test-only ownership projection and replacement');
+ await expect(owner.client.begin(async tx=>{
+  await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  await tx.unsafe('set local role ai_hr_owner');
+  const readDefinition=async()=>{
+   const [definition]=await tx`
+    select p.oid::text,p.proacl::text,p.prosecdef,p.provolatile,p.proconfig,
+           pg_catalog.pg_get_userbyid(p.proowner) as owner
+    from pg_catalog.pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure
+   `;
+   return definition;
+  };
+  const readActor=async(ctx:SessionContext)=>{
+   const grants=ctx.grants??(ctx.roles??[]).map(role=>({role,companyId:null}));
+   const roles=ctx.roles??Array.from(new Set(grants.map(grant=>grant.role)));
+   await tx.unsafe('set local role ai_hr_app');
+   await tx`
+    select set_config('app.tenant_id',${ctx.tenantId},true),
+           set_config('app.user_id',${ctx.userId??''},true),
+           set_config('app.roles',${roles.join(',')},true),
+           set_config('app.grants',${JSON.stringify(grants)},true),
+           set_config('app.agent_principal_id',${ctx.agent?.principalId??''},true),
+           set_config('jit','off',true)
+   `;
+   const [row]=await tx<{allowed:boolean}[]>`select app.offboarding_posting_queue_access() as allowed`;
+   return row.allowed;
+  };
+  const verifyActors=async()=>{
+   const expected=[true,true,true,true,false,false,false];
+   for(const [index,actor] of actors.entries()){
+    expect(await readActor(actor.ctx),actor.name).toBe(expected[index]);
+   }
+  };
+  const measure=async()=>{
+   await readActor(f.watcher);
+   const [plan]=await tx<{'QUERY PLAN':[{'Execution Time':number}]}[]>`
     explain (analyze,format json,timing off) select app.offboarding_posting_queue_access()
-   `);
-   const [candidate]=await tx.execute<{['QUERY PLAN']:[{'Execution Time':number}]}>(sql`
-    explain (analyze,format json,timing off) select app.offboarding_posting_queue_access_set_proof()
-   `);
-   return {canonicalMs:canonical['QUERY PLAN'][0]['Execution Time'],
-    candidateMs:candidate['QUERY PLAN'][0]['Execution Time']};
-  },{readOnlySnapshot:true});
-  expect(Number.isFinite(execution.canonicalMs)&&Number.isFinite(execution.candidateMs)).toBe(true);
-  console.info('OFFBOARDING_QUEUE_ACCESS_PROOF '+JSON.stringify(execution));
- }finally{
-  await owner.db.execute(sql`drop function app.offboarding_posting_queue_access_set_proof()`);
- }
+   `;
+   return plan['QUERY PLAN'][0]['Execution Time'];
+  };
+
+  const before=await readDefinition();
+  expect(before).toMatchObject({owner:'ai_hr_owner',prosecdef:true,provolatile:'s'});
+  await verifyActors();
+  const canonicalMs=await measure();
+  await tx.unsafe('set local role ai_hr_owner');
+  await tx.unsafe(queueReplacement);
+  expect(await readDefinition()).toEqual(before);
+  await verifyActors();
+  const candidateMs=await measure();
+  expect(Number.isFinite(canonicalMs)&&Number.isFinite(candidateMs)).toBe(true);
+  console.info('OFFBOARDING_QUEUE_REPLACEMENT_PROOF '+JSON.stringify({canonicalMs,candidateMs}));
+  throw rollback;
+ })).rejects.toBe(rollback);
  const ids=fixture.slice(0,50).map(row=>row.id),singleIds=fixture.filter(row=>row.companyId===single).map(row=>row.id);
  expect(await loadOffboardingPostingApprovers(f.admin,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}]))); // Explicit approved and Probation IDs never disclose waiting names.
  expect(await loadOffboardingPostingApprovers(scoped,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.companyId===single&&row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}])));
