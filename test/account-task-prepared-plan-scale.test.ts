@@ -6,7 +6,8 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import type postgres from 'postgres';
 import { afterAll, expect, it } from 'vitest';
 import { ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections } from '../core/account-task-bundle';
-import { withTenant } from '../db/client';
+import { createDb, withTenant } from '../db/client';
+import { applicationDatabaseUrl } from '../db/pooling';
 import { createClaimType } from '../packs/claims/service';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
@@ -16,6 +17,20 @@ afterAll(closeAll);
 const dialect = new PgDialect();
 const modules = { attendance: true, claims: true, performance: true, rewards: true, lifecycle: false };
 type Row = { principal: boolean; claims: { snapshot: boolean; total: number; items: unknown[] } };
+type Tx = Parameters<Parameters<typeof withTenant>[1]>[0];
+
+function nativeConnection(tx: Tx) {
+  // Inspect the pinned Drizzle/postgres.js integration without adding an escape hatch to the application API.
+  return Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+}
+
+async function planCounters(tx: Tx, statement: string) {
+  const [counts] = await tx.execute<{ generic: number; custom: number }>(sql`
+    select coalesce(sum(generic_plans), 0)::int as generic, coalesce(sum(custom_plans), 0)::int as custom
+    from pg_prepared_statements where statement = ${statement}
+  `);
+  return counts;
+}
 
 async function measure<T>(read: () => PromiseLike<T>) {
   const start = performance.now();
@@ -55,9 +70,7 @@ it('compares plan reuse with the production task statement under live role and s
       const read = { companyIds, personal: false, notices: true };
       const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, read), session);
       const query = dialect.sqlToQuery(statement);
-      // Use the same connection that withTenant initialized. This diagnostic intentionally examines the pinned
-      // Drizzle/postgres.js integration without adding a production escape hatch to the transaction API.
-      const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+      const connection = nativeConnection(tx);
       const params = query.params as postgres.ParameterOrJSON<never>[];
       const [drizzleBackend] = await tx.execute<{ pid: number; mode: string }>(sql`
         select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode
@@ -66,18 +79,14 @@ it('compares plan reuse with the production task statement under live role and s
       expect(nativeBackend?.pid).toBe(drizzleBackend?.pid);
       expect(drizzleBackend?.mode).toBe('auto');
       await tx.execute(sql`set local jit=off`);
-      const planCounters = async () => (await tx.execute<{ generic: number; custom: number }>(sql`
-        select coalesce(sum(generic_plans), 0)::int as generic, coalesce(sum(custom_plans), 0)::int as custom
-        from pg_prepared_statements where statement = ${query.sql}
-      `))[0];
-      const before = await planCounters();
+      const before = await planCounters(tx, query.sql);
       const baseline = async () => measure(() => tx.execute<Row>(statement));
       const expected = await baseline();
       expect(expected.result[0]?.principal).toBe(true);
       expect(expected.result[0]?.claims.snapshot).toBe(true);
       expect(expected.result[0]?.claims.total).toBeGreaterThan(ACCOUNT_TASK_CLAIM_PREVIEW);
       expect(expected.result[0]?.claims.items).toHaveLength(ACCOUNT_TASK_CLAIM_PREVIEW);
-      expect(await planCounters()).toEqual(before);
+      expect(await planCounters(tx, query.sql)).toEqual(before);
 
       await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
       const named = [];
@@ -86,7 +95,7 @@ it('compares plan reuse with the production task statement under live role and s
         expect([...sample.result]).toEqual([...expected.result]);
         named.push(sample.milliseconds);
       }
-      const after = await planCounters();
+      const after = await planCounters(tx, query.sql);
       expect(after.generic - before.generic).toBe(named.length);
       expect(after.custom).toBe(before.custom);
 
@@ -97,7 +106,7 @@ it('compares plan reuse with the production task statement under live role and s
         expect([...sample.result]).toEqual([...expected.result]);
         restored.push(sample.milliseconds);
       }
-      expect(await planCounters()).toEqual(after);
+      expect(await planCounters(tx, query.sql)).toEqual(after);
       return {
         name, claimTotal: expected.result[0].claims.total,
         statementShape: createHash('sha256').update(query.sql).digest('hex'),
@@ -109,9 +118,49 @@ it('compares plan reuse with the production task statement under live role and s
   }
   expect(receipts[0].claimTotal).toBeGreaterThan(receipts[1].claimTotal);
   expect(receipts[1].claimTotal).toBe(receipts[2].claimTotal);
+
+  // Keep one backend while ordinary withTenant transactions install different principal settings.
+  const url = new URL(applicationDatabaseUrl(process.env).url);
+  url.searchParams.set('application_name', 'aihr-task-plan-identity-replay');
+  const isolated = createDb(url.href, { max: 1 });
+  const identityReplay = [];
+  try {
+    for (const session of [group.personas.group, group.personas.single, group.personas.group]) {
+      const sample = await isolated.withTenant(session, async tx => {
+        const read = { companyIds: group.companyIds, personal: false, notices: true };
+        const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, read), session);
+        const query = dialect.sqlToQuery(statement);
+        await tx.execute(sql`set local jit=off`);
+        const [transaction] = await tx.execute<{ pid: number; mode: string }>(sql`
+          select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode
+        `);
+        expect(transaction.mode).toBe('auto');
+        const expected = await tx.execute<Row>(statement);
+        expect(expected[0]?.principal).toBe(true);
+        const before = await planCounters(tx, query.sql);
+        await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+        const params = query.params as postgres.ParameterOrJSON<never>[];
+        const actual = await nativeConnection(tx).unsafe<Row[]>(query.sql, params, { prepare: true });
+        expect([...actual]).toEqual([...expected]);
+        const after = await planCounters(tx, query.sql);
+        expect(after).toEqual({ generic: before.generic + 1, custom: 0 });
+        return { pid: transaction.pid, previousUses: before.generic, claimTotal: actual[0].claims.total };
+      }, { readOnlySnapshot: true });
+      identityReplay.push(sample);
+    }
+  } finally {
+    await isolated.client.end({ timeout: 5 });
+  }
+  expect(new Set(identityReplay.map(sample => sample.pid)).size).toBe(1);
+  expect(identityReplay.map(sample => sample.previousUses)).toEqual([0, 1, 2]);
+  expect(identityReplay.map(sample => sample.claimTotal)).toEqual([
+    receipts[0].claimTotal, receipts[2].claimTotal, receipts[0].claimTotal,
+  ]);
+
   const directory = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
   if (directory) writeFileSync(join(directory, 'account-task-prepared-plan-scale.json'), JSON.stringify({
     source: process.env.AIHR_CI_HEAD, companies: group.companyIds.length,
     employments: group.employmentIds.length, receipts,
+    identityReplay: identityReplay.map(({ previousUses, claimTotal }) => ({ previousUses, claimTotal })),
   }));
 }, 120000);
