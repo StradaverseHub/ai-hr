@@ -24,7 +24,7 @@ import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exerciseLivePersonnelProfile} from './personnel-live-profile-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {actionFormData} from './action-form.ts';
-import {closeSync,constants as fsFlags,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,writeFileSync,writeSync} from 'node:fs';
+import {closeSync,constants as fsFlags,fstatSync,fsyncSync,lstatSync,mkdirSync,openSync,readFileSync,realpathSync,renameSync,writeFileSync,writeSync} from 'node:fs';
 import {writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import https from 'node:https';
@@ -203,7 +203,17 @@ const measureDevelopment=!nativePreflight&&suite!=='claims-heavy';
 const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE);
 const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
-function markComparisonStage(stage){comparisonStage=stage;comparisonWorkload=null;}
+const stageEvidence=process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&!nativePreflight;
+function markComparisonStage(stage){
+ comparisonStage=stage;
+ comparisonWorkload=null;
+ if(stageEvidence){
+  const receipt=join(out,'driver-stage.json'),pending=receipt+'.next';
+  writeFileSync(pending,JSON.stringify({stage,elapsedMs:Math.round(performance.now()-driverStarted)}),{mode:0o600});
+  renameSync(pending,receipt);
+ }
+}
+if(stageEvidence)markComparisonStage(comparisonStage);
 
 const developmentPageCensus=measureDevelopment?createDevelopmentPageCensus():null;
 let developmentNavigationBinding,developmentRenderedCapture,developmentWorkCompleted=false,developmentLoad=null;
