@@ -119,6 +119,7 @@ vi.mock('next-intl/server', async () => {
 });
 
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 import { listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
 import { getScheduleRotation } from '../core/attendance-rotation';
 import { attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory } from '../core/attendance-clock-policy';
@@ -346,6 +347,43 @@ describe('A. the Schedule page is the LIST, and keeps every card that is not per
     expect(elementById(await renderCompany(),'company-policy-settings')).toContain(esc(SC.policyTitle));
     expect(elementById(await renderOvertime(),'work-schedule-overtime')).toContain(esc(SC.wsOtTitle));
     expect(await renderDevices()).toContain('id="registered-devices"');
+  });
+
+  it('first-use Schedule queues for exclusive Access while an established Schedule opens beside a shared holder', async () => {
+    const fixture = await buildScaleFixture(b, { events: 0 });
+    expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);
+    expect(fixture.employmentIds.length).toBeGreaterThanOrEqual(1000);
+    ADMIN = fixture.personas.single;
+    expect((await listAttendanceRules(ADMIN)).some((rule) => rule.isDefault)).toBe(false);
+    const key = `access-configuration:${b.tenantId}`;
+
+    let firstOpen: Promise<string> | undefined;
+    try {
+      await owner.client.begin(async (holder) => {
+        await holder`select pg_advisory_xact_lock_shared(hashtextextended(${key}, 0))`;
+        firstOpen = renderSchedule();
+        void firstOpen.catch(() => {});
+        await expect.poll(async () => {
+          const [lock] = await holder`select exists (
+            select 1 from pg_locks held
+            join pg_locks queued using (database, classid, objid, objsubid)
+            where held.pid = pg_backend_pid() and held.locktype = 'advisory'
+              and held.granted and held.mode = 'ShareLock'
+              and queued.locktype = 'advisory' and not queued.granted and queued.mode = 'ExclusiveLock'
+              and pg_backend_pid() = any(pg_blocking_pids(queued.pid))
+          ) as waiting`;
+          return lock.waiting;
+        }, { timeout: 2500 }).toBe(true);
+      });
+    } finally {
+      await expect(firstOpen).resolves.toContain('Standard');
+    }
+
+    await owner.client.begin(async (holder) => {
+      await holder`select pg_advisory_xact_lock_shared(hashtextextended(${key}, 0))`;
+      await expect(renderSchedule()).resolves.toContain('Standard');
+    });
+    expect((await listAttendanceRules(ADMIN)).filter((rule) => rule.isDefault)).toHaveLength(1);
   });
 
   it('the two links away are gone', async () => {
