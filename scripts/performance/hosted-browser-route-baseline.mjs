@@ -1537,6 +1537,7 @@ try{
    save();
   }finally{await owner.end({timeout:5});}
  }
+ if(censusPayrollCorrections)report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
  if(censusPayrollCorrections)await run('seed-payroll-correction-run',process.execPath,
   ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],dbEnv);
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
