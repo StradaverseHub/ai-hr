@@ -1,0 +1,21 @@
+name: Immutable cutover qualification
+on:
+  push:
+    branches: [codex/immutable-release-cutover-20261120]
+    paths: ['deploy/cutover/**', '.github/workflows/immutable-cutover-qualification.yml']
+  pull_request:
+    paths: ['deploy/cutover/**', '.github/workflows/immutable-cutover-qualification.yml']
+permissions:
+  contents: read
+jobs:
+  cutover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Qualify live HTTP activation and recovery on disposable services
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python3 -m unittest discover -s deploy/cutover -v
