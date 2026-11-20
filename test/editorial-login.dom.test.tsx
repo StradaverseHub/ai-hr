@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
+import { authClientMessages } from '../i18n/auth-messages';
 import { loginStoryAt, loginSwirlPoint, LOGIN_STORY } from '../lib/login-story';
 import enBase from '../messages/en.json';
 import enEditorial from '../messages/login-editorial/en.json';
@@ -30,7 +31,7 @@ const availability = vi.fn<typeof fetch>();
 function mount(organization = '') {
   vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) =>
     String(input).startsWith('/login/entra/options?') ? availability(input, init) : fetcher(input, init));
-  return render(<NextIntlClientProvider locale="en" messages={enBase}><InternalAuthForm organization={organization} returnTo="/me"/></NextIntlClientProvider>);
+  return render(<NextIntlClientProvider locale="en" messages={authClientMessages(enBase)}><InternalAuthForm organization={organization} returnTo="/me"/></NextIntlClientProvider>);
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); fetcher.mockReset(); availability.mockReset(); });
 describe('Editorial workspace entrance', () => {

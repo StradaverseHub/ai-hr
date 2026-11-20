@@ -7,6 +7,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { InternalAuthForm } from '../app/login/internal-form';
+import { authClientMessages } from '../i18n/auth-messages';
 import { ActionFeedbackProvider } from '../components/action-feedback';
 import enBase from '../messages/en.json';
 import enEditorial from '../messages/login-editorial/en.json';
@@ -19,7 +20,7 @@ async function view(props: Parameters<typeof InternalAuthForm>[0] = {},locale='e
   // Public availability has its own response; auth assertions still observe every credential request.
   vi.stubGlobal('fetch', (input:RequestInfo|URL,init?:RequestInit)=>String(input).startsWith('/login/entra/options?')
     ?Promise.resolve(Response.json({microsoft:false})):fetcher(input,init));
-  const result = render(<NextIntlClientProvider locale={locale} messages={enBase}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
+  const result = render(<NextIntlClientProvider locale={locale} messages={authClientMessages(enBase)}><InternalAuthForm organization="alpha" {...props}/></NextIntlClientProvider>);
   if (!props.mode || props.mode === 'login') await userEvent.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
   return result;
 }
@@ -150,7 +151,7 @@ describe('embedded browser forms', () => {
     vi.stubGlobal('fetch', (input:RequestInfo|URL,init?:RequestInit)=>String(input).startsWith('/login/entra/options?')
       ?Promise.resolve(Response.json({microsoft:false})):fetcher(input,init));
     fetcher.mockResolvedValueOnce(Response.json({ step: 'complete' }));
-    render(<NextIntlClientProvider locale="en" messages={enBase}><ActionFeedbackProvider><InternalAuthForm organization="alpha" returnTo="/home"/></ActionFeedbackProvider></NextIntlClientProvider>);
+    render(<NextIntlClientProvider locale="en" messages={authClientMessages(enBase)}><ActionFeedbackProvider><InternalAuthForm organization="alpha" returnTo="/home"/></ActionFeedbackProvider></NextIntlClientProvider>);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
     await user.type(screen.getByLabelText(en.internalAuth.username), 'employee');
