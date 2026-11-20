@@ -105,11 +105,12 @@ describe('Mobile App Preview uses the viewer’s authorized records', () => {
     const claimType = await createClaimType(adminCtx(b), {
       code: 'MOBILE_PROOF', name: 'Fictional mobile preview claim', requiresReceipt: false, defaultTaxable: false,
     });
-    await owner.db.insert(schema.claimRequest).values(Array.from({ length: 45 }, (_, index) => ({
+    const claims = Array.from({ length: 45 }, (_, index): typeof schema.claimRequest.$inferInsert => ({
       tenantId: b.tenantId, employmentId: subject.employmentId, claimTypeId: claimType.id, status: 'pending',
       amount: '467.31', incurredOn: today, description: 'Private fictional claim description',
       createdAt: new Date(Date.UTC(2025, 0, 1, 0, index)),
-    })));
+    }));
+    await owner.db.insert(schema.claimRequest).values(claims);
     const full = await listPendingTasks(approver.ctx, [b.companyId], {
       attendance: false, claims: true, performance: false, rewards: false, probation: false,
     }, { noticeAcknowledgements: false });
