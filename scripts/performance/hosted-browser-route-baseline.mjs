@@ -441,7 +441,12 @@ async function visit(page,actor,route,pass,fixture) {
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  try{
-  const response=await page.goto(origin+route.requested,{waitUntil:'domcontentloaded',timeout:timeout()});
+  const response=await page.goto(origin+route.requested,{waitUntil:'commit',timeout:timeout()});
+  observation.responseCommittedMs=Math.round(performance.now()-started);
+  const documentReady=page.waitForLoadState('domcontentloaded',{timeout:timeout()}).then(()=>{
+   observation.documentContentLoadedMs=Math.round(performance.now()-started);
+   return null;
+  },error=>error);
   observation.httpStatus=response?.status()??null;
   observation.destination=page.url()===origin+route.final?'expected':
    new URL(page.url()).pathname==='/login'?'sign-in':'other-route';
@@ -467,6 +472,13 @@ async function visit(page,actor,route,pass,fixture) {
     else observation.unverifiedWitness=route.witness;
    }
   }
+  if(observation.readiness==='usable-content'||observation.readiness==='scope-denial'){
+   observation.contentWitnessVisibleMs=Math.round(performance.now()-started);
+  }
+  // The first useful content can arrive while unrelated sections continue streaming.
+  // Still evaluate the final page for errors and retain total verification time.
+  const documentFailure=await documentReady;
+  if(documentFailure)throw documentFailure;
   await assertContentAvailable(page);
   if(performance.now()>deadline)throw Object.assign(new Error('Readiness deadline exceeded'),{name:'TimeoutError'});
   observation.status='observed';
