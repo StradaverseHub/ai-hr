@@ -149,7 +149,7 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
   it('Transaction View History asks for the exact company-scoped visible pairs', () => {
     const page = src('app/payroll/transaction-view/page.tsx');
     expect(page).toMatch(
-      /listPayslipSourceTxns\(s,\{\s*companyIds,\s*pairs:shownHistoryRows.map\(/,
+      /listPayslipSourceTxns\(s,\{\s*companyIds,\s*pairs:historyPairs,/,
     );
     expect(page).toContain('sourceTxnsByPayslip={sourceTxnsByPayslip}');
   });

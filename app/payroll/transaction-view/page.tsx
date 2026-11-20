@@ -378,15 +378,16 @@ export default async function TransactionViewPage({
   // screen can answer "where did this line come from?" instead of sending the reader to a report. ONE
   // indexed query for every run on screen, issued only for the History tab and only when there are rows;
   // it is fenced on the same `companyIds` as the payslips themselves.
-  const historyBatchIds = [
-    ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
-  ];
+  const historyPairs=shownHistoryRows.flatMap(({batchId,employmentId})=>
+    batchId ? [{batchId,employmentId}] : [],
+  );
+  const historyBatchIds=[...new Set(historyPairs.map(pair=>pair.batchId))];
   const [recordedOutcomes,sourceTxnRows]=tab==='history'&&historyBatchIds.length
     ? await Promise.all([
       listReprocessEmployeeOutcomes(s,{batchIds:historyBatchIds}),
       listPayslipSourceTxns(s,{
         companyIds,
-        pairs:shownHistoryRows.map(({batchId,employmentId})=>({batchId,employmentId})),
+        pairs:historyPairs,
       }),
     ])
     : [[],[]];
