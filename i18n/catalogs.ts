@@ -1,5 +1,6 @@
 import type {Locale} from './config';
-import type en from '../messages/en.json';
+import en from '../messages/en.json';
+import aiCentreEn from '../messages/ai-centre/en.json';
 
 type Dict = Record<string, unknown>;
 
@@ -20,26 +21,20 @@ function withFallback(base: Dict, over: Dict): Dict {
 
 // Catalogs are static for the lifetime of a build. Cache only the merged messages,
 // while each request independently resolves its explicit locale or cookie.
-const catalogs = new Map<Locale, Promise<typeof en>>();
-
-function loadLocale(locale: Locale): Promise<Dict> {
-  return Promise.all([
-    import(`../messages/${locale}.json`).then(module => module.default as Dict),
-    import(`../messages/ai-centre/${locale}.json`).then(module => module.default as Dict),
-  ]).then(([messages, aiCentre]) => withFallback(messages, aiCentre));
-}
+const englishMessages = withFallback(en as Dict, aiCentreEn as Dict) as typeof en;
+const englishCatalog = Promise.resolve(englishMessages);
+const catalogs = new Map<Locale, Promise<typeof en>>([['en', englishCatalog]]);
 
 export function messagesForLocale(locale: Locale): Promise<typeof en> {
   const cached = catalogs.get(locale);
   if (cached) return cached;
 
-  // Keep the fallback catalog out of the root client bundle. The active locale and
-  // fallback can load together, and English itself only needs its own two files.
-  const localized = loadLocale(locale);
-  const loading = (locale === 'en' ? localized
-    : Promise.all([messagesForLocale('en'), localized])
-      .then(([english, translated]) => withFallback(english as Dict, translated))
-  ).then(messages => messages as typeof en).catch(error => {
+  const loading = Promise.all([
+    import(`../messages/${locale}.json`).then(module => module.default as Dict),
+    import(`../messages/ai-centre/${locale}.json`).then(module => module.default as Dict),
+  ]).then(([messages, aiCentre]) =>
+    withFallback(englishMessages, withFallback(messages, aiCentre)) as typeof en,
+  ).catch(error => {
     catalogs.delete(locale);
     throw error;
   });
