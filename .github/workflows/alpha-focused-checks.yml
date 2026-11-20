@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 09022db78fe78c78a167d8e118c0d7b352c10874 ]];
+            [[ "$EXPECTED_SHA" != 283a02332e5bb98266db52ca27514967ba3a606c ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -234,10 +234,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=09022db78fe78c78a167d8e118c0d7b352c10874
-          test "$AIHR_CI_HEAD" = 09022db78fe78c78a167d8e118c0d7b352c10874
+          test "$AIHR_CI_HEAD" = 283a02332e5bb98266db52ca27514967ba3a606c
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$build_source" = "$AIHR_CI_HEAD"
+          # The compiled app comes from the original source and only the browser harness is newer.
+          test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" =             "$(printf 'M\tscripts/performance/navigation-browser-capture.ts')"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136571786934 --jq '
