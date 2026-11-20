@@ -138,6 +138,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/history-import/upload/route.ts':'payroll_history',
  'app/payroll/transactions/import-components/page.tsx':'run_pay_components',
  'app/payroll/transactions/import-excel/actions.ts':'fixed_transactions',
+ 'app/payroll/transactions/import-excel/template/route.ts':support('Read-only workbook reference for fixed and individual transactions, scoped at download time.'),
  'app/payroll/transactions/import-excel/fixed-actions.ts':'fixed_transactions',
  'app/payroll/transactions/fixed/imports/page.tsx':'fixed_transactions',
  'app/payroll/transactions/fixed/imports/[id]/page.tsx':'fixed_transactions',

@@ -16,8 +16,9 @@ import {
   type TxnImportResult,
   type TxnImportRow,
 } from '@/lib/payroll-txn-import-schema';
-import { buildTxnImportWorkbook, type TxnTemplateReference } from '@/lib/import-template-xlsx';
+import { buildTxnImportWorkbook } from '@/lib/import-template-xlsx';
 import { commitTxnImportAction, validateTxnImportAction } from './actions';
+import { loadTxnTemplateReference } from './template-source';
 import type { queueFixedTransactionImportAction } from './fixed-actions';
 import { FIXED_TXN_IMPORT_LOG } from '@/lib/fixed-transaction-import-log';
 
@@ -64,17 +65,19 @@ function download(bytes: BlobPart, filename: string, type: string) {
 
 export function TxnImportButtons({
   kind,
-  reference,
+  preferredCompanyId,
   queueFixedAction,
 }: {
   kind: TxnImportKind;
-  /** The live catalogues, read by the SCREEN from the same source the validator resolves against. */
-  reference: TxnTemplateReference;
+  preferredCompanyId?: string;
   queueFixedAction?: typeof queueFixedTransactionImportAction;
 }) {
   const t = useTranslations('payroll.txnImport');
+  const tImport = useTranslations('payroll.individualImport');
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateFailed, setTemplateFailed] = useState(false);
   const [csv, setCsv] = useState('');
   const [fileName, setFileName] = useState<string | null>(null);
   const [preview, setPreview] = useState<TxnImportPreview | null>(null);
@@ -182,15 +185,19 @@ export function TxnImportButtons({
   /** The template: a real workbook whose fill-in sheet is FIRST and whose reference sheets are generated
    *  from the same catalogues the validator resolves against. */
   const downloadTemplate = async () => {
-    setError(null);
+    setTemplateFailed(false);
+    setTemplateBusy(true);
     try {
+      const reference = await loadTxnTemplateReference(kind, preferredCompanyId);
       download(
         (await buildTxnImportWorkbook(kind, reference)) as BlobPart,
         TXN_IMPORT_FILENAME[kind],
         XLSX_MIME,
       );
     } catch {
-      setError(t('fileReadError'));
+      setTemplateFailed(true);
+    } finally {
+      setTemplateBusy(false);
     }
   };
 
@@ -236,9 +243,10 @@ export function TxnImportButtons({
       >
         {t('importExcel')}
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={downloadTemplate}>
+      <Button type="button" variant="outline" size="sm" aria-busy={templateBusy} disabled={templateBusy} onClick={downloadTemplate}>
         {t('downloadTemplate')}
       </Button>
+      {templateFailed && <p role="alert" className="text-sm text-destructive">{tImport('failed')}</p>}
 
       <Dialog.Root
         open={open}

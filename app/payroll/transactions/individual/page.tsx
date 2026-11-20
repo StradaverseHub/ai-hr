@@ -11,7 +11,6 @@ import { payrollLeavingDate } from '@/lib/payroll-leaving-date';
 import { ErrorBanner, PageHeader, pageWideCls } from '@/components/ui';
 import { TxnWorkspace, type TxnBatch, type TxnEmployee, type TxnPayrollCycle } from './txn-workspace';
 import { IndividualImportButtons } from '../import-excel/individual-import';
-import { buildTxnTemplateReference } from '../import-excel/reference';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 
 /**
@@ -181,11 +180,6 @@ export default async function IndividualTransactionPage({
   const valuelessVariant: Record<string, string> = { employeeNotInScope: 'employeeNotInScopeNoDetail' };
   const errorMessage = error && errorKeys.has(error) ? t(`individual.${valuelessVariant[error] ?? error}`) : error;
 
-  // 5c65367d — the Excel import's reference sheets, read from the same catalogues the validator resolves
-  // against. Built here rather than inside the template builder because that module is client-safe and a
-  // `db/` import in it would drag the data layer into the browser bundle.
-  const importReference = await buildTxnTemplateReference(s, scopeIds);
-
   return (
     <div className={pageWideCls}>
       <PageHeader
@@ -195,7 +189,7 @@ export default async function IndividualTransactionPage({
         // 5c65367d — Import Excel + Download Template, the same pair as Fixed Transaction and the same
         // component. In the page header rather than beside Add, because Add belongs to ONE selected
         // employee and an import does not.
-        actions={<IndividualImportButtons reference={importReference} cycles={cyclesByCompany.flatMap(({companyId,cycles})=>cycles.map(c=>({name:c.name,code:c.code??c.name,company:scopedCompanies.find(co=>co.id===companyId)?.name??''})))} />}
+        actions={<IndividualImportButtons cycles={cyclesByCompany.flatMap(({companyId,cycles})=>cycles.map(c=>({name:c.name,code:c.code??c.name,company:scopedCompanies.find(co=>co.id===companyId)?.name??''})))} />}
       />
 
       {!typedComponentsOn && (
