@@ -10,14 +10,16 @@ describe('23e87eef: company-switch inquiry navigation', () => {
       vi.clearAllMocks(); const form = new FormData(); form.append('companyId', 'company-a'); form.append('returnPath', path);
       await setCompanyScope(form);
       expect(set).toHaveBeenCalledWith('company_scope', 'company-a', { sameSite: 'lax', path: '/' });
-      expect(revalidatePath).toHaveBeenCalledWith('/', 'layout'); expect(redirect).toHaveBeenCalledWith(path);
+      expect(revalidatePath).not.toHaveBeenCalled(); expect(redirect).toHaveBeenCalledWith(path);
       expect(set.mock.invocationCallOrder[0]).toBeLessThan(redirect.mock.invocationCallOrder[0]);
     }
   });
   it('preserves the default other-route behavior and refuses forged redirect destinations', async () => {
     for (const path of [undefined, 'https://evil.test', '//evil.test', '/leave/employee-balances?emp=other&page=8', '/personnel']) {
       vi.clearAllMocks(); const form = new FormData(); form.append('companyId', 'company-a'); if (path) form.append('returnPath', path);
-      await setCompanyScope(form); expect(revalidatePath).toHaveBeenCalled(); expect(redirect).not.toHaveBeenCalled();
+      await setCompanyScope(form);
+      expect(set).toHaveBeenCalledWith('company_scope', 'company-a', { sameSite: 'lax', path: '/' });
+      expect(revalidatePath).not.toHaveBeenCalled(); expect(redirect).not.toHaveBeenCalled();
     }
   });
 });
