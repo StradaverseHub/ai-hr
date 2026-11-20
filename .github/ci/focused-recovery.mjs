@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory,validateFocusedRoleReceipts} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -62,14 +62,15 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
-  const roleName='personnel-draft-discard-premigration-role-prerequisites.json',role=packet.get(roleName);
+  const roleName='personnel-draft-discard-premigration-role-prerequisites.json',runtimeRoleName='personnel-draft-discard-role-prerequisites.json';
   const requiresRole=database&&readFileSync(join(candidatePath,'package.json'),'utf8').includes('scripts/migrate-with-focused-prerequisites.ts');
-  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(requiresRole?[roleName]:[])].sort()),'Exact homogeneous focused packet members required');
+  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(requiresRole?[roleName,runtimeRoleName]:[])].sort()),'Exact homogeneous focused packet members required');
+  let roleReceipts=null;
   if(requiresRole){
-   assert(role.kind==='PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'&&role.phase==='before_initial_candidate_migration'&&role.candidate===candidate&&role.controller===controller&&role.runId===String(id)&&role.attempt==='1','Disposable role receipt identity differs');
-   for(const [key,path] of [['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']])assert(role[key]===createHash('sha256').update(readFileSync(join(candidatePath,path))).digest('hex'),'Role prerequisite source differs');
+   const sourceDigests=Object.fromEntries([['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']].map(([key,path])=>[key,createHash('sha256').update(readFileSync(join(candidatePath,path))).digest('hex')]));
+   roleReceipts=validateFocusedRoleReceipts({premigration:packet.get(roleName),runtime:packet.get(runtimeRoleName),candidate,controller,runId:id,sourceDigests});
   }
-  focused.push({...f,producer,artifact,report,result:packet.get(resultName)});
+  focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const reviewedController=process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER??null;

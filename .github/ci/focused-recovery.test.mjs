@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
@@ -66,6 +66,20 @@ test('Latest focused history refuses later failures, unknown overlapping runs, o
  const x={sourceRun,focusedRuns,rows:structuredClone(focusedRuns)};assert.deepEqual(validateFocusedHistory(x).runIds,[200]);
  for(const change of [x=>x.rows=[],x=>x.rows[0].conclusion='failure',x=>x.rows.push({...x.rows[0],id:201}),x=>x.rows[0].status='in_progress',x=>x.rows.push({...x.rows[0],updated_at:time(0)})]){const y=structuredClone(x);change(y);assert.throws(()=>validateFocusedHistory(y));}
 });
+function roleReceipts(){
+ const sourceDigests={helperSha256:'a'.repeat(64),wrapperSha256:'b'.repeat(64),orchestrationSha256:'c'.repeat(64)},identity={candidate:'a'.repeat(40),controller:'c'.repeat(40),runId:'200',helperSha256:sourceDigests.helperSha256};
+ const roles=['ai_hr_app','ai_hr_draft_discard_port','ai_hr_owner'].map((name,i)=>({oid:100+i,name,login:name!=='ai_hr_draft_discard_port',inherit:true,super:false,createDb:false,createRole:false,replication:false,bypassRls:false,connectionLimit:-1,validUntil:null}));
+ const edges=[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}];
+ const fixture={roles,edges,mode:'focused_disposable',postgres:{session:'postgres',current:'postgres',versionNumber:160015}};
+ return {candidate:identity.candidate,controller:identity.controller,runId:200,sourceDigests,runtime:{...identity,kind:'PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES',...structuredClone(fixture)},premigration:{...identity,...sourceDigests,kind:'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES',phase:'before_initial_candidate_migration',attempt:'1',fixture}};
+}
+test('Both disposable role receipts bind exact source hashes and the unchanged restricted catalog',()=>assert.ok(validateFocusedRoleReceipts(roleReceipts()).runtimeHash));
+for(const [name,change] of [
+ ['missing runtime',x=>delete x.runtime],['wrong candidate',x=>x.runtime.candidate='f'.repeat(40)],['wrong helper',x=>x.premigration.helperSha256='f'.repeat(64)],
+ ['changed runtime catalog',x=>x.runtime.roles[0].oid++],['unbound wrapper',x=>x.premigration.wrapperSha256='f'.repeat(64)],
+ ['unsafe role at both phases',x=>{x.runtime.roles[0].super=true;x.premigration.fixture.roles[0].super=true;}],
+ ['extra membership at both phases',x=>{const e={...x.runtime.edges[0],admin:true};x.runtime.edges.push(e);x.premigration.fixture.edges.push(e);}],
+])test('Role receipt admission refuses '+name,()=>{const x=roleReceipts();change(x);assert.throws(()=>validateFocusedRoleReceipts(x));});
 for(const [name,mutate] of [
  ['missing focused coverage',f=>f.focused=[]],['duplicate focused coverage',f=>f.focused.push(structuredClone(f.focused[0]))],
  ['foreign candidate',f=>f.focused[0].report.sha='f'.repeat(40)],['foreign controller',f=>f.focused[0].report.controller='f'.repeat(40)],

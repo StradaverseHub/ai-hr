@@ -20,6 +20,19 @@ export function validateRecoveryProducer({run,candidate,verificationController,p
 export function requireReviewedFocusedController({execute,controller,reviewedController}){
  if(execute)assert(sha(controller)&&reviewedController===controller,'Exact focused recovery verifier review required before installation');
 }
+export function validateFocusedRoleReceipts({premigration,runtime,candidate,controller,runId,sourceDigests}){
+ assert(premigration?.kind==='PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'&&premigration.phase==='before_initial_candidate_migration'&&premigration.attempt==='1','Premigration role receipt required');
+ assert(runtime?.kind==='PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES','Runtime role receipt required');
+ for(const r of [premigration,runtime])assert(r.candidate===candidate&&r.controller===controller&&r.runId===String(runId)&&r.helperSha256===sourceDigests.helperSha256,'Disposable role receipt identity/source differs');
+ for(const key of ['wrapperSha256','orchestrationSha256'])assert(premigration[key]===sourceDigests[key],'Premigration orchestration source differs');
+ const {roles,edges,mode,postgres}=runtime;same(premigration.fixture,{roles,edges,mode,postgres},'Runtime role catalog differs from premigration setup');
+ assert(mode==='focused_disposable'&&postgres?.session==='postgres'&&postgres.current==='postgres'&&postgres.versionNumber>=160000&&postgres.versionNumber<170000,'Disposable PostgreSQL16 setup identity required');
+ const names=['ai_hr_app','ai_hr_draft_discard_port','ai_hr_owner'];
+ assert(Array.isArray(roles)&&roles.length===3&&new Set(roles.map(r=>r.name)).size===3,'Exact disposable roles required');
+ for(const r of roles)assert(names.includes(r.name)&&positive(r.oid)&&r.login===(r.name!=='ai_hr_draft_discard_port')&&r.inherit===true&&r.super===false&&r.createDb===false&&r.createRole===false&&r.replication===false&&r.bypassRls===false&&r.connectionLimit===-1&&r.validUntil===null,'Unexpected disposable role authority');
+ same(edges,[{role:'ai_hr_app',member:'ai_hr_draft_discard_port',grantor:'postgres',inherit:true,set:false,admin:false},{role:'ai_hr_draft_discard_port',member:'ai_hr_owner',grantor:'postgres',inherit:false,set:true,admin:false}],'Unexpected disposable role membership');
+ return {premigrationHash:hash(premigration),runtimeHash:hash(runtime)};
+}
 export function validateFocusedHistory({sourceRun,focusedRuns,rows}){
  assert(sourceRun.display_title?.startsWith('Alpha CI · ')&&Array.isArray(rows)&&rows.length<=8000,'Bounded original source history required');
  const branch=sourceRun.display_title.slice('Alpha CI · '.length);
@@ -123,7 +136,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
    assert(unit&&unit.kind===(database?'db':'nodb')&&failed.has(unit.id)&&!replacements.has(path),'Focused recovery repeats, misclassifies or includes an unaffected file');
    replacements.set(path,{...value,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});
   }
-  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result)});
+  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result),...(f.roleReceipts?{roleReceipts:f.roleReceipts}:{})});
  }
  const units=[];let tests=0;
  for(const unit of plan.units){

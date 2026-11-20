@@ -27,7 +27,9 @@ class FocusedExtraction(unittest.TestCase):
     def test_database_packet(self):self.assertEqual(self.invoke(database=True),(0,['db.vitest.json','focused.json']))
     def test_database_role_receipt(self):
         name='personnel-draft-discard-premigration-role-prerequisites.json'
-        self.assertEqual(self.invoke([(name,'{}')],database=True),(0,['db.vitest.json','focused.json',name]))
+        runtime='personnel-draft-discard-role-prerequisites.json'
+        self.assertEqual(self.invoke([(name,'{}'),(runtime,'{}')],database=True),(0,['db.vitest.json','focused.json',name,runtime]))
+    def test_incomplete_role_receipts(self):self.assertNotEqual(self.invoke([('personnel-draft-discard-premigration-role-prerequisites.json','{}')],database=True)[0],0)
     def test_nodb_cannot_include_database_diagnostics(self):self.assertNotEqual(self.invoke([('postgres.log','{}')])[0],0)
     def test_database_cannot_include_nodb_result(self):self.assertNotEqual(self.invoke([('nodb.vitest.json','{}')],database=True)[0],0)
     def test_symlink(self):
