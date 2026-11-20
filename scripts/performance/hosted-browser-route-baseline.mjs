@@ -1194,18 +1194,29 @@ async function measureLocalizedSignedInShell(fixture){
     const account=page.locator('button[data-tour="account"]');
     await account.waitFor({state:'visible',timeout:15000});
     row.contentMs=Math.round(performance.now()-started);
-    row.beforeClick=await documentTiming(page);
-    row.stage='account-menu';
+    row.stage='account-readiness';
+    const usableAccount=page.locator('button[data-tour="account"]:enabled');
+    await usableAccount.waitFor({state:'visible',timeout:5000});
+    row.accountEnabledMs=Math.round(performance.now()-started);
+    row.stage='first-account-click';
     const clicked=performance.now();
-    await account.click({timeout:5000});
-    await page.getByRole('menuitem',{name:copy.topbar.viewProfile,exact:true}).waitFor({state:'visible',timeout:5000});
+    await usableAccount.click({timeout:5000});
+    await page.locator('button[data-tour="account"][aria-expanded="true"]').waitFor({state:'visible',timeout:5000});
     row.accountMenuMs=Math.round(performance.now()-clicked);
+    row.stage='localized-profile-link';
+    const profile=page.locator('[role="menu"] a[role="menuitem"][href="/me"]');
+    await profile.waitFor({state:'visible',timeout:5000});
+    const localizedLink=page.getByRole('menuitem',{name:copy.topbar.viewProfile,exact:true});
+    assert(await profile.and(localizedLink).isVisible(),'Opened menu has a different profile label for the selected locale');
     row.usableMs=Math.round(performance.now()-started);
     row.documentTiming=await documentTiming(page);
     assert.equal(errors.length,0,'Localized signed-in shell produced a browser or translation error');
     assert(row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false,
      'Signed-in startup assets were not fully measured');
     row.status='observed';
+   }catch(error){
+    row.status='failed';
+    row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
    }finally{save();await context.close();}
   }
  }
@@ -1393,6 +1404,8 @@ try{
   assert(report.publicLogin.every(row=>row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false),
    'Startup assets were not fully measured in every fresh login context');
   await measureLocalizedSignedInShell(fixture);
+  assert(report.signedInStartup.length===6&&report.signedInStartup.every(row=>row.status==='observed'),
+   'The signed-in account menu did not open and display the localized profile link in every fresh browser context');
   report.complete=true;
  }else if(!fixtureOnly){
   await measureRoutes(fixture);
