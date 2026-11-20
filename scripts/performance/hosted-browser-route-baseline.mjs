@@ -35,7 +35,10 @@ const sha=git('rev-parse','HEAD');
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
 
-const privateDir=mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
+const privateDir=mixedLoad
+ ? join(env.RUNNER_TEMP,'system-performance-private')
+ : mkdtempSync(join(env.RUNNER_TEMP,'route-baseline-private-'));
+if(mixedLoad)mkdirSync(privateDir,{mode:0o700});
 const fixtureEvidenceDir=join(privateDir,'fixture-evidence');
 mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
@@ -165,12 +168,32 @@ function mixedDriverRuntime(){
  return command;
 }
 
+function bindMixedDriverOrigin(){
+ const canonical='https://github.com/StradaverseHub/ai-hr.git';
+ const origins=git('config','--local','--get-all','remote.origin.url').split('\n');
+ assert(origins.length===1&&/^https:\/\/github\.com\/stradaversehub\/ai-hr(?:\.git)?$/i.test(origins[0]),
+  'Unexpected origin in the runner-owned source checkout');
+ if(origins[0].toLowerCase()!==canonical.toLowerCase())git('remote','set-url','origin',canonical);
+}
+
 async function verifyMixedDriver(command){
  const label='import-mixed-workload-driver';
  try{
   await run(label,command,['--import','tsx','--input-type=module','--eval',
-   "import assert from 'node:assert/strict'; const driver=await import('./scripts/performance/system-load-owner.mjs'); assert.equal(typeof driver.runDevelopmentSystemLoad,'function');"],
+   "import assert from 'node:assert/strict'; const driver=await import('./scripts/performance/system-load-owner.mjs'); const source=await import('./scripts/performance/navigation-source.ts'); assert.equal(typeof driver.runDevelopmentSystemLoad,'function'); assert.equal(source.navigationCleanHead(process.cwd()),process.env.AIHR_CI_HEAD);"],
    {...dbEnv,GITHUB_ACTIONS:'false'},30000);
+ }catch(error){
+  retainMixedStartupFailure(label);
+  throw error;
+ }
+}
+
+async function verifyMixedFixtureBinding(command){
+ const label='verify-mixed-fixture-binding';
+ try{
+  await run(label,command,['--import','tsx','--input-type=module','--eval',
+   "import assert from 'node:assert/strict'; const owner=await import('./scripts/performance/navigation-fixture-bindings.ts'); assert.equal(owner.readNavigationFixtureBindings().size,500);"],
+   dbEnv,30000);
  }catch(error){
   retainMixedStartupFailure(label);
   throw error;
@@ -1127,7 +1150,10 @@ async function measureActions(fixture){
 save();
 try{
  const driverCommand=mixedLoad?mixedDriverRuntime():null;
- if(driverCommand)await verifyMixedDriver(driverCommand);
+ if(driverCommand){
+  bindMixedDriverOrigin();
+  await verifyMixedDriver(driverCommand);
+ }
  if(!fixtureOnly){
   report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
   assert(report.buildId,'Missing measured application build');
@@ -1157,6 +1183,7 @@ try{
   assert(fixture.tenants[0].rewardDraft?.planVersionId,'Mixed fixture must contain an approved Rewards plan');
   report.fixture.rewardsDraftSeeded=true;
  }
+ if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
  report.fixtureVerified=true;
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
