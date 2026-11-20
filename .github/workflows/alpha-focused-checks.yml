@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       reuse_combined_census_build:
-        description: Run the full browser census on the verified combined performance build
+        description: Run static and fixture-record browser coverage on the verified combined performance build
         default: false
         type: boolean
       model_eval:
@@ -87,7 +87,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_census_build && '-census' || '' }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_census_build && format('-census-{0}', inputs.browser_static_shard) || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -132,11 +132,13 @@ jobs:
             echo 'The selected browser shard requires the group-scale fixture.'
             exit 2
           fi
-          if [[ "$BROWSER_STATIC_SHARD" == payroll-corrections && "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
+          if [[ "$BROWSER_STATIC_SHARD" == payroll-corrections && "$REUSE_CENSUS_BUILD" != true &&
+                "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
             exit 2
           fi
           if [[ "$REUSE_CENSUS_BUILD" == true ]] && {
-            [[ "$BROWSER_STATIC_SHARD" != all || "$RUN_BUILD" == true || "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
+            [[ ! "$BROWSER_STATIC_SHARD" =~ ^(all|fixture-records|payroll-corrections)$ || "$RUN_BUILD" == true ||
+                "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
           }; then exit 2; fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
@@ -236,7 +238,7 @@ jobs:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
       - name: Retrieve the pinned Payroll correction build
-        if: ${{ inputs.browser_static_shard == 'payroll-corrections' }}
+        if: ${{ inputs.browser_static_shard == 'payroll-corrections' && !inputs.reuse_combined_census_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -288,6 +290,7 @@ jobs:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
           AIHR_BROWSER_STATIC_SHARD: ${{ matrix.static_shard }}
+          AIHR_BROWSER_COMBINED_CENSUS_BUILD: ${{ inputs.reuse_combined_census_build }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
