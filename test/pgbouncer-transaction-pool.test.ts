@@ -194,12 +194,82 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
     expect(samples[3].claimTotal).toBe(samples[0].claimTotal);
     expect(samples[3].previousUses).toBeGreaterThanOrEqual(2);
 
+    // Run the same SQL with overlapping transactions on the standard three-backend pool.
+    // Use separate statement names for the two planning modes and reverse their order in the second pass.
+    const primaryScopes = [
+      {name: 'group-all', session: fixture.personas.group, scope: read},
+      {name: 'group-selected', session: fixture.personas.group, scope: {...read, companyIds: [fixture.singleCompanyId]}},
+      {name: 'company', session: fixture.personas.single, scope: read},
+      {name: 'foreign', session: sessions[2], scope: read},
+    ];
+    const lanes = [...primaryScopes, ...primaryScopes].map(scope => ({...scope, client: appPool(target!, 1)}));
+    type Mode = 'unnamed' | 'named-auto' | 'named-generic';
+    const prefix = (mode: Mode) => '/* fixture-task-plan-' + mode + ' */ ';
+    const concurrentRounds = [];
+    let pooledPlanCounts: {backends: number; autoUses: number; forcedUses: number} | undefined;
+    try {
+      const readTask = (lane: typeof lanes[number], mode: Mode) => lane.client.withTenant(lane.session, async tx => {
+        const statement = accountTaskStatement(accountTaskStatementSections(tx, lane.session, modules, lane.scope), lane.session);
+        if (mode === 'unnamed') return [...await tx.execute<TaskRow>(statement)];
+        if (mode === 'named-generic') await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+        const query = dialect.sqlToQuery(statement);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        const params = query.params as postgres.ParameterOrJSON<never>[];
+        return [...await connection.unsafe<TaskRow[]>(prefix(mode) + query.sql, params, {prepare: true})];
+      }, {readOnlySnapshot: true});
+      const expected = await Promise.all(lanes.map(lane => readTask(lane, 'unnamed')));
+      expect(expected.slice(0, 4).map(rows => rows[0]?.principal)).toEqual([true, true, true, true]);
+      expect(expected.slice(0, 4).map(rows => rows[0]?.claims.total)).toEqual([
+        samples[0].claimTotal, samples[1].claimTotal, samples[1].claimTotal, 0,
+      ]);
+
+      const modes = ['unnamed', 'named-auto', 'named-generic'] as const;
+      for (const mode of modes) await Promise.all(lanes.map(lane => readTask(lane, mode)));
+      for (const mode of [...modes, ...[...modes].reverse()]) {
+        const phaseStarted = performance.now();
+        const timings = [];
+        for (let round = 0; round < 4; round++) {
+          timings.push(...await Promise.all(lanes.map(async (lane, index) => {
+            const started = performance.now();
+            const result = await readTask(lane, mode);
+            const elapsedMs = performance.now() - started;
+            expect(result).toEqual(expected[index]);
+            return {scope: lane.name, elapsedMs};
+          })));
+        }
+        concurrentRounds.push({mode, elapsedMs: performance.now() - phaseStarted, timings});
+      }
+
+      const backends = await Promise.all(lanes.map(lane => lane.client.withTenant(lane.session, async tx => {
+        const [facts] = await tx.execute<{pid: number; autoUses: number; forcedUses: number; forcedCustom: number}>(sql`
+          select pg_backend_pid() as pid, pg_sleep(0.05),
+            coalesce(sum(generic_plans + custom_plans) filter (where starts_with(statement, ${prefix('named-auto')})), 0)::int as "autoUses",
+            coalesce(sum(generic_plans) filter (where starts_with(statement, ${prefix('named-generic')})), 0)::int as "forcedUses",
+            coalesce(sum(custom_plans) filter (where starts_with(statement, ${prefix('named-generic')})), 0)::int as "forcedCustom"
+          from pg_prepared_statements
+        `);
+        return facts;
+      }, {readOnlySnapshot: true})));
+      const unique = [...new Map(backends.map(row => [row.pid, row])).values()];
+      expect(unique.length).toBe(target!.serverConnections);
+      expect(unique.every(row => row.autoUses > 0 && row.forcedUses > 0 && row.forcedCustom === 0)).toBe(true);
+      pooledPlanCounts = {
+        backends: unique.length,
+        autoUses: unique.reduce((sum, row) => sum + row.autoUses, 0),
+        forcedUses: unique.reduce((sum, row) => sum + row.forcedUses, 0),
+      };
+    } finally {
+      await Promise.all(lanes.map(lane => lane.client.client.end({timeout: 5})));
+    }
+
     const evidence = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
     if (evidence) writeFileSync(join(evidence, 'account-task-pooler-plan.json'), JSON.stringify({
       source: process.env.AIHR_CI_HEAD,
       companies: fixture.companyIds.length,
       employments: fixture.employmentIds.length,
       samples: samples.map(({pid: _pid, ...sample}) => sample),
+      concurrentRounds,
+      pooledPlanCounts,
     }));
   }, 120_000);
 
