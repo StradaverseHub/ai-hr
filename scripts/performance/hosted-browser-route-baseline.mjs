@@ -710,6 +710,7 @@ async function seedNotificationReads(fixture){
 }
 
 async function measureNotificationReads({page,user,fixture,db,report,save}){
+ report.actionStage='notification-page-open';
  const path='/me/cases';
  const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
  assert.equal(response?.status(),200);
@@ -728,20 +729,34 @@ async function measureNotificationReads({page,user,fixture,db,report,save}){
  const before=await rows();
  assert.equal(before.length,3);
  assert(before.every(item=>item.read===false));
+ const markAllButton=page.getByRole('button',{name:'Mark all read',exact:true});
+ report.actionStage='notification-popover-open';
  await bell.click({timeout:15000});
+ await markAllButton.waitFor({state:'visible',timeout:15000});
  report.notificationSteps=[];
  let current;
  const observe=request=>{
   const url=new URL(request.url());
   if(current&&url.origin===origin&&url.pathname===path&&url.searchParams.has('_rsc')&&request.method()==='GET')current.refreshRequests++;
  };
+ const observeResponse=response=>{
+  const request=response.request();
+  const url=new URL(response.url());
+  if(current&&request.method()==='POST'&&request.headers()['next-action']&&url.origin===origin&&url.pathname===path){
+   current.actionResponseStatus=response.status();
+  }
+ };
  page.on('request',observe);
+ page.on('response',observeResponse);
  async function mark(step,button,count){
   current={step,refreshRequests:0};
   report.notificationSteps.push(current);
   const started=performance.now();
+  report.actionStage=step+'-click';
   await button.click({timeout:15000});
+  report.actionStage=step+'-count';
   await page.getByRole('button',{name:unreadPattern(count)}).waitFor({state:'visible',timeout:15000});
+  report.actionStage=step+'-persistence';
   current.elapsedMs=Math.round(performance.now()-started);
   await assertContentAvailable(page);
   save();
@@ -752,13 +767,22 @@ async function measureNotificationReads({page,user,fixture,db,report,save}){
   assert.equal(own(first).filter(item=>item.read).length,1);
   assert.equal(own(first).find(item=>item.title===noticeProbeTitles[0])?.read,true);
   current.persisted=true;
-  await bell.click({timeout:15000});
-  await mark('mark-all-notifications-read',page.getByRole('button',{name:'Mark all read',exact:true}),0);
+  report.actionStage='notification-popover-reopen';
+  if(!await markAllButton.isVisible())await bell.click({timeout:15000});
+  await markAllButton.waitFor({state:'visible',timeout:15000});
+  await mark('mark-all-notifications-read',markAllButton,0);
   const last=await rows();
   assert.equal(own(last).filter(item=>item.read).length,2);
   assert.equal(last.find(item=>item.recipient===peer.employmentId)?.read,false);
   current.persisted=true;
- }finally{page.off('request',observe);}
+ }catch(error){
+  const afterFailure=await rows().catch(()=>null);
+  if(current&&afterFailure)current.fixtureNotificationsRead=own(afterFailure).filter(item=>item.read).length;
+  throw error;
+ }finally{
+  page.off('request',observe);
+  page.off('response',observeResponse);
+ }
 }
 
 async function measureApprovalSummaryReadiness({page,user,report,save}){
@@ -906,6 +930,7 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
 }
 
 async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
+ report.actionStage='payroll-history-open';
  const response=await page.goto(origin+payrollHistoryPath,{waitUntil:'domcontentloaded',timeout:20000});
  assert.equal(response?.status(),200);
  assert.equal(new URL(page.url()).pathname,payrollHistoryPath);
@@ -920,13 +945,20 @@ async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
  const breakdown=table.locator('tr[id^="payslip-breakdown-"]');
  report.payrollDisclosureSteps=[];
  let started=performance.now();
+ report.actionStage='payroll-breakdown-click';
  await disclosure.click({timeout:15000});
+ report.actionStage='payroll-breakdown-expand';
+ await disclosure.and(page.locator('[aria-expanded="true"]')).waitFor({state:'visible',timeout:15000});
+ report.payrollDisclosureSteps.push({step:'expand-feedback',elapsedMs:Math.round(performance.now()-started)});
+ save();
+ report.actionStage='payroll-breakdown-details';
  await breakdown.getByRole('heading',{name:'Earnings',exact:true}).waitFor({state:'visible',timeout:15000});
  await breakdown.getByText('Net pay',{exact:true}).waitFor({state:'visible',timeout:15000});
  assert.equal(await disclosure.getAttribute('aria-expanded'),'true');
  report.payrollDisclosureSteps.push({step:'open-breakdown',elapsedMs:Math.round(performance.now()-started)});
  save();
  started=performance.now();
+ report.actionStage='payroll-breakdown-collapse';
  await disclosure.click({timeout:15000});
  await breakdown.waitFor({state:'hidden',timeout:15000});
  assert.equal(await disclosure.getAttribute('aria-expanded'),'false');
@@ -970,6 +1002,8 @@ async function measurePublicLogin(){
 }
 
 async function measureWalkthrough({page,user,report,save}){
+ report.walkthroughSteps=[];
+ report.actionStage='welcome-profile-open';
  const response=await page.goto(origin+'/me',{waitUntil:'commit',timeout:15000});
  assert.equal(response?.status(),200);
  assert.equal(page.url(),origin+'/me');
@@ -977,15 +1011,21 @@ async function measureWalkthrough({page,user,report,save}){
  const dialog=page.getByRole('dialog',{name:'Product tour',exact:true});
  await account.waitFor({state:'visible',timeout:15000});
  assert.equal(await dialog.count(),0);
+ const menuStarted=performance.now();
+ report.actionStage='welcome-account-menu';
  await account.click({timeout:15000});
  const launcher=page.getByRole('menuitem',{name:'Take a tour',exact:true});
  await launcher.waitFor({state:'visible',timeout:15000});
+ report.walkthroughSteps.push({step:'open-account-menu',elapsedMs:Math.round(performance.now()-menuStarted)});
+ save();
  const started=performance.now();
+ report.actionStage='welcome-launch';
  await launcher.click({timeout:15000});
+ report.actionStage='welcome-dialog-ready';
  await dialog.getByRole('heading',{name:'Welcome to AIHR 👋',exact:true}).waitFor({state:'visible',timeout:15000});
  await dialog.getByRole('button',{name:'Next',exact:true}).waitFor({state:'visible',timeout:15000});
  assert.equal(await account.getAttribute('aria-expanded'),'false');
- report.walkthroughSteps=[{step:'open-welcome-tour',elapsedMs:Math.round(performance.now()-started)}];
+ report.walkthroughSteps.push({step:'open-welcome-tour',elapsedMs:Math.round(performance.now()-started)});
  save();
 }
 
@@ -1169,7 +1209,7 @@ async function measureActions(fixture){
     report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
-    const step=result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
+    const step=result.actionStage??result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
    finally{retain();await context.close();}
