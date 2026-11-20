@@ -2,7 +2,7 @@
 
 import {Suspense} from 'react';
 import {DegradedState} from '@/components/degraded-state';
-import {CatalogClientProvider} from '@/i18n/client-provider';
+import {CatalogClientProvider} from '@/i18n/deferred-client-provider';
 import {LOCALE_COOKIE, defaultLocale} from '@/i18n/config';
 import './globals.css';
 
