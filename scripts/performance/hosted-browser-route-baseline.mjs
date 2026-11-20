@@ -1,4 +1,4 @@
-import {measureFixtureRecordCensus} from './fixture-record-census.mjs';
+import {measureFixtureRecordCensus,seedMissingRecordFixtures} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -1529,6 +1529,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
+   if(censusFixtureRecords)await seedMissingRecordFixtures(owner,fixture);
    save();
   }finally{await owner.end({timeout:5});}
  }
