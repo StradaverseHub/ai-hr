@@ -58,18 +58,31 @@ const fixtureFailureCodes=new Set([
  '22023','23502','23503','23505','23514','25006','25P02','40001','40P01','42501','42703','42883','42P01','55P03','57014','P0001',
 ]);
 function fixtureFailure(error){
- // Inspect only own data properties on a bounded Error cause chain. Never emit
- // messages, stacks, identifiers, SQL or other exception values.
+ // Retain only closed error classes, codes and repository source locations.
+ // Omit messages, arguments, identities and full stack traces.
  try{
   const kind=error instanceof assert.AssertionError?'assertion-error':
    error instanceof SyntaxError?'syntax-error':error instanceof TypeError?'type-error':
    error instanceof Error?'error':'other';
+  const locations=[];
+  let code=null;
+  const sourceRoot=process.cwd()+'/';
   for(let current=error,depth=0;depth<3&&current instanceof Error;depth++){
-   const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
-   if(fixtureFailureCodes.has(code))return{kind,code};
+   const currentCode=Object.getOwnPropertyDescriptor(current,'code')?.value;
+   if(code===null&&fixtureFailureCodes.has(currentCode))code=currentCode;
+   const frames=typeof current.stack==='string'?current.stack.split('\n').slice(1,16):[];
+   for(const frame of frames){
+    if(!/^\s+at /.test(frame))continue;
+    const start=frame.indexOf(sourceRoot);
+    if(start===-1)continue;
+    const path=frame.slice(start+sourceRoot.length).trim().replace(/\)$/,'');
+    if(/^(?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_./-]+:\d+:\d+$/.test(path)&&!locations.includes(path)&&locations.length<5){
+     locations.push(path);
+    }
+   }
    current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
   }
-  return{kind,code:null};
+  return{kind,code,locations};
  }catch{return{kind:'other',code:null};}
 }
 async function fixturePhase(tenant,phase,run){
