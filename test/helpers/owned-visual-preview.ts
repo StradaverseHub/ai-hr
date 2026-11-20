@@ -1,10 +1,19 @@
 /** A loopback-only disposable preview. Signals require the exact detached leader's kernel start time. */
 import {spawn,type ChildProcess} from 'node:child_process';
 import {createWriteStream,readFileSync,type WriteStream} from 'node:fs';
+import {createConnection} from 'node:net';
 import {resolve} from 'node:path';
 import {finished} from 'node:stream/promises';
 import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
+
+function acceptsLoopbackConnections(url:URL){
+ return new Promise<boolean>(resolve=>{
+  const socket=createConnection({host:url.hostname,port:Number(url.port),signal:AbortSignal.timeout(500)});
+  socket.once('error',()=>resolve(false));
+  socket.once('connect',()=>{socket.destroy();resolve(true);});
+ });
+}
 
 export class OwnedVisualPreview{
  private child:ChildProcess|undefined;
@@ -41,7 +50,9 @@ export class OwnedVisualPreview{
   const deadline=performance.now()+120000;
   while(performance.now()<deadline){
    this.signal.throwIfAborted();if(this.failed||this.closed)throw Error('Visual preview stopped before readiness');
-   try{const response=await fetch(this.origin+'/login',{signal:AbortSignal.timeout(2000)});if(response.ok)return;}catch{}
+   // Let Playwright's first authenticated navigation compile the requested page.
+   // Probing /login here compiles an unrelated page for every recycled preview.
+   if(await acceptsLoopbackConnections(url)&&this.identity(child)===this.startTicks&&this.startTicks)return;
    await delay(500);
   }
   throw Error('Visual preview readiness deadline exceeded');
