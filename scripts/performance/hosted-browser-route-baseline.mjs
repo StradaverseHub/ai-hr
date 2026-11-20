@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -730,6 +730,61 @@ async function measureAttendanceJourneys(fixture){
  }finally{await db.end({timeout:5});}
  assert.equal(report.attendanceJourneys.rejection.status,'observed','Attendance rejection did not complete its persisted check');
  assert(report.attendanceJourneys.filters.every(row=>row.status==='observed'),'Attendance filters did not complete in both HR scopes');
+}
+
+async function measureAttendanceWorkflowEditor(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const path='/admin/attendance/approval-workflow/new';
+ const visits=report.attendanceWorkflowEditor=[];
+ for(const actorIndex of [0,1]){
+  const actor=fixture.users[actorIndex],context=await signedInContext(actor);
+  try{
+   assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
+   const page=await context.newPage();
+   for(const pass of ['first','repeat-1','repeat-2']){
+    const row={role:actor.role,pass,status:'incomplete'};
+    visits.push(row);
+    let stage='navigation';
+    const started=performance.now();
+    try{
+     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+     assert.equal(response?.status(),200);
+     assert.equal(page.url(),origin+path);
+     row.responseMs=Math.round(performance.now()-started);
+     stage='editor';
+     const editor=page.locator('#attendance-workflow-form');
+     await editor.locator('input[name="priority"]').waitFor({state:'visible',timeout:Math.max(1,15000-(performance.now()-started))});
+     row.editorMs=Math.round(performance.now()-started);
+     await assertContentAvailable(page);
+     await page.waitForLoadState('domcontentloaded',{timeout:5000});
+     stage='approver-source';
+     await editor.locator('select:has(option[value="specific_employee"])').first().selectOption('specific_employee',{timeout:5000});
+     const trigger=editor.getByRole('button',{name:'Search Employee ID or name',exact:true}).first();
+     await trigger.waitFor({state:'visible',timeout:5000});
+     stage='approver-search';
+     const actionStarted=performance.now();
+     const reply=page.waitForResponse(response=>response.request().method()==='POST'
+      && Boolean(response.request().headers()['next-action']),{timeout:15000});
+     const [result]=await Promise.all([reply,trigger.click({timeout:5000})]);
+     assert.equal(result.status(),200);
+     row.approverResponseMs=Math.round(performance.now()-actionStarted);
+     const eligible=editor.locator('button[role="checkbox"]:enabled').first();
+     await eligible.waitFor({state:'visible',timeout:Math.max(1,15000-(performance.now()-actionStarted))});
+     row.approverReadyMs=Math.round(performance.now()-actionStarted);
+     stage='approver-selection';
+     await eligible.click({timeout:5000});
+     await editor.locator('button[role="checkbox"][aria-checked="true"]').first().waitFor({state:'visible',timeout:5000});
+     row.status='observed';
+    }catch(error){
+     row.status='failed';
+     row.failureStage=stage;
+     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+    }finally{save();}
+   }
+  }finally{await context.close();}
+ }
+ assert(visits.length===6&&visits.every(row=>row.status==='observed'),'The workflow editor or approver interaction did not become usable on every visit');
 }
 
 const focusedSurfaces={
@@ -1838,6 +1893,7 @@ try{
   await waitForApp();
   await proxy();
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
+  else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?Object.keys(focusedSurfaces):[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);

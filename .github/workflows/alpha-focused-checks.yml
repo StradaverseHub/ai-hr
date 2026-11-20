@@ -69,7 +69,7 @@ on:
         default: false
         type: boolean
       browser_surface_probe:
-        description: Isolated Insights, Recruitment or Attendance browser measurement
+        description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor)
         default: ''
         type: string
       browser_static_shard:
@@ -143,7 +143,7 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
