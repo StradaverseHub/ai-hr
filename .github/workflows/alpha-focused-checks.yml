@@ -65,7 +65,7 @@ on:
         default: false
         type: boolean
       reuse_first_use_build:
-        description: Reuse the verified first-use build for the pinned established Attendance comparison
+        description: Reuse the verified baseline build for the preflight diagnostic
         default: false
         type: boolean
       model_eval:
@@ -122,7 +122,7 @@ jobs:
       - name: Focused controller regression checks
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Check mixed-load diagnostic field projection
-        run: node --test .github/ci/mixed-preflight-lock-evidence.test.mjs
+        run: node --test .github/ci/mixed-preflight-lock-evidence.test.mjs .github/ci/mixed-driver-primary-origin.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: |
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 8e5a6009b0dc90e1fde3323ab5145f4aaec478f0 ]];
+            [[ "$EXPECTED_SHA" != d92ec52371e29ed64ce9b9754bf6cc8daf7efcfe ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -228,23 +228,23 @@ jobs:
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned first-use Attendance diagnostic build
+      - name: Retrieve the pinned mixed-load baseline build
         if: ${{ inputs.reuse_first_use_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build_source=488a47476c4c7c8a0f40b982ec712e40ea7abc74
-          test "$AIHR_CI_HEAD" = 8e5a6009b0dc90e1fde3323ab5145f4aaec478f0
+          build_source=d92ec52371e29ed64ce9b9754bf6cc8daf7efcfe
+          test "$AIHR_CI_HEAD" = d92ec52371e29ed64ce9b9754bf6cc8daf7efcfe
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/system-fixture-owner.mjs')"
+          test "$build_source" = "$AIHR_CI_HEAD"
           archive="$(mktemp "$RUNNER_TEMP/attendance-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136331103904 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136486386063 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44748780993 and .head_sha == "0db0c47782d321fe0bcaed096ac1081426345053"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14636030056/zip > "$archive"
-          printf '%s  %s\n' 'a54beca67e33edb8d97f00436b54675d50e4c9a9cad40f84e5abee814f72f384' "$archive" | sha256sum -c -
+            .run_id == 44793244478 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14658896906/zip > "$archive"
+          printf '%s  %s\n' 'cfc2d5a23dedfef154055f28510d32afb706d11c96777489e0937ae42ee4f4ad' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -256,7 +256,7 @@ jobs:
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true ]]; then
-            expected_build_source=488a47476c4c7c8a0f40b982ec712e40ea7abc74
+            expected_build_source=d92ec52371e29ed64ce9b9754bf6cc8daf7efcfe
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"
