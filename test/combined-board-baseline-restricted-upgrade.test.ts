@@ -71,6 +71,7 @@ async function verifyPayrollProcessFourGrants(observer:postgres.Sql,tenantId:str
  }));
  const ungrantedCompanyId=randomUUID(),ungrantedBatchId=randomUUID();
  const userId=randomUUID(),attemptId=randomUUID(),source='fictional payroll process regression';
+ const sourceHash=sha(source);
  const allowedIds=allowed.map(company=>company.id);
  const grants=allowedIds.map(companyId=>({role:'hr_admin',companyId}));
  await observer.begin(async tx=>{
@@ -84,7 +85,7 @@ async function verifyPayrollProcessFourGrants(observer:postgres.Sql,tenantId:str
   await tx`insert into public.payroll_history_import_attempt
     (id,tenant_id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
     values(${attemptId},${tenantId},${userId},${attemptId},'payroll-process-rehearsal.csv','text/csv',
-      ${sha(source)},${Buffer.from(source)},${allowedIds}::uuid[],'{}'::jsonb)`;
+      ${sourceHash},${Buffer.from(source)},${allowedIds}::uuid[],${JSON.stringify({sourceHash})}::jsonb)`;
   for (const company of allowed) {
    await tx`insert into public.payroll_batch
      (id,tenant_id,company_id,pay_period,batch_date,run_type,status,employee_count,history_import_attempt_id)
