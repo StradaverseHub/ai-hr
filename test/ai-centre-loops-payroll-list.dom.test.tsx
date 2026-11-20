@@ -156,12 +156,12 @@ describe('Operations › Loops: the three payroll loops',()=>{
   vi.useFakeTimers();
   const links=[...section(view.container).querySelectorAll<HTMLAnchorElement>('a')];
   expect(links).toHaveLength(3);
-  for(const link of links){expect(link.className).toContain('pointer-coarse:min-h-11');expect(link.getAttribute('data-prefetch')).toBe('null');}
+  for(const link of links){expect(link.className).toContain('pointer-coarse:min-h-11');expect(link.getAttribute('data-prefetch')).toBe('false');}
   fireEvent.focus(links[0]);expect(links[0].getAttribute('data-prefetch')).toBe('true');
   fireEvent.pointerEnter(links[2]);act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS);});expect(links[2].getAttribute('data-prefetch')).toBe('true');
   // The six loops' own links prefetch the same way.
   const loopLink=view.container.querySelector<HTMLAnchorElement>('[data-loops-table] a[href="/control-tower/loops/loop_payroll_inputs"]')!;
-  expect(loopLink.getAttribute('data-prefetch')).toBe('null');fireEvent.touchStart(loopLink);expect(loopLink.getAttribute('data-prefetch')).toBe('true');
+  expect(loopLink.getAttribute('data-prefetch')).toBe('false');fireEvent.touchStart(loopLink);expect(loopLink.getAttribute('data-prefetch')).toBe('true');
  });
 
  it.each(LOCALES)('%s: renders from the reviewed catalogue with no missing message, and says AI Centre, never Noveri',async locale=>{
