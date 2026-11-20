@@ -1708,19 +1708,53 @@ async function measureRosterExceptions({page,user,fixture,report,save,collectDat
 }
 
 async function rosterStatementSnapshot(db){
- // Aggregate only top-level SQL in the disposable fixture. Never retain statement text.
- const rows=await db`select category,sum(calls)::float8 as calls,sum(rows)::float8 as rows,
-  sum(total_exec_time)::float8 as "executionMs",sum(total_plan_time)::float8 as "planningMs"
- from (select calls,rows,total_exec_time,total_plan_time,case
+ // Classify inside PostgreSQL. Query IDs are used for subtraction and never enter the artifact.
+ const rows=await db`select queryid::text as id,calls::float8 as calls,rows::float8 as rows,
+  total_exec_time as "executionMs",total_plan_time as "planningMs",case
+   when query ~* 'employee_choice_page' then 'employee-page-and-count'
+   when query ~* 'represented_department_pairs|from "company" cross join "department"' then 'department-facets'
+   when query ~* 'from "company" cross join "business_unit"' then 'business-unit-facets'
+   when query ~* 'from "company".*where.*exists' and query ~* 'from "employment"' then 'company-facets'
+   when query ~* 'app[.]principal[(]' then 'authenticated-principal'
+   when query ~* 'set_config[(]' then 'database-session-context'
    when query ~* 'attendance_rule_shift|attendance_rotation|shift_arrangement|from "shift"' then 'shift-dependencies'
    when query ~* 'roster_assignment|attendance_day' then 'roster-and-attendance'
-   when query ~* 'employee_choice|from "employment"|join "assignment"' then 'employee-population'
+   when query ~* 'from "employment"|join "assignment"' then 'other-employee-population'
    when query ~* 'from "department"|from "business_unit"|from "position"' then 'organisation-labels'
    else 'other-application-sql' end as category
    from pg_stat_statements where toplevel and dbid=(select oid from pg_database where datname=current_database())
-    and userid=(select oid from pg_roles where rolname='ai_hr_app')) as statements
- group by category order by category`;
- return new Map(rows.map(({category,...totals})=>[category,totals]));
+    and userid=(select oid from pg_roles where rolname='ai_hr_app')`;
+ return new Map(rows.map(({id,...statement})=>[id,statement]));
+}
+
+function rosterDatabaseWork(before,after){
+ const statements=[];
+ const categories=new Map();
+ for(const [id,{category,...totals}] of after){
+  const delta=Object.fromEntries(Object.entries(totals).map(([metric,value])=>[metric,value-(before.get(id)?.[metric]??0)]));
+  assert(Object.values(delta).every(value=>Number.isFinite(value)&&value>=0),'Roster SQL counters moved backwards');
+  if(delta.calls===0)continue;
+  statements.push({category,...delta});
+  const aggregate=categories.get(category)??{category,calls:0,rows:0,executionMs:0,planningMs:0};
+  for(const [metric,value] of Object.entries(delta))aggregate[metric]+=value;
+  categories.set(category,aggregate);
+ }
+ assert(statements.length>0,'No completed application SQL observed during the Roster open');
+ return {databaseWork:[...categories.values()].sort((a,b)=>b.executionMs-a.executionMs),
+  slowestStatements:statements.sort((a,b)=>b.executionMs-a.executionMs).slice(0,8)};
+}
+
+function countRosterRequests(request,counts){
+ if(request.method()!=='GET')return;
+ const url=new URL(request.url());
+ if(url.origin!==origin||url.pathname.startsWith('/_next/'))return;
+ const headers=request.headers();
+ const prefetch=Boolean(headers['next-router-prefetch']||headers['next-router-segment-prefetch']);
+ if(prefetch){
+  const destination=url.pathname==='/roster/exceptions'?'exceptionPrefetch':'otherPrefetch';
+  counts[destination]++;
+ }else if(request.resourceType()==='document')counts.documents++;
+ else if(headers.rsc==='1'||url.searchParams.has('_rsc'))counts.otherFlight++;
 }
 
 async function measureFocusedRoster(fixture){
@@ -1737,26 +1771,25 @@ async function measureFocusedRoster(fixture){
      const row={role:user.role,pass,status:'incomplete'};
      report.rosterStartup.push(row);
      const before=await rosterStatementSnapshot(db);
+     const counts={documents:0,exceptionPrefetch:0,otherPrefetch:0,otherFlight:0};
+     const observe=request=>countRosterRequests(request,counts);
+     page.on('request',observe);
      const journey={};
      const retain=()=>{
       row.steps=journey.rosterExceptionSteps??[];
       save();
      };
      const collectDatabaseWork=async()=>{
-      const after=await rosterStatementSnapshot(db);
-      row.databaseWork=[];
-      for(const [category,totals] of after){
-       const delta=Object.fromEntries(Object.entries(totals).map(([metric,value])=>[metric,value-(before.get(category)?.[metric]??0)]));
-       assert(Object.values(delta).every(value=>Number.isFinite(value)&&value>=0),'Roster SQL counters moved backwards');
-       if(delta.calls>0)row.databaseWork.push({category,...delta});
-      }
-      assert(row.databaseWork.length>0,'No completed application SQL observed during the Roster open');
+      page.off('request',observe);
+      row.requestsBeforeExceptionCount=counts;
+      assert.equal(counts.documents,1,'A Roster open must observe exactly one document');
+      Object.assign(row,rosterDatabaseWork(before,await rosterStatementSnapshot(db)));
       save();
      };
      try{
       await measureRosterExceptions({page,user,fixture,report:journey,save:retain,collectDatabaseWork});
       row.status='observed';
-     }finally{retain();}
+     }finally{page.off('request',observe);retain();}
      }
    }finally{await context.close();}
   }
