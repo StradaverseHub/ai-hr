@@ -7466,7 +7466,7 @@
       "reprocessOpenTaxReview": "เปิดหน้าคำนวณภาษีเงินได้ใหม่ (แท็บใหม่)",
       "reprocessSubmitTaxReady": "ประมวลผลพนักงานที่พร้อม {n} คนใหม่",
       "reprocessTaxReadinessChanged": "ความพร้อมด้านภาษีเปลี่ยนไป โปรดตรวจสอบพนักงานที่เลือกอีกครั้งก่อนประมวลผลใหม่",
-      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "ข้อมูลเงินเดือนเปลี่ยนหลังการแก้ไขภาษีเงินได้ ผลที่บันทึกไว้ยังใช้ได้ ตรวจสอบและคำนวณประวัติภาษีที่ได้รับผลกระทบใหม่ก่อนลองอีกครั้ง",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "หยุดประมวลผลเงินเดือนเนื่องจากต้องตรวจสอบประวัติภาษี ดูรายละเอียดของพนักงานที่ค้างอยู่",
       "reprocessFailedEmployee": "พนักงานที่ประมวลผลไม่สำเร็จ",
       "reprocessPendingEmployees": "พนักงานที่เลือก {count} คนกำลังรอดำเนินการ",
       "reprocessPcbBefore": "PCB ก่อนหน้า",

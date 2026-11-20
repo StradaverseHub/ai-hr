@@ -7466,7 +7466,7 @@
       "reprocessOpenTaxReview": "打开所得税重算（新标签页）",
       "reprocessSubmitTaxReady": "重新处理 {n} 名已就绪员工",
       "reprocessTaxReadinessChanged": "税务就绪状态已变化，请再次检查所选员工后重新处理。",
-      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "所得税更正后，薪资来源已更改。已保存的结果仍然有效。请检查并重新计算受影响的税务历史后重试。",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "工资处理已暂停，因为需要审核税务历史。请检查待处理员工以查看原因。",
       "reprocessFailedEmployee": "处理失败的员工",
       "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",
       "reprocessPcbBefore": "原 PCB",

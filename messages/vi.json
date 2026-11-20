@@ -7466,7 +7466,7 @@
       "reprocessOpenTaxReview": "Mở trang tính lại thuế thu nhập (tab mới)",
       "reprocessSubmitTaxReady": "Xử lý lại {n} nhân viên đủ điều kiện",
       "reprocessTaxReadinessChanged": "Điều kiện về thuế đã thay đổi. Hãy kiểm tra lại danh sách đã chọn trước khi xử lý lại.",
-      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Dữ liệu lương đã thay đổi sau điều chỉnh thuế thu nhập. Kết quả đã lưu vẫn hợp lệ. Kiểm tra và tính lại lịch sử thuế bị ảnh hưởng trước khi thử lại.",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Đã dừng xử lý bảng lương vì cần rà soát lịch sử thuế. Hãy kiểm tra danh sách nhân viên đang chờ để xem chi tiết.",
       "reprocessFailedEmployee": "Nhân viên xử lý thất bại",
       "reprocessPendingEmployees": "Còn {count} nhân viên đã chọn đang chờ xử lý.",
       "reprocessPcbBefore": "PCB trước",

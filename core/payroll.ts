@@ -10696,7 +10696,7 @@ async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligi
   const onRun = await tx
     .select({ id: nativePayrollPayslip.employmentId })
     .from(nativePayrollPayslip)
-    .where(and(eq(nativePayrollPayslibatch.id, batch.id), inArray(nativePayrollPayslip.employmentId, requested)));
+    .where(and(eq(nativePayrollPayslip.batchId, batch.id), inArray(nativePayrollPayslip.employmentId, requested)));
   const allowed = new Set([...companyEmps,...onRun].map(row=>row.id));
   return requested.filter(id=>allowed.has(id));
 }
@@ -10708,7 +10708,6 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
   if (!isModuleEnabled(ctx,'multi_cycle_payroll')) throw new ModuleNotEnabledError('multi_cycle_payroll','Multiple payroll runs per month are not enabled.');
 
   return withTenant(ctx,async tx=>{
-    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
     const batch=withRunPayPeriod(row,()=>new Error('batch not found'));
     await assertPayrollPermission(tx,ctx,'payroll.reprocess.selective',batch.companyId);
@@ -10750,7 +10749,7 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
         from payroll_tax_basis_preview p
         left join payroll_tax_basis_batch b on b.preview_id=p.id
         where p.tenant_id=${ctx.tenantId}::uuid and p.company_id=${batch.companyId}::uuid
-          and p.selection->>'year'=${String(year)} and (p.selection->>'upToMonth')::integer>=${month}
+          and p.selection->>'year'=${String(year)}
         order by p.created_at desc,p.id desc
         limit 20
       ), entries as (
@@ -10775,7 +10774,7 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
           previousReviewReason:review?.status==='blocked'?review.reason:null};
         return {...identity,status:'ready'};
       })};
-  });
+  },{readOnlySnapshot:true});
 }
 
 /** Phase 1 of a selective reprocess — validate, permission-check and enqueue (idempotent). */

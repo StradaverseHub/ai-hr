@@ -7466,7 +7466,7 @@
       "reprocessOpenTaxReview": "Buka Pengiraan Semula Cukai Pendapatan (tab baharu)",
       "reprocessSubmitTaxReady": "Proses semula {n} pekerja yang sedia",
       "reprocessTaxReadinessChanged": "Kesediaan cukai telah berubah. Semak pilihan sekali lagi sebelum memproses semula.",
-      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Sumber gaji berubah selepas pembetulan cukai pendapatan. Hasil tersimpan kekal sah. Semak dan kira semula sejarah cukai yang terjejas sebelum mencuba lagi.",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Gaji dihentikan kerana sejarah cukai perlu disemak. Semak pekerja yang masih menunggu untuk butiran.",
       "reprocessFailedEmployee": "Pekerja gagal",
       "reprocessPendingEmployees": "{count} pekerja yang dipilih masih menunggu.",
       "reprocessPcbBefore": "PCB sebelum",
