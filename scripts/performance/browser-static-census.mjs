@@ -63,7 +63,9 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha,recov
   assert.equal(new Set(census.paths).size,census.paths.length,'Duplicate static route within a shard');
   const ownManifest=Object.fromEntries(census.paths.map(path=>[path==='/'
    ? '/page' : path+'/page',path]));
-  assert.deepEqual(staticPageCensusPlan(ownManifest,census.shard,census.part).paths,[...census.paths].sort());
+  assert(Number.isInteger(census.shard)&&census.shard>=0&&census.shard<STATIC_CENSUS_SHARDS);
+  assert(census.part===undefined||(Number.isInteger(census.part)&&census.part>=0&&census.part<STATIC_CENSUS_PARTS));
+  if(census.paths.length)assert.deepEqual(staticPageCensusPlan(ownManifest,census.shard,census.part).paths,[...census.paths].sort());
   if(census.part===undefined){
    assert(!shards.has(census.shard),'Duplicate census shard');
    shards.add(census.shard);
