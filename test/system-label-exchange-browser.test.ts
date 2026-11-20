@@ -349,8 +349,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
   // No production credentials or identity provider. Recycle only this owned detached server:
   // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
   // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
-  signal.throwIfAborted();
-  addHostedSwap();
   async function startOwnedNext(){
    signal.throwIfAborted();
    serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
@@ -379,6 +377,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
    await startOwnedNext();
    const nextPage=await browserContext.newPage();nextPage.setDefaultTimeout(90000);return nextPage;
   }
+  addHostedSwap();
   await startOwnedNext();
   signal.throwIfAborted();
   browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
