@@ -2,7 +2,9 @@
 
 ## Owner recovery decision — 30 October 2026
 
-### Unchanged source recovery v2 — reviewed operator extension
+### Unchanged source recovery v2 — draft diagnostic extension
+
+**Database installation is blocked in this proposal.** The current focused producer does not serialize its duration-order flag into authenticated evidence. Actual C6 database recovery44694324914 passed348 assertions with default ordering, whereas the original full unit used duration ordering. This proves diagnostic behavior, not equivalent scheduling or a timing improvement. `pendingDatabaseOrdering:true` keeps DB results `DIAGNOSTIC_NONINSTALLABLE` and refuses grant creation and installation even if a verifier review variable is supplied. Qualifying a producer/ordering binding requires a separate reviewed change; no main merge or installation has been authorized for this draft.
 
 `aihr-focused-recovery/v2` extends the original no-DB-only adapter to an unchanged candidate's failed ordinary database units. It does not admit source repairs, browser/PDF-tooling failures or failed build/compiler/migration/controller prerequisites. Every failed process is replaced in full, including all original files and named assertions. A database replacement is one entire original unit on its own fresh database, with the same actual PostgreSQL version, execution profile, JIT, memory/peak limits, healthy state and zero OOM events. The source-bound disposable role-setup receipt is authenticated separately; it is not installed migration proof. Original failures remain failed.
 

@@ -159,11 +159,15 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   tests+=count;units.push({id:unit.id,kind:'focused-recovery',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>failed.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
- return {kind:'AUTHENTICATED_FOCUSED_RECOVERY',recoveryPolicy:RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,reviewedController,pendingReview:reviewedController!==verificationController,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ // Current focused producer does not bind its DB duration-order flag into the packet.
+ // Preserve diagnostic accounting, but never grant DB installation before that gap is qualified.
+ const pendingDatabaseOrdering=plan.units.some(u=>u.kind==='db'&&failed.has(u.id));
+ return {kind:'AUTHENTICATED_FOCUSED_RECOVERY',recoveryPolicy:RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,reviewedController,pendingReview:reviewedController!==verificationController,pendingDatabaseOrdering,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 /** Installation grant keeps the original failed run and build tuple; its fingerprint binds this distinct certificate. */
 export function validateRecoveryGrantEvidence(evidence,run){
  const c=evidence.recovery;
+ assert(c?.pendingDatabaseOrdering===false,'Database ordering qualification is missing; diagnostic only');
  assert(c?.pendingReview===false&&c.reviewedController===c.verificationController,'Exact reviewed focused verifier required for grant');
  assert(c.history?.kind==='AUTHENTICATED_UNCHANGED_SOURCE_HISTORY'&&c.history.sourceRunId===c.runId,'Complete recovery history required for grant');
  same(c.history.runIds,c.focusedSources.map(s=>s.runId).sort((a,b)=>a-b),'Recovery history differs from producing runs');

@@ -6,6 +6,7 @@ import {assessResumeCoverage} from './resume-assessment.mjs';
 import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
+import {recoverySourceDigest} from './focused-recovery.mjs';
 
 function input(database=false){
  const f=fixture(),plan=f.expectedPlan,unit=plan.units.find(u=>u.kind===(database?'db':'nodb'));
@@ -35,6 +36,11 @@ test('Exact-source DB recovery retains the original failed process and validates
  const f=input(true),before=structuredClone(f.reports),c=certificate(f);
  assert.deepEqual(f.reports,before);assert.equal(c.tests,5);assert.equal(c.recoveryPolicy,'aihr-focused-recovery/v2');
  assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(f.plan.sha,f.focused[0].report.sha);
+ assert.equal(c.pendingDatabaseOrdering,true);assert.throws(()=>validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run));
+});
+test('Classifier and prerequisite digests hash raw bytes, never JSON-serialized Buffer objects',()=>{
+ const expected='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+ assert.equal(recoverySourceDigest(Buffer.from('abc')),expected);assert.equal(recoverySourceDigest('abc'),expected);
 });
 for(const [name,mutate] of [
  ['missing database evidence',f=>delete f.focused[0].report.databaseTerminalEvidence],

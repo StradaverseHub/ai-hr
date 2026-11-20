@@ -34,6 +34,7 @@ async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false
 }
 // Reuse the bounded byte transport, not v1 admission semantics, for separately versioned recovery.
 export {collect as collectRecoveryEvidence};
+export const recoverySourceDigest=bytes=>createHash('sha256').update(bytes).digest('hex');
 export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
  assert(Number.isSafeInteger(runId)&&runId>0&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact recovery source required');
@@ -67,14 +68,14 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(requiresRole?[roleName,runtimeRoleName]:[])].sort()),'Exact homogeneous focused packet members required');
   let roleReceipts=null;
   if(requiresRole){
-   const sourceDigests=Object.fromEntries([['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']].map(([key,path])=>[key,createHash('sha256').update(readFileSync(join(candidatePath,path))).digest('hex')]));
+   const sourceDigests=Object.fromEntries([['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']].map(([key,path])=>[key,recoverySourceDigest(readFileSync(join(candidatePath,path)))]));
    roleReceipts=validateFocusedRoleReceipts({premigration:packet.get(roleName),runtime:packet.get(runtimeRoleName),candidate,controller,runId:id,sourceDigests});
   }
   focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const reviewedController=process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER??null;
- const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'))),verificationController,reviewedController});
+ const recovery=verifyFocusedRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:recoverySourceDigest(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'))),verificationController,reviewedController});
  recovery.verificationDiagnostic=verificationDiagnostic;
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const history=[...pages('actions/workflows/alpha-staging.yml/runs?'+query,'workflow_runs'),...pages('actions/workflows/alpha-focused-checks.yml/runs?'+query,'workflow_runs')];
@@ -83,7 +84,8 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');
  const alpha=api('git/ref/heads/alpha');assert([baseline,candidate].includes(alpha.object?.sha),'Canonical alpha moved away from recovery source');
- const result={...recovery,tier:recovery.pendingReview?'diagnostic':'ci',result:recovery.pendingReview?'DIAGNOSTIC_NONINSTALLABLE':'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
+ const pending=recovery.pendingReview||recovery.pendingDatabaseOrdering;
+ const result={...recovery,tier:pending?'diagnostic':'ci',result:pending?'DIAGNOSTIC_NONINSTALLABLE':'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,focusedRunIds:focusedRunIds.slice().sort((a,b)=>a-b),verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}))};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);
  return result;
 }

@@ -60,6 +60,7 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  if(recovering)requireReviewedFocusedController({execute,controller:cleanHead(controllerRoot),reviewedController:process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER});
  if(repair&&recovering)throw Error('Choose one explicitly versioned recovery route');
  const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});
+ if(execute&&recovering&&evidence.result!=='PASS')throw Error('Focused recovery remains diagnostic; installation is refused');
  const save=(name,data)=>writeFileSync(join(evidence.evidenceDirectory,name),JSON.stringify(data,null,2)+'\n',{flag:'wx',mode:0o600});
  save('operator-preflight.json',{...evidence,target:STAGING,baselineLedger,profilePreflight,execute,packetTransport});
  if(!execute)return evidence;
