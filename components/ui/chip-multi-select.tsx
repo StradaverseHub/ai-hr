@@ -102,6 +102,8 @@ export function ChipMultiSelect({
   countLabelFor,
   triggerSummaryFor,
   onSelectionChange,
+  onOpen,
+  panelStatus,
   summaryThreshold = 4,
 }: {
   name: string;
@@ -147,6 +149,8 @@ export function ChipMultiSelect({
    * Only client parents may pass this (it is a function prop); a server component must not.
    */
   onSelectionChange?: (values: string[]) => void;
+  onOpen?: () => void;
+  panelStatus?: React.ReactNode;
   /** Show individual chips up to this count; above it (and below "all"), collapse to countLabelFor. */
   summaryThreshold?: number;
 }) {
@@ -246,6 +250,7 @@ export function ChipMultiSelect({
           type="button"
           onClick={() => {
             if (open) setQuery('');
+            else onOpen?.();
             setOpen((o) => !o);
           }}
           aria-expanded={open}
@@ -263,6 +268,7 @@ export function ChipMultiSelect({
         </button>
         {open && (
           <div ref={panelRef} className="absolute left-0 z-50 mt-1 flex w-56 flex-col rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-lg">
+            {panelStatus ?? <>
             {(selectAllLabel != null || clearAllLabel != null) && (
               <div className="mb-1 flex items-center gap-3 border-b border-border px-1.5 pb-1.5 pt-0.5 text-xs">
                 {selectAllLabel != null && (
@@ -336,6 +342,7 @@ export function ChipMultiSelect({
                 </button>
               ))}
             </div>
+            </>}
           </div>
         )}
       </div>
