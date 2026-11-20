@@ -622,6 +622,7 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  await status.getByRole('link',{name:/^Pending [0-9]+$/}).and(status.locator('[aria-current="page"]'))
   .waitFor({state:'visible',timeout:15000});
  mark('initial-results-ready',started);
+ assert(await pickerReady,'The separate employee picker did not become usable');
 
  const query='PERF-NO-ATTENDANCE-HISTORY-MATCH';
  started=performance.now();
@@ -656,7 +657,6 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  await empty.waitFor({state:'visible',timeout:15000});
  assert.equal(await table.locator('tbody tr').count(),0,'The status tab must retain the filtered result set');
  mark('approved-with-filters-ready',started);
- assert(await pickerReady,'The separate employee picker did not become usable');
 }
 
 async function measureAttendanceRejection({fixture,db,report,save}){
