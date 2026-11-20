@@ -1736,7 +1736,7 @@ async function rosterStatementSnapshot(db){
  return new Map(rows.map(({id,...statement})=>[id,statement]));
 }
 
-async function rosterDatabaseWork(db,before,after){
+async function rosterDatabaseWork(db,catalogue,before,after){
  const statements=[];
  const categories=new Map();
  for(const [id,{category,...totals}] of after){
@@ -1753,23 +1753,19 @@ async function rosterDatabaseWork(db,before,after){
  // Preserve only names that have an independent catalogue entry on this fictional database.
  // SQL text, bound values and statement identifiers never enter the report.
  const unclassified=slowest.filter(row=>row.category==='other-application-sql').map(row=>row.id);
- const shapes=unclassified.length?await db`
-  select s.queryid::text as id,
-   array(select distinct p.proname::text from regexp_matches(s.query,
-      '(?i)(?:app|public)[.]"?([a-z_][a-z_0-9]*)"?[[:space:]]*[(]', 'g') as m(parts)
-     join pg_proc p on p.proname=m.parts[1]
-     join pg_namespace n on n.oid=p.pronamespace and n.nspname in ('app','public')
-     order by p.proname::text limit 12) as functions,
-   array(select distinct c.relname::text from regexp_matches(s.query,
-      '(?i)(?:from|join)[[:space:]]+(?:(?:public|app)[.])?"?([a-z_][a-z_0-9]*)', 'g') as m(parts)
-     join pg_class c on c.relname=m.parts[1]
-     join pg_namespace n on n.oid=c.relnamespace and n.nspname in ('app','public')
-     order by c.relname::text limit 12) as relations
+ const queries=unclassified.length?await db`
+  select s.queryid::text as id,left(s.query,32768) as query
   from pg_stat_statements s where s.toplevel and s.queryid=any(${unclassified}::bigint[])
    and s.dbid=(select oid from pg_database where datname=current_database())
    and s.userid=(select oid from pg_roles where rolname='ai_hr_app')
+  limit 8
  `:[];
- const shapeById=new Map(shapes.map(({id,...shape})=>[id,shape]));
+ const names=(query,pattern,known)=>[...new Set(Array.from(query.matchAll(pattern),match=>match[1].toLowerCase())
+  .filter(name=>known.has(name)))].sort().slice(0,12);
+ const shapeById=new Map(queries.filter(row=>typeof row.query==='string').map(({id,query})=>[id,{
+  functions:names(query,/(?:app|public)\."?([a-z_][a-z_0-9]*)"?\s*\(/gi,catalogue.functions),
+  relations:names(query,/\b(?:from|join)\s+(?:(?:public|app)\.)?"?([a-z_][a-z_0-9]*)/gi,catalogue.relations),
+ }]));
  return {databaseWork:[...categories.values()].sort((a,b)=>b.executionMs-a.executionMs),
   slowestStatements:slowest.map(({id,...row})=>({...row,...shapeById.get(id)}))};
 }
@@ -1791,8 +1787,15 @@ async function measureFocusedRoster(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
  report.rosterStartup=[];
- const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,
+  connection:{default_transaction_read_only:'on',statement_timeout:'8s'}});
  try{
+  const [names]=await db`select
+   array(select distinct p.proname::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname in ('app','public')) as functions,
+   array(select distinct c.relname::text from pg_class c join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname in ('app','public')) as relations`;
+  const catalogue={functions:new Set(names.functions),relations:new Set(names.relations)};
   for(const user of fixture.users.slice(0,2)){
    const context=await signedInContext(user);
    try{
@@ -1813,7 +1816,7 @@ async function measureFocusedRoster(fixture){
       page.off('request',observe);
       row.requestsBeforeExceptionCount=counts;
       assert.equal(counts.documents,1,'A Roster open must observe exactly one document');
-      Object.assign(row,await rosterDatabaseWork(db,before,await rosterStatementSnapshot(db)));
+      Object.assign(row,await rosterDatabaseWork(db,catalogue,before,await rosterStatementSnapshot(db)));
       save();
      };
      try{
