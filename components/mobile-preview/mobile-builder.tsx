@@ -1,6 +1,6 @@
 'use client';
 import { ActionButton } from '@/components/ui/action-button';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, use, useEffect, useRef, useState, type ComponentProps } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Clock, Files, Home, Inbox, Moon, Save, Send, ShieldCheck, Smartphone, Sun, Undo2, UserRound, Users } from 'lucide-react';
 import { changeMobileDesignAction } from '@/app/mobile-preview/actions';
@@ -12,8 +12,9 @@ import type { MobilePreviewData } from './types';
 import styles from './mobile-builder.module.css';
 
 /** Editing is always non-mutating for HR records. Only the deliberately selected live mode enables clocking. */
-export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; data: MobilePreviewData }) {
+export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; data: MobilePreviewData | Promise<MobilePreviewData> }) {
   const t = useTranslations('mobilePreview.builder');
+  const previewText = useTranslations('mobilePreview.live');
   const [state, setState] = useState(initial);
   const [history, setHistory] = useState<{ past: MobileDesignV2[]; present: MobileDesignV2; future: MobileDesignV2[] }>({ past: [], present: composeMobileDesign(initial.draft), future: [] });
   const design = history.present;
@@ -104,7 +105,7 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
           <div className={styles.appearance} role="group" aria-label={t('appearance')}>{(['light', 'dark'] as const).map(value => <button type="button" key={value} disabled={pending} aria-pressed={appearance === value} aria-label={t(value)} onClick={() => setAppearance(value)}>{value === 'light' ? <Sun size={16} /> : <Moon size={16} />}</button>)}</div>
         </div>
         <p className={styles.stageNote}>{mode === 'draft' ? t('previewOnly') : current ? t('publishedVersion', { revision: current.revision }) : t('defaultVersion')}</p>
-        <div className={styles.phoneStage}><MobileApp key={`${mode}:${screen}`} data={data} design={displayed} designOnly embedded previewAppearance={appearance} initialTab={screen} onNavigate={navigate} selectedBlock={selectedBlock} onSelectBlock={mode === 'draft' ? id => { setSelectedBlock(id); setPanel('section'); } : undefined} /></div>
+        <div className={styles.phoneStage}><Suspense fallback={<p role="status">{previewText('refreshing')}</p>}><BuilderPhone key={`${mode}:${screen}`} data={data} design={displayed} designOnly embedded previewAppearance={appearance} initialTab={screen} onNavigate={navigate} selectedBlock={selectedBlock} onSelectBlock={mode === 'draft' ? id => { setSelectedBlock(id); setPanel('section'); } : undefined} /></Suspense></div>
         <p className={styles.stageFooter}><Smartphone size={15} />{t('sharedApp')}</p>
       </div>
       <aside data-tour="mobile-design" className={styles.inspector}><div className={styles.inspectorTabs} role="group" aria-label={t('inspector')}>{(['design', 'section', 'history'] as const).map(value => <button type="button" key={value} aria-pressed={panel === value} onClick={() => setPanel(value)}>{t(value)}</button>)}</div>
@@ -119,4 +120,11 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
       </aside>
     </div>
   </section>;
+}
+
+function BuilderPhone({data,...props}:Omit<ComponentProps<typeof MobileApp>,'data'>&{
+  data:MobilePreviewData|Promise<MobilePreviewData>;
+}){
+  const preview='then' in data ? use(data) : data;
+  return <MobileApp {...props} data={preview}/>;
 }

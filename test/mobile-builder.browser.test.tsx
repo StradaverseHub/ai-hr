@@ -1,5 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
-import { cleanup, fireEvent, render, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { newMobileBlock, colorContrast } from '../lib/mobile-composition';
 import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, type MobileBuilderState } from '../lib/mobile-design';
@@ -26,10 +26,22 @@ const data: MobilePreviewData = {
 };
 const state = (): MobileBuilderState => ({ tenantName: 'Test Tenant', draft: structuredClone(DEFAULT_MOBILE_DESIGN), draftRevision: 0, releases: [] });
 const catalogues = { en, ms, zh, vi: viMessages, th, ta };
-function mount(initial = state(), locale: keyof typeof catalogues = 'en', width = 1200) {
-  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error => { throw error; }}><div style={{ width, maxWidth: '100%' }}><MobileBuilder data={data} initial={initial} /></div></NextIntlClientProvider>);
+function mount(initial = state(), locale: keyof typeof catalogues = 'en', width = 1200, preview: MobilePreviewData | Promise<MobilePreviewData> = data) {
+  return render(<NextIntlClientProvider locale={locale} messages={catalogues[locale]} timeZone="Asia/Kuala_Lumpur" onError={error => { throw error; }}><div style={{ width, maxWidth: '100%' }}><MobileBuilder data={preview} initial={initial} /></div></NextIntlClientProvider>);
 }
 describe('tenant mobile builder in a real browser', () => {
+  it('keeps editor controls usable during the live preview read', async () => {
+    let deliver!: (value:MobilePreviewData) => void;
+    const preview = new Promise<MobilePreviewData>(resolve => { deliver = resolve; });
+    const ui = mount(state(), 'en', 1200, preview);
+    expect(ui.getByText(en.mobilePreview.live.refreshing).getAttribute('role')).toBe('status');
+    const brand = ui.getByRole('textbox', {name:'App brand name'}) as HTMLInputElement;
+    fireEvent.change(brand, {target:{value:'Edited before preview'}});
+    expect(brand.value).toBe('Edited before preview');
+    await act(async()=>deliver(data));
+    expect(await ui.findByText('Edited before preview')).toBeTruthy();
+    expect(ui.queryByText(en.mobilePreview.live.refreshing)).toBeNull();
+  });
   it('changes presentation immediately and keeps draft/published gestures free of HR writes', () => {
     const fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
     const location = vi.spyOn(navigator.geolocation, 'getCurrentPosition').mockImplementation(success => success({ coords: { latitude: 3.15, longitude: 101.71, accuracy: 8 } } as GeolocationPosition));
