@@ -77,7 +77,8 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
-const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
+const pgEnv={...env,AIHR_CI_UNIT:'db-1',
+ ...(surfaceProbe==='roster'&&{AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'roster-browser-profile'})};
 
 function start(label,command,args,childEnv) {
  const fd=openSync(join(privateDir,label+'.log'),'wx',0o600);
@@ -1671,14 +1672,16 @@ async function measureWalkthrough({page,user,report,save}){
  save();
 }
 
-async function measureRosterExceptions({page,user,fixture,report,save}){
+async function measureRosterExceptions({page,user,fixture,report,save,collectDatabaseWork}){
  const started=performance.now(),deadline=started+15000;
  const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
  const response=await page.goto(origin+'/roster',{waitUntil:'commit',timeout:timeout()});
+ const documentCommitMs=Math.round(performance.now()-started);
  assert.equal(response?.status(),200);
  assert.equal(page.url(),origin+'/roster');
  assert.equal(await readyContent(page,user,'/roster',timeout,undefined,fixture),'usable-content');
- report.rosterExceptionSteps=[{step:'schedule-visible',elapsedMs:Math.round(performance.now()-started)}];
+ report.rosterExceptionSteps=[{step:'document-commit',elapsedMs:documentCommitMs},
+  {step:'schedule-visible',elapsedMs:Math.round(performance.now()-started)}];
  save();
  const link=page.locator('main a[href^="/roster/exceptions?"]');
  const numericLabel=/^Exceptions \(([0-9]+)\)$/;
@@ -1687,6 +1690,7 @@ async function measureRosterExceptions({page,user,fixture,report,save}){
  assert(expected!==undefined,'Roster exception count has no numeric label');
  report.rosterExceptionSteps.push({step:'exception-count-visible',elapsedMs:Math.round(performance.now()-started)});
  save();
+ await collectDatabaseWork?.();
  const target=new URL(await link.getAttribute('href'),origin);
  assert.equal(target.origin,origin);
  assert.equal(target.pathname,'/roster/exceptions');
@@ -1703,29 +1707,60 @@ async function measureRosterExceptions({page,user,fixture,report,save}){
  save();
 }
 
+async function rosterStatementSnapshot(db){
+ // Aggregate only top-level SQL in the disposable fixture. Never retain statement text.
+ const rows=await db`select category,sum(calls)::float8 as calls,sum(rows)::float8 as rows,
+  sum(total_exec_time)::float8 as "executionMs",sum(total_plan_time)::float8 as "planningMs"
+ from (select calls,rows,total_exec_time,total_plan_time,case
+   when query ~* 'attendance_rule_shift|attendance_rotation|shift_arrangement|from "shift"' then 'shift-dependencies'
+   when query ~* 'roster_assignment|attendance_day' then 'roster-and-attendance'
+   when query ~* 'employee_choice|from "employment"|join "assignment"' then 'employee-population'
+   when query ~* 'from "department"|from "business_unit"|from "position"' then 'organisation-labels'
+   else 'other-application-sql' end as category
+   from pg_stat_statements where toplevel and dbid=(select oid from pg_database where datname=current_database())
+    and userid=(select oid from pg_roles where rolname='ai_hr_app')) as statements
+ group by category order by category`;
+ return new Map(rows.map(({category,...totals})=>[category,totals]));
+}
+
 async function measureFocusedRoster(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
  report.rosterStartup=[];
- for(const user of fixture.users.slice(0,2)){
-  const context=await signedInContext(user);
-  try{
-   const page=await context.newPage();
-   for(const pass of ['first','repeat-1','repeat-2']){
-    const row={role:user.role,pass,status:'incomplete'};
-    report.rosterStartup.push(row);
-    const journey={};
-    const retain=()=>{
-     row.steps=journey.rosterExceptionSteps??[];
-     save();
-    };
-    try{
-     await measureRosterExceptions({page,user,fixture,report:journey,save:retain});
-     row.status='observed';
-    }finally{retain();}
-   }
-  }finally{await context.close();}
- }
+ const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ try{
+  for(const user of fixture.users.slice(0,2)){
+   const context=await signedInContext(user);
+   try{
+    const page=await context.newPage();
+    for(const pass of ['first','repeat-1','repeat-2']){
+     const row={role:user.role,pass,status:'incomplete'};
+     report.rosterStartup.push(row);
+     const before=await rosterStatementSnapshot(db);
+     const journey={};
+     const retain=()=>{
+      row.steps=journey.rosterExceptionSteps??[];
+      save();
+     };
+     const collectDatabaseWork=async()=>{
+      const after=await rosterStatementSnapshot(db);
+      row.databaseWork=[];
+      for(const [category,totals] of after){
+       const delta=Object.fromEntries(Object.entries(totals).map(([metric,value])=>[metric,value-(before.get(category)?.[metric]??0)]));
+       assert(Object.values(delta).every(value=>Number.isFinite(value)&&value>=0),'Roster SQL counters moved backwards');
+       if(delta.calls>0)row.databaseWork.push({category,...delta});
+      }
+      assert(row.databaseWork.length>0,'No completed application SQL observed during the Roster open');
+      save();
+     };
+     try{
+      await measureRosterExceptions({page,user,fixture,report:journey,save:retain,collectDatabaseWork});
+      row.status='observed';
+     }finally{retain();}
+     }
+   }finally{await context.close();}
+  }
+ }finally{await db.end({timeout:5});}
  assert.equal(report.rosterStartup.length,6);
 }
 
