@@ -38,6 +38,41 @@ export async function measurePayrollCorrection({context, db, fixture, origin, ru
     assert(values.length === 1 && values[0] === subject.employmentId, 'Payroll form has a different employee selection');
     await form.locator('textarea[name="reason"]').fill(reason);
   }
+  async function observeCommand(path, button, destination, feedback) {
+    const started = performance.now();
+    let dispatchedAt;
+    const matches = request => {
+      const url = new URL(request.url());
+      return request.method() === 'POST' && url.origin === origin && url.pathname === path;
+    };
+    const observe = request => {
+      if (matches(request)) dispatchedAt ??= performance.now();
+    };
+    page.on('request', observe);
+    try {
+      const headers = page.waitForResponse(response => matches(response.request()), {timeout: 15000})
+        .then(response => {
+          const receivedAt = performance.now();
+          assert(Number.isFinite(dispatchedAt), 'Did not observe the Payroll command request');
+          return {
+            httpStatus: response.status(),
+            dispatchMs: Math.round(dispatchedAt - started),
+            requestToHeadersMs: Math.round(receivedAt - dispatchedAt),
+            clickToHeadersMs: Math.round(receivedAt - started),
+          };
+        });
+      const [command] = await Promise.all([
+        headers,
+        page.waitForURL(url => url.origin === origin && url.pathname === path && destination(url), {timeout: 15000}),
+        button.click({timeout: 8000}),
+      ]);
+      await feedback.waitFor({state: 'visible', timeout: 8000});
+      assert(command.httpStatus >= 200 && command.httpStatus < 400, 'Payroll command failed');
+      return {...command, visibleAcknowledgementMs: elapsed(started)};
+    } finally {
+      page.off('request', observe);
+    }
+  }
   try {
     const initial = await readRun();
     const initialSlip = forSubject(initial);
@@ -53,14 +88,9 @@ export async function measurePayrollCorrection({context, db, fixture, origin, ru
     await confirm.waitFor({state: 'visible', timeout: 8000});
     proof.removeConfirmationMs = elapsed(started);
     proof.step = 'remove-commit';
-    started = performance.now();
-    await Promise.all([
-      page.waitForURL(url => url.origin === origin && url.pathname === removePath &&
-        url.searchParams.get('removed') === '1', {timeout: 15000}),
-      confirm.click({timeout: 8000}),
-    ]);
-    await page.getByText(/1 employee payroll removed\./).waitFor({state: 'visible', timeout: 8000});
-    proof.removeCommitMs = elapsed(started);
+    proof.removeCommand = await observeCommand(removePath, confirm,
+      url => url.searchParams.get('removed') === '1', page.getByText(/1 employee payroll removed\./));
+    proof.removeCommitMs = proof.removeCommand.visibleAcknowledgementMs;
     const remaining = await readRun();
     assert(!forSubject(remaining) && sameSlips(remaining, otherSlips(initial)), 'Removal touched the wrong payslips');
     const removals = await db`select 1 from payroll_employee_result_history
@@ -74,17 +104,13 @@ export async function measurePayrollCorrection({context, db, fixture, origin, ru
     await addition.subjectRow.getByText('New / Pending', {exact: true}).waitFor({state: 'visible', timeout: 8000});
     await selectOne(addition.form, addition.subjectRow);
     proof.step = 'reprocess-acknowledgement';
-    started = performance.now();
-    await Promise.all([
-      page.waitForURL(url => url.origin === origin && url.pathname === reprocessPath &&
-        Boolean(url.searchParams.get('job')) && !url.searchParams.has('error'), {timeout: 15000}),
-      addition.form.getByRole('button', {name: 'Reprocess 1 employee(s)', exact: true}).click({timeout: 8000}),
-    ]);
+    const progress = page.getByRole('heading', {name: 'Reprocessing in the background', exact: true});
+    proof.reprocessCommand = await observeCommand(reprocessPath,
+      addition.form.getByRole('button', {name: 'Reprocess 1 employee(s)', exact: true}),
+      url => Boolean(url.searchParams.get('job')) && !url.searchParams.has('error'), progress);
     const jobId = new URL(page.url()).searchParams.get('job');
     assert.match(jobId ?? '', /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
-    const progress = page.getByRole('heading', {name: 'Reprocessing in the background', exact: true});
-    await progress.waitFor({state: 'visible', timeout: 8000});
-    proof.reprocessAcknowledgedMs = elapsed(started);
+    proof.reprocessAcknowledgedMs = proof.reprocessCommand.visibleAcknowledgementMs;
     save();
     proof.step = 'worker';
     started = performance.now();
