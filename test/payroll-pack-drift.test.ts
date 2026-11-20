@@ -79,6 +79,7 @@ const BOUNDARIES = [
   'core/payroll-import-tax-source',
   'core/payroll-tax-basis-read',
   'core/payroll-tax-basis',
+  'core/payroll-tax-basis-group',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-formula',
@@ -129,6 +130,7 @@ const ALWAYS_ALLOWED = [
   'core/payroll-processing-job.ts',
   'core/payroll-history-job.ts',
   'core/payroll-reprocess-job.ts',
+  'core/payroll-tax-basis-group.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',
@@ -163,7 +165,9 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       root,
       scan: ['app', 'components', 'core', 'db', 'i18n', 'lib', 'localization', 'middleware.ts', 'packs', 'scripts'],
       boundary,
-      allowedImporters: isPackImporter,
+      // The shared registry wires this exact worker entry point. It has no access to the tax calculation owner.
+      allowedImporters: rel => isPackImporter(rel) ||
+        (boundary === 'core/payroll-tax-basis-group' && rel === 'core/bulk-job-handlers.ts'),
       allowlist,
     }),
   );
@@ -191,7 +195,7 @@ describe('ADR-0080 D9: payroll pack import ratchet (rung 7 — the money path)',
       expect(scan()).toEqual(['app/outside.ts']);
       writeFileSync(outside,"import {entry} from '@/packs/payroll/individual-calculation';\n");
       expect(scan()).toEqual(['app/outside.ts']);
-      for(const helper of ["payroll-history-maintenance-plan", "payroll-history-maintenance-read", "payroll-history-maintenance-state", "payroll-history-maintenance", "payroll-history-native-baseline", "payroll-import-tax-source", "payroll-tax-basis-read", "payroll-tax-basis"]){
+      for(const helper of ["payroll-history-maintenance-plan", "payroll-history-maintenance-read", "payroll-history-maintenance-state", "payroll-history-maintenance", "payroll-history-native-baseline", "payroll-import-tax-source", "payroll-tax-basis-read", "payroll-tax-basis", "payroll-tax-basis-group"]){
         writeFileSync(join(fixture,'core',helper+'.ts'),'export const owned=1;\n');
         writeFileSync(outside,`import {owned} from '@/core/${helper}';\n`);
         expect(scan(),helper).toEqual(['app/outside.ts']);
