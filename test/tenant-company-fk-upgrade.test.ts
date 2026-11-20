@@ -1317,6 +1317,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // The guarded bridge retains one original OID privately; no application/PUBLIC execution.
   const archivedContractDirectory='app.contract_configuration_directory_before_combined(uuid[],text,uuid[])';
   addedFunctions.push(archivedContractDirectory);privateFunctions.push(archivedContractDirectory);
+  addedFunctions.push('app.payroll_leaver_self_history()');
   expect(new Set(addedFunctions).size).toBe(addedFunctions.length);
   addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
@@ -2859,11 +2860,28 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(sixItemPolicies).toHaveLength(2);
   expect(beforePerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual([]);
   expect(afterPerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual(sixItemPolicies);
-  const payrollReadPolicies=['payroll_batch','payslip'].map(tablename=>({
-   schemaname:'public',tablename,policyname:tablename+'_current_human_read',
-   permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',
-   qual:'( SELECT ((app.current_user_id() IS NULL) OR app.principal_snapshot_current()))',with_check:null,
-  }));
+  const payrollReadPolicies=await storage.client.begin(async tx=>{
+   const expectedSelfRead={
+    payroll_batch:`exists(select 1 from public.payslip s
+     join public.employment e on e.id=s.employment_id and e.tenant_id=s.tenant_id
+     where s.batch_id=payroll_batch.id and s.tenant_id=payroll_batch.tenant_id and app.is_self_person(e.person_id))`,
+    payslip:`exists(select 1 from public.employment e where e.id=payslip.employment_id
+     and e.tenant_id=payslip.tenant_id and app.is_self_person(e.person_id))`,
+   };
+   for(const [table,ownHistory] of Object.entries(expectedSelfRead)){
+    await tx.unsafe(`create policy upgrade_expected_current_human_read on public.${table}
+     as restrictive for select to ai_hr_app using(case
+      when (select app.current_user_id() is null or app.principal_snapshot_current()) then true
+      when (select app.payroll_leaver_self_history()) then ${ownHistory} else false end)`);
+   }
+   const rows=await tx`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
+    from pg_policies where schemaname='public' and tablename in ('payroll_batch','payslip')
+    and policyname='upgrade_expected_current_human_read' order by tablename`;
+   await tx`drop policy upgrade_expected_current_human_read on public.payroll_batch`;
+   await tx`drop policy upgrade_expected_current_human_read on public.payslip`;
+   return rows.map(row=>({...row,policyname:row.tablename+'_current_human_read'}));
+  });
+  expect(payrollReadPolicies).toHaveLength(2);
   const isPayrollReadPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>
    payrollReadPolicies.some(expected=>row.schemaname===expected.schemaname&&row.tablename===expected.tablename&&row.policyname===expected.policyname);
   expect(beforePerformancePrivileges.policies.filter(isPayrollReadPolicy)).toEqual([]);

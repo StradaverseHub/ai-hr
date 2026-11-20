@@ -2,14 +2,14 @@ import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
-import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {hireEmployee,setEmploymentPaymentMethod} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {closeBatch,createAdditionalRun,createBatch,generatePayslips,setPayrollInput} from '../packs/payroll/service';
 import {upsertCompanyBankProfile} from '../core/bank-profile';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {ocbcBankPaymentFiles} from '../localization/my/ocbc-payment';
-import {appUser,bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payPeriod,payrollBatch,payslip} from '../db/schema';
+import {bankPaymentExport,companyBankProfile,companyStatutoryAuthority,companyStatutoryMy,employeeStatutoryMy,payPeriod,payrollBatch,payslip} from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {withRunPayPeriod} from '../core/payroll-period-lock';
 import type {BankPaymentRequest} from '../localization/country-pack';
@@ -106,8 +106,9 @@ describe('OCBC immutable generated bank artifacts',()=>{
  });
  it('rejects an unapproved Tax Number suffix rather than guessing the Wife Code',async()=>{const {ctx,request,batchId,employee}=await fixture();await owner.db.update(payslip).set({statutory:{pcb:10,cp38:5}}).where(eq(payslip.batchId,batchId));await owner.db.update(employeeStatutoryMy).set({taxNumber:'IG10234567092'}).where(eq(employeeStatutoryMy.personId,employee.personId));const {runSeq:_run,...monthly}=request;await expect(ocbcBankPaymentFiles.preview(ctx,{...monthly,formatId:'my.ocbc.lhdn'})).rejects.toThrow(/Tax Number must end in 0 or 1/);});
  it('reserves unique tenant/date tapes for concurrent different administrators',async()=>{
-  const {ctx,request}=await fixture();const [other]=await owner.db.insert(appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning({id:appUser.id});
-  const second={...ctx,userId:other.id},preview=await ocbcBankPaymentFiles.preview(ctx,request),requestKey=randomUUID();
+  const {ctx,request}=await fixture();
+  const otherAdmin=await createAppUser(b.tenantId,null,'hr_admin');
+  const second={...ctx,userId:otherAdmin},preview=await ocbcBankPaymentFiles.preview(ctx,request),requestKey=randomUUID();
   const files=await Promise.all([ctx,second].map(c=>ocbcBankPaymentFiles.download(c,{...request,expectedDigest:preview.digest,requestKey})));
   expect(new Set(files.map(f=>f.filename)).size).toBe(2);const rows=await owner.db.select().from(bankPaymentExport).orderBy(bankPaymentExport.tapeId);expect(rows.map(r=>r.tapeId)).toEqual([1,2]);expect(new Set(rows.map(r=>r.actorUserId)).size).toBe(2);
   const own=await withTenant(ctx,tx=>tx.select().from(bankPaymentExport));expect(own).toHaveLength(1);expect(own[0].actorUserId).toBe(ctx.userId);

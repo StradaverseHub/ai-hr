@@ -1,9 +1,10 @@
 # Payroll restricted-owner read authorization — 20 November 2026
 
 Candidate reservation `7041_payroll_read_authorization`, journal index `10441`, timestamp
-`1795028007041`, SQL SHA-256 `5211279c62499fb323880968fabe448e5e65c7781788431aaf6ec6db59b62518`.
+`1795028007041`, SQL SHA-256 `de2c9597fbf2dfa341270b00d05b0b7336a6ea56700fd5800f2b281b361f983a`.
 Migration `7040` owns the original-employer repair. This follows it and replaces the
-unreleased `7012` candidate. It adds the other six function settings and two read policies.
+unreleased `7012` candidate. It adds the other six function settings and two read policies, with an employee-only
+exception for access to a former employee’s own payslips and their batches.
 Recheck competing reservations and installed ledgers at release admission.
 
 # Payroll Process company access — 20 November 2026
