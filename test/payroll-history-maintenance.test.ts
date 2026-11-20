@@ -34,6 +34,52 @@ beforeEach(async()=>{
  employmentId=(await hireEmployee(ctx,{person:{fullName:'Fictional maintenance employee',primaryEmail:'fictional-maintenance@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'F001',hiredOn:(year-1)+'-01-01'})).employmentId;
 });
 afterAll(closeAll);
+it('imports after employment ends without dated coverage, then corrects tax inputs and removes the same imported history', async () => {
+ await owner.db.update(schema.employment).set({terminatedOn:year + '-01-15'}).where(eq(schema.employment.id, employmentId));
+ await owner.db.update(schema.assignment).set({companyId:null}).where(eq(schema.assignment.employmentId, employmentId));
+ const month=year + '-02';
+ const load=(lines:readonly [string,string][])=>previewPayrollHistoryUpload(ctx,{
+  name:'final-pay.csv',content:csv(lines,month),maintenance:{version:1,mode:'replace'},
+ });
+ const amounts:[string,string][]=[['BASIC','1000.00'],['TRV','200.00'],['PCB','50.00'],['EREPF','130.00']];
+ const first=await load(amounts);
+ expect(first.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
+ await commit(first);
+ const corrected=await load([['BASIC','1000.00'],['TRV','300.00'],['PCB','50.00'],['EREPF','130.00']]);
+ expect(corrected.plan.counts).toEqual({created:0,replaced:1,unchanged:0,invalid:0});
+ await commit(corrected);
+ const row=await detail();
+ expect(row.values).toMatchObject({grossPay:'1300.00',statutory:{pcb:50,epfEmployer:130}});
+ expect(row.values?.statutory).not.toHaveProperty('segment');
+ const basis=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year,upToMonth:2,employmentIds:[employmentId]});
+ expect(basis.employees[0].months).toEqual(expect.arrayContaining([expect.objectContaining({taxable:1300})]));
+ const removal=await previewPayrollHistoryRevert(ctx,corrected.attemptId);
+ await revertPayrollHistoryUpload(ctx,corrected.attemptId,removal.previewHash);
+ expect((await detail()).values).toMatchObject({grossPay:'1200.00',statutory:{pcb:50,epfEmployer:130}});
+ const remaining=await previewPayrollHistoryRevert(ctx,first.attemptId);
+ await revertPayrollHistoryUpload(ctx,first.attemptId,remaining.previewHash);
+ expect(await detail()).toMatchObject({withdrawn:true, auditTotal:4});
+ const [employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employmentId));
+ expect(employment).toMatchObject({companyId:b.companyId,terminatedOn:year+'-01-15'});
+});
+
+it('reports an unknown Employee ID at the source row and blocks the whole workbook', async () => {
+ const good=await accept([['BASIC','1000.00'],['PCB','50.00']],'replace');
+ const before=await detail();
+ const incoming=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),
+  ['F001',period,'ME','BASIC','CO','1700.00'],
+  ['F001',period,'ME','PCB','CO','50.00'],
+  ['MISSING',period,'ME','BASIC','CO','100.00'],
+ ]));
+ const rejected=await previewPayrollHistoryUpload(ctx,{name:'mixed.csv',content:incoming,maintenance:{version:1,mode:'replace'}});
+ expect(rejected.plan.issues).toEqual(expect.arrayContaining([
+  {rowNum:4,reason:'Employee ID does not exist in Employee Master or is outside your payroll scope.'},
+ ]));
+ await expect(commit(rejected)).rejects.toThrow(/Correct the file/);
+ expect((await detail()).currentRevisionId).toBe(before.currentRevisionId);
+ expect((await detail()).items.find(item=>item.code==='BASIC')?.sourceAttemptId).toBe(good.attemptId);
+});
+
 it('sets repeated alias totals and preserves every unlisted original item and imported statutory amount',async()=>{
  const original=await accept([['BASIC','1000.00'],['TRV','500.00'],['OTHER','100.00'],['PCB','50.00'],['EREPF','130.00']]);const old=(await detail()).values;
  const review=await accept([['ALIAS','100.00'],['TRV','200.00']],'update_listed');expect(review.plan.rows[0].rowNums).toEqual([2,3]);expect(review.plan.rows[0].itemChanges?.find(item=>item.code==='TRV')).toMatchObject({before:'500.00',after:'300.00'});
@@ -89,7 +135,8 @@ it('replays merged listed and unlisted items through the historical tax preview 
 
 it('holds case-folded duplicate configured codes rather than choosing an arbitrary component UUID',async()=>{
  await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'trv',name:'Fictional ambiguous duplicate',kind:'allowance',displayCategory:'allowance'});
- await expect(upload([['BASIC','1000.00'],['TRV','500.00'],['PCB','0.00']],'replace')).rejects.toThrow(/unmapped|unavailable|ambiguous/);expect(await owner.db.select().from(schema.payrollHistoryImportRecord)).toEqual([]);
+ const preview=await upload([['BASIC','1000.00'],['TRV','500.00'],['PCB','0.00']],'replace');
+ expect(preview.plan.issues).toContainEqual({rowNum:3,reason:'Unknown or unavailable Pay Item Code “TRV”.'});expect(await owner.db.select().from(schema.payrollHistoryImportRecord)).toEqual([]);
 });
 
 it('refuses new legacy or unknown kernel removal operations and admits the saved versioned removal as confirm',async()=>{

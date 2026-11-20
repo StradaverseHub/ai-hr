@@ -1,3 +1,13 @@
+# Payroll History workbook company — 20 November 2026
+
+Reserve `7050_payroll_history_workbook_company`, journal idx 10450, timestamp 1795028007050.
+SQL SHA-256 `cd945c7e0f7c85a15853219b3f191ba2aa14e0a565508b8220dea556d9cc8af6`. The existing record binding keeps its owner and grants.
+A new workbook attribution outside dated company coverage requires payroll authority over the
+employee and import permission for the workbook company.
+
+The read-only staging query returned 1,127 migrations through 1795028007040.
+Recheck both installation ledgers and competing reservations at release admission.
+
 # Payroll Process company access — 20 November 2026
 
 Reserve `7040_payroll_original_employer_row_security`, journal idx 10440, timestamp 1795028007040.
