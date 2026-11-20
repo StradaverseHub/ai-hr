@@ -87,7 +87,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_first_use_build && '-load-replay' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != fdcad2919542d64b1bf59823ba20581523355c5d ]];
+            [[ "$EXPECTED_SHA" != 9301536dcc4195081c9e9c5701db61dc0c09a5c3 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -234,10 +234,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=f49895a2e800ddf8156d6f6c3ddd7e4121742ad9
-          test "$AIHR_CI_HEAD" = fdcad2919542d64b1bf59823ba20581523355c5d
+          test "$AIHR_CI_HEAD" = 9301536dcc4195081c9e9c5701db61dc0c09a5c3
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
+          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\t%s\n' \
+            scripts/performance/navigation-browser-capture.ts \
+            scripts/performance/system-load-owner.mjs test/navigation-browser-capture.test.ts)"
           archive="$(mktemp "$RUNNER_TEMP/combined-control-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136379388795 --jq '
