@@ -32,6 +32,7 @@ import {
   archiveLocation,
   restoreLocation,
   listLocations,
+  summarizeLocations,
 } from '../core/location';
 import {
   attendanceForDate,
@@ -41,6 +42,7 @@ import {
   requestAttendanceCorrection,
 } from '../core/attendance';
 import { type SessionContext } from '../db/client';
+import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 
 let b: Base;
 const uniqEmail = () => `loc_${randomUUID().slice(0, 8)}@t.local`;
@@ -107,6 +109,50 @@ describe('location master data (ADR-0054)', () => {
     expect(u.code).toBe('HQ2');
     expect(u.name).toBe('HQ Tower');
     expect(u.state).toBe('Sarawak');
+  });
+
+  it('summarizes the same active and archived sites and search names as the register at group scale', async () => {
+    const fixture = await buildScaleFixture(b, { events: 0 });
+    expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);
+    expect(fixture.employmentIds.length).toBeGreaterThanOrEqual(1000);
+    await owner.db.insert(schema.location).values(
+      fixture.companyIds.flatMap((companyId, index) =>
+        Array.from({ length: 10 }, (_, site) => ({
+          tenantId: b.tenantId,
+          companyId,
+          code: `SITE-${index}-${site}`,
+          name: `Café ${index} Site ${site}`,
+          archivedAt: site % 3 === 0 ? new Date('2025-01-01') : null,
+        })),
+      ),
+    );
+
+    const allCompanies = [...fixture.companyIds];
+    const oneCompany = [fixture.singleCompanyId];
+    const cases = [
+      [fixture.personas.group, allCompanies, allCompanies.length],
+      [fixture.personas.group, oneCompany, 1],
+      [fixture.personas.multi, allCompanies, allCompanies.length],
+      [fixture.personas.single, allCompanies, 1],
+      [fixture.personas.single, [], 1],
+      [fixture.personas.single, [b.companyId], 0],
+    ] as const;
+
+    for (const [ctx, scope, companyCount] of cases) {
+      const ids = [...scope];
+      const prior = await listLocations(ctx, ids, { includeArchived: true });
+      for (const includeNames of [false, true]) {
+        const summary = await summarizeLocations(ctx, ids, includeNames);
+        expect(summary).toHaveLength(companyCount);
+        expect(summary.reduce((total, row) => total + row.total, 0)).toBe(prior.length);
+        for (const row of summary) {
+          const sites = prior.filter((site) => site.companyId === row.companyId);
+          expect(row.total).toBe(sites.length);
+          expect(row.archived).toBe(sites.filter((site) => site.archivedAt !== null).length);
+          expect(row.names?.sort() ?? null).toEqual(includeNames ? sites.map((site) => site.name).sort() : null);
+        }
+      }
+    }
   });
 
   it('rejects an unknown state and blank code/name', async () => {

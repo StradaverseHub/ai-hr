@@ -5,7 +5,7 @@ import { getTranslations } from 'next-intl/server';
 import { isGroupAdmin, requireAdmin } from '@/lib/authz';
 import { listCompanies } from '@/core/read';
 import { listClockingLocations } from '@/packs/attendance/service';
-import { listLocations, listUnmappedBranches } from '@/core/location';
+import { listLocations, listUnmappedBranches, summarizeLocations } from '@/core/location';
 import {
   Card,
   ErrorBanner,
@@ -125,7 +125,7 @@ async function CompanyList({
   // narrowing); a company admin's `companies` arrays can never come back empty (the base query already
   // requires at least one administered company to exist), so this branch is never reached for one.
   const clockingRows = await listClockingLocations(s, { status: 'all' });
-  const workRows = await listLocations(s, companies.map((c) => c.id), { includeArchived: true });
+  const workSummaries = await summarizeLocations(s, companies.map((c) => c.id), Boolean(q));
 
   const clockingByCompany = new Map<string, { total: number; inactive: number }>();
   for (const row of clockingRows) {
@@ -136,13 +136,7 @@ async function CompanyList({
       clockingByCompany.set(c.id, agg);
     }
   }
-  const workByCompany = new Map<string, { total: number; archived: number }>();
-  for (const row of workRows) {
-    const agg = workByCompany.get(row.companyId) ?? { total: 0, archived: 0 };
-    agg.total += 1;
-    if (row.archivedAt) agg.archived += 1;
-    workByCompany.set(row.companyId, agg);
-  }
+  const workByCompany = new Map(workSummaries.map((row) => [row.companyId, row]));
   const orphanRows = groupAdmin ? clockingRows.filter((r) => r.companies.length === 0) : [];
 
   const matches = (haystack: string) => haystack.toLowerCase().includes(qLower);
@@ -150,14 +144,14 @@ async function CompanyList({
     if (!q) return true;
     if (matches(companyName)) return true;
     if (clockingRows.some((r) => r.companies.some((c) => c.id === companyId) && matches(r.name))) return true;
-    if (workRows.some((r) => r.companyId === companyId && matches(r.name))) return true;
+    if (workByCompany.get(companyId)?.names?.some(matches)) return true;
     return false;
   };
   const visibleCompanies = companies.filter((c) => companyMatches(c.id, c.name));
   const orphanVisible = orphanRows.length > 0 && (!q || orphanRows.some((r) => matches(r.name)) || matches(t('orphanCompanyName')));
 
   const clockingTotal = clockingRows.length;
-  const workTotal = workRows.length;
+  const workTotal = workSummaries.reduce((total, row) => total + row.total, 0);
 
   return (
     <div className={pageWideCls}>
