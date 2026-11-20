@@ -7,8 +7,8 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
-import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
-import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
+import { saveAttendanceWorkflow, suggestAttendanceWorkflowPriority, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
+import { attendanceApplicationDetail, attendanceApplicationFilterOptions, attendanceNewWorkflowOptions, attendanceWorkflowCompanyOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
 import { createBatch } from '../packs/payroll/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -54,13 +54,20 @@ describe('Attendance v3 participant owner and exact request capability', () => {
         const single = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId]);
         expect(single.approverEmployees?.map(row => row.id)).toContain(first.employmentId);
         expect(single.approverEmployees?.map(row => row.id)).toContain(second.employmentId); // The candidate has an actual tenant-wide employee grant.
+        const createOptions = await attendanceNewWorkflowOptions(adminCtx(b), [b.companyId]);
+        const { approverEmployees: _employees, approverAvailability: _availability, ...editorOptions } = single;
+        expect(createOptions).toEqual(editorOptions);
         const both = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId, company.id]);
+        expect(await attendanceWorkflowCompanyOptions(adminCtx(b), [b.companyId, company.id])).toEqual(both.companies);
         expect(both.companies.map(row => row.id).sort()).toEqual([b.companyId, company.id].sort());
         expect(both.approverEmployees?.map(row => row.id)).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
     });
 
     it('allows exact ordinary employees to decide in order without granting general Personnel rights', async () => {
         const f = await fixture();
+        await saveAttendanceWorkflow(f.root, { ...f.input, code: 'LOWEST', priority: 1, active: false });
+        expect(await suggestAttendanceWorkflowPriority(f.root, b.companyId, 'irregularity')).toBe(2);
+        expect(await suggestAttendanceWorkflowPriority(f.root, b.companyId, 'self_overtime')).toBe(1);
         const before = await state(f);
         const visible = await listAttendanceCorrections(f.first.ctx, { companyIds: [b.companyId], status: 'pending' });
         expect(visible.find(row => row.id === f.id)).toMatchObject({ canDecide: true, workflow: { currentParticipantSlot: '0:0' } });

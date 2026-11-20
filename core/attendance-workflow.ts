@@ -280,6 +280,14 @@ function manageableInScope(companyIds:string[]){return sql`app.attendance_workfl
 export function listAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
  return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt))).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
 }
+export function suggestAttendanceWorkflowPriority(ctx: SessionContext, companyId: string, applicationType: AttendanceApplicationType) {
+ return withTenant(ctx, async tx => {
+  const rows = await tx.selectDistinct({ priority: template.priority }).from(template).where(and(
+   manageableInScope([companyId]), eq(template.applicationType, applicationType), isNull(template.supersededAt),
+  ));
+  return nextAttendanceWorkflowPriority(rows.map(row => row.priority));
+ });
+}
 export function getAttendanceWorkflow(ctx:SessionContext,lineageId:string,companyIds:string[],includeRetired=false){
  return withTenant(ctx,async tx=>companyIds.length?(await tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(eq(template.lineageId,lineageId),manageableInScope(companyIds),includeRetired?undefined:isNull(template.supersededAt))).orderBy(desc(template.version)).limit(1))[0]??null:null);
 }
