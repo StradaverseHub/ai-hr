@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       reuse_combined_census_build:
-        description: Run static and fixture-record browser coverage on the verified combined performance build
+        description: Compare populated record pages using pinned production builds
         default: false
         type: boolean
       model_eval:
@@ -136,10 +136,10 @@ jobs:
                 "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
             exit 2
           fi
-          if [[ "$REUSE_CENSUS_BUILD" == true ]] && {
-            [[ ! "$BROWSER_STATIC_SHARD" =~ ^(all|fixture-records|payroll-corrections)$ || "$RUN_BUILD" == true ||
-                "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
-          }; then exit 2; fi
+          if [[ "$REUSE_CENSUS_BUILD" == true ]]; then
+            [[ "$BROWSER_STATIC_SHARD" == fixture-records && "$RUN_BUILD" != true ]]
+            jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/fixture-record-builds.json > /dev/null
+          fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
           elif [[ "$BROWSER_STATIC_SHARD" == split:* ]]; then
@@ -254,24 +254,26 @@ jobs:
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
-      - name: Retrieve the verified combined production build
+      - name: Retrieve the exact record comparison build
         if: ${{ inputs.reuse_combined_census_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 111852a4b932fbf49a7bd7df6056f390f5f11409
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136381859095 --jq '
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          pin="$(jq -er --arg source "$AIHR_CI_HEAD" '
+            .[$source] | [.runId,.jobId,.artifactId,.controllerSha,.sha256] | @tsv
+          ' ../automation/scripts/performance/fixture-record-builds.json)"
+          IFS=$'\t' read -r run job artifact controller digest <<< "$pin"
+          [[ "$run" =~ ^[0-9]+$ && "$job" =~ ^[0-9]+$ && "$artifact" =~ ^[0-9]+$ ]]
+          [[ "$controller" =~ ^[a-f0-9]{40}$ && "$digest" =~ ^[a-f0-9]{64}$ ]]
+          gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job" | jq -e \
+            --argjson run "$run" --arg sha "$controller" '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44763397635 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
-          artifact="$(gh api repos/StradaverseHub/ai-hr/actions/runs/44763397635/artifacts --jq '
-            [.artifacts[] | select(.name == "fictional-browser-build" and .expired == false)] |
-            select(length == 1) | .[0] | [.id, .digest] | @tsv')"
-          IFS=$'\t' read -r id digest <<< "$artifact"
-          [[ "$id" =~ ^[0-9]+$ && "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
-          archive="$(mktemp "$RUNNER_TEMP/combined-browser-build.XXXXXX")"
+            .run_id == $run and .head_sha == $sha' > /dev/null
+          archive="$(mktemp "$RUNNER_TEMP/fixture-record-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$id/zip" > "$archive"
-          printf '%s  %s\n' "${digest#sha256:}" "$archive" | sha256sum -c -
+          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact/zip" > "$archive"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"

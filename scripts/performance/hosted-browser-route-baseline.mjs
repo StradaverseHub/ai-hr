@@ -55,11 +55,14 @@ mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_COMBINED_CENSUS_BUILD==='true'&&{
-  verifiedBuildArtifact:{runId:44763397635,artifactId:14644151151,sourceSha:'111852a4b932fbf49a7bd7df6056f390f5f11409'},
- }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
+if (env.AIHR_BROWSER_COMBINED_CENSUS_BUILD === 'true') {
+ const builds = JSON.parse(readFileSync(new URL('./fixture-record-builds.json', import.meta.url), 'utf8'));
+ const build = builds[sha];
+ assert(build, 'No pinned record comparison build for this source');
+ report.verifiedBuildArtifact = {runId: build.runId, artifactId: build.artifactId, sourceSha: sha};
+}
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
