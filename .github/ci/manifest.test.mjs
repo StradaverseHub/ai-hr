@@ -66,15 +66,15 @@ test('dedicated PDF suite moves complete files only, preserving all ordinary, da
 });
 
 test('isolated database files run alone in their own unit, keeping complete coverage',()=>{
- assert.deepEqual(ISOLATED_DB_FILES,['test/system-label-exchange-browser.test.ts']);
+ assert.deepEqual(ISOLATED_DB_FILES,['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts']);
  const db=[...names('db',65),...ISOLATED_DB_FILES],nodb=names('nodb',20),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browsers),dbUnits=units.filter(u=>u.kind==='db');
  const alone=dbUnits.filter(u=>u.files.some(f=>ISOLATED_DB_FILES.includes(f)));
- assert.equal(alone.length,1);assert.deepEqual(alone[0].files,ISOLATED_DB_FILES);assert.equal(alone[0].pdfTools,false);
- assert.equal(dbUnits.length,Math.ceil(65/DB_BATCH_FILES)+1);
+ assert.equal(alone.length,ISOLATED_DB_FILES.length);assert.deepEqual(alone.flatMap(unit=>unit.files).sort(),[...ISOLATED_DB_FILES].sort());for(const unit of alone){assert.equal(unit.files.length,1);assert.equal(unit.pdfTools,false);}
+ assert.equal(dbUnits.length,Math.ceil(65/DB_BATCH_FILES)+ISOLATED_DB_FILES.length);
  assert.deepEqual(units.filter(u=>u.kind!=='browser').flatMap(u=>u.files).sort(),suite);
  assert.equal(requiredEvidence({suite,units}).units.length,units.length);
- const folded=structuredClone(units).filter(u=>u.id!==alone[0].id);folded.find(u=>u.kind==='db').files.push(...ISOLATED_DB_FILES);
+ const folded=structuredClone(units).filter(u=>!alone.some(isolated=>isolated.id===u.id));folded.find(u=>u.kind==='db').files.push(...ISOLATED_DB_FILES);
  assert.throws(()=>requiredEvidence({suite,units:folded}));
  assert.deepEqual(buildUnits(suite,{db:names('db',65),nodb:[...nodb,...ISOLATED_DB_FILES]},browsers).filter(u=>u.kind==='db').length,Math.ceil(65/DB_BATCH_FILES));
 });
