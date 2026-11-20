@@ -1703,7 +1703,12 @@ async function personnelCorrectionViewTx(tx:Tx,tenantId:string,employmentId:stri
    return {...row,id:row.id+':before',effectiveDate:exit?row.effectiveDate:dayBefore(row.effectiveDate),groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
   })
   : [];
- const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
+ const effectiveEvents=dateById.size
+  ? events.map(event=>dateById.has(event.id)
+   ? {...event,payload:withAlignedInformationDate(event.payload,dateById.get(event.id))}
+   : event)
+  : events;
+ const corrections=personnelInformationCorrections(effectiveEvents,[...rows,...beforeRows]);
  const companyIds=new Set<string>(),gradeIds=new Set<string>();
  for(const list of corrections.values())for(const item of list){if(item.values.companyId)companyIds.add(item.values.companyId);if(item.values.gradeId)gradeIds.add(item.values.gradeId);}
  const companies=companyIds.size?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,[...companyIds])):[];
