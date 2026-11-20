@@ -1,5 +1,6 @@
 import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
+import { IntentLink } from '@/components/intent-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -341,9 +342,9 @@ export default async function RosterPage({
               are any"); the rows are a screen of their own, reached from here with the same month and the
               same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
               cannot tell you there is nothing wrong, it can only look like a missing feature. */}
-          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
+          <IntentLink href={`/roster/exceptions?${qs({})}`} prefetchOnIntentOnly className={navBtn}>
             {t('exceptionsButton', { count: exceptionCount })}
-          </Link>
+          </IntentLink>
           <ExportDownloadLink href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn}>
             {t('exportLabel')}
           </ExportDownloadLink>
