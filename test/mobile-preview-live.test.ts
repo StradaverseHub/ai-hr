@@ -10,6 +10,8 @@ import { myEmployments, listLeaveRequestsPage } from '../core/read';
 import { myLeaveDashboard } from '../core/my-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { loadMobilePreview } from '../app/mobile-preview/data';
+import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
+import {observeNativeRead} from './helpers/native-read-observer';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, setModule, type Base } from './harness';
 
 let b: Base;
@@ -95,6 +97,47 @@ describe('Mobile App Preview uses the viewer’s authorized records', () => {
     await owner.db.update(schema.reportingLine).set({ validTo: today }).where(eq(schema.reportingLine.subordinateEmploymentId, report.employmentId));
     expect((await loadMobilePreview(manager.ctx, [b.companyId], 'en')).team).toEqual({ status: 'ready', data: [] });
   });
+
+  it('reads the viewer at group scale and records the native work behind the live preview',async()=>{
+    for(const code of ['attendance','claims','notifications','payroll'])await setModule(b.tenantId,code,'active');
+    const scale=await buildScaleFixture(b,{events:0});
+    expect(scale.companyIds).toHaveLength(71);
+    expect(scale.employmentIds).toHaveLength(1000);
+    const actor=scale.personas.group;
+    const [employment]=await myEmployments(actor);
+    expect(employment).toBeDefined();
+    const own=await request(employment.employmentId);
+    const peer=await request(scale.activeEmploymentIds[0]);
+    const classify=(query:string)=>{
+      if(/pending_.*(task|approval)|account_task|approval_work|profile_task/i.test(query))return 'approval-inbox';
+      if(/reporting_line|team_scope|team_leave/i.test(query))return 'team';
+      if(/attendance|clock_punch/i.test(query))return 'attendance';
+      if(/payslip|payroll/i.test(query))return 'payroll';
+      if(/notification/i.test(query))return 'notifications';
+      if(/claim/i.test(query))return 'claims';
+      if(/leave/i.test(query))return 'leave';
+      return 'session-and-other';
+    };
+    for(const [scope,ids] of [['group',scale.companyIds],['single',[b.companyId]]] as const){
+      const probe=observeNativeRead({captureQueries:false,classify});
+      try{
+        const started=performance.now();
+        const view=await loadMobilePreview(actor,[...ids],'en');
+        const elapsedMs=Math.round(performance.now()-started);
+        expect(view.employment?.id).toBe(employment.employmentId);
+        expect(view.requests.status==='ready'&&view.requests.data.items.map(row=>row.id)).toEqual([own]);
+        expect(JSON.stringify(view.requests)).not.toContain(peer);
+        const telemetry=probe.telemetry();
+        const classes=Object.fromEntries([...new Set(telemetry.summaries.map(row=>row.classification))].map(key=>{
+          const matches=telemetry.summaries.filter(row=>row.classification===key);
+          return [key,{statements:matches.reduce((sum,row)=>sum+row.count,0),
+            longestMs:Math.round(Math.max(...matches.map(row=>row.maxElapsedMs)))}];
+        }));
+        console.info('MOBILE_PREVIEW_READ_PROOF '+JSON.stringify({scope,elapsedMs,classes,detailComplete:telemetry.detailComplete,
+          peakActive:probe.state.maxActive,tasksStatus:view.tasks.status,teamStatus:view.team.status}));
+      }finally{probe.restore();}
+    }
+  },120_000);
 
   it('has no fictional employee fallback and distinguishes unavailable reads from zero balances', async () => {
     const admin = await loadMobilePreview(adminCtx(b), [b.companyId], 'en');
