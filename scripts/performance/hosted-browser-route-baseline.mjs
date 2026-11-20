@@ -33,7 +33,10 @@ assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static c
 const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
-assert(!(payrollReadTrace&&mobileTaskTrace)&&(!(payrollReadTrace||mobileTaskTrace)||(!fixtureOnly&&staticShard===null)),
+const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
+assert(['','insights','recruitment','both'].includes(surfaceProbe),'Unknown browser surface');
+const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
+assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
@@ -51,7 +54,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -591,6 +594,54 @@ async function measureRoutes(fixture){
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
  save();
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+}
+
+const focusedSurfaces={
+ insights:{path:'/assistant?view=insights',witnesses:{
+  heading:'[data-ai-centre-insights] h1',
+  capacity:'[data-capacity-ledger] [data-capacity-period] a[aria-current]',
+  quality:'[data-ai-quality] [data-quality-period] a[aria-current]',
+  processEvidence:'[data-capacity-processes]:not([data-capacity-processes="unavailable"])',
+ }},
+ recruitment:{path:'/recruitment',witnesses:{
+  heading:'main h1',
+  companyTotals:'main li a[href="/recruitment/candidates"] .tabular-nums',
+  taskControls:'#tasks nav[aria-label] a[aria-current="page"]',
+ }},
+};
+
+async function measureSurfaceProbe(fixture,surface){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const {path,witnesses}=focusedSurfaces[surface];
+ report.surfaceProbes??={};
+ const visits=[];
+ report.surfaceProbes[surface]=visits;
+ for(const actorIndex of [0,1]){
+  const actor=fixture.users[actorIndex],context=await signedInContext(actor);
+  try{
+   assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
+   const page=await context.newPage();
+   for(const pass of ['first','repeat-1','repeat-2']){
+    const row={role:actor.role,pass,status:'incomplete',milestones:{}};
+    visits.push(row);
+    const started=performance.now(),elapsed=()=>Math.round(performance.now()-started);
+    try{
+     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+     assert.equal(response?.status(),200);
+     assert.equal(page.url(),origin+path);
+     row.responseMs=elapsed();
+     const milestones=await Promise.allSettled(Object.entries(witnesses).map(async ([label,selector])=>{
+      await page.locator(selector).first().waitFor({state:'visible',timeout:Math.max(1,15000-elapsed())});
+      row.milestones[label]=elapsed();
+     }));
+     assert(milestones.every(result=>result.status==='fulfilled'),'A focused browser milestone did not become visible');
+     await assertContentAvailable(page);
+     row.status='observed';
+    }finally{save();}
+   }
+  }finally{await context.close();}
+ }
 }
 
 async function measurePayrollReadTrace(fixture){
@@ -1644,13 +1695,17 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!payrollReadTrace&&!mobileTaskTrace)await seedNotificationReads(fixture);
+  if(staticShard===null&&!diagnosticCount)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true',
     AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
   await waitForApp();
   await proxy();
-  if(mobileTaskTrace)await measureMobileTaskTrace(fixture);
+  if(surfaceProbe){
+   const requested=surfaceProbe==='both'?Object.keys(focusedSurfaces):[surfaceProbe];
+   for(const surface of requested)await measureSurfaceProbe(fixture,surface);
+  }
+  else if(mobileTaskTrace)await measureMobileTaskTrace(fixture);
   else if(payrollReadTrace)await measurePayrollReadTrace(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
