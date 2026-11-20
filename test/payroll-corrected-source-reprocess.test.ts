@@ -7,7 +7,7 @@ import * as S from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {createBatch,generatePayslips,reprocessSelectedEmployees,getReprocessJob,PayrollReprocessStoppedError} from '../core/payroll';
+import {createBatch,generatePayslips,reprocessSelectedEmployees,getReprocessJob,reviewReprocessTaxReadiness,PayrollReprocessStoppedError} from '../core/payroll';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,getTaxBasisBatch} from '../core/payroll-tax-basis';
 import {readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -49,6 +49,20 @@ describe('corrected native payslip replacement custody',()=>{
   const error=await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employmentId],idempotencyKey:randomUUID()}).catch(e=>e);expect(error).toBeInstanceOf(PayrollReprocessStoppedError);expect(error.code).toBe('TAX_BASIS_SOURCE_CHANGED');
   const job=await getReprocessJob(ctx,error.jobId);expect(job?.status).toBe('failed');expect(job?.stopCode).toBe('TAX_BASIS_SOURCE_CHANGED');expect(job?.result).toMatchObject({outcomes:[],stoppedEmployee:{employmentId,name:'Fictional corrected employee'}});
   expect((await slip()).version).toBe(1);expect(await owner.db.execute(sql`select id from payroll_tax_basis_replacement`)).toHaveLength(0);
+ });
+ it('shows an exact source block alongside a ready employee without writing payroll',async()=>{
+  await correct();
+  const source=await slip();
+  const ready=await hireEmployee(ctx,{person:{fullName:'Fictional ready employee',primaryEmail:'ready-payroll@example.test'},
+    companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+  await owner.db.update(S.payslip).set({netPay:'1.00'}).where(eq(S.payslip.id,source.id));
+  const review=await reviewReprocessTaxReadiness(ctx,batchId,[employmentId,ready.employmentId]);
+  expect(review.employees).toHaveLength(2);
+  expect(review.employees.find(e=>e.employmentId===employmentId)).toMatchObject({status:'blocked',
+    reason:expect.stringMatching(/Saved payroll changed after an income-tax correction/)});
+  expect(review.employees.find(e=>e.employmentId===ready.employmentId)).toMatchObject({status:'ready'});
+  expect(await owner.db.select().from(S.payrollReprocessJob)).toEqual([]);
+  expect((await slip()).version).toBe(1);
  });
  it('refuses consuming an old correction when newly keyed cash changed its reviewed source',async()=>{
   await correct();await setPayrollBatchComponent(ctx,{batchId,employmentId,componentId:travelId,amount:650});

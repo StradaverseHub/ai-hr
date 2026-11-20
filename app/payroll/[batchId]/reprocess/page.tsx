@@ -249,6 +249,12 @@ export default async function ReprocessPage({
   // Exact references in the recorded job result are the only job/history join. Earlier jobs
   // did not record them: keep their history available without guessing from timestamps.
   const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
+  const held = (thisJob?.result as {heldEmploymentIds?:unknown}|null)?.heldEmploymentIds;
+  const finished = new Set(outcomes?.map(row=>row.employmentId));
+  const pendingIds = [...new Set([
+    ...(thisJob?.status==='failed' && outcomes !== null ? thisJob.employmentIds.filter(id=>!finished.has(id)) : []),
+    ...(Array.isArray(held) ? held.filter((id):id is string=>typeof id==='string' && UUID_RE.test(id)) : []),
+  ])];
   const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
   const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
 
@@ -326,6 +332,9 @@ export default async function ReprocessPage({
             employees={candidates}
             newCandidates={newCandidates}
             preselectedIds={preselectedIds}
+            pendingIds={pendingIds}
+            previousJobId={thisJob?.id}
+            jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}
             currency={currency}
             from={listFrom ?? null}
             paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??''}}
@@ -483,7 +492,11 @@ export default async function ReprocessPage({
 }
 
 function readStoppedEmployee(result:unknown,selected:readonly string[]){
- const value=result&&typeof result==='object'?(result as {stoppedEmployee?:unknown}).stoppedEmployee:null;
+ let value=result&&typeof result==='object'?(result as {stoppedEmployee?:unknown}).stoppedEmployee:null;
+ // Older background jobs encoded the stopped employee as a JSON string.
+ if(typeof value==='string'){
+  try{value=JSON.parse(value);}catch{return null;}
+ }
  if(!value||typeof value!=='object')return null;
  const row=value as {employmentId?:unknown;name?:unknown;employeeCode?:unknown};
  return typeof row.employmentId==='string'&&selected.includes(row.employmentId)&&typeof row.name==='string'&&(row.employeeCode===null||typeof row.employeeCode==='string')?{employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode}:null;
