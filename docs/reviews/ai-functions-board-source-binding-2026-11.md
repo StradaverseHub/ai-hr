@@ -1571,3 +1571,9 @@ The repository owner approved carrying forward the same 28 existing provider app
 The Movement repair adds an audited date amendment and uses it in Personnel history. Email settings preserve saved connection records when deactivating a relay or following a stale link. Workflow pause targets the last saved definition and retains draft edits. The covered source adds no AI provider fields, purposes or transports.
 
 Exactly 28 digest literals move from `2dcbe0929d2e71097ddbcfd7838367209e64911b28e987c4440ec5ba78ed88eb` to the approved fingerprint. Reversing those substitutions restores the previous registry byte for byte. Existing evaluation and promotion records retain their source identities. The combined candidate proceeds through hosted release verification and staging acceptance.
+
+### Exact approval for the email deactivation handoff, 20 November 2026 MYT
+
+The repository owner approved carrying the same 28 provider approvals to `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf`. The source delta from `4e5ec01bde370ddd922115a22d27376ad03b0335` classifies the Deactivate Email server action as a human handoff under Access and Authentication, matching the other email settings actions. It adds no model-executable action, provider field, purpose or transport.
+
+The provider closure contains 1,831 files. Exactly 28 literals change from `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte. Pending and retired records, review metadata and previous evaluations remain as recorded. Staging remains ordered after the existing production release and requires passing release verification.
