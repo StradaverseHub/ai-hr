@@ -288,7 +288,7 @@ export async function measureWorkLocationActions({ db, fixture, origin, signedIn
         save();
       }
     }
-    assert.deepEqual(await persisted(), []);
+    assert.equal((await persisted()).length, 0, 'Work Location action fixture already exists');
     const response = await page.goto(create.href, { waitUntil: 'domcontentloaded', timeout: 15000 });
     assert.equal(response?.status(), 200);
     await main.getByRole('heading', { name: 'New location', exact: true }).waitFor();
@@ -309,7 +309,7 @@ export async function measureWorkLocationActions({ db, fixture, origin, signedIn
     await submit('restore', main.getByRole('button', { name: 'Restore', exact: true }), names[1], false, id);
     const events = await db`select event_type from domain_event
       where tenant_id = ${actor.tenantId} and aggregate_type = 'location' and aggregate_id = ${id}`;
-    assert.deepEqual(events.map(event => event.event_type).sort(),
+    assert.deepEqual(Array.from(events, event => event.event_type).sort(),
       ['location.archived', 'location.created', 'location.restored', 'location.updated']);
     report.workLocationAuditVerified = true;
     save();
