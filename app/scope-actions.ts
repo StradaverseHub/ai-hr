@@ -1,7 +1,6 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { inquiryScopeReturnPath } from '@/lib/leave-inquiry-query';
 
@@ -10,7 +9,8 @@ export async function setCompanyScope(formData: FormData) {
   const ids = formData.getAll('companyId').map(String).filter(Boolean);
   const cookieStore = await cookies();
   cookieStore.set('company_scope', ids.join(','), { sameSite: 'lax', path: '/' });
-  revalidatePath('/', 'layout');
+  // The Server Action's cookie change refreshes the current UI. Company scope
+  // belongs to this browser session, so it needs no app-wide data invalidation.
   const returnPath = inquiryScopeReturnPath(formData.get('returnPath'));
   if (returnPath) redirect(returnPath);
 }
