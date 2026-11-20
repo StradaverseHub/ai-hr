@@ -85,7 +85,7 @@ vi.mock('../app/assistant/module-plan-actions', () => ({ eraseModuleProposalsAct
 vi.mock('../app/assistant/job-feedback-actions', () => ({ eraseGovernedJobFeedbackAction: vi.fn() }));
 vi.mock('../app/assistant/feedback-actions', () => ({ eraseAgentFeedbackAction: vi.fn() }));
 vi.mock('../app/delegations/actions', () => ({ loadDelegationContextAction: vi.fn() }));
-vi.mock('../components/delegation-manager', () => ({ DelegationManager: () => null }));
+vi.mock('../components/delegation-manager', () => ({ DelegationManager: () => <p>Delegation fixture ready</p> }));
 vi.mock('../core/assistant-launcher', async original => ({ ...(await original<object>()), readLauncherSettings: () => ({ enabled: false, position: 'bottom-right', hiddenAreas: [] }) }));
 vi.mock('../app/control-tower/agents/launcher-actions', () => ({ setAssistantLauncherAction: vi.fn() }));
 vi.mock('../core/entitlements', async original => ({ ...(await original<object>()), isModuleEnabledOrFalse: () => false }));
@@ -97,6 +97,7 @@ import { AiCentreTabs } from '../components/ai-centre/centre-tabs';
 import { ChatRetentionControl, KEEP_CHAT_OPTIONS } from '../components/ai-centre/chat-retention-control';
 import { AiAskAvailability } from '../components/ai-centre/ask-availability';
 import { CommandBar } from '../components/command-bar';
+import {loadDelegationContextAction} from '../app/delegations/actions';
 import { AssistantLauncher } from '../components/assistant/assistant-launcher';
 import { WorkspaceConversation } from '../components/assistant/workspace-conversation';
 import { ASK_HANDOFF_KEY } from '../lib/today/ask-handoff';
@@ -395,6 +396,23 @@ describe('Ask AI Centre from the command bar', () => {
     cleanup(); showShell();
     fireEvent.keyDown(window, { key: 'K', ctrlKey: true });
     expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
+  });
+
+  it('opens the delegation manager on selection and allows recovery from a failed context read',async()=>{
+    const load=vi.mocked(loadDelegationContextAction);
+    load.mockReset().mockRejectedValueOnce(new Error('fixture context unavailable')).mockResolvedValueOnce({
+      admin:false,canSelfDelegate:false,initialCandidates:[],delegatorOptions:[],
+      masters:{companies:[],businessUnits:[],departments:[]},rows:[],myEmploymentIds:[],today:'2026-11-20',
+    });
+    showShell(false,false);
+    fireEvent.keyDown(window,{key:'k',metaKey:true});
+    expect(load).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:/Approval Delegation/}));
+    expect(await screen.findByText(enWithAiCentre.commandBar.loadError)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:enWithAiCentre.commandBar.retry}));
+    expect(await screen.findByText('Delegation fixture ready')).toBeTruthy();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenLastCalledWith(false);
   });
 
   it.each(ROLES)('for %s, sends the words with this page\'s area to the side panel, which continues its chat and runs nothing', async (_role, session) => {

@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Search, ArrowRight, Sparkles, UserCog } from 'lucide-react';
-import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
 import { OPEN_COMMAND_BAR_EVENT, askAiCentre, type OpenCommandBarDetail } from '@/lib/command-bar-events';
 import { resolvePageContext } from '@/lib/ai/page-context';
@@ -292,20 +291,22 @@ export function CommandBar() {
  * The quick "Approval Delegation" panel inside the command bar — now a thin SHELL (popup parity, feedback
  * 29fe2d45): back link, open-full link, a loading state, an error-with-retry state, and the shared
  * DelegationManager (the exact component the /delegations page renders). The context loads lazily on mount
- * via loadDelegationContextAction; the manager itself refetches after every save and history toggle.
+ * alongside the manager module. The manager refetches after saves and history toggles.
  * A transient loader failure shows a retry — it is NEVER mapped to "you cannot delegate" anymore.
  */
 function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack: () => void }) {
   const t = useTranslations('commandBar');
   const [state, setState] = useState<
-    { status: 'loading' } | { status: 'error' } | { status: 'ready'; ctx: DelegationContext }
+    | {status: 'loading'}
+    | {status: 'error'}
+    | {status: 'ready'; ctx: DelegationContext; Manager: typeof import('@/components/delegation-manager').DelegationManager}
   >({ status: 'loading' });
 
   // The fetch itself never sets state synchronously (only in the promise callbacks), so the mount effect
   // stays cascade-free; the retry handler flips back to 'loading' first — fine in an event handler.
   const fetchCtx = useCallback(() => {
-    loadDelegationContextAction(false)
-      .then((ctx) => setState({ status: 'ready', ctx }))
+    Promise.all([import('@/components/delegation-manager'), loadDelegationContextAction(false)])
+      .then(([{DelegationManager}, ctx]) => setState({status: 'ready', ctx, Manager: DelegationManager}))
       .catch(() => setState({ status: 'error' }));
   }, []);
 
@@ -346,7 +347,7 @@ function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack
           </button>
         </div>
       ) : (
-        <DelegationManager surface="popup" initialContext={state.ctx} />
+        <state.Manager surface="popup" initialContext={state.ctx} />
       )}
     </div>
   );
