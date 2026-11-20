@@ -56,6 +56,8 @@ export function CompanySwitcher({
   const personalCredits = pathname === '/leave/credit-details';
   const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
   const [open, setOpen] = useState(false);
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => { setInteractive(true); }, []);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const allCompaniesSubmitter = useRef<HTMLButtonElement>(null);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
@@ -100,6 +102,7 @@ export function CompanySwitcher({
         ref={triggerRef}
         data-company-switcher
         type="button"
+        disabled={!interactive}
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an
           // abandoned clear would otherwise linger on reopen.
