@@ -1375,6 +1375,20 @@ try{
      if(shellOpens.length===128)break;
     }
     if(shellOpens.length)report.shellOpens=shellOpens;
+    const notificationPhases=new Set(['onboardingNotices','projection','bellRead','lifecycle']);
+    const notificationShell=[];
+    for(const [,record] of log.matchAll(/^PERF_NOTIFICATION_SHELL (.{1,500})$/gm)){
+     let entry;
+     try{entry=JSON.parse(record);}catch{continue;}
+     if(!entry||typeof entry.catchUp!=='boolean'||!Number.isSafeInteger(entry.elapsedMs)
+       ||entry.elapsedMs<0||entry.elapsedMs>120000)continue;
+     const timings=Object.entries(entry.timings??{}).filter(([phase,ms])=>notificationPhases.has(phase)
+      &&Number.isSafeInteger(ms)&&ms>=0&&ms<=entry.elapsedMs);
+     if(timings.length!==(entry.catchUp?4:3))continue;
+     notificationShell.push({catchUp:entry.catchUp,elapsedMs:entry.elapsedMs,timings:Object.fromEntries(timings)});
+     if(notificationShell.length===256)break;
+    }
+    if(notificationShell.length)report.notificationShell=notificationShell;
    }
   }finally{
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
