@@ -649,9 +649,9 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
  return row;
 }
 
-const maxDynamicTemplatesPerRole=8;
-async function discoverDynamicPages(page,sourcePath,matcher,discovered){
- if(discovered.size>=maxDynamicTemplatesPerRole)return;
+const maxDynamicTemplatesPerRole=24;
+const maxDynamicLinkDepth=2;
+async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered){
  const links=await page.locator('main:visible a[href]:visible:not([download])').evaluateAll(
   anchors=>anchors.slice(0,250).map(anchor=>anchor.href));
  for(const link of links){
@@ -659,10 +659,11 @@ async function discoverDynamicPages(page,sourcePath,matcher,discovered){
   if(url.origin!==origin||url.username||url.password||url.href.length>1000)continue;
   const template=matcher.match(url.pathname);
   if(!template||discovered.has(template))continue;
+  if(discovered.size>=maxDynamicTemplatesPerRole)return true;
   url.hash='';
-  discovered.set(template,{url,sourcePath});
-  if(discovered.size>=maxDynamicTemplatesPerRole)break;
+  discovered.set(template,{url,sourcePath,depth});
  }
+ return false;
 }
 
 async function measureStaticPageCensus(fixture,shard){
@@ -672,7 +673,8 @@ async function measureStaticPageCensus(fixture,shard){
  const dynamicMatcher=dynamicPageCensusMatcher(appPathRoutes,routesManifest);
  const census={shard,shards:STATIC_CENSUS_SHARDS,...plan,outcomes:[],dynamic:{
   templates:dynamicMatcher.templates,missingMatchers:dynamicMatcher.missingMatchers,
-  maxTemplatesPerRole:maxDynamicTemplatesPerRole,discoveryFailures:0,outcomes:[],
+  maxTemplatesPerRole:maxDynamicTemplatesPerRole,maxLinkDepth:maxDynamicLinkDepth,
+  discoveryFailures:0,limitedRoles:[],outcomes:[],
  }};
  report.staticPageCensus=census;
  save();
@@ -697,19 +699,31 @@ async function measureStaticPageCensus(fixture,shard){
    await page.addInitScript(observeStartup);
    const role=actor?.role??'public';
    const discovered=new Map();
+   let discoveryLimited=false;
+   async function discover(sourcePath,depth){
+    try{
+     if(await discoverDynamicPages(page,sourcePath,depth,dynamicMatcher,discovered))discoveryLimited=true;
+    }catch{census.dynamic.discoveryFailures++;}
+   }
    for(const pass of ['first','repeat'])for(const path of paths){
     const row=await measureCensusVisit(page,new URL(origin+path),role,pass,path,compiledPaths);
     if(actor&&pass==='first'&&row.outcome==='heading-visible'){
-     await discoverDynamicPages(page,path,dynamicMatcher,discovered).catch(()=>{census.dynamic.discoveryFailures++;});
+     await discover(path,1);
     }
     census.outcomes.push(row);
     save();
    }
-   for(const pass of ['first','repeat'])for(const [template,{url,sourcePath}] of discovered){
+   // First-pass detail pages can reveal further details, edits or print screens. Retain their static
+   // root and depth in the receipt and keep the concrete address inside the browser fixture.
+   for(const pass of ['first','repeat'])for(const [template,{url,sourcePath,depth}] of discovered){
     const row=await measureCensusVisit(page,url,role,pass,template,compiledPaths);
-    census.dynamic.outcomes.push({...row,sourcePath});
+    if(pass==='first'&&row.outcome==='heading-visible'&&depth<maxDynamicLinkDepth){
+     await discover(sourcePath,depth+1);
+    }
+    census.dynamic.outcomes.push({...row,sourcePath,linkDepth:depth});
     save();
    }
+   if(discoveryLimited){census.dynamic.limitedRoles.push(role);save();}
   }finally{await context.close();}
  }));
  assert(results.every(result=>result.status==='fulfilled'),'A static census lane failed');

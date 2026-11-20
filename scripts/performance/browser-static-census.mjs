@@ -55,8 +55,11 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
   for(const row of census.dynamic.outcomes){
    assert(templates.has(row.path)&&sourcePaths.has(row.sourcePath)&&roles.has(row.role)&&outcomes.has(row.outcome));
    assert(passes.includes(row.pass)&&Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0);
+   if(row.linkDepth!==undefined){
+    assert(Number.isInteger(row.linkDepth)&&row.linkDepth>=1&&row.linkDepth<=census.dynamic.maxLinkDepth);
+   }
    dynamicRows.push({template:row.path,sourcePath:row.sourcePath,pass:row.pass,role:row.role,
-    outcome:row.outcome,elapsedMs:row.elapsedMs});
+    outcome:row.outcome,elapsedMs:row.elapsedMs,...(row.linkDepth!==undefined&&{linkDepth:row.linkDepth})});
   }
  }
  assert.equal(staticPaths.size,reference.staticPageCount,'Compiled static page count differs from measured routes');
