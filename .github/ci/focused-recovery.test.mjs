@@ -63,7 +63,7 @@ test('Separate published producer is admitted only with both immutable ancestry 
 });
 test('Latest focused history refuses later failures, unknown overlapping runs, omissions and conflicting snapshots',()=>{
  const f=input(),sourceRun={...f.run,display_title:'Alpha CI · codex/candidate'},focusedRuns=f.focused.map(x=>({...x.run,display_title:'Focused only · codex/candidate-part-1'}));
- const x={sourceRun,focusedRuns,rows:focusedRuns};assert.deepEqual(validateFocusedHistory(x).runIds,[200]);
+ const x={sourceRun,focusedRuns,rows:structuredClone(focusedRuns)};assert.deepEqual(validateFocusedHistory(x).runIds,[200]);
  for(const change of [x=>x.rows=[],x=>x.rows[0].conclusion='failure',x=>x.rows.push({...x.rows[0],id:201}),x=>x.rows[0].status='in_progress',x=>x.rows.push({...x.rows[0],updated_at:time(0)})]){const y=structuredClone(x);change(y);assert.throws(()=>validateFocusedHistory(y));}
 });
 for(const [name,mutate] of [
