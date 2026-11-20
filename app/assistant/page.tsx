@@ -48,6 +48,25 @@ import { listOwnChats, readChatRetention } from '@/core/teras-chats';
 import { AskChatHeader, AskChatsColumn, AskChatsFooter, AskChatsProvider, type AskChatSummary } from '@/components/ai-centre/ask-chats';
 import { todayInboxRedirect } from '@/lib/ai-centre/today-redirect';
 
+type AssistantOpenPhase = 'session' | 'translations' | 'access' | 'scope' | 'retention'
+  | 'importAvailability' | 'legacyList' | 'legacySelected' | 'storedList' | 'storedSelected' | 'title';
+
+function profileAssistantOpen() {
+  if (process.env.AIHR_ASSISTANT_OPEN_PROFILE !== 'true') return null;
+  const start = performance.now();
+  const timings: Partial<Record<AssistantOpenPhase, [number, number]>> = {};
+  const elapsed = () => Math.round(performance.now() - start);
+  return {
+    read<T>(phase: AssistantOpenPhase, work: () => Promise<T>): Promise<T> {
+      const started = elapsed();
+      return work().finally(() => { timings[phase] = [started, elapsed()]; });
+    },
+    finish(role: 'group-admin' | 'company-admin' | 'employee', view: 'new' | 'legacy' | 'stored') {
+      console.info('PERF_ASSISTANT_OPEN ' + JSON.stringify({ role, view, elapsedMs: elapsed(), timings }));
+    },
+  };
+}
+
 /**
  * ADR-0082 slice 4 — THE ASSISTANT'S FIRST SCREEN, and the first time any of it is reachable.
  *
@@ -75,7 +94,9 @@ export default async function AssistantPage({
 }: {
   searchParams: Promise<{ view?: string; recommend?: string; e?: string; chat?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
-  const [s, sp] = await Promise.all([getSession(), searchParams]);
+  const profile = profileAssistantOpen();
+  const read = <T,>(phase: AssistantOpenPhase, work: () => Promise<T>) => profile ? profile.read(phase, work) : work();
+  const [s, sp] = await Promise.all([read('session', getSession), searchParams]);
   // AI centre (docs/design/ai-centre/PLAN.md): Delegated jobs and How it works are views of this route, behind
   // the same layout session check. They read nothing that depends on the Assistant grant; the conversation
   // below keeps its own checks. (The Inbox view read native owners as the caller; Today now does.)
@@ -102,7 +123,7 @@ export default async function AssistantPage({
       </div>
     );
   }
-  const [a, t] = await Promise.all([getTranslations('aiAsk'), getTranslations('assistant')]);
+  const [a, t] = await read('translations', () => Promise.all([getTranslations('aiAsk'), getTranslations('assistant')]));
   // AI v2 W4 (issue 14): Ask is chat-only. What sat beside the chat moved, nothing deleted: the own-data controls to
   // Your data and privacy (?view=privacy, ADR-0169 rights), the tools and shortcuts to More tools (?view=tools).
   // Their actions still return to /assistant with their closed status codes, so those addresses open the view
@@ -143,8 +164,8 @@ export default async function AssistantPage({
   const centreTabs = <AiCentreTabs active="ask" isAdmin={admin} />;
   const errorMessage=sp.error==='clarification_unavailable'?t('workspace.conversation.unavailable'):
     sp.error&&/^[a-z_]{1,40}$/.test(sp.error)&&t.has(`err_${sp.error}`)?t(`err_${sp.error}`):undefined;
-  const askRetentionRead = toolsRequested ? null : retentionDays();
-  const workspace = await loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,includePlanning:toolsRequested,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
+  const askRetentionRead = toolsRequested ? null : read('retention', retentionDays);
+  const workspace = await read('access', () => loadAiWorkspace(s,{includeHistory:false,includeGovernance:false,includePlanning:toolsRequested,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal}));
   const access = workspace.access;
 
   // The denied-access fallback retains own work/calendar. The active chat never preloads those
@@ -229,19 +250,19 @@ export default async function AssistantPage({
   // closed grammar. Any failure shows no paperclip. (Navigation speed: started here, awaited below; the launcher module is
   // loaded once for it and for the stored chat below.)
   const launcher=import('./launcher-actions');
-  const chatImportRead=launcher.then(owner=>owner.chatImportOfferedAction()).catch(()=>false);
-  const conversationScope=await assistantBrowserConversationScope(s);
+  const chatImportRead=read('importAvailability', () => launcher.then(owner=>owner.chatImportOfferedAction()).catch(()=>false));
+  const conversationScope=await read('scope', () => assistantBrowserConversationScope(s));
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   // AI Centre navigation speed: the chat reads below are independent, so they run together. Each reads only within
   // this conversation scope and keeps its own checks and failure handling.
   const [savedChats,selectedChat,storedChats,storedChat,chatImport,keepDays]=await Promise.all([
-    listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null),
-    sp.e?loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null,
+    read('legacyList', () => listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null)),
+    sp.e?read('legacySelected', () => loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null)):null,
     // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
-    listOwnChats(s,{},conversationScope).catch(()=>null),
+    read('storedList', () => listOwnChats(s,{},conversationScope).catch(()=>null)),
     // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
     // Noveri conversation switch admits this caller, the next question continues that same chat.
-    sp.chat&&!sp.e?launcher.then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null):null,
+    sp.chat&&!sp.e?read('storedSelected', () => launcher.then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null)):null,
     chatImportRead,
     askRetentionRead,
   ]);
@@ -262,11 +283,14 @@ export default async function AssistantPage({
     <SavedChatList key={scopeReset} embedded initialChats={legacyChats} nextCursor={savedChats?.nextCursor??null} scopeDigest={scopeReset} activeThreadId={selectedChat?.threadId} newChatHref={newChatHref}/>
   </details>:null;
   const activeTitle=selectedChat?legacyChats.find(chat=>chat.threadId===selectedChat.threadId)?.title??null:null;
+  const title = (await read('title', () => getTranslations('aiCentre')))('genericName');
+  profile?.finish(isGroupAdmin(s) ? 'group-admin' : admin ? 'company-admin' : 'employee',
+    sp.e ? 'legacy' : sp.chat ? 'stored' : 'new');
 
   return (
     <div data-tour="intelligence-assistant" data-ai-centre="ask" className="mx-auto flex h-full min-h-[32rem] max-w-7xl flex-col gap-4">
       {centreTabs}
-      <h1 className="sr-only">{aiCentreName((await getTranslations('aiCentre'))('genericName'))}</h1>
+      <h1 className="sr-only">{aiCentreName(title)}</h1>
       <ErrorBanner message={errorMessage??((sp.e&&!selectedChat)||(sp.chat&&!sp.e&&!storedChat)?t('workspace.conversation.unavailable'):undefined)} />
       <AskChatsProvider initialChats={chatSummaries} nextCursor={storedChats?.nextCursor??null} activeChatId={storedChat?.chatId??null} activeTitle={activeTitle}
         today={today} keepDays={keepDays} newChatHref={newChatHref} privacyHref="/assistant?view=privacy" toolsHref="/assistant?view=tools" listUnavailable={storedChats===null} legacy={legacy}>
