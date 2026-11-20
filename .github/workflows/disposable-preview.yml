@@ -1,0 +1,81 @@
+name: disposable-preview
+run-name: Disposable Analytics preview · PR #259
+on:
+  push:
+    branches: [codex/disposable-preview-20261120]
+    paths:
+      - .github/workflows/disposable-preview.yml
+      - .github/ci/disposable-preview.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: disposable-preview-pr259
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      AIHR_CI_HEAD: 42a3b1c8e03a4588cf8d21949e575b80ba5882e8
+      AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+      AIHR_CI_PG_PROFILE: '2'
+      AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216'
+      AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648'
+      AIHR_CI_PG_JIT: 'on'
+      AIHR_CI_UNIT: db-1
+      TZ: Asia/Kuala_Lumpur
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ env.AIHR_CI_HEAD }}
+          path: source
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+        with:
+          mobile: 'false'
+      - name: Verify frozen source and admit measured build
+        id: build-heap
+        working-directory: source
+        run: |
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          test -z "$(git status --porcelain)"
+          test ! -e .next
+          node ../automation/.github/ci/build-heap.mjs admit
+        env:
+          AIHR_CI_BUILD_HEAP_MB: '8192'
+      - name: Build before starting the database or browser
+        working-directory: source
+        run: node ../automation/.github/ci/build-heap.mjs measure "$RUNNER_TEMP/preview-evidence/memory" -- pnpm build
+        env:
+          NODE_OPTIONS: ${{ steps.build-heap.outputs.node_options }}
+          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
+          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
+          RAYON_NUM_THREADS: '2'
+          DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+          TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+      - name: Bring up fictional preview and verify the Analytics journey
+        working-directory: source
+        run: node ../automation/.github/ci/disposable-preview.mjs
+      - name: Remove the run-owned database
+        if: always()
+        run: bash automation/.github/ci/postgres.sh stop
+      - name: Preserve synthetic preview evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: disposable-preview-pr259
+          path: ${{ runner.temp }}/preview-evidence/
+          if-no-files-found: warn
+          retention-days: 7
