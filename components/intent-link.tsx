@@ -39,7 +39,12 @@ export function IntentLink({ prefetch, prefetchOnIntentOnly = true, onPointerEnt
       prefetch={intent && prefetch !== false ? true : initialPrefetch}
       onPointerEnter={(e) => { if (!intent && !dwell.current) dwell.current = setTimeout(() => { dwell.current = null; setIntent(true); }, INTENT_DWELL_MS); onPointerEnter?.(e); }}
       onPointerLeave={(e) => { clear(); onPointerLeave?.(e); }}
-      onFocus={(e) => { clear(); setIntent(true); onFocus?.(e); }}
+      onFocus={(e) => {
+        onFocus?.(e);
+        if (e.defaultPrevented) return;
+        clear();
+        setIntent(true);
+      }}
       onTouchStart={(e) => { clear(); setIntent(true); onTouchStart?.(e); }}
     />
   );
