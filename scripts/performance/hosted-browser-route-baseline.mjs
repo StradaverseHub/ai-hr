@@ -902,6 +902,26 @@ async function measurePublicLogin(){
  }
 }
 
+async function measureWalkthrough({page,user,report,save}){
+ const response=await page.goto(origin+'/me',{waitUntil:'commit',timeout:15000});
+ assert.equal(response?.status(),200);
+ assert.equal(page.url(),origin+'/me');
+ const account=page.locator('button[data-tour="account"]').filter({hasText:user.name});
+ const dialog=page.getByRole('dialog',{name:'Product tour',exact:true});
+ await account.waitFor({state:'visible',timeout:15000});
+ assert.equal(await dialog.count(),0);
+ await account.click({timeout:15000});
+ const launcher=page.getByRole('menuitem',{name:'Take a tour',exact:true});
+ await launcher.waitFor({state:'visible',timeout:15000});
+ const started=performance.now();
+ await launcher.click({timeout:15000});
+ await dialog.getByRole('heading',{name:'Welcome to AIHR 👋',exact:true}).waitFor({state:'visible',timeout:15000});
+ await dialog.getByRole('button',{name:'Next',exact:true}).waitFor({state:'visible',timeout:15000});
+ assert.equal(await account.getAttribute('aria-expanded'),'false');
+ report.walkthroughSteps=[{step:'open-welcome-tour',elapsedMs:Math.round(performance.now()-started)}];
+ save();
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -912,6 +932,7 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
   ...[0,1].map(actorIndex=>({name:'payroll-history-breakdown',actorIndex,run:measurePayrollHistoryDisclosure,
