@@ -32,7 +32,9 @@ const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
 assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
-const readinessRoutes=new Set(['/lifecycle','/lifecycle/offboarding','/me/notifications','/payroll/formula-builder','/roster/exceptions']);
+const readinessRoutes=new Set([
+ '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
+]);
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -267,6 +269,61 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   await history.locator('button[aria-haspopup="dialog"][aria-expanded]').waitFor({state:'visible',timeout:timeout()});
   await history.locator('a[aria-current], table tbody tr').or(history.getByText('No requests.',{exact:true})).first()
    .waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/admin/work-locations/clocking'){
+  const search=main.locator('form input[type="search"][name="q"]');
+  const companies=main.getByRole('table',{name:'Companies',exact:true});
+  await search.waitFor({state:'visible',timeout:timeout()});
+  assert(await search.isEnabled({timeout:timeout()}));
+  for(const name of ['Company','Clocking Locations','Work Locations']){
+   await companies.getByRole('columnheader',{name,exact:true}).waitFor({state:'attached',timeout:timeout()});
+  }
+  await companies.locator('tbody a[href^="/admin/work-locations/clocking?company="]:visible')
+   .first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/delegations'){
+  const records=main.locator('table tbody tr:visible');
+  const empty=main.getByText('No delegations.',{exact:true});
+  await records.or(empty).first().waitFor({state:'visible',timeout:timeout()});
+  if(actor.role==='companyHR'||actor.role==='groupHR'){
+   const history=main.getByRole('button',{name:'Show history',exact:true});
+   await history.waitFor({state:'visible',timeout:timeout()});
+   assert(await history.isEnabled({timeout:timeout()}));
+  }
+  return 'usable-content';
+ }
+ if(path==='/leave/tracker'){
+  const range=main.getByRole('tablist',{name:'Leave calendar range',exact:true});
+  const current=range.getByRole('tab',{selected:true});
+  await current.waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await range.getByRole('tab').count(),2);
+  await main.locator('[aria-busy="false"]:visible').or(main.getByText('No employees in scope.',{exact:true}))
+   .first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/me/ea'){
+  const viewer=main.locator('[data-statutory-pdf-viewer]');
+  const unavailable=main.getByRole('heading',{name:'EA is unavailable',exact:true});
+  await viewer.or(unavailable).first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/me/letters'){
+  const entries=main.locator('a[href^="/me/letters/"]:visible');
+  const empty=main.getByText('No issued letters are available for you.',{exact:true});
+  await entries.or(empty).first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await main.getByText('Your letter requests could not be shown just now.',{exact:true}).count(),0);
+  return 'usable-content';
+ }
+ if(path==='/me/tp3'){
+  const employment=main.locator('form select[name="employmentId"]');
+  await employment.waitFor({state:'visible',timeout:timeout()});
+  assert(await employment.isEnabled({timeout:timeout()}));
+  assert(await employment.locator('option:not([value=""])').count()>0);
+  const state=main.getByText('Record state',{exact:true}).and(main.locator('dl dt'));
+  await state.waitFor({state:'visible',timeout:timeout()});
+  assert((await state.locator('xpath=following-sibling::dd[1]').textContent({timeout:timeout()}))?.trim());
   return 'usable-content';
  }
  if(path==='/lifecycle/v9'){
