@@ -11,7 +11,7 @@ import {setCompensation} from '../core/comp';
 import {EntitlementsTenantMismatchError,EntitlementsUnresolvedError} from '../core/entitlements';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setupReadTenant,setupTenant} from '../packs/rewards/setup-data';
-import {confirmRewardLibrary,rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardPlanLibraryChoices,saveRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
+import {confirmRewardLibrary,libraryVersionTx,rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardPlanLibraryChoices,saveRewardLibrary,submitRewardLibrary} from '../packs/rewards/libraries';
 import {previewNewRewardPlan,previewRewardPlanCreation,previewRewardPlanSplit,previewRewardUncoveredPlans,rewardApprovedPlanReviewSummaries,rewardPlanSettings,rewardPlanSuggestions,rewardSetupPlan,rewardSetupPlanChoices,saveRewardPlanSettings} from '../packs/rewards/plan-configuration';
 import {rewardPatInputs,rewardPlanCompanyChoices,rewardSetupCompaniesTx} from '../packs/rewards/pat-inputs';
 import {rewardPlanCompanyChoicesQueryTx,rewardPlanLibraryChoicesQueryTx} from '../packs/rewards/setup-query-owner';
@@ -19,6 +19,7 @@ import {legacyRewardSetupQueryPort} from '../packs/rewards/setup-legacy-query-po
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 import {createApprovedRewardUnit,setupChecker} from './rewards-setup-fixture';
 import {observeNativeRead} from './helpers/native-read-observer';
+import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 async function fixture(){
@@ -116,6 +117,36 @@ it('rechecks native setup grants and actual login grants with retained contexts 
  await expect(rewardApprovedPlanReviewSummaries(f.ctx)).rejects.toMatchObject({code:'forbidden'});
 },30000);
 
+
+it('reads library versions, locks and use in one projection and appends one catalogue audit event',async()=>{
+ const f=await fixture(),scale=await buildScaleFixture(f.b,{events:0});
+ expect(scale.companyIds).toHaveLength(71);
+ expect(scale.employmentIds).toHaveLength(1000);
+ const ids=[f.binding.bonus_version_id,f.binding.salary_version_id];
+ const reference=await setupReadTenant(f.ctx,async tx=>{
+  const rows=[];
+  for(const id of ids){
+   const version=await libraryVersionTx(tx,f.ctx,id);
+   const usedBy=await tx.execute<{plan:string;company:string;year:number}>(sql`select * from app.reward_config_library_used_by(${id}::uuid)`);
+   const [lock]=await tx.execute<{locked:boolean}>(sql`select app.reward_config_library_locked(${id}::uuid) as locked`);
+   rows.push({...version,usedBy:[...usedBy],locked:lock?.locked??false});
+  }
+  return rows.sort((a,b)=>a.name.localeCompare(b.name));
+ });
+ expect(reference.some(row=>row.usedBy.length>0)).toBe(true);
+ const before=await events(f.b.tenantId);
+ const probe=observeNativeRead();
+ try{
+  const rows=await rewardLibraries(f.ctx,undefined,f.year);
+  expect(rows).toEqual(reference);
+  expect(probe.queries.filter(query=>query.sql.includes('reward_config_library_used_by'))).toHaveLength(1);
+  expect(probe.queries.filter(query=>query.sql.includes('reward_config_library_locked'))).toHaveLength(1);
+ }finally{probe.restore();}
+ const after=await events(f.b.tenantId);
+ expect(after.filter(row=>!before.some(previous=>previous.id===row.id))).toEqual([
+  expect.objectContaining({event_type:'rewards-setup.libraries.viewed',payload:{kind:null,year:f.year}}),
+ ]);
+},120000);
 
 it('keeps Plans dropdown labels and durable audit events while withholding matrices and PAT values',async context=>{
  const f=await fixture(),checker=await setupChecker(f.ctx);
