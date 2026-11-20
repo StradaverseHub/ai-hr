@@ -1001,6 +1001,45 @@ async function measurePublicLogin(){
  }
 }
 
+async function measureShellPopovers({page,user,report,save}){
+ report.actionStage='shell-popover-document-open';
+ report.shellPopoverSteps=[];
+ const response=await page.goto(origin+'/me/cases',{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(response?.status(),200);
+ await readyContent(page,user,'/me/cases',()=>15000);
+ const account=page.locator('button[data-tour="account"]');
+ const menu=page.getByRole('menu',{name:'Account menu',exact:true});
+ const bell=page.getByRole('button',{name:/^Notifications, /});
+
+ async function open(step,trigger,panel,paths){
+  report.actionStage=step;
+  let speculativeRouteRequests=0;
+  const observe=request=>{
+   const url=new URL(request.url());
+   if(request.method()!=='GET'||url.origin!==origin||!paths.some(path=>url.pathname===path))return;
+   if(url.searchParams.has('_rsc')||request.headers().rsc==='1')speculativeRouteRequests++;
+  };
+  page.on('request',observe);
+  try{
+   const started=performance.now();
+   await trigger.click({timeout:15000});
+   await panel.waitFor({state:'visible',timeout:15000});
+   const controlsVisibleMs=Math.round(performance.now()-started);
+   await pause(250);
+   report.shellPopoverSteps.push({step,controlsVisibleMs,speculativeRouteRequests});
+   save();
+   assert.equal(speculativeRouteRequests,0,'Opening the shell popover requested a linked page');
+  }finally{page.off('request',observe);}
+ }
+
+ await open('shell-account-open',account,menu.getByRole('menuitem',{name:'View my profile',exact:true}),
+  ['/me','/me/home','/admin/personnel','/admin/users/access']);
+ await page.keyboard.press('Escape');
+ await menu.waitFor({state:'hidden',timeout:15000});
+ await open('shell-notifications-open',bell,page.getByRole('button',{name:'History',exact:true}),
+  ['/me/notifications','/approvals','/approvals/history']);
+}
+
 async function measureWalkthrough({page,user,report,save}){
  report.walkthroughSteps=[];
  report.actionStage='welcome-profile-open';
@@ -1112,6 +1151,7 @@ async function measureActions(fixture){
   ...(groupShape?[{name:'group-company-scope',actorIndex:0,run:measureBrowserGroupScope,timings:result=>result.groupScopeSteps}]:[]),
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
+  ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
