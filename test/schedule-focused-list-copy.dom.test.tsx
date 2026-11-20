@@ -10,12 +10,20 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
 const owners=vi.hoisted(()=>({
-  ensure:vi.fn(async()=>{}),
+  ensure:vi.fn(async()=>({created:true})),
   list:vi.fn(async():Promise<{isDefault:boolean}[]>=>[]),
+  assertModule:vi.fn(),
+  requireAdmin:vi.fn(async()=>({tenantId:'fictional-attendance-tenant'})),
 }));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>catalog.locale,getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('Unexpected redirect '+url);}}));
-vi.mock('../lib/authz',()=>({requireAdmin:async()=>({})}));
+vi.mock('../lib/authz',()=>({requireAdmin:owners.requireAdmin}));
+vi.mock('../core/module-gate',()=>({assertModuleGate:owners.assertModule}));
+vi.mock('../app/admin/_redirects',()=>({
+  SCHEDULE_GROUPS:'/admin/attendance/schedule',
+  failScheduleGroup:(error:Error)=>{throw error;},
+  okScheduleGroup:()=>{throw new Error('Schedule initialized');},
+}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../components/legacy-schedule-anchor',()=>({LegacyScheduleAnchor:()=>null}));
 vi.mock('../core/attendance-rule',()=>({ensureStandardRule:owners.ensure,listAttendanceRules:owners.list}));
@@ -24,12 +32,15 @@ vi.mock('../app/admin/attendance-policy/offline-clocking-data',()=>({loadOffline
 vi.mock('../app/admin/attendance-policy/offline-clocking-actions',()=>({saveOfflineClockingAction:vi.fn()}));
 vi.mock('../app/admin/attendance-policy/rule-actions',()=>({copyAttendanceRuleAction:vi.fn(),deleteAttendanceRuleAction:vi.fn(),setAttendanceRuleStatusAction:vi.fn()}));
 import Page from '../app/admin/attendance/schedule/page';
+import {initializeStandardSchedule} from '../app/admin/attendance/schedule/initialize-standard';
 import {ScheduleGroupCard} from '../app/admin/attendance-policy/schedule-group-card';
 
 beforeEach(()=>{
   catalog.locale='en';catalog.messages=en;
-  owners.ensure.mockReset().mockResolvedValue(undefined);
+  owners.ensure.mockReset().mockResolvedValue({created:true});
   owners.list.mockReset().mockResolvedValue([]);
+  owners.assertModule.mockReset();
+  owners.requireAdmin.mockClear();
 });
 
 it('uses the existing Standard from the page read without calling the write owner',async()=>{
@@ -39,14 +50,22 @@ it('uses the existing Standard from the page read without calling the write owne
   expect(owners.ensure).not.toHaveBeenCalled();
 });
 
-it('repairs a missing Standard through the existing write owner before refreshing the page list',async()=>{
-  owners.list.mockResolvedValueOnce([{isDefault:false}]).mockResolvedValueOnce([{isDefault:true}]);
+it('loads a legacy schedule list with one read and no initialization write',async()=>{
+  owners.list.mockResolvedValueOnce([{isDefault:false}]);
   await Page({searchParams:Promise.resolve({})});
-  expect(owners.ensure).toHaveBeenCalledTimes(1);
-  expect(owners.list).toHaveBeenCalledTimes(2);
-  const [read,refresh]=owners.list.mock.invocationCallOrder;
-  expect(owners.ensure.mock.invocationCallOrder[0]).toBeGreaterThan(read);
-  expect(owners.ensure.mock.invocationCallOrder[0]).toBeLessThan(refresh);
+  expect(owners.list).toHaveBeenCalledTimes(1);
+  expect(owners.ensure).not.toHaveBeenCalled();
+});
+
+it('uses the administrator session and checks Attendance entitlement on explicit setup',async()=>{
+  await expect(initializeStandardSchedule()).rejects.toThrow('Schedule initialized');
+  expect(owners.requireAdmin).toHaveBeenCalledOnce();
+  expect(owners.assertModule).toHaveBeenCalledWith({tenantId:'fictional-attendance-tenant'},'attendance');
+  expect(owners.ensure).toHaveBeenCalledWith({tenantId:'fictional-attendance-tenant'});
+  owners.ensure.mockClear();
+  owners.assertModule.mockImplementationOnce(()=>{throw new Error('Attendance unavailable');});
+  await expect(initializeStandardSchedule()).rejects.toThrow('Attendance unavailable');
+  expect(owners.ensure).not.toHaveBeenCalled();
 });
 
 /** Resolve the known async server card; all visible UI components still render normally. */
@@ -73,5 +92,6 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
     expect(screen.getByText(focused[locale])).toBeVisible();
     expect(screen.queryByText(messages.admin.attendanceRule.libraryIntro)).toBeNull();
     expect(screen.getByRole('link',{name:messages.admin.attendanceRule.addNew})).toHaveAttribute('href','/admin/attendance/schedule/new');
+    expect(screen.getByRole('button')).toBeEnabled();
   });
 }
