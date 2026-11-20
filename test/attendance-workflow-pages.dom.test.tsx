@@ -7,7 +7,10 @@ const companyId = '00000000-0000-0000-0000-000000000001', other = '00000000-0000
 const { service, scope, form, companyLabels } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), attendanceApplicationFilterOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn(),attendanceWorkflowWarningPage:vi.fn(), getAttendanceWorkflowPreview: vi.fn(), listAttendanceWorkflowPreviews: vi.fn() }, scope: vi.fn(), form: vi.fn(), companyLabels: vi.fn() }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../packs/attendance/service', () => service);
-vi.mock('../app/admin/attendance/approval-workflow/company-labels', () => ({ attendanceWorkflowCompanyLabels: companyLabels }));
+vi.mock('../app/admin/attendance/approval-workflow/company-labels', () => ({
+  attendanceWorkflowCompanyLabels: companyLabels,
+  attendanceWorkflowCreationCompanies: async (session: unknown, ids: string[]) => ({companies:await companyLabels(session,ids),canManageAllCompanies:false}),
+}));
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'attendanceWorkflow' }), getFormatter:async()=>createFormatter({locale:'en'}) }));
 vi.mock('next/navigation', () => ({ useRouter:()=>({push:vi.fn(),refresh:vi.fn()}), notFound: () => { throw new Error('NOT_FOUND'); }, redirect: (href: string) => { throw new Error(`REDIRECT ${href}`); } }));
 vi.mock('../app/admin/attendance/approval-workflow/workflow-form', () => ({ WorkflowForm: (props: unknown) => { form(props); return <div>Editor</div>; } }));
@@ -62,7 +65,8 @@ describe('workflow company navigation and scope', () => {
   });
   it('opens creation directly and offers all permitted company assignments',async()=>{
     show(await NewPage({searchParams:Promise.resolve({applicationType:'self_overtime'})}));
-    expect(form).toHaveBeenCalledWith(expect.objectContaining({initial:null,context:{companyId,applicationType:'self_overtime'},options:expect.objectContaining({companies:options.companies})}));
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
+    expect(form).toHaveBeenCalledWith(expect.objectContaining({initial:null,deferAssignmentOptions:true,context:{companyId,applicationType:'self_overtime'},options:expect.objectContaining({companies:options.companies})}));
   });
   it('keeps lineage view/edit links scoped to the actual stored company and type', async () => {
     show(await ViewPage({ params: Promise.resolve({ lineageId }) }));
