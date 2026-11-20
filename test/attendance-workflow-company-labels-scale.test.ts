@@ -1,5 +1,5 @@
 import { afterAll, expect, it } from 'vitest';
-import { attendanceWorkflowCompanyLabels } from '../app/admin/attendance/approval-workflow/company-labels';
+import { attendanceWorkflowCompanyLabels, attendanceWorkflowCreationCompanies } from '../app/admin/attendance/approval-workflow/company-labels';
 import { attendanceApplicationFilterOptions } from '../packs/attendance/service';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 import { closeAll, migrateTestDb, resetDb, seedBase } from './harness';
@@ -25,5 +25,8 @@ it('preserves workflow company labels and scope without fetching employee or app
     const labels = await attendanceWorkflowCompanyLabels(session, scope);
     expect(labels).toEqual(previous.companies);
     expect(labels.some(({ id }) => id === foreign.companyId)).toBe(false);
+    expect(await attendanceWorkflowCreationCompanies(session, scope)).toEqual({
+      companies: previous.companies, canManageAllCompanies: previous.canManageAllCompanies === true,
+    });
   }
 }, 120000);

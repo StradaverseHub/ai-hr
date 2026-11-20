@@ -8,7 +8,8 @@ import { unstable_rethrow } from 'next/navigation';
 import { pgSqlState } from '@/lib/db-error';
 import { isWorkflowId } from './navigation';
 import { scopedAdmin } from '@/lib/scope';
-import { saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, generateAttendanceWorkflowPreview, AttendanceWorkflowError, type AttendanceWorkflowCopySource } from '@/packs/attendance/service';
+import { attendanceApplicationFilterOptions, saveAttendanceWorkflow, archiveAttendanceWorkflow, attendanceWorkflowWarningPage, retireAttendanceWorkflow, restoreAttendanceWorkflow, getAttendanceWorkflow, previewAttendanceWorkflow, generateAttendanceWorkflowPreview, AttendanceWorkflowError, type AttendanceWorkflowCopySource } from '@/packs/attendance/service';
+import type { AttendanceWorkflowOptions } from '@/lib/attendance-workflow';
 const LIST = '/admin/attendance/approval-workflow';
 async function publicError(e: unknown) { if(e instanceof AttendanceCcError)return(await getTranslations('attendanceWorkflow.v4'))(e.code);if(e instanceof AttendanceWorkflowError&&e.code==='inUse')return(await getTranslations('attendanceWorkflow.v4'))('usedCannotDelete');if(e instanceof AttendanceWorkflowError&&e.code==='stale')return(await getTranslations('attendanceWorkflow.v4'))('deleteChanged'); if (e instanceof AttendanceLevelError) return (await getTranslations('attendanceWorkflow.v3'))(attendanceLevelProblemMessageKey(e.problem)); return e instanceof AttendanceWorkflowError ? e.message : 'The workflow could not be saved. Check the configuration and try again.'; }
 export async function saveAttendanceWorkflowAction(lineageId: string | null, input: AnyAttendanceWorkflowInput, autoPriority = false, saveRequestId?:string, copiedFrom?: AttendanceWorkflowCopySource) {
@@ -75,6 +76,14 @@ export async function searchAttendanceApproversAction(input:{companyIds:string[]
   const {searchAttendanceApprovers}=await import('@/packs/attendance/service');
   return {ok:true as const,value:await searchAttendanceApprovers(s,input)};
  }catch(error){return {ok:false as const,error:await publicError(error)};}
+}
+
+export async function loadAttendanceAssignmentOptionsAction() {
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ const {departments,businessUnits,grades,divisions,positions,profileFields,employees}=await attendanceApplicationFilterOptions(s,allowedCompanyIds??scopeIds);
+ return {departments,businessUnits,grades,divisions,positions,profileFields,
+  employees:employees.map(({id,name,employeeCode})=>({id,name,employeeCode}))
+ } satisfies Omit<AttendanceWorkflowOptions,'companies'>;
 }
 
 export async function archiveAttendanceWorkflowAction(lineageId:string,version:number){
