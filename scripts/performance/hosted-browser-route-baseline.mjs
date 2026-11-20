@@ -27,6 +27,8 @@ const healthPath='/health';
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
+const loginOnly=env.AIHR_BROWSER_LOGIN_ONLY==='true';
+assert(!loginOnly||(!fixtureOnly&&!mixedLoad),'Login startup requires an isolated full browser build');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -47,7 +49,7 @@ const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
-  mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+  mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':loginOnly?'FICTIONAL_PUBLIC_LOGIN_STARTUP':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -743,6 +745,12 @@ async function measureShellLinks(fixture){
   }
  }finally{await context.close();}
 }
+async function launchBrowser(){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const {chromium}=require('playwright');
+ browser=await chromium.launch();
+}
+
 async function measureRoutes(fixture){
  const plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
@@ -755,9 +763,7 @@ async function measureRoutes(fixture){
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,[]);
  save();
- const require=createRequire(join(process.cwd(),'package.json'));
- const {chromium}=require('playwright');
- browser=await chromium.launch();
+ await launchBrowser();
  const lanes=await Promise.allSettled([...new Set(plan.map(route=>route.actorIndex))].map(async actorIndex=>{
   const actor=fixture.users[actorIndex],routes=plan.filter(route=>route.actorIndex===actorIndex);
   assert(actor&&routes.every(route=>route.role===actor.role),'Fixture role differs from the route inventory');
@@ -1119,7 +1125,10 @@ async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
 
 async function measurePublicLogin(){
  report.publicLogin=[];
- for(const locale of ['en','ms']){
+ const locales=['en','ms'];
+ const trials=loginOnly?3:1;
+ for(const [index,locale] of Array.from({length:trials},()=>locales).flat().entries()){
+  const trial=Math.floor(index/locales.length)+1;
   const copy=JSON.parse(readFileSync('messages/'+locale+'.json','utf8'));
   assert(typeof copy.internalAuth?.username==='string'&&copy.internalAuth.username.length>0);
   const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
@@ -1145,7 +1154,7 @@ async function measurePublicLogin(){
    await page.getByLabel(copy.internalAuth.username,{exact:true}).waitFor({state:'visible',timeout:15000});
    await page.locator('input[name="password"]:enabled').waitFor({state:'visible',timeout:15000});
    assert.equal(errors.length,0,'Localized login produced a browser or translation error');
-   report.publicLogin.push({locale,workspaceReadyMs,credentialsReadyMs:Math.round(performance.now()-started),
+   report.publicLogin.push({locale,trial,workspaceReadyMs,credentialsReadyMs:Math.round(performance.now()-started),
     documentTiming:await documentTiming(page)});
    save();
   }finally{await context.close();}
@@ -1315,7 +1324,7 @@ try{
  report.fixtureVerified=true;
  save();
  if(!fixtureOnly){
-  if(!mixedLoad)await seedNotificationReads(fixture);
+  if(!mixedLoad&&!loginOnly)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
   try{
@@ -1327,7 +1336,14 @@ try{
   }
  }
  if(driverCommand&&!fixtureOnly)await measureMixedLoad(driverCommand);
- else if(!fixtureOnly){
+ else if(loginOnly){
+  await launchBrowser();
+  await measurePublicLogin();
+  assert.equal(report.publicLogin.length,6);
+  assert(report.publicLogin.every(row=>row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false),
+   'Startup assets were not fully measured in every fresh login context');
+  report.complete=true;
+ }else if(!fixtureOnly){
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
   await measureActions(fixture);
