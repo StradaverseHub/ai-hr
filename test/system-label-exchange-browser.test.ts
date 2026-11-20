@@ -1,8 +1,8 @@
 /** Actual HTTP/UI journey on a disposable hosted-runner database, never an installation. */
 import {describe,it,expect,afterAll,afterEach} from 'vitest';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
-import {appendFileSync,closeSync,createWriteStream,fstatSync,mkdirSync,openSync,readFileSync,readSync,writeFileSync} from 'node:fs';
-import {join,resolve} from 'node:path';
+import {appendFileSync,chmodSync,closeSync,createWriteStream,fstatSync,mkdirSync,mkdtempSync,openSync,readFileSync,readSync,rmSync,statfsSync,writeFileSync} from 'node:fs';
+import {isAbsolute,join,resolve} from 'node:path';
 import {totalmem,availableParallelism} from 'node:os';
 import {performance} from 'node:perf_hooks';
 import {finished} from 'node:stream/promises';
@@ -24,6 +24,43 @@ let publishResult:(()=>void)|undefined;
 let capacityTimer:ReturnType<typeof setInterval>|undefined;
 let sampleCapacity:((phase:string)=>void)|undefined;
 let capacityEvidenceFailed=false;
+let swapDirectory:string|undefined;
+const GiB=1024**3;
+function runnerSwapBytes(){
+ const total=readFileSync('/proc/meminfo','utf8').match(/^SwapTotal:\s+(\d+) kB$/m);
+ if(!total)throw new Error('System Labels runner swap total unavailable');
+ return Number(total[1])*1024;
+}
+function addHostedSwap(){
+ if(process.platform!=='linux'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')return;
+ // A passing isolated run nearly exhausted the runner's 3 GiB of swap. The
+ // full-gate runner had no swap and shut down during the same Next compile.
+ const required=4*GiB;
+ const current=runnerSwapBytes();
+ if(current>=required)return;
+ const root=process.env.RUNNER_TEMP;
+ if(!root||!isAbsolute(root))throw new Error('System Labels requires a private runner temp directory');
+ const bytes=Math.ceil((required-current)/1024**2)*1024**2;
+ const disk=statfsSync(root);
+ if(disk.bavail*disk.bsize<bytes+4*GiB)throw new Error('Insufficient disk for bounded System Labels swap');
+ swapDirectory=mkdtempSync(join(root,'system-label-swap-'));
+ const file=join(swapDirectory,'swapfile');
+ execFileSync('fallocate',['-l',String(bytes),file],{timeout:10000});
+ chmodSync(file,0o600);
+ execFileSync('mkswap',[file],{timeout:10000});
+ execFileSync('sudo',['swapon','--',file],{timeout:10000});
+ // Linux excludes its swap header page from SwapTotal.
+ if(runnerSwapBytes()<required-1024**2)throw new Error('System Labels runner swap did not activate');
+}
+function stopHostedSwap(){
+ if(!swapDirectory)return;
+ const file=join(swapDirectory,'swapfile');
+ const isActive=()=>readFileSync('/proc/swaps','utf8').split('\n').some(row=>row.split(/\s+/)[0]===file);
+ if(isActive())execFileSync('sudo',['swapoff','--',file],{timeout:10000});
+ if(isActive())throw new Error('System Labels test swap is still active');
+ rmSync(swapDirectory,{recursive:true});
+ swapDirectory=undefined;
+}
 function logTail(path:string,limit:number){
  const fd=openSync(path,'r');
  try{
@@ -118,10 +155,13 @@ async function stop(){
  const failures=[chrome,next,...rest].flatMap(result=>result.status==='rejected'?[result.reason]:[]);
  if(failures.length)throw new AggregateError(failures,'System Labels owned cleanup incomplete');
  remaining(deadline,'cleanup');
+ // Release swap only after the browser and Next have exited. The disposable runner
+ // owns the remaining file and swap lifetime if either process could not be stopped.
+ stopHostedSwap();
  sampleCapacity?.('cleanup-complete');
  publishResult?.();
 }
-afterAll(stop,30000);
+afterAll(stop,40000);
 afterEach(async ({task})=>{
  if(task.result?.state!=='fail')return;
  // A failed navigation may leave the browser protocol unable to answer diagnostics.
@@ -306,6 +346,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   signal.throwIfAborted();
+  addHostedSwap();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
   sampleCapacity?.('next-spawned');
