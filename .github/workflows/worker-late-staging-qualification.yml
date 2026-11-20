@@ -1,0 +1,44 @@
+name: worker-late-staging-qualification
+on:
+  push:
+    branches: ['codex/combined-staging-late-worker-20261121']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Test late recovery and existing protected controls
+        run: |
+          set -euo pipefail
+          for test in late ci-runtime operation-guard prepared; do
+            log="$RUNNER_TEMP/worker-$test.log"
+            python3 -I -B "test/fixtures/bank-import-worker-$test-tests.py" > "$log" 2>&1 || {
+              tail -160 "$log"
+              exit 1
+            }
+            grep -E '^Ran [0-9]+ tests|^OK$' "$log"
+          done
+          helper="$RUNNER_TEMP/staging-worker-helper.py"
+          python3 -I -B scripts/bank-import-worker-upgrade-bundle.py "$helper"
+          for phase in prepare drain activate; do
+            python3 -I -B "$helper" "guarded-$phase-late-ci-worker" --help > /dev/null
+          done
+      - name: Verify the authenticated exact staging worker package as root in a disposable runner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 44763481057 --repo StradaverseHub/ai-hr --name worker-package-v1 --dir "$RUNNER_TEMP/worker"
+          archive="$RUNNER_TEMP/worker/worker-package.zip"
+          printf '%s  %s\n' '3a4628a7005a1f4fd63f526eec03688cff9d1be7175d4b5a003b4a7d32a103fb' "$archive" | sha256sum -c -
+          sudo -n python3 -I -B test/fixtures/bank-import-worker-prepared-tests.py --root-tree --package "$archive"

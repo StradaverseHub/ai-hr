@@ -79,6 +79,10 @@ def closed_preparation(base,ci,a):
 
 def failure_snapshot(base,ci,f,identity,launch):
     base.check(set(f)==FAILURE_KEYS and f['originalOperation']==str(base.ROOT/'upgrades'/identity['source']),'closed original failed operation required')
+    return terminal_failure_snapshot(base,ci,f,identity,launch)
+
+
+def terminal_failure_snapshot(base,ci,f,identity,launch):
     base.check(not (ci.STATE/'pending').exists() and not (ci.STATE/'pending').is_symlink(),'no new pending deployment permitted')
     raw=[base.read_bounded(ci.STATE/name,65536)for name in('current','last-ok')]
     base.check([ci.sha(x)for x in raw]==[f['failureCurrentSha256'],f['failureLastOkSha256']],'original terminal failure/last-ok changed')

@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'),'fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime','activate-late-ci-worker'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 
@@ -486,11 +486,14 @@ def worker_identity(base,report,source):
 
 
 class RuntimeObservation:
+    late = False
+
     def __init__(self, base, fmt, args, operation, drain_bytes, *, recovery=None, prepared=None):
         self.recovery=recovery
         self.prepared=prepared
         self.overall_deadline=getattr(base,'RECOVERY_OVERALL_DEADLINE',None) if recovery is not None or prepared is not None else None
-        self.drain_operation=Path(recovery['originalOperation']) if recovery is not None else operation
+        self.late=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='activate-late-ci-worker'
+        self.drain_operation=operation if self.late or recovery is None else Path(recovery['originalOperation'])
         self.base, self.fmt, self.args, self.operation = base, fmt, args, operation
         self.path = Path(args.ci_runtime_authorization)
         self.auth_identity=protected_private(base,self.path)
@@ -500,12 +503,13 @@ class RuntimeObservation:
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
         published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
         if published:fields=PUBLISHED.LIVE_FIELDS
+        if self.late:fields=LATE.fields(ACTIVE_OPERATION_GUARD.ci,'activate-late-ci-worker')
         fields=baseline_publication_fields(fields,a,allow=recovery is None and not published)
-        kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
+        kind=LATE.KINDS[ACTIVE_OPERATION_GUARD.stage] if self.late else PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
-        base.check((prepared is None or a.get('preparedWorker')==prepared) and (recovery is None or a.get('recovery')==recovery),'explicit prepared/recovery selection differs')
+        base.check((prepared is None or a.get('preparedWorker')==prepared) and (recovery is None or a.get('lateFailure' if self.late else 'recovery')==recovery),'explicit prepared/recovery selection differs')
         self.guard=require_operation_guard(base)
         base.check(self.guard.path==self.path and self.guard.bytes==self.bytes and self.guard.a['operationsLock']==a['operationsLock'],'exact guarded activation approval required')
         self.guard.observer=self
@@ -607,11 +611,12 @@ class RuntimeObservation:
         self.grant = g = json.loads(b.read_bounded(self.directory/'authorization.json',32768))
         b.check(protected_private(b,self.first_path)==self.first_identity and b.read_bounded(self.first_path,65536)==self.first_bytes,'pre-drain administrator approval identity/content changed')
         first=json.loads(self.first_bytes)
-        first_fields=baseline_publication_fields(FIRST_APPROVAL_FIELDS,first,allow=BASELINE_PUBLICATION_KEY in a)
+        first_fields=LATE.fields(self.guard.ci,'drain-late-ci-worker') if self.late else baseline_publication_fields(FIRST_APPROVAL_FIELDS,first,allow=BASELINE_PUBLICATION_KEY in a)
+        first_kind=LATE.KINDS['drain-late-ci-worker'] if self.late else 'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS'
         require_same_baseline_publication(b,first,a)
         if BASELINE_PUBLICATION_KEY in a:verify_baseline_publication(b,a)
         gate_fields={'source','controller','runId','build','artifact','witnessFingerprint','policyVersion'}
-        b.check(set(first)==first_fields and first['format']==1 and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
+        b.check(set(first)==first_fields and first['format']==1 and first['kind']==first_kind and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
         b.check(all(first[k]==a[k] for k in ('identity',*(() if self.recovery is not None else ('helperSha256',)),'nodeSha256','python','nodeOptions','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
         drain_time=(self.drain_operation/'drained.json').stat().st_mtime
         b.check(epoch(first['issuedAt'])<=drain_time<=epoch(first['expiresAt']) and drain_time<=epoch(a['issuedAt']),'pre-drain approval was not valid when original drain completed or activation approval predates drain')
@@ -620,7 +625,8 @@ class RuntimeObservation:
         build_fields={'format','capacityProfile','nextBuildId','buildRecordId','buildSourcePath','runtime','provenanceSha256','archiveSha256','archiveBytes','manifestSha256','preparedSha256','successfulObservationSha256','lockSha256','packageSha256'}
         b.check(set(g)==grant_fields and set(g.get('build',{}))==build_fields and set(g.get('artifact',{}))=={'digest','id'},'closed original CI grant selection shape required; native status owns full validation')
         b.check(first['gate']=={k:g[k] for k in gate_fields},'later CI grant differs from the original pre-drain full-gate/build provenance tuple')
-        b.check(set(a['launch'])=={'current','processStartTicks','cmdlineSha256'} and set(a['launch']['current'])=={'ref','pid','log','started_at','phase','build_id','built_at'},'closed original launch identity required')
+        launch_fields={'current'} if self.late else {'current','processStartTicks','cmdlineSha256'}
+        b.check(set(a['launch'])==launch_fields and set(a['launch']['current'])=={'ref','pid','log','started_at','phase','build_id','built_at'},'closed original launch identity required')
         b.check(set(a['readiness'])=={'required','waitSeconds'} and a['readiness']['required']=='1' and a['readiness']['waitSeconds'] in (None,'600'),'source-bound REQUIRED1 and WAIT unset/exact600 policy required')
         b.check(set(a['ledger'])=={'format','kind','rows','expectedSha256','actualSha256','releaseAuthorized'} and a['ledger']['format']==1 and a['ledger']['releaseAuthorized'] is False,'closed full-ledger identity required')
         b.check(g.get('kind') == 'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL' and g.get('format') == 2 and
@@ -633,6 +639,7 @@ class RuntimeObservation:
                 'original CI grant and administrator/drain pins differ')
         if self.recovery is None:
             b.check(time.time() < epoch(g['expiresAt']) and epoch(a['expiresAt']) <= epoch(g['expiresAt']), 'original CI grant expired or operation exceeds it')
+        elif self.late:LATE.check_history(self,first)
         else:RECOVERY.check_history(self)
         b.check(sha(b.read_bounded(SOURCE/'.env.production',1024**2)) == a['dotenvSha256'] and
                 sha(b.read_bounded(self.base.ENV,1024**2)) == self.args.worker_env_sha256, 'web/worker private environment changed')
@@ -893,6 +900,7 @@ class RuntimeObservation:
         return {'records':records,'members':sorted(names),'removed':sorted(self.cleaned)}
 
     def snapshot(self):
+        if self.late:return LATE.failed_snapshot(self)
         if self.recovery is not None:return RECOVERY.failed_snapshot(self)
         b,a=self.base,self.auth
         for _ in range(8):
@@ -1090,7 +1098,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime') and self.fence_count==4 else 20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime','activate-late-ci-worker') and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -1155,6 +1163,7 @@ class RuntimeObservation:
         return {'R0':0,'R1':1,'O':2} if self.recovery is None else {'F':0}
 
     def admit_mutation(self):
+        if self.late:return LATE.admit_mutation(self)
         if self.recovery is not None:return RECOVERY.admit_mutation(self)
         b=self.base;now=time.time()
         original=json.loads(b.read_bounded(self.directory/'runtime.json',1024**2))
@@ -1174,7 +1183,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {'mode':'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
+        return {'mode':'activate-late-ci-worker' if self.late else 'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':LATE.POLICY if self.late else POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
