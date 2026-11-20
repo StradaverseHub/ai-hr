@@ -59,7 +59,9 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(env.AIHR_BROWSER_REGISTER_CONTROL==='true'&&{
-  verifiedBuildArtifact:{runId:44777355527,artifactId:14652085114,sourceSha:'92273f929d60cb66210dd40e225c48f9eea517f7'},
+  verifiedBuildArtifact:sha==='92273f929d60cb66210dd40e225c48f9eea517f7'
+   ?{runId:44777355527,artifactId:14652085114,sourceSha:sha}
+   :{runId:44779370719,artifactId:14652755872,sourceSha:sha},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -597,7 +599,7 @@ async function measureRegisterPrefetch(fixture){
  browser=await require('playwright').chromium.launch();
  const actor=fixture.users[0],path='/admin/personnel',profilePath=/^\/admin\/personnel\/[0-9a-f-]{36}$/;
  assert.equal(actor.role,'groupHR');
- const profileSelector='main tbody a:not([aria-hidden])[href^="/admin/personnel/"]:not([href*="?"])';
+ const profileSelector='main tbody a:not([aria-hidden])[href^="/admin/personnel/"][href$="?from=personnel"]';
  const idleWindowMs=1200,focusedWindowMs=800;
  const visits=report.intentRegisterTraffic={idleWindowMs,focusedWindowMs,observations:[]};
  for(const flow of ['profile','pager'])for(let attempt=1;attempt<=3;attempt++){
@@ -627,7 +629,7 @@ async function measureRegisterPrefetch(fixture){
    const firstProfile=page.locator(profileSelector).first();
    await firstProfile.waitFor({state:'visible',timeout:20000});
    const originalProfile=await firstProfile.getAttribute('href');
-   assert(profilePath.test(originalProfile??''));
+   assert(originalProfile&&profilePath.test(new URL(originalProfile,origin).pathname));
    const target=flow==='profile'?firstProfile:page.locator('main [data-ui-pager] a[href*="page=1"]').first();
    await target.scrollIntoViewIfNeeded({timeout:10000});
    const href=await target.getAttribute('href');

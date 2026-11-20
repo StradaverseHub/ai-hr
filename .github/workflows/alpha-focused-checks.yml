@@ -73,7 +73,7 @@ on:
         default: ''
         type: string
       reuse_register_control_build:
-        description: Use the exact parent build as the Personnel register comparison control
+        description: Use a pinned exact build for the Personnel register comparison
         default: false
         type: boolean
       browser_static_shard:
@@ -155,7 +155,7 @@ jobs:
           fi
           if [[ "$REUSE_REGISTER_CONTROL" == true ]] && {
             [[ "$BROWSER_SURFACE_PROBE" != intent-register || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 92273f929d60cb66210dd40e225c48f9eea517f7 ]];
+            [[ "$EXPECTED_SHA" != 92273f929d60cb66210dd40e225c48f9eea517f7 && "$EXPECTED_SHA" != 2be2dab9337045bf88d93dbe9d25065a4f8b7165 ]];
           }; then
             exit 2
           fi
@@ -256,20 +256,26 @@ jobs:
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned Personnel register control build
+      - name: Retrieve the pinned Personnel register build
         if: ${{ inputs.reuse_register_control_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 92273f929d60cb66210dd40e225c48f9eea517f7
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136430860555 --jq '
-            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44777355527 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          case "$AIHR_CI_HEAD" in
+            92273f929d60cb66210dd40e225c48f9eea517f7)
+              job=136430860555 run=44777355527 artifact=14652085114
+              controller=1b366cab7ad279105a5d9a771ce80024cac873cd digest=f636556ceb381d551a03a725db93ac821c140c05739cf4a3b10080d4b3bdf059 ;;
+            2be2dab9337045bf88d93dbe9d25065a4f8b7165)
+              job=136437903140 run=44779370719 artifact=14652755872
+              controller=a16564b865b110bd95c8bac2e84def81772cb859 digest=1b8a4725254758e8fbed916a0a5e7476213dcde7b97e81a70bd63e89622890be ;;
+            *) exit 2 ;;
+          esac
+          test "$(gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job" --jq '[.conclusion,.run_attempt,.name,.run_id,.head_sha] | @tsv')" = "$(printf 'success\t1\tlinux-build\t%s\t%s' "$run" "$controller")"
           archive="$(mktemp "$RUNNER_TEMP/register-control-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14652085114/zip > "$archive"
-          printf '%s  %s\n' 'f636556ceb381d551a03a725db93ac821c140c05739cf4a3b10080d4b3bdf059' "$archive" | sha256sum -c -
+          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact/zip" > "$archive"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
