@@ -64,10 +64,14 @@ it.each(['without-effective-date','without-end-date'] as const)('replays a genui
 
 it('keeps a later Direct Superior removal intact when the Contract approver posts an earlier renewal',async()=>{
  const target=addCalendarMonths(todayInKualaLumpur().slice(0,7)+'-01',-1);
- const f=await contractPostingFixture({endOn:addDaysIso(target,-1),beforeAdopt:async({admin,employee})=>{
-  await createMovementEvent(admin,{employmentId:employee.employmentId,kind:'reportingLineChange',
-    effectiveDate:addDaysIso(target,1),managerEmploymentId:null,remarks:'Fictional dated reporting change'});
- }});
+ const f=await contractPostingFixture({endOn:addDaysIso(target,-1)});
+ const posting=await releaseContractPosting(f);
+ const queued=await approveContractSharedPosting(f.approver,{id:posting.id,revision:posting.revision});
+ if(queued.postingStatus!=='pending')throw Error('The genuine first approval must queue.');
+ // The proposer needs the initial reporting relationship to adopt and release the case.
+ // Record the later dated decision before the native posting worker reads employment history.
+ await createMovementEvent(f.admin,{employmentId:f.employee.employmentId,kind:'reportingLineChange',
+   effectiveDate:addDaysIso(target,1),managerEmploymentId:null,remarks:'Fictional dated reporting change'});
  const [rights]=await withTenant(f.approver,tx=>tx.execute<{maintain:boolean}>(
   sql`select app.access_workforce_employment(${f.employee.employmentId}::uuid,'workforce.maintain') as maintain`));
  expect(rights.maintain).toBe(false);
@@ -83,9 +87,6 @@ it('keeps a later Direct Superior removal intact when the Contract approver post
  const before=await reportingFacts();
  expect(before.lines).toEqual(expect.arrayContaining([expect.objectContaining({valid_to:addDaysIso(target,1)})]));
  expect(before.events).toEqual(expect.arrayContaining([expect.objectContaining({event_type:'reporting-line.ended'})]));
- const posting=await releaseContractPosting(f);
- const queued=await approveContractSharedPosting(f.approver,{id:posting.id,revision:posting.revision});
- if(queued.postingStatus!=='pending')throw Error('The genuine first approval must queue.');
  await finishContractPostingJob(queued.jobId,f.approver,'contract_posting_apply');
  expect(await readContractSharedPostingApprovalJob(f.approver,queued.jobId))
   .toMatchObject({jobState:'completed',postingStatus:'approved',applicationState:'applied'});
