@@ -1,6 +1,7 @@
 import React from 'react';
 import {beforeEach,expect,it,vi} from 'vitest';
-import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {fireEvent,render} from '@testing-library/react';
+import {renderToReadableStream} from 'react-dom/server';
 import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const state=vi.hoisted(()=>({window:vi.fn(),count:vi.fn()}));
@@ -25,27 +26,41 @@ beforeEach(()=>{
 });
 async function page(query:Record<string,string>){return <NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve(query)})}</NextIntlClientProvider>;}
 
-it('renders the grid and scoped Exceptions link while the count is pending',async()=>{
+it('streams the grid and scoped Exceptions link before the count resolves',async()=>{
  let finish!:(value:number)=>void;
  state.count.mockReturnValueOnce(new Promise<number>(resolve=>{finish=resolve;}));
- render(await page({month:'2026-11'}));
- expect(screen.getByTestId('roster-grid')).toBeVisible();
- const link=screen.getByRole('link',{name:en.roster.exceptionsTitle});
- expect(link.querySelector('[data-roster-exception-count]')).toHaveAttribute('data-roster-exception-count','pending');
- const href=link.getAttribute('href');
- expect(href).toContain('/roster/exceptions?view=month&month=2026-11');
- expect(state.count).toHaveBeenCalledWith({},expect.objectContaining({companyIds:['company'],from:'2026-11-01',to:'2026-11-30'}));
- await act(async()=>{finish(7);});
- expect(await screen.findByRole('link',{name:'Exceptions (7)'})).toHaveAttribute('href',href);
+ const stream=await renderToReadableStream(await page({month:'2026-11'}));
+ const reader=stream.getReader();
+ const decoder=new TextDecoder();
+ let shell='';
+ try {
+  while (!shell.includes('data-testid="roster-grid"') || !shell.includes('data-roster-exception-count="pending"')) {
+   const chunk=await reader.read();
+   if (chunk.done) break;
+   shell+=decoder.decode(chunk.value,{stream:true});
+  }
+  expect(shell).toContain('data-testid="roster-grid"');
+  expect(shell).toContain('data-roster-exception-count="pending"');
+  expect(shell).toContain('/roster/exceptions?view=month&amp;month=2026-11');
+  expect(state.count).toHaveBeenCalledWith({},expect.objectContaining({companyIds:['company'],from:'2026-11-01',to:'2026-11-30'}));
+ } finally {
+  finish(7);
+ }
+ let remainder='';
+ for (let chunk=await reader.read(); !chunk.done; chunk=await reader.read()) {
+  remainder+=decoder.decode(chunk.value,{stream:true});
+ }
+ remainder+=decoder.decode();
+ expect(remainder).toContain('data-roster-exception-count="ready">Exceptions (7)</span>');
 });
 
 it('keeps the exception link usable when its count cannot be read',async()=>{
  state.count.mockRejectedValueOnce(Error('Fictional count failure'));
- const view=render(await page({month:'2026-11'}));
- expect(screen.getByTestId('roster-grid')).toBeVisible();
- const link=await screen.findByRole('link',{name:en.roster.exceptionsTitle});
- expect(link).toHaveAttribute('href',expect.stringContaining('/roster/exceptions?'));
- await waitFor(()=>expect(view.container.querySelector('[data-roster-exception-count="unavailable"]')).toBeVisible());
+ const stream=await renderToReadableStream(await page({month:'2026-11'}));
+ const html=await new Response(stream).text();
+ expect(html).toContain('data-testid="roster-grid"');
+ expect(html).toContain('/roster/exceptions?view=month&amp;month=2026-11');
+ expect(html).toContain(`data-roster-exception-count="unavailable">${en.roster.exceptionsTitle}</span>`);
 });
 it.each([
  [{view:'month',month:'2026-10'},{view:'month',month:'2026-11'},'month','2026-11'],
