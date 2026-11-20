@@ -39,6 +39,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, Card, inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
+import { useClientReady } from '@/components/use-client-ready';
 import { personnelInput, personnelControl, personnelDisplay } from '@/lib/personnel-form-contract';
 import { missingToCreate } from '@/lib/employee-draft-schema';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from '@/lib/employee-id-mode';
@@ -79,6 +80,7 @@ export function CreateEmployeeFields({
   /** The application the draft is linked back to once it exists (the action re-checks it on the server). */
   recruitmentApplicationId?: string;
 }) {
+  const interactive = useClientReady();
   const t = useTranslations('people.wizard');
   const [companyId, setCompanyId] = useState(initial?.companyId ?? '');
   const [employeeIdMode, setEmployeeIdMode] = useState<string | undefined>(undefined);
@@ -162,7 +164,7 @@ export function CreateEmployeeFields({
   const fields = (
     <>
       <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="create" context={{selectCompany:true}}  >
-        <select {...personnelControl('employment.organisation_assignment.companyname', 'draft')} className={inputCls} value={companyId} onChange={(e) => chooseCompany(e.target.value)}>
+        <select {...personnelControl('employment.organisation_assignment.companyname', 'draft')} className={inputCls} value={companyId} disabled={!interactive} onChange={(e) => chooseCompany(e.target.value)}>
           <option value="">{t('selectPrompt')}</option>
           {companies.map((c) => (
             <option key={c.id} value={c.id}>
@@ -295,13 +297,14 @@ export function CreateEmployeeFields({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <PersonnelField fieldId="profile.personal_details.fullname" mode="create"  >
-          <input {...personnelInput('profile.personal_details.fullname', 'draft')} className={inputCls} value={fullName} onChange={(e) => setFullName(e.target.value)} />
+          <input {...personnelInput('profile.personal_details.fullname', 'draft')} className={inputCls} value={fullName} disabled={!interactive} onChange={(e) => setFullName(e.target.value)} />
         </PersonnelField>
         <PersonnelField fieldId="profile.contact_and_permanent_address.primaryemail" mode="create"  >
           <input {...personnelInput('profile.contact_and_permanent_address.primaryemail', 'draft')}
 
             className={inputCls}
             value={primaryEmail}
+            disabled={!interactive}
             onChange={(e) => setPrimaryEmail(e.target.value)}
           />
         </PersonnelField>
@@ -320,7 +323,7 @@ export function CreateEmployeeFields({
       {framed ? <Card className="space-y-4 p-5">{fields}</Card> : <div className="space-y-4">{fields}</div>}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button aria-busy={pending} onClick={create} disabled={pending || outstanding.length > 0}>
+        <Button aria-busy={pending} onClick={create} disabled={!interactive || pending || outstanding.length > 0}>
           {pending ? t('creating') : t('createDraft')}
         </Button>
         {onCancel && (

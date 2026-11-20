@@ -29,7 +29,9 @@
  * dev-server render check.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
@@ -75,6 +77,7 @@ vi.mock('../app/admin/personnel/new/actions', () => ({
   checkEmployeeCodeAction: (...a: unknown[]) => checkEmployeeCodeAction(...(a as [string])),
 }));
 
+const { CreateEmployeeFields } = await import('../app/admin/personnel/new/create-form');
 const { CreateEmployeeDialog } = await import('../app/admin/personnel/create-employee-dialog');
 
 const rule = (over: Partial<EmployeeIdRule> = {}): EmployeeIdRule => ({
@@ -128,6 +131,29 @@ beforeEach(() => {
   refresh.mockClear();
   createDraftAction.mockClear();
   checkEmployeeCodeAction.mockClear();
+});
+
+it('applies the company selection to the Personnel create form after hydration', async () => {
+  const tree = <NextIntlClientProvider locale="en" messages={messages}>
+    <CreateEmployeeFields companies={COMPANIES} employeeIdRules={{}} onCreated={() => {}} />
+  </NextIntlClientProvider>;
+  const host = document.createElement('div');
+  host.innerHTML = renderToString(tree);
+  document.body.append(host);
+  let root: ReturnType<typeof hydrateRoot> | undefined;
+  try {
+    expect(within(host).getByRole('combobox')).toBeDisabled();
+    await act(async () => { root = hydrateRoot(host, tree); });
+    const company = within(host).getByRole('combobox');
+    expect(company).toBeEnabled();
+    await userEvent.selectOptions(company, 'co-1');
+    const employeeId = host.querySelector<HTMLInputElement>('input[data-personnel-field="profile.personal_details.employeecode"]');
+    expect(employeeId).toBeEnabled();
+    expect(employeeId).not.toHaveAttribute('readonly');
+  } finally {
+    await act(async () => root?.unmount());
+    host.remove();
+  }
 });
 
 describe('the prompt replaces the separate full screen', () => {
