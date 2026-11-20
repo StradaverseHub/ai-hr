@@ -18,7 +18,8 @@ import {actorOf, appendEvent} from '../db/events';
 import {adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base} from './harness';
 import {isDatabaseCapacityFailure} from '../db/read-retry';
 import {poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
-import {ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections} from '../core/account-task-bundle';
+import {ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections, readAccountTaskBundle} from '../core/account-task-bundle';
+import {assignRole, revokeRole} from '../core/admin';
 import {createClaimType} from '../packs/claims/service';
 import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 
@@ -260,6 +261,57 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       };
     } finally {
       await Promise.all(lanes.map(lane => lane.client.client.end({timeout: 5})));
+    }
+
+    // Change a real role while the server retains the same prepared statement.
+    const scoped = fixture.personas.single;
+    const [grant] = await owner.client<{id: string}[]>`
+      select id from role_assignment
+      where app_user_id = ${scoped.userId!}::uuid and tenant_id = ${scoped.tenantId}::uuid
+        and role = 'hr_admin' and company_id = ${fixture.singleCompanyId}::uuid
+    `;
+    expect(grant?.id).toBeTruthy();
+    await assignRole(fixture.personas.group, {appUserId: scoped.userId!, role: 'employee'});
+    const employeeGrant = {role: 'employee', companyId: null} as const;
+    const stale = {...scoped, roles: ['hr_admin', 'employee'], grants: [...scoped.grants!, employeeGrant]};
+    const fresh = {...scoped, roles: ['employee'], grants: [employeeGrant]};
+    const pool = appPool(shortWait ?? target!, 1);
+    const rollback = new Error('fictional prepared read rollback');
+    try {
+      const inspect = (session: SessionContext, abort = false) => pool.withTenant(session, async tx => {
+        const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, read), session);
+        const query = dialect.sqlToQuery(statement);
+        const text = '/* fixture-task-plan-revocation */ ' + query.sql;
+        const [before] = await tx.execute<{pid: number; mode: string; uses: number}>(sql`
+          select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode,
+            coalesce(sum(generic_plans), 0)::int as uses from pg_prepared_statements where statement = ${text}
+        `);
+        expect(before.mode).toBe('auto');
+        const expected = [...await tx.execute<TaskRow>(statement)];
+        await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        const params = query.params as postgres.ParameterOrJSON<never>[];
+        const rows = [...await connection.unsafe<TaskRow[]>(text, params, {prepare: true})];
+        expect(rows).toEqual(expected);
+        if (abort) throw rollback;
+        return {backend: before.pid, previousUses: before.uses, row: rows[0]};
+      }, {readOnlySnapshot: true});
+
+      const beforeRevocation = await inspect(stale);
+      expect(beforeRevocation.row.principal).toBe(true);
+      expect(beforeRevocation.row.claims.total).toBe(samples[1].claimTotal);
+      await expect(inspect(stale, true)).rejects.toBe(rollback);
+      await revokeRole(fixture.personas.group, {roleAssignmentId: grant.id});
+      const afterRevocation = await inspect(stale);
+      expect(afterRevocation.backend).toBe(beforeRevocation.backend);
+      expect(afterRevocation.previousUses).toBe(beforeRevocation.previousUses + 2);
+      expect(afterRevocation.row.principal).toBe(false);
+      await expect(readAccountTaskBundle(stale, modules, read)).resolves.toBeNull();
+      const refreshed = await inspect(fresh);
+      expect(refreshed.row.principal).toBe(true);
+      expect(refreshed.row.claims.total).toBe(0);
+    } finally {
+      await pool.client.end({timeout: 5});
     }
 
     const evidence = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
