@@ -147,7 +147,7 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|offboarding-shell)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
@@ -161,9 +161,10 @@ jobs:
             printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
           fi
           if [[ "$REUSE_ROSTER_BUILD" == true ]] && {
-            [[ "$BROWSER_SURFACE_PROBE" != roster || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(roster|offboarding-shell)$ || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
             [[ "$EXPECTED_SHA" != 140acdfa4a2f3537e94b2df34a35a92a37bd026a ]];
           }; then exit 2; fi
+          if [[ "$BROWSER_SURFACE_PROBE" == offboarding-shell && "$REUSE_ROSTER_BUILD" != true ]]; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}

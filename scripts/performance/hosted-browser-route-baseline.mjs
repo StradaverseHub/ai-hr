@@ -22,6 +22,7 @@ import {exerciseMovement} from './movement-browser.mjs';
 import {prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
+import {PROJECT_INSTALLED_OWNERSHIP} from '../../test/helpers/installed-owner-projection.ts';
 import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
 import {measureApprovalsLeaveBrowser,seedApprovalsLeaveBrowserFixture} from './approvals-leave-browser.mjs';
 
@@ -31,7 +32,8 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster'].includes(surfaceProbe),'Unknown browser surface');
+const offboardingComparison=surfaceProbe==='offboarding-shell';
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','offboarding-shell'].includes(surfaceProbe),'Unknown browser surface');
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -43,7 +45,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!['leave-inbox','roster','offboarding-shell'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -78,7 +80,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
 const pgEnv={...env,AIHR_CI_UNIT:'db-1',
- ...(surfaceProbe==='roster'&&{AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'roster-browser-profile'})};
+ ...((surfaceProbe==='roster'||offboardingComparison)&&{AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'roster-browser-profile'})};
 
 function start(label,command,args,childEnv) {
  const fd=openSync(join(privateDir,label+'.log'),'wx',0o600);
@@ -1718,6 +1720,7 @@ async function rosterStatementSnapshot(db){
    when query ~* 'app[.]principal_snapshot_current[(]' then 'principal-snapshot-proof'
    when query ~* 'app[.]principal_by_identity[(]' then 'authenticated-identity'
    when query ~* 'app[.]principal[(]' then 'authenticated-principal'
+   when query ~* 'app[.]offboarding_posting_queue_access[(]' then 'offboarding-queue-access'
    when query ~* 'app[.]login_blocked[(]' then 'login-state'
    when query ~* 'app[.]access_workforce_(company|employment)[(]' then 'workforce-access'
    when query ~* 'app[.]access_workforce_(write|read)_lock[(]|pg_advisory_xact_lock' then 'access-lock'
@@ -1783,10 +1786,11 @@ function countRosterRequests(request,counts){
  else if(headers.rsc==='1'||url.searchParams.has('_rsc'))counts.otherFlight++;
 }
 
-async function measureFocusedRoster(fixture){
+async function measureFocusedRoster(fixture,variant){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
- report.rosterStartup=[];
+ report.rosterStartup??=[];
+ const startingCount=report.rosterStartup.length;
  const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,
   connection:{default_transaction_read_only:'on',statement_timeout:'8s'}});
  try{
@@ -1802,6 +1806,7 @@ async function measureFocusedRoster(fixture){
     const page=await context.newPage();
     for(const pass of ['first','repeat-1','repeat-2']){
      const row={role:user.role,pass,status:'incomplete'};
+     if(variant)row.variant=variant;
      report.rosterStartup.push(row);
      const before=await rosterStatementSnapshot(db);
      const counts={documents:0,exceptionPrefetch:0,otherPrefetch:0,otherFlight:0};
@@ -1827,7 +1832,55 @@ async function measureFocusedRoster(fixture){
    }finally{await context.close();}
   }
  }finally{await db.end({timeout:5});}
- assert.equal(report.rosterStartup.length,6);
+ const visits=report.rosterStartup.slice(startingCount);
+ assert.equal(visits.length,6);
+ if(variant)assert(visits.every(row=>row.status==='observed'&&row.databaseWork.some(
+  statement=>statement.category==='offboarding-queue-access'&&statement.calls>0)),
+ 'The Offboarding permission check must be observed in each usable Roster open');
+}
+
+async function compareOffboardingShell(fixture){
+ assert.equal(sha,'140acdfa4a2f3537e94b2df34a35a92a37bd026a');
+ assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{statement_timeout:'90s',lock_timeout:'3s'}});
+ const replacement=readFileSync(new URL('../../test/fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
+ const readFunction=async sql=>{
+  const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition
+   from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure`;
+  return row;
+ };
+ try{
+  await owner.begin(async tx=>{
+   const [{exists}]=await tx`select exists(select 1 from pg_roles where rolname='ai_hr_owner')`;
+   if(!exists)await tx.unsafe('create role ai_hr_owner nologin nosuperuser nobypassrls nocreatedb nocreaterole noreplication');
+   const [role]=await tx`select rolsuper,rolbypassrls from pg_roles where rolname='ai_hr_owner'`;
+   assert(role&&!role.rolsuper&&!role.rolbypassrls,'Expected the restricted fictional owner');
+   const current=await readFunction(tx);
+   if(current.owner==='postgres')await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+   assert.equal((await readFunction(tx)).owner,'ai_hr_owner');
+  });
+  const {definition:original,...boundary}=await readFunction(owner);
+  const install=statement=>owner.begin(async tx=>{
+   await tx.unsafe('set local role ai_hr_owner');
+   await tx.unsafe(statement);
+   const {definition,...observed}=await readFunction(tx);
+   assert.deepEqual(observed,boundary);
+   return definition;
+  });
+  await measureFocusedRoster(fixture,'control');
+  const changed=await install(replacement);
+  try{
+   assert.notEqual(changed,original);
+   await measureFocusedRoster(fixture,'replacement');
+  }finally{
+   assert.equal(await install(original),original);
+  }
+  await measureFocusedRoster(fixture,'restored-control');
+  report.offboardingComparisonRestored=true;
+  save();
+ }finally{await owner.end({timeout:5});}
 }
 
 async function measureCalendarMonth({page,user,fixture,report,save}){
@@ -2135,6 +2188,7 @@ try{
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(offboardingComparison)await compareOffboardingShell(fixture);
   else if(surfaceProbe==='leave-inbox'){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
