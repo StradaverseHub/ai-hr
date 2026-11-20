@@ -4125,10 +4125,14 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
     where tenant_id=${ctx.tenantId}::uuid and status='pending'
    ), subjects as materialized (
     select distinct employment_id from visible_requests
+   ), numbered_subjects as (
+    select employment_id,(row_number() over(order by employment_id)-1)/1000 as bucket from subjects
+   ), subject_batches as (
+    select array_agg(employment_id order by employment_id) as ids from numbered_subjects group by bucket
    ), labels as materialized (
-    select subject.employment_id, approval_subject.person_id, approval_subject.employee
-    from subjects subject
-    join lateral app.delegated_approval_subject(subject.employment_id,'claims','claims.claim') approval_subject on true
+    select approval_subject.employment_id, approval_subject.person_id, approval_subject.employee
+    from subject_batches batch
+    cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
     where not app.is_self_person(approval_subject.person_id)
       and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id=any(array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
    )
@@ -4275,16 +4279,20 @@ export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const result:string[]=[],ids=[...new Set(requestIds)];
-  // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
-  // a valid large queue into an exception in the shared application header.
+  const ids=[...new Set(requestIds)],pendingByEmployment=new Map<string,string[]>();
+  // Recheck each request under the same native RLS and pending predicate. Bound SQL parameter
+  // batches, then check authority once per distinct current subject in this transaction.
   for(let offset=0;offset<ids.length;offset+=1000){
    const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
-    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-   const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,rows.map(row=>row.employmentId),scopeOf('claims.claim'));
-   for(const row of rows)if(allowed.has(row.employmentId))result.push(row.id);
+    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending')));
+   for(const row of rows){
+    const group=pendingByEmployment.get(row.employmentId);
+    if(group)group.push(row.id);
+    else pendingByEmployment.set(row.employmentId,[row.id]);
+   }
   }
-  return result.sort();
+  const {allowed}=await decisionEmploymentAuthorityTx(tx,ctx,[...pendingByEmployment.keys()],scopeOf('claims.claim'));
+  return [...pendingByEmployment].flatMap(([employmentId,pendingIds])=>allowed.has(employmentId)?pendingIds:[]).sort();
  });
 }
 
