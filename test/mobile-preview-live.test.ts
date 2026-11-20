@@ -6,6 +6,8 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
+import { listPendingTasks } from '../core/approvals-inbox';
+import { createClaimType } from '../packs/claims/service';
 import { myEmployments, listLeaveRequestsPage } from '../core/read';
 import { myLeaveDashboard } from '../core/my-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -94,6 +96,33 @@ describe('Mobile App Preview uses the viewer’s authorized records', () => {
     expect((await loadMobilePreview(stranger.ctx, [b.companyId], 'en')).team.status).toBe('disabled');
     await owner.db.update(schema.reportingLine).set({ validTo: today }).where(eq(schema.reportingLine.subordinateEmploymentId, report.employmentId));
     expect((await loadMobilePreview(manager.ctx, [b.companyId], 'en')).team).toEqual({ status: 'ready', data: [] });
+  });
+
+  it('keeps the exact assigned-task total and sends only the newest 20 task headers', async () => {
+    await setModule(b.tenantId, 'claims', 'active');
+    const approver = await hire('Assigned Review Owner', b, 'hr_admin');
+    const subject = await hire('Assigned Claim Subject');
+    const claimType = await createClaimType(adminCtx(b), {
+      code: 'MOBILE_PROOF', name: 'Fictional mobile preview claim', requiresReceipt: false, defaultTaxable: false,
+    });
+    await owner.db.insert(schema.claimRequest).values(Array.from({ length: 45 }, (_, index) => ({
+      tenantId: b.tenantId, employmentId: subject.employmentId, claimTypeId: claimType.id, status: 'pending',
+      amount: '467.31', incurredOn: today, description: 'Private fictional claim description',
+      createdAt: new Date(Date.UTC(2025, 0, 1, 0, index)),
+    })));
+    const full = await listPendingTasks(approver.ctx, [b.companyId], {
+      attendance: false, claims: true, performance: false, rewards: false, probation: false,
+    }, { noticeAcknowledgements: false });
+    expect(full).toHaveLength(45);
+    const view = await loadMobilePreview(approver.ctx, [b.companyId], 'en');
+    expect(view.tasks).toEqual({ status: 'ready', data: {
+      total: 45, items: full.slice(0, 20).map(task => ({
+        id: task.id, kind: task.kind, subject: task.subjectName, href: task.linkPath,
+      })),
+    } });
+    expect(JSON.stringify(view.tasks)).not.toMatch(/467\.31|Private fictional claim description/);
+    const emptyScope = await loadMobilePreview(approver.ctx, [], 'en');
+    expect(emptyScope.tasks).toEqual({ status: 'ready', data: { items: [], total: 0 } });
   });
 
   it('has no fictional employee fallback and distinguishes unavailable reads from zero balances', async () => {
