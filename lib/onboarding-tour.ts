@@ -6,7 +6,7 @@
  * real controls there. Steps are data: a `data-tour` anchor (or null for a centered card), translated keys
  * or explicitly English guide copy, a placement, an optional role filter, and an optional `route` to
  * navigate to before the step shows.
- * The server resolves each tour for the caller's roles and hands the set to the client tour component.
+ * The server selects one role-filtered walkthrough when a tour starts.
  */
 export type TourPlacement = 'center' | 'top' | 'bottom' | 'left' | 'right';
 
@@ -29,18 +29,8 @@ export type TourStep = TourStepBase & (
 
 export type Tour = { id: string; steps: TourStep[] };
 
-export const WELCOME_TOUR_ID = 'welcome';
-
-/**
- * The window event that (re)starts a tour (`detail.tourId` selects which one). It lives HERE, in the leaf data module, and not on the tour
- * COMPONENT that listens for it — r256, and the reason is a real import edge: every launcher that
- * dispatches it (components/tour-launcher.tsx, components/guide-tour-button.tsx) had to import
- * components/onboarding-tour.tsx for one string, which drags in `@/app/onboarding-actions` — a server
- * action, so `lib/session` → `db/client` → postgres. Harmless while only the shell used it; the moment
- * the account menu did, a component test importing the menu was importing a database driver (and in a
- * real browser, dying on `Buffer is not defined`). A shared constant belongs below both sides.
- */
-export const START_TOUR_EVENT = 'aihr:start-tour';
+import { WELCOME_TOUR_ID } from './onboarding-tour-events';
+export { START_TOUR_EVENT, WELCOME_TOUR_ID } from './onboarding-tour-events';
 
 const MANAGER_UP = ['manager', 'hr_admin', 'super_admin'];
 const ADMIN = ['hr_admin', 'super_admin'];
@@ -68,9 +58,9 @@ export const TOURS: Record<string, Tour> = {
 
 /** Steps for one tour, filtered to the caller's roles. */
 export function tourSteps(tourId: string, roles: string[] | undefined): TourStep[] {
+  if (!Object.hasOwn(TOURS, tourId)) return [];
   const have = new Set(roles ?? []);
   const tour = TOURS[tourId];
-  if (!tour) return [];
   return tour.steps.filter((s) => !s.roles || s.roles.some((r) => have.has(r)));
 }
 

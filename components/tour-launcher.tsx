@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl';
 import { HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { START_TOUR_EVENT } from '@/lib/onboarding-tour';
+import { START_TOUR_EVENT } from '@/lib/onboarding-tour-events';
 
 /**
  * Help control: (re)starts the onboarding tour from anywhere.
