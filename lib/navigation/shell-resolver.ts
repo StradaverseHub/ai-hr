@@ -78,11 +78,6 @@ export type ShellNavigationFacts = {
   onboardingRequisitionsAccess?: boolean;
 };
 
-export type ShellLifecycleFacts = Pick<ShellNavigationFacts,
-  'probationAccess' | 'contractStaffAccess' | 'offboardingPostingsAccess' | 'onboardingAccess'
-  | 'onboardingV9Access' | 'onboardingV9Navigation' | 'onboardingMaster' | 'onboardingRequisitionsAccess'
-> & { onboardingJoinerCount?: number; onboardingChecklistCount?: number };
-
 export type ShellNavigationResolution = {
   destinations: ChildItem[];
   lifecycleNavigation: ChildItem[];

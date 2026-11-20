@@ -231,31 +231,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  // Resolve optional navigation through the same owners without holding the first page frame.
-  const scopedLifecycleNavigation = withBackgroundReadWork(session.tenantId, () => lifecycleModuleNavigation(session))
-    .catch(() => ({
-      probation: { page: false, configure: false, intake: false, access: false },
-      contractStaff: { page: false, configure: false, intake: false, automation: false, postings: false },
-    }));
-  const legacyLifecycleNavigation = lifecycleEnabled
-    ? withBackgroundReadWork(session.tenantId, () => Promise.all([
-      onboardingNavigation(session).catch(() => null),
-      offboardingPostingAccess(session).catch(() => false),
-    ])).catch(() => [null, false] as const)
-    : Promise.resolve([null, false] as const);
-  const lifecycleNavigation = Promise.all([legacyLifecycleNavigation, scopedLifecycleNavigation])
-    .then(([[onboarding, offboardingPostingsAccess], scoped]) => ({
-      probationAccess: scoped.probation,
-      contractStaffAccess: scoped.contractStaff,
-      offboardingPostingsAccess,
-      onboardingAccess: onboarding?.module,
-      onboardingV9Access: onboarding?.v9,
-      onboardingV9Navigation: onboarding?.v9Navigation,
-      onboardingJoinerCount: onboarding?.joiners,
-      onboardingChecklistCount: onboarding?.checklists,
-      onboardingMaster: onboarding?.master,
-      onboardingRequisitionsAccess: onboarding?.requisitions,
-    }));
+  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
+    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
+    lifecycleModuleNavigation(session),
+    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+  ]);
+  const onboardingAccess=onboardingNav.module;
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -278,12 +259,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
   // Lifecycle task previews are passive too. Share their result between the bell and rail
   // without making case queries a condition for rendering navigation or the page.
-  // Admission is for runnable database work. Wait for the navigation dependency
-  // before taking an inbox permit.
-  const lifecycleWork = scopedLifecycleNavigation.then(navigation => withBackgroundReadWork(session.tenantId, async () => {
+  const lifecycleWork = withBackgroundReadWork(session.tenantId, async () => {
     const [queue, inbox] = await Promise.all([
       lifecycleEnabled ? onboardingTasks(session) : [],
-      lifecycleModuleInbox(session, navigation),
+      lifecycleModuleInbox(session, scopedLifecycleNavigation),
     ]);
     return {
       tasks: [...queue.map(onboardingNotificationTask), ...inbox.items],
@@ -292,7 +271,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       myTasksCount: queue.length + inbox.myTasksCount,
       approvalCount: inbox.approvalCount,
     };
-  }));
+  });
   const approvals = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
@@ -369,7 +348,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              lifecycleNavigationSource={lifecycleNavigation}
+              onboardingAccess={onboardingAccess}
+              probationAccess={scopedLifecycleNavigation.probation}
+              contractStaffAccess={scopedLifecycleNavigation.contractStaff}
+              offboardingPostingsAccess={offboardingPostingsAccess}
+              onboardingV9Access={onboardingNav.v9}
+              onboardingV9Navigation={onboardingNav.v9Navigation}
+              onboardingJoinerCount={onboardingNav.joiners}
+              onboardingChecklistCount={onboardingNav.checklists}
+              onboardingMaster={onboardingNav.master}
+              onboardingRequisitionsAccess={onboardingNav.requisitions}
               // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array
               // (or null), never the snapshot itself: Sidebar is a client component, and passing the
               // entitlement context would drag the resolver into the client bundle. null means "no
