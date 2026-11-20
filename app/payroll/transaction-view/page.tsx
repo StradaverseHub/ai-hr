@@ -144,6 +144,24 @@ function intParam(v: string | undefined, min: number, max: number): number | und
   return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
 }
 
+type PayrollViewReadPhase = 'scope' | 'employee-options' | 'company-options' | 'catalogue'
+  | 'cycle-options' | 'default-period' | 'history-page' | 'statutory-settings'
+  | 'reprocess-outcomes' | 'recorded-sources' | 'render-ready';
+
+let payrollViewReadSequence = 0;
+
+function payrollViewReadTrace() {
+  const trace = ++payrollViewReadSequence;
+  const requestStarted = performance.now();
+  return (phase: PayrollViewReadPhase, phaseStarted: number) => {
+    console.info('PERF_PAYROLL_TRANSACTION_READ ' + JSON.stringify({
+      trace, phase,
+      startedMs: Math.round(phaseStarted - requestStarted),
+      elapsedMs: Math.round(performance.now() - phaseStarted),
+    }));
+  };
+}
+
 export default async function TransactionViewPage({
   searchParams,
 }: {
@@ -176,7 +194,15 @@ export default async function TransactionViewPage({
     from?: string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
+  const trace = process.env.AIHR_PAYROLL_TRANSACTION_READ_TRACE === 'true' ? payrollViewReadTrace() : null;
+  const pageStarted = trace ? performance.now() : 0;
+  function readPhase<T>(phase: PayrollViewReadPhase, read: () => Promise<T>): Promise<T> {
+    if (!trace) return read();
+    const started = performance.now();
+    return read().finally(() => trace(phase, started));
+  }
+
+  const { s, scopeIds } = await readPhase('scope', scopedAdmin);
   const t = await getTranslations('payroll.transactions');
   const tList = await getTranslations('payroll.list');
   // 6b4ca488 — the Statutory Explanation tab's own namespace, SHARED with /payroll/statutory-detail and
@@ -192,8 +218,8 @@ export default async function TransactionViewPage({
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
   const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
-    readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId}),
-    listCompanies(s),
+    readPhase('employee-options', () => readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId})),
+    readPhase('company-options', () => listCompanies(s)),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
     // 0253dc7c — the tenant's live Pay Item settings, for the Grid tab's statutory-subject columns.
@@ -205,7 +231,7 @@ export default async function TransactionViewPage({
     // 417d4937 — the SAME read now also serves the History tab, because the read-time label repair for
     // record lines needs the catalogue's descriptions on both tabs. It was `tab === 'grid'` only, which
     // is why the repair would have been silently inert on the tab the reporter actually opened.
-    tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
+    tab === 'grid' || tab === 'history' ? readPhase('catalogue', () => listPayComponents(s, { includeArchived: true })) : Promise.resolve([]),
   ]);
   // Full-scope department options and selected identity are independent of the rail's current page.
   const departmentOptions=employeeChoices.allDepartmentOptions;
@@ -223,7 +249,7 @@ export default async function TransactionViewPage({
   const year = intParam(sp.year, 2000, 2100);
   const month = intParam(sp.month, 1, 12);
   const cycles = tab === 'history' || tab === 'grid' || tab === 'statutory'
-    ? await listPayrollCyclesForCompanies(s, companyIds)
+    ? await readPhase('cycle-options', () => listPayrollCyclesForCompanies(s, companyIds))
     : [];
   const payrollCycleId = cycles.find((cycle) => cycle.id === sp.payrollCycleId)?.id;
   const legacyCycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
@@ -244,7 +270,7 @@ export default async function TransactionViewPage({
   }));
   const needsDefaultHistoryPeriod = tab === 'history' && year == null && month == null;
   const historyPeriod = needsDefaultHistoryPeriod
-    ? await latestProcessedPayslipPeriod(s, { companyIds, employmentId, ...cycleFilter })
+    ? await readPhase('default-period', () => latestProcessedPayslipPeriod(s, { companyIds, employmentId, ...cycleFilter }))
     : null;
   const historyYear = historyPeriod ? Number(historyPeriod.slice(0, 4)) : year;
   const historyMonth = historyPeriod ? Number(historyPeriod.slice(5, 7)) : month;
@@ -321,7 +347,7 @@ export default async function TransactionViewPage({
     // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
     // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
     tab === 'history' && (!needsDefaultHistoryPeriod || historyPeriod)
-      ? listProcessedPayslipsAcross(s, { companyIds, year: historyYear, month: historyMonth, employmentId, ...cycleFilter, limit: HISTORY_ROW_CAP + 1 })
+      ? readPhase('history-page', () => listProcessedPayslipsAcross(s, { companyIds, year: historyYear, month: historyMonth, employmentId, ...cycleFilter, limit: HISTORY_ROW_CAP + 1 }))
       : Promise.resolve([]),
     // The selector reads only the run index. The chosen payslip and its workbook share an exact ID.
     tab === 'statutory' && employmentId
@@ -347,7 +373,7 @@ export default async function TransactionViewPage({
   // History tab only; `packFor('MY')` follows the Organization page — the levy is Malaysia-specific.
   const hrdfRegisteredCompanyIds =
     tab === 'history' || tab === 'grid'
-      ? ((await packFor('MY')?.companyStatutory.list(s)) ?? [])
+      ? (await readPhase('statutory-settings', async () => (await packFor('MY')?.companyStatutory.list(s)) ?? []))
           .filter((r) => r.hrdfStatus !== 'not_registered')
           .map((r) => r.companyId)
       : [];
@@ -382,7 +408,7 @@ export default async function TransactionViewPage({
     ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
   ];
   const recordedOutcomes = tab === 'history' && historyBatchIds.length
-    ? await listReprocessEmployeeOutcomes(s, {batchIds:historyBatchIds}) : [];
+    ? await readPhase('reprocess-outcomes', () => listReprocessEmployeeOutcomes(s, {batchIds:historyBatchIds})) : [];
   const byResult = new Map(recordedOutcomes.map(outcome => [`${outcome.batchId}:${outcome.employmentId}`,outcome]));
   // Only outcomes joined to visible, exact-version payslips cross the client boundary.
   const processingOutcomes = Object.fromEntries(shownHistoryRows.flatMap(row => {
@@ -398,11 +424,11 @@ export default async function TransactionViewPage({
   const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];
   const sourceTxnRows =
     tab === 'history' && historyBatchIds.length > 0
-      ? await listPayslipSourceTxns(s, {
+      ? await readPhase('recorded-sources', () => listPayslipSourceTxns(s, {
           companyIds,
           batchIds: historyBatchIds,
           employmentIds: historyEmploymentIds,
-        })
+        }))
       : [];
   // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
   //
@@ -626,6 +652,7 @@ export default async function TransactionViewPage({
     </>
   );
 
+  trace?.('render-ready', pageStarted);
   return (
     // 1372d169 — ONE width rule for the whole screen. 080de5cf gave the Transaction Detail tab the full
     // width and left the other four capped at max-w-6xl (1152px); the reporter came back asking for the
