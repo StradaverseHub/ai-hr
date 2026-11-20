@@ -48,8 +48,8 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,mi
   const unit=validateMixedOriginal({run,jobs,artifacts:missingProof.originalArtifacts},plan);
   const observed=assessment.observations.find(row=>row.id===unit.id);
   assert(failed.has(unit.id)&&observed?.artifact===null&&observed.jobId===MIXED.interruptedJob,'Interrupted unit must remain without an original report');
-  assert(missingProof.proof.freshPlan.controller===MIXED.producerController&&missingProof.proof.expected.after===run.updated_at,'Replacement unit controller or chronology differs');
-  missing={...verifyMissingUnitEvidence({sourcePlan:plan,plan,missing:unit.id,proof:missingProof.proof}),nativePrepull:missingProof.nativePrepull};
+  assert(missingProof.proof.freshPlan.controller===verificationController&&missingProof.proof.expected.after===run.updated_at,'Replacement unit controller or chronology differs');
+  missing={...verifyMissingUnitEvidence({sourcePlan:plan,plan,missing:unit.id,proof:missingProof.proof}),nativePrepull:missingProof.nativePrepull,hostSwap:missingProof.proof.hostSwap};
  }
  assert(Array.isArray(reports)&&reports.length===plan.units.length-(missing?1:0)&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete available original report inventory required');
  const replacements=new Map(),focusedSources=[];
@@ -123,9 +123,9 @@ export function validateExactRecoveryGrantEvidence(evidence,run){
  assert(c.focusedController===c.canonicalAdvance.focusedController&&c.focusedSources.every(f=>f.controller===c.focusedController),'Focused producer differs from audited canonical context');
  const runIds=c.focusedSources.map(f=>f.runId);
  if(c.runId===MIXED.originalRun){
-  assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===MIXED.producerController&&c.missingUnit.source.runId===MIXED.producerUnitRun&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
+  assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===c.verificationController&&c.missingUnit.hostSwap?.cleanupVerified===true&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
   runIds.push(c.missingUnit.source.runId);
-  same(c.history?.previousFailures?.map(entry=>entry.id).sort((a,b)=>a-b),[MIXED.failedFocusedRun,MIXED.refusedUnitRun],'Both previous failed recovery attempts must remain in the certificate');
+  same(c.history?.previousFailures?.map(entry=>entry.id).sort((a,b)=>a-b),[MIXED.failedFocusedRun,MIXED.refusedUnitRun,MIXED.interruptedRecoveryRun],'All previous failed recovery attempts must remain in the certificate');
  }
  assert(c.history?.kind==='AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY'&&c.history.originalRunId===c.runId&&isDeepStrictEqual(c.history.runIds,runIds.sort((a,b)=>a-b)),'Complete exact recovery history required');
  assert(c.verificationDiagnostic?.controller===c.verificationController&&positive(c.verificationDiagnostic.runId)&&c.reviewedController===c.verificationController,'Reviewed verification controller validation missing');
@@ -159,10 +159,10 @@ export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,foc
  const relevant=[...found.values()].filter(r=>r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(sourceRun.updated_at)).sort((a,b)=>a.id-b.id);
  const failures=new Map(previousFailures.map(failure=>[failure.id,failure]));
  assert(failures.size===previousFailures.length,'Duplicate failed recovery observations');
- if(failures.size)assert(sourceRun.id===MIXED.originalRun&&failures.size===2&&failures.has(MIXED.failedFocusedRun)&&failures.has(MIXED.refusedUnitRun),'Only the exact audited recovery failures may be retained');
+ if(failures.size)assert(sourceRun.id===MIXED.originalRun&&failures.size===3&&failures.has(MIXED.failedFocusedRun)&&failures.has(MIXED.refusedUnitRun)&&failures.has(MIXED.interruptedRecoveryRun),'Only the exact audited recovery failures may be retained');
  for(const [id,failure] of failures){
   const row=relevant.find(item=>item.id===id);
-  assert(row&&row.title===failure.title&&row.controller===failure.controller&&row.status==='completed'&&row.conclusion==='failure'&&row.attempt===1&&row.updatedAt===failure.updatedAt,'Previous failed run identity changed');
+  assert(row&&row.title===failure.title&&row.controller===failure.controller&&row.status==='completed'&&row.conclusion===failure.conclusion&&(['failure'].includes(row.conclusion)||id===MIXED.interruptedRecoveryRun&&row.conclusion==='cancelled')&&row.attempt===1&&row.updatedAt===failure.updatedAt,'Previous failed run identity changed');
   assert(!expected.has(id),'Failed attempt cannot supply passing coverage');
  }
  const successes=relevant.filter(row=>!failures.has(row.id));

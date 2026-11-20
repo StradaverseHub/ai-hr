@@ -547,6 +547,11 @@ jobs:
         env: {AIHR_CI_CAPACITY_PROFILE: bounded-suite-ready}
       - run: git rev-parse --verify -q refs/heads/main >/dev/null || git branch main origin/main
       - run: node ../automation/.github/ci/run-unit.mjs "$UNIT" "$RUNNER_TEMP/aihr-ci"
+        if: ${{ inputs.missing_unit == '' }}
+        env: {UNIT: '${{ matrix.unit }}'}
+      - name: Run isolated run-unit.mjs with bounded host swap
+        if: ${{ inputs.missing_unit != '' }}
+        run: bash ../automation/.github/ci/payroll-system-label-host-swap.sh "$UNIT" "$RUNNER_TEMP/aihr-ci" ../automation/.github/ci/run-unit.mjs
         env: {UNIT: '${{ matrix.unit }}'}
       - name: Retain actual PDF setup diagnostics with the unit evidence
         if: always()

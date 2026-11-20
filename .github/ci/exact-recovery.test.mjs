@@ -157,8 +157,9 @@ test('Mixed history records only the known failed attempts and never counts them
  f.sourceRun.id=MIXED.originalRun;
  const focused={...f.rows[0],id:MIXED.failedFocusedRun,display_title:`Focused only · owned-recovery-${MIXED.originalRun}-3`,conclusion:'failure'};
  const refused={...focused,id:MIXED.refusedUnitRun,head_sha:MIXED.refusedController,display_title:`Missing whole unit · ${MIXED.unit} · owned`};
- f.rows.push(focused,refused);
- f.previousFailures=[focused,refused].map(row=>({id:row.id,title:row.display_title,controller:row.head_sha,updatedAt:row.updated_at}));
+ const interrupted={...refused,id:MIXED.interruptedRecoveryRun,head_sha:MIXED.interruptedRecoveryController,conclusion:'cancelled'};
+ f.rows.push(focused,refused,interrupted);
+ f.previousFailures=[focused,refused,interrupted].map(row=>({id:row.id,title:row.display_title,controller:row.head_sha,updatedAt:row.updated_at,conclusion:row.conclusion}));
  assert.deepEqual(validateExactRecoveryHistory(f).runIds,[200]);
  const bad=structuredClone(f);bad.rows[1].conclusion='success';
  assert.throws(()=>validateExactRecoveryHistory(bad),/Previous failed run identity changed/);
@@ -185,7 +186,7 @@ test('Focused evidence cannot silently replace the original producing controller
 test('Canonical source/build context cannot be rehashed onto another source',()=>{const f=dbInput();f.canonicalAdvance=exactCanonicalRefs({originalController:f.plan.controller,baseline:f.plan.migrationBase,candidate:'d'.repeat(40)});assert.throws(()=>verifyExactRecovery(f));});
 
 test('Recovery controller scope refuses application, receiver-runtime or coverage-policy edits',()=>{
- const paths=['.github/ci/exact-recovery-policy.mjs','.github/ci/exact-recovery.mjs','.github/ci/exact-recovery.test.mjs','.github/ci/exact-recovery-adapter.test.mjs','.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs','.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs','.github/ci/payroll-mixed-source.mjs','.github/ci/repair-missing-unit-policy.mjs','.github/ci/repair-missing-unit.mjs','.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs','.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
+ const paths=['.github/ci/exact-recovery-policy.mjs','.github/ci/exact-recovery.mjs','.github/ci/exact-recovery.test.mjs','.github/ci/exact-recovery-adapter.test.mjs','.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs','.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs','.github/ci/payroll-mixed-source.mjs','.github/ci/repair-missing-unit-policy.mjs','.github/ci/repair-missing-unit.mjs','.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs','.github/ci/payroll-system-label-host-swap.sh','.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
  assert.equal(validateExactControllerDelta(paths),true);
  for(const extra of ['core/analytics.ts','.github/ci/postgres-evidence.mjs','.github/ci/policy-version.mjs','test/analytics-carry-searched-native-scale.test.ts'])assert.throws(()=>validateExactControllerDelta([...paths,extra]));
  assert.throws(()=>validateExactControllerDelta(paths.slice(1)));assert.throws(()=>validateExactControllerDelta([...paths,paths[0]]));

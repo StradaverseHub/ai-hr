@@ -35,7 +35,9 @@ Hosted controls load the real baseline receiver to prove this transport boundary
 The payroll gate 44653948000 has a failed no-database unit with its original
 report and one interrupted System Labels database job with no report. The
 dedicated recovery workflow runs the complete System Labels unit on the same
-application source. It recreates the original database, font and test steps.
+application source. It recreates the original database, font and test steps. Only that job reserves a 4 GiB
+host swap file on its disposable Linux runner. Its receipt must show cleanup
+completed, and the PostgreSQL container still has zero swap.
 Verification compares its assertions against authenticated prior evidence with
 the identical test file. The prior result establishes the assertion inventory.
 The replacement run must independently pass the complete database unit.

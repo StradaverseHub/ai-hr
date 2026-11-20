@@ -28,7 +28,7 @@ export function validateExactControllerDelta(paths){
   '.github/ci/exact-recovery-extract.py','.github/ci/exact-recovery-extract.test.py','.github/ci/canonical-docs-advance.mjs',
   '.github/ci/canonical-docs-advance.test.mjs','.github/ci/focused-recovery.mjs','.github/ci/ci-install-grant.mjs',
   '.github/ci/payroll-mixed-source.mjs','.github/ci/repair-missing-unit-policy.mjs','.github/ci/repair-missing-unit.mjs',
-  '.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs',
+  '.github/ci/repair-missing-unit-test-fixture.mjs','.github/ci/repair-missing-unit.test.mjs','.github/ci/unit-postgres-prepull.mjs','.github/ci/unit-postgres-prepull.test.mjs','.github/ci/payroll-system-label-host-swap.sh',
   '.github/ci/staging-preflight.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','docs/CI-EXACT-SOURCE-RECOVERY-V4.md'];
  assert(Array.isArray(paths)&&paths.length===allowed.length&&new Set(paths).size===paths.length
   &&isDeepStrictEqual(paths.slice().sort(),allowed.sort()),'Exact independently reviewed recovery-only controller delta required');
@@ -53,7 +53,7 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  execFileSync('git',['merge-base','--is-ancestor',canonicalAdvance.head,verificationController],{cwd:controllerRoot,stdio:'ignore'});
  validateExactControllerDelta(git(controllerRoot,'diff','--name-only',canonicalAdvance.head,verificationController).split('\n').filter(Boolean));
  const workflowText=readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8');
- assert(hash(workflowText)==='d0807ed0aa16d0809da841909d34e3cad7f5c73d48812512009e87d64bb1acfc','Dedicated one-unit recovery workflow differs');
+ assert(hash(workflowText)==='2218066a62c3909aef7881fcbab4866f89d0322b612b9f53cb1c9f726c1f6903','Dedicated one-unit recovery workflow differs');
  assert(runId===MIXED.originalRun&&candidate===MIXED.source&&baseline===MIXED.baseline&&verificationDiagnostic.controller===verificationController,'Exact mixed recovery constraint differs');
  assert(api('git/ref/heads/'+MIXED.branch).object?.sha===verificationController,'Owned verifier branch moved');
  for(const path of ['.github/ci/ci-install-grant.mjs','.github/ci/staging-build-install.mjs','.github/ci/policy-version.mjs'])
@@ -86,18 +86,19 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  }
  validateMixedOriginal(source,expectedPlan);
  const missingRunId=Number(process.env.AIHR_EXACT_MISSING_RUN_ID);
- assert(missingRunId===MIXED.producerUnitRun&&!focusedRunIds.includes(missingRunId)&&missingRunId!==runId,'Exact dedicated System Labels recovery run required');
- const {fingerprint:sourceFingerprint,...freshBody}={...expectedPlan,controller:MIXED.producerController};
+ assert(Number.isSafeInteger(missingRunId)&&missingRunId>0&&missingRunId>MIXED.interruptedRecoveryRun&&!focusedRunIds.includes(missingRunId)&&missingRunId!==runId,'Exact dedicated System Labels recovery run required');
+ const {fingerprint:sourceFingerprint,...freshBody}={...expectedPlan,controller:verificationController};
  const freshPlan={...freshBody,fingerprint:hash(freshBody)};
  const missingProof=await collectMissingUnitRecovery({candidatePath,originalPath:candidatePath,sourcePlan:expectedPlan,plan:freshPlan,source,options:{
-  runId:missingRunId,controller:MIXED.producerController,branch:MIXED.branch,candidateBranch,unitId:MIXED.unit,
-  expectation:{runId:MIXED.expectedRun,source:MIXED.expectedSource,controller:MIXED.baseline,branch:'main'},controllerDiagnosticRunId:MIXED.producerControlRun
+  runId:missingRunId,controller:verificationController,branch:MIXED.branch,candidateBranch,unitId:MIXED.unit,
+  expectation:{runId:MIXED.expectedRun,source:MIXED.expectedSource,controller:MIXED.baseline,branch:'main'},controllerDiagnosticRunId:diagnosticId
  },directory:dir,reuse,after:source.run.updated_at});
  const {proof}=missingProof;
  assert(isDeepStrictEqual(proof.freshPlan,freshPlan),'Dedicated execution full plan differs');
  assert(proof.metadata.jobs.find(job=>job.name==='deployment-hold')?.steps.some(step=>step.name==='Deployment remains disabled'&&step.conclusion==='success'),'Missing dedicated deployment hold evidence');
  const owner=nativePostgresOwner(readFileSync(join(candidatePath,'.github/ci/postgres.sh')),git(candidatePath,'rev-parse',candidate+':.github/ci/postgres.sh'));
- missingProof.nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:candidate,controller:MIXED.producerController,runId:missingRunId,unit:MIXED.unit,producer:proof.producer,prepullStep:proof.producer.steps.find(step=>step.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(step=>step.name==='Provision System Labels multilingual fonts before tests')});
+ missingProof.nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:candidate,controller:verificationController,runId:missingRunId,unit:MIXED.unit,producer:proof.producer,prepullStep:proof.producer.steps.find(step=>step.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(step=>step.name==='Provision System Labels multilingual fonts before tests')});
+ assert(isDeepStrictEqual(proof.hostSwap,{kind:'OWNED_ISOLATED_SYSTEM_LABEL_BROWSER_HOST_SWAP',runId:missingRunId,attempt:1,unit:MIXED.unit,source:candidate,controller:verificationController,hostSwapBytes:4294967296,databaseSwapChanged:false,ownedSwap:1,cleanupVerified:true,exitCode:0})&&proof.producer.steps.some(step=>step.name==='Run isolated run-unit.mjs with bounded host swap'&&step.conclusion==='success'),'Fresh host swap and cleanup evidence required');
  missingProof.originalArtifacts=source.artifacts;
  const rejected=await collectRecoveryEvidence(MIXED.failedFocusedRun,join(dir,'superseded-focused'),{reuse,exactPackets:true});
  const rejectedRun=rejected.run,rejectedJob=rejected.jobs.find(job=>job.name==='selected-tests');
@@ -108,14 +109,17 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  const refused=api(`actions/runs/${MIXED.refusedUnitRun}`),refusedJobs=pages(`actions/runs/${refused.id}/jobs?filter=all`,'jobs');
  assert(refused.id===MIXED.refusedUnitRun&&refused.repository.id===1333414856&&refused.workflow_id===source.run.workflow_id&&refused.head_sha===MIXED.refusedController&&refused.display_title===`Missing whole unit · ${MIXED.unit} · ${candidateBranch}`&&refused.status==='completed'&&refused.conclusion==='failure'&&refused.run_attempt===1,'Previous refused unit run differs');
  assert(refusedJobs.filter(job=>job.conclusion!=='skipped').length===1&&refusedJobs.some(job=>job.name==='resolve'&&job.conclusion==='failure')&&pages(`actions/runs/${refused.id}/artifacts`,'artifacts').length===0,'Previous refused unit attempted tests or supplied artifacts');
- const previousFailures=[rejectedRun,refused].map(run=>({id:run.id,title:run.display_title,controller:run.head_sha,updatedAt:run.updated_at,conclusion:run.conclusion}));
+ const interrupted=api(`actions/runs/${MIXED.interruptedRecoveryRun}`),interruptedJobs=pages(`actions/runs/${interrupted.id}/jobs?filter=all`,'jobs'),interruptedJob=interruptedJobs.find(job=>job.id===MIXED.interruptedRecoveryJob);
+ assert(interrupted.id===MIXED.interruptedRecoveryRun&&interrupted.repository.id===1333414856&&interrupted.workflow_id===source.run.workflow_id&&interrupted.head_sha===MIXED.interruptedRecoveryController&&interrupted.display_title===refused.display_title&&interrupted.status==='completed'&&['failure','cancelled'].includes(interrupted.conclusion)&&interrupted.run_attempt===1,'Earlier interrupted recovery run differs');
+ assert(interruptedJob?.name===`test (${MIXED.unit})`&&interruptedJob.steps.some(step=>step.name.includes('run-unit.mjs')&&step.conclusion==='cancelled')&&!pages(`actions/runs/${interrupted.id}/artifacts`,'artifacts').some(artifact=>artifact.name==='unit-'+MIXED.unit),'Interrupted recovery must remain without test evidence');
+ const previousFailures=[rejectedRun,refused,interrupted].map(run=>({id:run.id,title:run.display_title,controller:run.head_sha,updatedAt:run.updated_at,conclusion:run.conclusion}));
  previousFailures[0].artifact={id:rejectedZip.id,digest:rejectedZip.digest,reportHash:hash(rejectedReport)};
  const reports=plan.units.filter(u=>u.id!==MIXED.unit).map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,missingProof,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${source.run.workflow_id}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[source.run.workflow_id,workflow.id].includes(r.workflow_id)));
- recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController,missingRunId,missingController:MIXED.producerController,previousFailures});
+ recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController,missingRunId,missingController:verificationController,previousFailures});
  recovery.verificationDiagnostic=verificationDiagnostic;recovery.reviewedController=verificationController;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');
