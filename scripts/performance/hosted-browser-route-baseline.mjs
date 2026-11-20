@@ -11,6 +11,7 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
+import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
@@ -347,6 +348,8 @@ async function measureMixedLoad(command){
     const code=typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|E[A-Z_]{2,40})$/.test(fact.code)?fact.code:null;
     return {kind:fact.kind,code};
    };
+   const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
+   if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;
    const primaryRequest=data.workerRequestFailure;
    if(primaryRequest){
     const status=primaryRequest.httpStatus;

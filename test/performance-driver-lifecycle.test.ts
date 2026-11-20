@@ -1546,3 +1546,19 @@ it('drains a real loopback request and socket after its raw gzip response is cut
   await new Promise<void>(resolve=>server.close(()=>resolve()));
  }
 });
+
+
+it('publishes only reviewed fields from a failed mixed-load browser visit',async()=>{
+ const {projectMixedBrowserVisitFailure}=await import('../scripts/performance/worker-comparison-failure.mjs');
+ const timeout={phase:'baseline',role:'groupHR',path:'/payroll/transaction-view',visitStage:'payroll-transaction-history',
+  errorType:'TimeoutError',elapsedMs:90505.3,frames:[{path:'/payroll/private-id'}],
+  dom:{readyState:'complete',headingCount:1,mainCount:1,iframeCount:0,busyCount:0,alertCount:2,body:'private'}};
+ expect(projectMixedBrowserVisitFailure(timeout)).toEqual({
+  phase:'baseline',role:'groupHR',route:'/payroll/transaction-view',step:'payroll-transaction-history',
+  kind:'TimeoutError',elapsedMs:90506,dom:{readyState:'complete',headingCount:1,mainCount:1,iframeCount:0,busyCount:0,alertCount:2},
+ });
+ expect(projectMixedBrowserVisitFailure({...timeout,path:'/payroll/private-id',visitStage:'unreviewed',dom:null}))
+  .toMatchObject({route:'other',step:'unavailable',dom:null});
+ expect(projectMixedBrowserVisitFailure({...timeout,errorType:'private detail'})).toBeNull();
+ expect(projectMixedBrowserVisitFailure(undefined)).toBeNull();
+});

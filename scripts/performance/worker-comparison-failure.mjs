@@ -134,7 +134,7 @@ function closedHomeFact(value){
 }
 
 const stageSteps=new Set(['legacy-navigation-capture','hidden-shell-capture','primary-route-observer','primary-route-navigation','primary-route-retirement',
- 'sign-in','navigation','page-content','heading','table-data','personnel-access-lock','personnel-statement-timeout','payslip-statement','analytics-metrics',
+ 'sign-in','navigation','page-content','heading','table-data','personnel-access-lock','personnel-statement-timeout','payslip-statement','payroll-transaction-history','analytics-metrics',
  'roster-scoped-grid','job-description-read-controls','lifecycle-staff-tiles','home-cards','navigation-timing','native-primary-rendered-evidence']);
 const knownRoutes=new Set(Object.values(routePools).flat());
 const stageSources=/^[a-z][a-z-]{0,48}\.(?:mjs|ts)$/;
@@ -161,6 +161,27 @@ export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,er
   assertion:assertionFact(error),
   navigation:navigation&&typeof navigation.scenarioId==='string'&&scenarioId.test(navigation.scenarioId)?{scenarioId:navigation.scenarioId,
    check:typeof navigation.checkId==='string'&&scenarioId.test(navigation.checkId)?navigation.checkId:null,counts}:null};
+}
+const mixedBrowserPhases=new Set(['baseline','sign-in-preflight','loaded']);
+const mixedBrowserRoutes=new Set([...knownRoutes,'/payroll/transaction-view']);
+const mixedBrowserErrorKinds=new Set(['Error','AssertionError','TimeoutError','AbortError','TypeError','AggregateError','unclassified']);
+
+/** Retain closed facts from the first failed rendered visit on the disposable fixture. */
+export function projectMixedBrowserVisitFailure(row){
+ if(!mixedBrowserPhases.has(row?.phase)||!roles.has(row.role)||!mixedBrowserErrorKinds.has(row.errorType))return null;
+ return {
+  phase:row.phase,
+  role:row.role,
+  route:mixedBrowserRoutes.has(row.path)?row.path:'other',
+  step:stageSteps.has(row.visitStage)?row.visitStage:'unavailable',
+  kind:row.errorType,
+  elapsedMs:wholeMs(row.elapsedMs,910000),
+  dom:row.dom?{
+   readyState:['loading','interactive','complete'].includes(row.dom.readyState)?row.dom.readyState:null,
+   ...Object.fromEntries(['headingCount','mainCount','iframeCount','busyCount','alertCount']
+    .map(key=>[key,integer(row.dom[key],1000000)?row.dom[key]:null])),
+  }:null,
+ };
 }
 const requestMethods=new Set(['GET','POST']);
 const requestAbortSources=new Set(['driver-deadline','connection-reset','premature-close','abort-unattributed','not-aborted']);
