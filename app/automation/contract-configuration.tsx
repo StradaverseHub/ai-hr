@@ -3,7 +3,7 @@ import {contractConfigurationWorkflows,contractConfigurationTemplates} from '@/p
 import {ContractWorkflowEditor} from '@/app/lifecycle/contracts/workflows/editor';
 import {ContractTemplatesEditor} from '@/app/lifecycle/contracts/templates/editor';
 import {templateLabels} from '@/app/letters/templates/labels';
-import {searchContractReviewersAction} from './actions';
+import {searchContractReviewersAction} from '@/app/lifecycle/contracts/workflows/actions';
 /** Existing Contract owner editors are hosted here; publishing, preview and approval keep their original services. */
 export async function ContractWorkflowSection({ctx}:{ctx:SessionContext}){
  const workspace=await contractConfigurationWorkflows(ctx);
