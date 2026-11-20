@@ -147,10 +147,11 @@ describe('accessible count label: nav.approvalsCount', () => {
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
     expect(layout).toContain('approvalCount:approvalSummary.approvalCount');
-    expect(layout).toContain('pendingTaskSummary(session, scopeIds,');
-    expect(layout).not.toContain('await pendingTaskSummary(');
+    const shellTasks=readFileSync(new URL('../lib/shell-task-summary.ts',import.meta.url),'utf8');
+    expect(shellTasks).toContain('pendingTaskSummary(session, scopeIds,');
+    expect(layout).not.toContain('await readShellTaskSummary(');
     expect(layout).toContain('<ShellApprovalFactsProvider source={approvalFacts}');
-    const callSites = layout.match(/\b(?:pendingTaskSummary|listPendingTasks)\(/g);
+    const callSites = shellTasks.match(/\b(?:pendingTaskSummary|listPendingTasks)\(/g);
     expect(callSites, 'exactly one task read in the root layout').toEqual(['pendingTaskSummary(']);
   });
 
