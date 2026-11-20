@@ -1,8 +1,7 @@
-import { nextAttendanceWorkflowPriority } from '@/lib/attendance-workflow';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceApplicationFilterOptions, getAttendanceWorkflow, listAttendanceWorkflows } from '@/packs/attendance/service';
+import { attendanceApplicationFilterOptions, attendanceNewWorkflowOptions, getAttendanceWorkflow, suggestAttendanceWorkflowPriority } from '@/packs/attendance/service';
 import { attendanceWorkflowConfiguration, attendanceWorkflowSelectedEmployees } from '@/lib/attendance-workflow-config';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { WorkflowForm } from '../workflow-form';
@@ -17,13 +16,10 @@ export default async function NewAttendanceWorkflowPage({ searchParams }: { sear
   if(applicationType!=='irregularity'&&applicationType!=='self_overtime')notFound();
   try { context = typeof query.companyId==='string'?workflowContext({...query,applicationType}, allowedCompanyIds??scopeIds):scopeIds[0]?{companyId:scopeIds[0],applicationType}:null; } catch { notFound(); }
   if (!context) redirect(workflowRoot);
-  const [options, workflows] = await Promise.all([
-    attendanceApplicationFilterOptions(s, allowedCompanyIds??scopeIds),
-    listAttendanceWorkflows(s, [context.companyId]),
+  const [options, defaultPriority] = await Promise.all([
+    attendanceNewWorkflowOptions(s, allowedCompanyIds ?? scopeIds),
+    suggestAttendanceWorkflowPriority(s, context.companyId, context.applicationType),
   ]);
-  const defaultPriority = nextAttendanceWorkflowPriority(workflows
-    .filter(workflow => workflow.applicationType === context.applicationType)
-    .map(workflow => workflow.priority));
   if (!options.companies.some(company => company.id === context.companyId)) notFound();
   return <div className={pageWideCls}><PageHeader title={t('create')} description={t('newVersionHelp')} back={{ href: companyWorkflowHref(context.companyId, context.applicationType), label: t('back') }}/><WorkflowForm key={`${context.companyId}:${context.applicationType}`} initial={null} defaultPriority={Math.min(defaultPriority, 9999)} lineageId={null} context={context} options={options}/></div>;
 }
