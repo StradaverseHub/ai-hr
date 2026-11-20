@@ -6,7 +6,8 @@ import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import {NextIntlClientProvider} from 'next-intl';
 import {CatalogClientProvider} from '@/i18n/client-provider';
-import { getLocale } from 'next-intl/server';
+import { getLocale, getMessages } from 'next-intl/server';
+import { authClientMessages } from '@/i18n/auth-messages';
 import './globals.css';
 import './action-feedback.css';
 import './login/login.css';
@@ -136,9 +137,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
-          <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}>
+          <NextIntlClientProvider messages={authClientMessages(await getMessages())}>
             <Providers>{children}</Providers>
-          </CatalogClientProvider></NextIntlClientProvider>
+          </NextIntlClientProvider>
         </body>
       </html>
     );
