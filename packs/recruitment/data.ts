@@ -274,7 +274,7 @@ export type RecruitmentOverview = {
 };
 
 /**
- * Overview tiles, each one count query over the applications the caller administers:
+ * Overview tiles aggregate the applications and interviews the caller administers:
  *   applications today — applied on today's Kuala Lumpur calendar day (lib/hr-date owns "today");
  *   to screen — active, in Application Review or a Screening-type stage;
  *   interview / offer — active, in an Interview- / Offer-type stage;
@@ -286,8 +286,14 @@ export async function recruitmentOverview(s: SessionContext, companyIds: readonl
   const now = new Date();
   const today = todayInKualaLumpur(now);
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
-    const ids = uuidArray(companyIds);
+    if (!companyIds.every(isUuid)) throw new RecruitmentError('forbidden');
+    const ids = uuidArray([...new Set(companyIds)]);
+    const [authority] = await tx.execute<{ ok: boolean }>(sql`
+      select not exists (
+        select 1 from unnest(${ids}::uuid[]) as requested(company_id)
+        where app.can_admin_recruitment_for(requested.company_id) is not true
+      ) as ok`);
+    if (authority?.ok !== true) throw new RecruitmentError('forbidden');
     const [row] = await tx.execute<Record<keyof RecruitmentOverview, number>>(sql`
       select
         count(*) filter (where (a.applied_at at time zone 'Asia/Kuala_Lumpur')::date = ${today}::date)::int as "applicationsToday",

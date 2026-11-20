@@ -19,11 +19,12 @@ import { appUser, company, employment, jobGrade, person, roleAssignment } from '
 import { pgSqlState } from '../lib/db-error';
 import {
   addApplication, addJobMember, associateJob, createJob, createRequisition, destroyCandidates, markOfferSent, moveApplication, offerSettings,
-  recordOfferDecision, recruitmentInterviewsReport, recruitmentOverviewReport, recruitmentPositionsReport, recruitmentSettings,
+  recordOfferDecision, recruitmentInterviewsReport, recruitmentOverview, recruitmentOverviewReport, recruitmentPositionsReport, recruitmentSettings,
   recruitmentTeamReport, recruitmentViewer, rejectApplication, saveCandidateRestricted, saveOffer, scheduleInterview, cancelInterview, submitOffer,
   submitRequisition, submitScorecard, NO_VALUE, RecruitmentError, formatNumber, formatPercent,
 } from '../packs/recruitment/service';
 import { ReportTooSlowError, toReportError } from '../packs/recruitment/reports';
+import { observeNativeRead } from './helpers/native-read-observer';
 import { addDays } from '../packs/recruitment/report-model';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -585,5 +586,40 @@ describe('review fixes — fallback, year bounds, pass-rate timing, mixed scope,
     expect((mapped as RecruitmentError).code).toBe('report_too_slow');
     const other = new Error('unrelated');
     expect(toReportError(other)).toBe(other);
+  });
+
+  it('checks 71 company permissions in one statement before loading the Overview totals', async () => {
+    const extra = await owner.db.insert(company).values(Array.from({ length: 68 }, (_, index) => ({
+      tenantId: base.tenantId, legalName: `Fictional overview group company ${index + 1}`,
+    }))).returning({ id: company.id });
+    const populated = [base.companyId, otherCompanyId, thirdCompanyId];
+    const group = [...populated, ...extra.map(row => row.id)];
+    expect(new Set(group).size).toBe(71);
+    const perCompany = await Promise.all(populated.map(id => recruitmentOverview(admin, [id])));
+    const independentTotal = Object.fromEntries(Object.keys(perCompany[0]).map(key => [
+      key, perCompany.reduce((count, row) => count + row[key as keyof typeof row], 0),
+    ]));
+    expect(independentTotal.activeApplications).toBeGreaterThan(0);
+
+    const probe = observeNativeRead({
+      captureQueries: false,
+      classify: statement => statement.includes('app.can_admin_recruitment_for') ? 'authority' : 'other',
+    });
+    const started = performance.now();
+    try {
+      expect(await recruitmentOverview(admin, group)).toEqual(independentTotal);
+    } finally {
+      probe.restore();
+    }
+    const statements = probe.telemetry();
+    const authority = statements.summaries.filter(row => row.classification === 'authority')
+      .reduce((total, row) => total + row.count, 0);
+    expect(authority).toBe(1);
+    console.info('RECRUITMENT_OVERVIEW_SCALE', JSON.stringify({
+      companies: group.length, authorityStatements: authority, elapsedMs: Math.round(performance.now() - started),
+    }));
+    expect(await recruitmentOverview(ctx.partner, [base.companyId, base.companyId])).toEqual(perCompany[0]);
+    expect(await code(recruitmentOverview(ctx.partner, [base.companyId, otherCompanyId]))).toBe('forbidden');
+    expect(await code(recruitmentOverview(admin, [base.companyId, 'invalid-id']))).toBe('forbidden');
   });
 });
