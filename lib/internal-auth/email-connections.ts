@@ -52,6 +52,17 @@ export function activateEmailConnection(state:ConnectionState,id:string,version:
  state.active={config:c.config,password:c.password};state.activeConnectionId=c.id;state.activeConnectionVersion=c.version;state.revision=revision();state.connectionsRevision=revision();
 }
 
+export function deactivateEmailConnection(state: ConnectionState, id: string, expectedRevision: string) {
+ if (expectedRevision !== (state.connectionsRevision ?? state.revision)) throw new EmailSettingsError('conflict');
+ emailConnections(state);
+ if (!state.active || state.activeConnectionId !== id) throw new EmailSettingsError('conflict');
+ state.active = null;
+ delete state.activeConnectionId;
+ delete state.activeConnectionVersion;
+ state.revision = revision();
+ state.connectionsRevision = revision();
+}
+
 const tenantPattern=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 /** Receipt-confirmed version snapshots are tenant-bound; editing the saved connection cannot change a working sender.
  * Re-applying the single On/Off Boarding sender also retires any earlier per-name bindings of that tenant. */

@@ -31,7 +31,7 @@ export function sameEmailCredential(a:EmailConfig,b:EmailConfig) {
 const internalId = z.string().regex(/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i);
 export const identityEmailActorSchema = z.object({userId:internalId,tenantId:internalId,issuer:z.string().url().max(500),subject:z.string().min(1).max(500)}).strict();
 export type IdentityEmailActor = z.infer<typeof identityEmailActorSchema>;
-export const emailFailureCodes = ['unavailable','forbidden','invalid','conflict','needsTest','needsReceipt','authenticationFailed','connectionFailed','tlsFailed','rejected','uncertain','appliedAuditFailed'] as const;
+export const emailFailureCodes = ['unavailable','forbidden','invalid','conflict','needsTest','needsReceipt','needsDeactivationConfirmation','authenticationFailed','connectionFailed','tlsFailed','rejected','uncertain','appliedAuditFailed'] as const;
 export type EmailFailureCode = typeof emailFailureCodes[number];
 export class EmailSettingsError extends Error {
   constructor(public readonly code: EmailFailureCode) { super(`Identity email settings: ${code}`); }
@@ -42,6 +42,7 @@ export type EmailSettingsView = {
   connections?: {id:string;name:string;config:EmailConfig;hasPassword:boolean;active:boolean;hasUnappliedChanges:boolean;testedAt:string|null}[];
   selectedConnectionId?:string;
   selectedConnectionName?:string;
+  staleConnection?:boolean;
   active: (EmailConfig & {hasPassword:boolean}) | null;
   revision: string;
   draft: {id:string;config:EmailConfig;hasPassword:boolean;testedAt:string|null} | null;
@@ -54,4 +55,5 @@ export type EmailSettingsRequest =
   | {op:'save';actor:IdentityEmailActor;revision:string;config:EmailConfig;password?:string;connectionId?:string;connectionName?:string}
   | {op:'test';actor:IdentityEmailActor;draftId:string;connectionId?:string}
   | {op:'apply';actor:IdentityEmailActor;draftId:string;received:boolean;connectionId?:string;lifecycleSender?:ManagedEmailSenderProfile}
+  | {op:'deactivate';actor:IdentityEmailActor;connectionId:string;revision:string}
   | {op:'lifecycleSenderName';actor:IdentityEmailActor;name:string};

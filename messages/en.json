@@ -25648,6 +25648,9 @@
     "sendTest": "Send test email",
     "received": "I received the test email from this draft.",
     "activateHelp": "Tests expire after 30 minutes. Activation replaces the relay for login emails and enables password recovery. Saving changes requires another test.",
+    "deactivate": "Deactivate installation relay",
+    "deactivateHelp": "Invitations, password recovery and other email that uses the installation relay will stop. The saved connection can be tested and activated again.",
+    "deactivateConfirm": "I understand the effect on email delivery.",
     "activate": "Activate relay",
     "saving": "Working…",
     "errors": {
@@ -25656,6 +25659,7 @@
       "invalid": "Check the relay fields and password.",
       "conflict": "The relay or draft changed. Reload this page and save a new draft.",
       "needsTest": "Send another test email before activation.",
+      "needsDeactivationConfirmation": "Confirm the effect on email delivery before deactivating the relay.",
       "needsReceipt": "Confirm that you received the test email.",
       "authenticationFailed": "The relay refused authentication.",
       "connectionFailed": "Could not connect to the relay.",
@@ -25667,6 +25671,7 @@
     "success": {
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
+      "deactivate": "Installation relay deactivated. The connection is still saved.",
       "apply": "Relay activated. Invitations and password recovery can now use it.",
       "sender": "Lifecycle sender updated. Account recovery and the installation default are unchanged.",
       "senderName": "Sender name saved. On/Off Boarding emails sent from now on use it."

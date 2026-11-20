@@ -6,7 +6,7 @@ import { EmailSettingsError, emailFailureCodes, type EmailSettingsRequest } from
 export async function identityEmailRequest<T>(body: EmailSettingsRequest): Promise<T> {
   if (internalSelected()) return (await import('../internal-auth/mail')).internalEmailRequest<T>(body);
   // The On/Off Boarding sender and its name are embedded-authentication capabilities only.
-  if (body.op === 'apply' && body.lifecycleSender || body.op === 'lifecycleSenderName') throw new EmailSettingsError('invalid');
+  if (body.op === 'deactivate' || body.op === 'apply' && body.lifecycleSender || body.op === 'lifecycleSenderName') throw new EmailSettingsError('invalid');
   return new Promise((resolve,reject) => {
     const req=request({socketPath:process.env.IDENTITY_EMAIL_SOCKET || '/run/aihr-identity-email.sock',path:'/v1/settings',method:'POST',
       headers:{'content-type':'application/json'},timeout:35_000}, res=>{
