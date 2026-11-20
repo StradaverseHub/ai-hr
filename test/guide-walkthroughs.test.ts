@@ -1,10 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadGuides, loadOperatorGuides } from '../lib/guide-catalog';
 import { guideTourId, tourSteps, TOURS, toursForRoles } from '../lib/onboarding-tour';
+import { readTourStepsAction } from '../app/onboarding-actions';
+
+const session = vi.hoisted(() => vi.fn());
+vi.mock('../lib/session', () => ({ getBrowserCommandSession: session }));
+vi.mock('../core/onboarding', () => ({ completeOnboarding: vi.fn() }));
 
 describe('knowledge-base walkthrough coverage', () => {
+  it('loads one requested walkthrough using the current browser roles', async () => {
+    const operatorTour = guideTourId('operator-provisioning')!;
+    session.mockResolvedValueOnce({ roles: ['employee'] }).mockResolvedValueOnce({ roles: ['operator'] });
+    expect(await readTourStepsAction(operatorTour)).toEqual([]);
+    expect(await readTourStepsAction(operatorTour)).toEqual(tourSteps(operatorTour, ['operator']));
+    session.mockResolvedValueOnce({ roles: ['hr_admin'] });
+    expect(await readTourStepsAction('__proto__')).toEqual([]);
+    session.mockRejectedValueOnce(Error('Sign-in required'));
+    await expect(readTourStepsAction(operatorTour)).rejects.toThrow('Sign-in required');
+  });
   it('offers a runnable walkthrough for every bundled tenant guide and its audience', () => {
     const guides = loadGuides();
     expect(guides.length).toBeGreaterThan(0);

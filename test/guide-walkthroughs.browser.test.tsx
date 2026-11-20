@@ -2,29 +2,41 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { page } from 'vitest/browser';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { guideTourId, toursForRoles } from '../lib/onboarding-tour';
+import { guideTourId, tourSteps } from '../lib/onboarding-tour';
 import en from '../messages/en.json';
 import '../app/globals.css';
 
-const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', push: vi.fn(), complete: vi.fn(async () => {}) }));
+const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', roles: ['employee'], read: vi.fn(), push: vi.fn(), complete: vi.fn(async () => {}) }));
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname, useRouter: () => ({ push: state.push }) }));
-vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete }));
+vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete, readTourStepsAction: async (id: string) => { state.read(id); return tourSteps(id, state.roles); } }));
 
 // Resolve the components after the server-action stub, as in the other browser harnesses. A static
 // scan must not prebundle the action's database and installation-identity dependencies for Chromium.
 const { GuideTourButton } = await import('../components/guide-tour-button');
 const { OnboardingTour } = await import('../components/onboarding-tour');
+const { TourLauncher } = await import('../components/tour-launcher');
 
-afterEach(async () => { cleanup(); vi.clearAllMocks(); state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); await page.viewport(1280, 720); });
+afterEach(async () => { cleanup(); vi.clearAllMocks(); state.roles = ['employee']; state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); await page.viewport(1280, 720); });
 
 describe('guide walkthrough launch in Chromium', () => {
+  it('opens the preloaded welcome tour on the first click without requesting guide steps', async () => {
+    render(<NextIntlClientProvider locale="en" messages={en}>
+      <TourLauncher />
+      <OnboardingTour welcomeSteps={tourSteps('welcome', ['employee'])} />
+    </NextIntlClientProvider>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: en.onboarding.launch }));
+    expect(await screen.findByRole('heading', { name: en.onboarding.welcomeTitle })).toBeTruthy();
+    expect(state.read).not.toHaveBeenCalled();
+  });
+
   it('launches a new guide, navigates to its module and spotlights a real-sized control', async () => {
     const id = guideTourId('employee-claims')!;
     const ui = () => <NextIntlClientProvider locale="en" messages={en}>
       <GuideTourButton tourId={id} />
       <div data-tour="claims-compose" style={{ width: 400, height: 120 }}>Claim form</div>
       <div data-tour="claims-history" style={{ width: 400, height: 120 }}>Claims history</div>
-      <OnboardingTour tours={toursForRoles(['employee'])} autoStartTourId={null} />
+      <OnboardingTour />
     </NextIntlClientProvider>;
     const view = render(ui());
     fireEvent.click(screen.getByRole('button', { name: en.kb.startWalkthrough }));
@@ -49,15 +61,16 @@ describe('guide walkthrough launch in Chromium', () => {
 
   it('launches an operator guide and refuses the same tour in an administrator bundle', async () => {
     const id = guideTourId('operator-provisioning')!;
-    const ui = (roles: string[]) => <NextIntlClientProvider locale="en" messages={en}>
+    const ui = <NextIntlClientProvider locale="en" messages={en}>
       <GuideTourButton tourId={id} />
-      <OnboardingTour tours={toursForRoles(roles)} autoStartTourId={null} />
+      <OnboardingTour />
     </NextIntlClientProvider>;
-    const view = render(ui(['hr_admin']));
+    state.roles = ['hr_admin'];
+    render(ui);
     fireEvent.click(screen.getByRole('button', { name: en.kb.startWalkthrough }));
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(state.push).not.toHaveBeenCalled();
-    view.rerender(ui(['operator']));
+    state.roles = ['operator'];
     fireEvent.click(screen.getByRole('button', { name: en.kb.startWalkthrough }));
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Provision a customer' })).toBeTruthy());
     expect(state.push).toHaveBeenCalledWith('/operator');
@@ -70,7 +83,7 @@ describe('guide walkthrough launch in Chromium', () => {
     state.pathname = '/claims';
     render(<NextIntlClientProvider locale="en" messages={en}>
       <div data-tour="claims-compose" style={{ width: 400, height: 2000 }}>Long claim form</div>
-      <OnboardingTour tours={toursForRoles(['employee'])} autoStartTourId="claimsEmployee" />
+      <OnboardingTour initialSteps={tourSteps('claimsEmployee', ['employee'])} />
     </NextIntlClientProvider>);
     fireEvent.click(await screen.findByRole('button', { name: en.onboarding.next }));
     await waitFor(() => {
@@ -94,7 +107,7 @@ describe('guide walkthrough launch in Chromium', () => {
     await page.viewport(1280, 720);
     state.pathname = '/claims';
     render(<NextIntlClientProvider locale="en" messages={en}>
-      <OnboardingTour tours={toursForRoles(['employee'])} autoStartTourId="claimsEmployee" />
+      <OnboardingTour initialSteps={tourSteps('claimsEmployee', ['employee'])} />
     </NextIntlClientProvider>);
     const heading = await screen.findByRole('heading', { name: 'Submit an expense claim' });
     expect(heading.closest('[style]')!.getBoundingClientRect().width).toBe(320);

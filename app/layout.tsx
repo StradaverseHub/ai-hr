@@ -66,7 +66,8 @@ import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/s
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
+import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
+import { tourSteps } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
@@ -150,6 +151,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     throw e;
   }
   const usesOperatorShell = isOperator(session) && !isDemoDeployment();
+  const welcomeSteps = tourSteps(WELCOME_TOUR_ID, session.roles);
   // These exact admin entry pages have loading boundaries. Refuse before rendering the shell so
   // a direct request can return HTTP 307 before a loading response starts streaming. Keep the
   // page and service checks for client navigation and the narrower rules on child routes.
@@ -168,7 +170,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} sessionChannel={idleSessionChannel} />
-          <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
+          <OnboardingTour welcomeSteps={welcomeSteps}/>
           <Toaster/>
         </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
       </body>
@@ -199,7 +201,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     recruitmentTeam,
     referralPortal,
   } = features;
-  const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
   const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
@@ -522,7 +523,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </AiAskAvailability>
           </NavIndexProvider>
-          <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
+          <OnboardingTour welcomeSteps={welcomeSteps}
+            initialSteps={onboarded || (pathname==='/'&&!isAdmin(session)) ? undefined : welcomeSteps} />
           </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
