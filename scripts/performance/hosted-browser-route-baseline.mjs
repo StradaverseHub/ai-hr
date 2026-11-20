@@ -447,8 +447,11 @@ async function withMixedOffboardingComparison(work){
   await owner.begin(async tx=>{
    const [{exists}]=await tx`select exists(select 1 from pg_roles where rolname='ai_hr_owner')`;
    if(!exists)await tx.unsafe('create role ai_hr_owner nologin nosuperuser nobypassrls nocreatedb nocreaterole noreplication');
-   const [role]=await tx`select rolsuper,rolbypassrls,rolcanlogin from pg_roles where rolname='ai_hr_owner'`;
-   assert(role&&!role.rolsuper&&!role.rolbypassrls&&!role.rolcanlogin,'Expected the restricted fictional owner');
+   // A deployed migration owner can log in. These attributes define which
+   // privileges it lacks, independent of how a runner connects.
+   const [role]=await tx`select rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication from pg_roles where rolname='ai_hr_owner'`;
+   assert(role&&!role.rolsuper&&!role.rolbypassrls&&!role.rolcreaterole&&!role.rolcreatedb&&!role.rolreplication,
+    'Expected the restricted fictional owner');
    if((await readFunction(tx)).owner==='postgres')await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
    assert.equal((await readFunction(tx)).owner,'ai_hr_owner');
   });
