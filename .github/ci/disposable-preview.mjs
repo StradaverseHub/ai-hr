@@ -155,15 +155,36 @@ try {
     for (const button of geometry.buttons) {
       assert(button.left >= geometry.left && button.right <= geometry.right, 'Chart export control is clipped');
     }
-    const pngDownload = page.waitForEvent('download', {timeout: 10000});
-    await card.getByRole('button', {name: '↓ PNG', exact: true}).click();
-    const png = await pngDownload;
-    assert.match(png.suggestedFilename(), /^headcount-dept_.*\.png$/);
-    assert.equal(await png.failure(), null);
-    assert.deepEqual(errors, []);
-    report.chart = {...geometry, exportedFilename: png.suggestedFilename()};
+    report.chart = geometry;
+    report.layoutVerified = true;
     report.workingPreviewAt = new Date().toISOString();
-    await card.screenshot({path: join(evidence, 'analytics-card.png')});
+    await card.screenshot({path: join(evidence, 'analytics-card.png'), timeout: 15000});
+
+    const button = card.getByRole('button', {name: '↓ PNG', exact: true});
+    let failure;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const [png] = await Promise.all([
+          page.waitForEvent('download', {timeout: 15000}),
+          button.click({timeout: 10000}),
+        ]);
+        const filename = png.suggestedFilename();
+        assert.match(filename, /^headcount-dept_.*\.png$/);
+        assert.equal(await png.failure(), null);
+        const signature = readFileSync(await png.path()).subarray(0, 8);
+        assert.equal(signature.toString('hex'), '89504e470d0a1a0a');
+        report.pngExport = {passed: true, filename, attempt};
+        break;
+      } catch (error) {
+        failure = error.message;
+        // Let the prior download listener expire before another click.
+        if (attempt === 1) await page.waitForLoadState('networkidle', {timeout: 5000}).catch(() => {});
+      }
+    }
+    report.pngExport ??= {passed: false, error: failure};
+    report.browserErrors = errors;
+    if (!report.pngExport.passed) throw new Error(report.pngExport.error);
+    assert.deepEqual(errors, []);
   });
   assert.equal(git('status', '--porcelain'), '');
   report.passed = true;
