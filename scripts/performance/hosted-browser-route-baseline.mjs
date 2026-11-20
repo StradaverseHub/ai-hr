@@ -1,5 +1,6 @@
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
+import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
@@ -402,7 +403,7 @@ function readMixedRootStatements(name,dockerConfig){
  // Include only the application role's direct statements to avoid counting
  // their nested SQL a second time.
  const query=`select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
-   from (select calls,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
+   from (select calls,plans,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
      jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800) as normalized_query
      from pg_stat_statements
      where dbid=(select oid from pg_database where datname=current_database())
@@ -413,8 +414,12 @@ function readMixedRootStatements(name,dockerConfig){
    '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
    '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
   ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:256*1024,stdio:['ignore','pipe','pipe']});
-  const categories=summarizeMixedStatements(JSON.parse(result));
-  return categories?{scope:'up to 35 top-level statements executed under the application role',categories}:null;
+  const statements=JSON.parse(result);
+  const categories=summarizeMixedStatements(statements);
+  return categories?{
+   scope:'up to 35 top-level statements executed under the application role',
+   categories, rankedWork:projectMixedRootStatementWork(statements),
+  }:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
