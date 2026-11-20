@@ -98,7 +98,7 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
         if(selection==='all'){
           expect(all).toHaveAttribute('aria-current','true');
           const t=createTranslator({locale,messages,namespace:'leave.inquiry'});
-          expect(screen.getByText(t('allEmployeesHeader',{count:people.length,companies:'Inquiry Company'}))).toBeVisible();
+          expect(screen.getByText(t('allEmployeesHeader',{count:people.length,companies:`${messages.people.list.company}: 1`}))).toBeVisible();
         }else{
           expect(all).not.toHaveAttribute('aria-current');
           expect(screen.getAllByText(people[0].employeeCode).length).toBeGreaterThan(0);

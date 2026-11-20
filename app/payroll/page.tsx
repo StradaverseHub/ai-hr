@@ -96,7 +96,7 @@ const REPROCESS_PILL =
   'bg-amber-100 text-amber-900 ring-1 ring-inset ring-amber-300 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/40';
 
 /** Header cells never wrap: "Payroll Period", not "Payroll" over "Period" (the request's §5). */
-const TH = 'whitespace-nowrap px-3 py-2 font-medium';
+const TH = 'whitespace-nowrap px-3 py-2 font-medium first:pl-4 last:pr-4';
 
 export default async function PayrollPage({
   searchParams,
@@ -254,7 +254,7 @@ export default async function PayrollPage({
     const staleIds = reprocessEmploymentIds(b);
     return (
       <tr key={b.id} className="hover:bg-muted/40">
-        <td className="whitespace-nowrap px-3 py-2.5">
+        <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
           {/* A DRAFT batch resumes into the wizard at Step 1 (Payroll Period & Company shown
               read-only for review — feedback 4f00d8f0), then Employee Selection. Processed/closed
               batches open directly as read-only, unchanged. */}
@@ -289,7 +289,7 @@ export default async function PayrollPage({
         <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums">
           {totals?.net != null ? formatMoney(totals.net, b.currency) : '—'}
         </td>
-        <td className="whitespace-nowrap px-3 py-2.5">
+        <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
           {/* 0b326d5f — a processed run whose inputs have moved reads "Reprocess Required"
               INSTEAD OF "Processed", which is the reporter's actual ask. Underneath it is
               still `status = 'processed'`; only what this cell says changes. A CLOSED run
@@ -353,7 +353,7 @@ export default async function PayrollPage({
         <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
           {showDate(processedOn.get(b.id))}
         </td>
-        <td className="whitespace-nowrap px-3 py-2.5 text-right">
+        <td className="whitespace-nowrap px-3 py-2.5 text-right first:pl-4 last:pr-4">
           <div className="flex items-center justify-end gap-1.5">
             <Link
               href={`/payroll/${b.id}?from=${fromQuery}`}
@@ -546,7 +546,8 @@ export default async function PayrollPage({
 
       {unpublishedCount > 0 && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400">
-          🙈 {t('notPublishedBanner', { n: unpublishedCount })}
+          <p className="font-medium">{t('allPeriods')}</p>
+          <p className="mt-1">{t('notPublishedBanner', { n: unpublishedCount })}</p>
         </div>
       )}
 

@@ -147,3 +147,12 @@ it('shows the year-specific preparing message without any budget or action figur
  expect(view.container.textContent).not.toMatch(/MYR|people/);
  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','rewards-preparing-notice');
 },60000);
+
+// Empty dashboards name All reviews in their guidance; give that destination one visible, localized action.
+it.each(Object.keys(copies) as (keyof typeof copies)[])('links the empty dashboard to All reviews in %s',locale=>{
+ const empty={...value,businessUnits:[],companies:[],context:null,figures:null,excluded:[],preparing:[],waiting:[],roles:[]} as RewardDashboard;
+ render(<NextIntlClientProvider locale={locale} messages={copies[locale]} onError={error=>{throw error;}}><RewardsDashboard value={empty}/></NextIntlClientProvider>);
+ expect(screen.getAllByText(copies[locale].rewardDashboard.empty)).toHaveLength(1);
+ expect(screen.getByRole('link',{name:copies[locale].nav.rewardsAllReviews})).toHaveAttribute('href','/rewards/reviews');
+ expect(screen.queryByRole('meter')).toBeNull();
+});

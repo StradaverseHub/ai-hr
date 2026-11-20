@@ -87,7 +87,7 @@ export default async function ReportsPage({
                 {cat==='payroll'&&payrollOptions?<PayrollNewReportDialog payItems={payrollOptions.payItems}/>:datasets.length > 0 && (
                   <Link
                     href={`/reports/builder/new?dataset=${encodeURIComponent(datasets[0].id)}`}
-                    className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition hover:opacity-90"
+                    className="inline-flex min-h-9 shrink-0 items-center rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition hover:bg-muted"
                   >
                     {t('newReport')}
                   </Link>
@@ -97,7 +97,7 @@ export default async function ReportsPage({
               {/* Predefined reports */}
               {links.length > 0 && (
                 <div>
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  <div className="mb-1.5 text-xs font-semibold text-muted-foreground">
                     {t('builtInReports')}
                   </div>
                   <ul className="space-y-1">
@@ -119,7 +119,7 @@ export default async function ReportsPage({
               {cat==='master'&&<div className="space-y-3"><div className="flex items-center justify-between"><h3 className="text-sm font-medium">{mt('recent')}</h3><Link className="text-sm text-primary hover:underline" href="/reports/employee-master" aria-label={mt('viewAllCountLabel',{count:masterReportCount})}>{mt('viewAllCount',{count:masterReportCount})}</Link></div><MasterReportList reports={masterReports}/><div className="flex flex-wrap gap-2">{MASTER_STARTERS.map(starter=><Link key={starter} href={'/reports/employee-master/new?starter='+starter} className="rounded border border-border px-2 py-1 text-xs hover:bg-accent">{mt('starter.'+starter)}</Link>)}</div></div>}
               {/* Custom reports */}
               <div>
-                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                <div className="mb-1.5 text-xs font-semibold text-muted-foreground">
                   {t('customReports')}
                 </div>
                 {datasets.length === 0 ? (

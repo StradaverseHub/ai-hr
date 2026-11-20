@@ -7,7 +7,7 @@ import {deskMoney,DeskMeter} from './[unitId]/desk/salary-increase-table';
 import {RewardsDashboardFilters} from './dashboard-filters';
 
 export function RewardsDashboard({value}:{value:RewardDashboard}){
- const t=useTranslations('rewardDashboard'),r=useTranslations('rewards'),prep=useTranslations('rewardsPreparation'),locale=useLocale();
+ const t=useTranslations('rewardDashboard'),r=useTranslations('rewards'),prep=useTranslations('rewardsPreparation'),nav=useTranslations('nav'),locale=useLocale();
  const money=(n:number)=>deskMoney(n,locale),salary=(n:number)=>money(rewardSalaryDisplay(n,value.choice.period));
  const percent=(bp:number|null)=>bp===null?'—':new Intl.NumberFormat(locale,{style:'percent',minimumFractionDigits:1,maximumFractionDigits:1}).format(bp/10000);
  const date=(iso:string)=>new Intl.DateTimeFormat(locale==='en'?'en-GB':locale,{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(`${iso}T00:00:00Z`));
@@ -39,7 +39,10 @@ export function RewardsDashboard({value}:{value:RewardDashboard}){
     <span className="text-muted-foreground">{notice.expectedRelease?prep('expectedOn',{date:date(notice.expectedRelease)}):prep('datePending')}</span></li>)}</ul></Card>}
   {(['restricted','uploaded'] as const).map(reason=>excludedOf(reason).length>0&&<p key={reason} className="text-sm text-muted-foreground">{t(reason==='restricted'?'excludedRestricted':'excludedUploaded',{companies:excludedOf(reason).join(', ')})}</p>)}
   {value.roles.length>0&&<p className="text-sm text-muted-foreground">{t('yourRoles')}: {value.roles.map(role=>r(`board.seat.${role}`)).join(', ')} · {t('separate')}</p>}
-  <div className="grid items-start gap-5 xl:grid-cols-3">{box('salary')}{box('bonus')}<Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t('waiting',{count:value.waiting.length})}</h2><Link href="/rewards/approvals" className="text-sm text-primary hover:underline">{t('open')}</Link></div>
+  <div className="grid items-start gap-5 xl:grid-cols-3">{figures?<>{box('salary')}{box('bonus')}</>:<Card className="min-w-0 space-y-3 p-5 xl:col-span-2">
+    <p className="text-sm text-muted-foreground">{value.excluded.length?t('noCombinedFigures'):value.preparing.length?t('preparingYear',{year:value.year}):t('empty')}</p>
+    <Link href="/rewards/reviews" className="inline-flex min-h-9 items-center rounded-md border border-input px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">{nav('rewardsAllReviews')}</Link>
+  </Card>}<Card className="min-w-0"><div className="flex items-center justify-between gap-3 border-b border-border p-5"><h2 className="font-semibold">{t('waiting',{count:value.waiting.length})}</h2><Link href="/rewards/approvals" className="text-sm text-primary hover:underline">{t('open')}</Link></div>
    {waiting.length?<ul className="divide-y divide-border">{waiting.map(unit=><li key={unit.id} className="space-y-2 p-5 text-sm"><Link href={`/rewards/${unit.id}`} className="font-medium text-primary hover:underline">{unit.company} · {unit.name}</Link><p>{r('openReview')}</p><p className={unit.daysUntilDue!==null&&unit.daysUntilDue<0?'text-destructive':'text-muted-foreground'}>{unit.due?`${r('dueOn',{date:unit.due})}${unit.daysUntilDue!==null&&unit.daysUntilDue<0?' · '+t('overdue'):''}`:t('noDue')}</p><Link href={`/rewards/${unit.id}#checks`} className={unit.blocking?'font-medium text-destructive hover:underline':'text-muted-foreground hover:underline'}>{r('reviewList.blocking',{count:unit.blocking})} · {r('reviewList.exceptions',{count:unit.exceptions})}</Link></li>)}</ul>:<p className="p-5 text-sm text-muted-foreground">{r('board.noneWaiting')}</p>}
    {value.waiting.length>5&&<Link href="/rewards/approvals" className="block border-t border-border p-5 text-sm text-primary underline">{t('more',{count:value.waiting.length-5})}</Link>}
   </Card></div>

@@ -22,6 +22,7 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import { FilterBar } from './FilterBar';
 import { YearSelect } from './YearSelect';
 import { bucketLabel, localizeDimension } from './labels';
+import {UNKNOWN_BUCKET} from '@/core/analytics';
 // 9cbf5e0d — one Employee Status vocabulary, shared with the Personnel badges.
 import type { EmploymentStatus } from '@/core/employment-status';
 
@@ -82,7 +83,7 @@ export default async function AnalyticsPage({
 
   // CSV / XLSX / PDF button group for a report (+ optional extra query, e.g. &comp=1).
   const FormatGroup = ({ report, extra = '' }: { report: string; extra?: string }) => (
-    <div className="inline-flex items-center gap-1.5">
+    <div className="inline-flex flex-wrap items-center gap-1.5">
       <ExportLink href={exportHref(report, 'csv', extra)} label={t('exportCsv')} />
       <ExportLink href={exportHref(report, 'xlsx', extra)} label={t('exportXlsx')} />
       <ExportLink href={exportHref(report, 'pdf', extra)} label={t('exportPdf')} />
@@ -99,6 +100,10 @@ export default async function AnalyticsPage({
   // Localize the dimension buckets (enum codes + Unknown/Unassigned sentinels) into chart categories.
   const genderData = demographics.byGender.map((r) => ({ label: bucketLabel(r.name, t, 'gender'), value: r.count }));
   const maritalData = demographics.byMarital.map((r) => ({ label: bucketLabel(r.name, t, 'marital'), value: r.count }));
+  const coverageNote = (rows: readonly {name:string;count:number}[]) => {
+    const unknown=rows.find(row=>row.name===UNKNOWN_BUCKET)?.count??0;
+    return unknown>0?`${t('bucketUnknown')}: ${unknown} / ${rows.reduce((sum,row)=>sum+row.count,0)}`:undefined;
+  };
   const ageData = localizeDimension(demographics.byAgeBand, t, 'plain'); // age bands + Unknown
   const nationalityData = nationality ? localizeDimension(nationality, t, 'nationality') : null;
   const deptData = localizeDimension(demographics.byDepartment, t, 'plain');
@@ -160,10 +165,10 @@ export default async function AnalyticsPage({
 
       {/* ── Workforce demographics ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title={t('chartGender')} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartGender')} footnote={coverageNote(demographics.byGender)} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-gender" data={genderData} ariaLabel={t('chartGender')} />
         </ChartCard>
-        <ChartCard title={t('chartMarital')} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartMarital')} footnote={coverageNote(demographics.byMarital)} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-marital" data={maritalData} ariaLabel={t('chartMarital')} />
         </ChartCard>
         <ChartCard title={t('chartAgeBand')} svgId="chart-age" filenameBase={`age-band_${to}`} exportLabel={t('exportChart')}>
@@ -236,7 +241,7 @@ export default async function AnalyticsPage({
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 pr-4">
           <SectionHeader title={t('carryForwardTitle')} count={carryForward.state.total} />
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 pb-3 pl-4">
             <form method="get" className="flex items-center gap-1.5">
               {/* Preserve every other query param (department/company/q/from/to) — only `year` changes. */}
               {filters.departmentId && <input type="hidden" name="departmentId" value={filters.departmentId} />}
@@ -251,7 +256,7 @@ export default async function AnalyticsPage({
                 years={Array.from({ length: 6 }, (_, i) => reportYear - 4 + i)}
               />
             </form>
-            <div className="inline-flex items-center gap-1.5">
+            <div className="inline-flex flex-wrap items-center gap-1.5">
               <ExportLink href={carryForwardExportHref('csv')} label={t('exportCsv')} />
               <ExportLink href={carryForwardExportHref('xlsx')} label={t('exportXlsx')} />
               <ExportLink href={carryForwardExportHref('pdf')} label={t('exportPdf')} />
@@ -340,8 +345,8 @@ export default async function AnalyticsPage({
 
       {/* New hires */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('newHiresTitle')} count={hires.state.total} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('newHiresTitle')} count={hires.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="new-hires" />
         </div>
         <Pager state={hires.state} basePath="/analytics" params={sp} paramNames={{page:"hirePage",size:"hireSize"}} exportHref={exportHref("new-hires","csv")} />
@@ -354,8 +359,8 @@ export default async function AnalyticsPage({
 
       {/* Terminations */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('terminationsTitle')} count={terms.state.total} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('terminationsTitle')} count={terms.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="terminations" />
         </div>
         <Pager state={terms.state} basePath="/analytics" params={sp} paramNames={{page:"termPage",size:"termSize"}} exportHref={exportHref("terminations","csv")} />
@@ -374,8 +379,8 @@ export default async function AnalyticsPage({
 
       {/* Change job transactions (ADR-0047) */}
       <Card className="overflow-hidden">
-        <div className="flex items-center justify-between gap-3 pr-4">
-          <SectionHeader title={t('changeJobsTitle')} count={changeJobs.state.total} />
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-3 sm:pl-0 sm:pb-0">
+          <SectionHeader title={t('changeJobsTitle')} count={changeJobs.state.total} className="px-0 sm:px-4" />
           <FormatGroup report="change-jobs" />
         </div>
         <Pager state={changeJobs.state} basePath="/analytics" params={sp} paramNames={{page:"changePage",size:"changeSize"}} exportHref={exportHref("change-jobs","csv")} />
@@ -406,15 +411,15 @@ export default async function AnalyticsPage({
         <div className="space-y-3 p-4">
           <p className="text-sm text-muted-foreground">{t('masterDataDesc')}</p>
           <div className="space-y-2">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithoutComp')}</span>
               <FormatGroup report="master-data" />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportWithComp')}</span>
               <FormatGroup report="master-data" extra="&comp=1" />
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:gap-3">
               <span className="w-44 shrink-0 text-xs font-medium text-muted-foreground">{t('exportAll')}</span>
               <FormatGroup report="master-data" extra="&all=1&comp=1" />
             </div>

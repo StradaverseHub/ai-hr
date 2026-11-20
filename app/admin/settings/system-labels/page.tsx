@@ -238,12 +238,11 @@ export default async function SystemLabelsPage({
   }));
 
   return (
-    <div className="w-full min-w-0 space-y-6">
+    <div className="w-full min-w-0 space-y-4">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} back={await peopleSettingsBack()} />
       <PeopleSettingsNavigation />
-      <p className="text-sm text-muted-foreground">{t('criteriaHelp')}</p>
       <SystemLabelsTabs active="organisation" />
-      <SystemLabelImportTools />
+      <SystemLabelImportTools criteriaHelp={t('criteriaHelp')} />
       <ErrorBanner message={error} />
 
       {/* b1b81a08 — this used to REPLACE the grid, which made the whole screen (and now Grades with it)

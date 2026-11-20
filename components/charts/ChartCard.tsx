@@ -50,7 +50,7 @@ export function ChartCard({
 
   return (
     <Card className="overflow-hidden">
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h3 className="text-sm font-semibold">{title}</h3>
         {!isEmpty && (
           <div className="inline-flex items-center gap-1.5" aria-label={exportLabel}>
@@ -74,7 +74,7 @@ export function ChartCard({
         ) : (
           children
         )}
-        {footnote && !isEmpty && <p className="mt-2 text-[11px] text-muted-foreground">{footnote}</p>}
+        {footnote && !isEmpty && <p className="mt-3 text-sm text-muted-foreground">{footnote}</p>}
       </div>
     </Card>
   );

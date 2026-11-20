@@ -304,29 +304,45 @@ describe('System Labels authenticated Excel browser journey',()=>{
    console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'verified-ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
    sampleCapacity?.('fonts-ready');
   }
-  // No production credentials or identity provider. This is the existing explicit developer identity route.
-  signal.throwIfAborted();
-  server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
-   detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
-  sampleCapacity?.('next-spawned');
-  const nextChild=server;
-  nextChild.once('spawn',()=>{serverStartTicks=detachedLeaderStart(nextChild);});
-  nextChild.once('error',()=>{serverSpawnFailed=true;});
-  nextChild.once('close',()=>{serverClosed=true;});
-  server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
-  let ready=false;
-  for(let attempt=0;attempt<120;attempt++){
-   if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
-   try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
+  // No production credentials or identity provider. Recycle only this owned detached server:
+  // the first combined capture exhausted runner headroom after the six-language loop (44573956115).
+  // Fresh processes retain the isolated database and sessions while releasing compiled dev-route graphs.
+  async function startOwnedNext(){
+   signal.throwIfAborted();
+   serverClosed=false;serverSpawnFailed=false;serverStartTicks=undefined;
+   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
+    detached:true,cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',NEXT_TELEMETRY_DISABLED:'1',AUTH_PROVIDER:'workos',ALLOW_DEMO_SESSION:'true',DEV_USER_ID:'',DATABASE_URL:process.env.TEST_DATABASE_URL!,MIGRATION_DATABASE_URL:process.env.TEST_MIGRATION_DATABASE_URL!,NEXT_WEBPACK_PARALLELISM:'1',NODE_OPTIONS:`--max-old-space-size=${heapMiB} --require ${resolve('test/helpers/heap-peak-preload.cjs')}`,AIHR_HEAP_PEAK_DIR:heapEvidence},stdio:['ignore','pipe','pipe']});
+   sampleCapacity?.('next-spawned');
+   const nextChild=server;
+   nextChild.once('spawn',()=>{if(server===nextChild)serverStartTicks=detachedLeaderStart(nextChild);});
+   nextChild.once('error',()=>{if(server===nextChild)serverSpawnFailed=true;});
+   nextChild.once('close',()=>{if(server===nextChild)serverClosed=true;});
+   server.stdout?.pipe(stream,{end:false});server.stderr?.pipe(stream,{end:false});
+   let ready=false;
+   for(let attempt=0;attempt<120;attempt++){
+    if(serverSpawnFailed||server.exitCode!==null||server.signalCode!==null)throw new Error('Owned preview server stopped: '+logTail(log,5000));
+    try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
+   }
+   expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
   }
-  expect(ready,'Owned preview server is reachable').toBe(true);sampleCapacity?.('login-ready');
+  async function recycleNext(phase:string,currentPage:Page){
+   // Prevent the old page's hot-reload client from recompiling its route during the next phase.
+   const browserContext=currentPage.context();
+   await currentPage.close();
+   const deadline=performance.now()+20000;
+   await within(deadline,'phase server cleanup',()=>stopNext(deadline));
+   sampleCapacity?.(phase+'-stopped');
+   await startOwnedNext();
+   const nextPage=await browserContext.newPage();nextPage.setDefaultTimeout(90000);return nextPage;
+  }
+  await startOwnedNext();
   signal.throwIfAborted();
   browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
   const browser=await browserLaunch;
   signal.throwIfAborted();
   const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
   await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
-  const page=await context.newPage();page.setDefaultTimeout(90000);
+  let page=await context.newPage();page.setDefaultTimeout(90000);
   await navigate(page,labelsPath,en);
   // Even a fresh personal catalogue must retain its category rail and Excel export.
   await navigate(page,profilePath,en);
@@ -370,7 +386,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const [group]=await owner.db.select().from(s.gradeGroup).where(eq(s.gradeGroup.name,'BROWSER_GROUP_LABEL'));expect(group).toMatchObject({tenantId:b.tenantId,scopeCompanyIds:null});
   expect(await owner.db.select().from(s.department).where(eq(s.department.name,'BROWSER_INVALID_LABEL'))).toHaveLength(0);
   await page.getByRole('button',{name:en.labelsImportWizard.step3,exact:true}).click();
-  for(const locale of locales){
+  for(const [localeIndex,locale] of locales.entries()){
+   if(localeIndex%2===0)page=await recycleNext('locale-'+locale,page);
    const messages:typeof en=JSON.parse(readFileSync(join(process.cwd(),'messages',locale+'.json'),'utf8'));
    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
    for(const [name,width,height]of [['desktop',1440,1050],['mobile',390,844]] as const){
@@ -380,6 +397,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
     await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
    }
   }
+  page=await recycleNext('restricted-role',page);
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
@@ -403,7 +421,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
-  await restrictedContext.close();await context.close();
+  await restrictedContext.close();
+  await context.close();
   signal.throwIfAborted();
   sampleCapacity?.('functional-checks-complete');
   publishResult=()=>{
@@ -411,5 +430,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
    if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
    writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
   };
- },600000);
+ // Recycle after each two-language group; the unbounded process exhausted memory in run 44573956115.
+ },900000);
 });

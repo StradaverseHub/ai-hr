@@ -495,7 +495,7 @@ export default async function ApprovalsPage({
       key={JSON.stringify([s.userId, scopeIds, nav.category, focus?.id])}
       claimSelectionScope={claimSelectionScope}
       claimsOutsidePage={claimSelectionScope !== undefined && claimResult.page.total > claims.length}>
-    <div className={`mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
+    <div className={`flex w-full min-w-0 flex-col gap-6 lg:flex-row lg:items-start${bulkRows.length > 0 ? ' pb-24' : ''}`}>
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
       {!focus&&<aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
@@ -640,7 +640,7 @@ export default async function ApprovalsPage({
                     </LeaveTypeCell>
                   </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
-                    {r.startDate} → {r.endDate}
+                    <time dateTime={r.startDate} className="whitespace-nowrap">{r.startDate}</time>{' → '}<time dateTime={r.endDate} className="whitespace-nowrap">{r.endDate}</time>
                     {/* R17 600be8ac ask #1: surface the applicant's own words so the approver's summary shows
                         WHY the leave was requested, not just the dates. Prefer the mandatory remark, else reason. */}
                     {(r.employeeRemark || r.reason) && (

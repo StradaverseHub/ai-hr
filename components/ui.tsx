@@ -12,7 +12,7 @@ export { Card } from './ui/card';
 
 // Legacy class strings, now token-based — kept for pages not yet migrated to primitives.
 export const inputCls =
-  'flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
+  'ui-field flex h-9 min-w-0 w-full rounded-md border border-input bg-card px-3 py-1 text-sm shadow-sm outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/20';
 export const btnPrimary =
   'ui-control inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition duration-150 ease-snappy hover:bg-primary/90 active:scale-[0.98] disabled:opacity-50';
 export const btnGhost =
@@ -271,7 +271,7 @@ export function RoleTag({ role, label }: { role: string; label?: string }) {
  */
 export function EmployeeCode({ code, className }: { code?: string | null; className?: string }) {
   if (!code) return null;
-  return <span className={cn('font-mono text-xs text-muted-foreground', className)}>{code}</span>;
+  return <span className={cn('whitespace-nowrap font-mono text-xs text-muted-foreground', className)}>{code}</span>;
 }
 
 /**

@@ -438,7 +438,7 @@
 
   /* Buttons: one height, one corner, one soft shadow; the accent only on the primary. */
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input']) {
-    min-height: 2rem; height: auto; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
+    min-height: 2.25rem; height: auto; padding-block: .4375rem; border-radius: .5rem; box-shadow: var(--shadow-sm); font-weight: 500;
   }
   /* Preserve an explicit accessible target minimum supplied by a screen, including disabled actions. */
   :root[data-ui-theme='atelier'] main :is(button, a)[class~='inline-flex']:is([class~='bg-primary'], [class~='border-input'])[class~='min-h-11'] {

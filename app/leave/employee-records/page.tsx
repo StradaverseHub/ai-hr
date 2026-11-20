@@ -1,3 +1,4 @@
+import { InquiryScopeSummary } from '@/components/leave/inquiry-scope-summary';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -91,6 +92,7 @@ export default async function EmployeeLeaveRecordPage({
   const { s: session, scopeIds } = await scopedAdmin();
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
+  const tPeople = await getTranslations('people.list');
   const locale = await getLocale();
   const sp = await searchParams;
 
@@ -315,7 +317,7 @@ export default async function EmployeeLeaveRecordPage({
                 {t('requestsCountTotal', { count: total })}
               </span>
             </div>
-          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employeeCount, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
+          ) : <InquiryScopeSummary heading={tInq('allEmployeesHeader', { count: employeeCount, companies: `${tPeople('company')}: ${inquiry.companies.length}` })} companies={inquiry.companies} />
         }
         panel={
           <Card className="p-4">

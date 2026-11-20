@@ -35,7 +35,7 @@ export default async function PeopleSettingsPage() {
               <p className="mt-1 flex-1 text-sm text-muted-foreground">{t(`${c.key}.desc`)}</p>
               <Link
                 href={c.href}
-                className="mt-4 inline-flex w-fit items-center rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                className="mt-4 inline-flex min-h-9 w-fit items-center rounded-lg border border-input px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted"
               >
                 {t(`${c.key}.cta`)}
               </Link>

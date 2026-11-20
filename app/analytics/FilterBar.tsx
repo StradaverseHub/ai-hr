@@ -54,7 +54,7 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
   const nativeContext=JSON.stringify(Object.fromEntries(contextKeys.filter(key=>typeof preservedParams?.[key]==='string').map(key=>[key,preservedParams![key]])));
   const tStatus = useTranslations('people.employeeStatus');
   const inputCls =
-    'h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
+    'h-9 min-w-0 w-full rounded-lg border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40';
   const auto = (e: React.ChangeEvent<HTMLSelectElement>) => e.currentTarget.form?.requestSubmit();
 
   const Select = ({
@@ -79,24 +79,24 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
   );
 
   return (
-    <form method="get" className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
+    <form method="get" className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
       {/* HTML implicit Enter uses the first submitter; retain the ordinary GET report action. */}
       <button type="submit" tabIndex={-1} aria-hidden="true" className="sr-only">{t('apply')}</button>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterCompany')}</span>
         <Select name="companyId" value={values.companyId} allLabel={t('allCompanies')} opts={options.companies} />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterDepartment')}</span>
         <Select name="departmentId" value={values.departmentId} allLabel={t('allDepartments')} opts={options.departments} />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterCostCentre')}</span>
         <Select name="costCenterId" value={values.costCenterId} allLabel={t('allCostCentres')} opts={options.costCentres} />
       </label>
       <EmployeeChoiceField key={values.managerEmploymentId??''} name="managerEmploymentId" label={t('filterManager')}
         allLabel={t('allManagers')} selectedId={values.managerEmploymentId} selected={managerSelection} fallbackAction="/analytics/manager-choices" fallbackContext={nativeContext} />
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterLifecycleStatus')}</span>
         <Select
           name="lifecycleStatus"
@@ -105,7 +105,7 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
           opts={LIFECYCLE.map((v) => ({ value: v, label: t(`lifecycle_${v}`) }))}
         />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('chartEmploymentStatus')}</span>
         <Select
           name="assignmentStatus"
@@ -114,7 +114,7 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
           opts={EMPLOYMENT_STATUSES.map((v) => ({ value: v, label: tStatus(v) }))}
         />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterGender')}</span>
         <Select
           name="gender"
@@ -123,7 +123,7 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
           opts={GENDERS.map((v) => ({ value: v, label: t(`gender_${v}`) }))}
         />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterNationality')}</span>
         <Select
           name="nationality"
@@ -132,19 +132,19 @@ export function FilterBar({ from, to, values, options, managerSelection, preserv
           opts={NATIONALITIES.map((v) => ({ value: v, label: t(`nationality_${v}`) }))}
         />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('filterLocation')}</span>
         <Select name="workState" value={values.workState} allLabel={t('allLocations')} opts={options.locations} />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('from')}</span>
         <input name="from" type="date" defaultValue={from} className={inputCls} />
       </label>
-      <label className="space-y-1">
+      <label className="min-w-0 space-y-1">
         <span className="text-xs font-medium text-muted-foreground">{t('to')}</span>
         <input name="to" type="date" defaultValue={to} className={inputCls} />
       </label>
-      <div className="flex items-end gap-2">
+      <div className="flex flex-wrap items-end gap-2">
         <button
           type="submit"
           className="h-9 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90"

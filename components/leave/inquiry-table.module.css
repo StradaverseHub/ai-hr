@@ -1,14 +1,15 @@
 /* Employee identity precedes the canonical 16-column balance grid. Keep numbers readable,
    and contain overflow in the keyboard-focusable region rather than the page. */
 .table {width:100%; min-width:1850px; table-layout:fixed; font-size:12px;}
-.table th {font-size:12px; text-transform:none; white-space:normal; overflow-wrap:anywhere; line-height:1.35; padding:8px 6px; vertical-align:bottom;}
-.table td {padding:6px 3px; vertical-align:top;}
-.table th:first-child,.table td:first-child {width:100px; white-space:normal; overflow-wrap:anywhere;}
+.table th {font-size:12px; text-transform:none; white-space:normal; overflow-wrap:normal; word-break:normal; line-height:1.35; padding:8px 6px; vertical-align:bottom;}
+.table td {padding:6px 6px; vertical-align:top;}
+.table th:first-child,.table td:first-child {width:100px; white-space:nowrap; overflow-wrap:normal; word-break:normal;}
 .table th:nth-child(2) {width:160px;}
 .table th:nth-child(3) {width:140px;}
 .table th:nth-child(4) {width:120px;}
 .table th:nth-child(5) {width:200px;}
-.table th:nth-child(6) {width:70px;}
+.table th:nth-child(6) {width:96px;}
+.table th:nth-child(n+7):nth-child(-n+18) {width:96px;}
 .table th:nth-child(19) {width:90px;}
 .table th:nth-child(20) {width:90px;}
 .table td:nth-child(17),.table td:nth-child(18) {font-weight:700;}

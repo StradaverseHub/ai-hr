@@ -348,8 +348,8 @@ export function ClaimForm({
       </Field>
 
       <Field label={t('receiptLabel')}>
-        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="text-sm" />
-        <span className="mt-1 text-xs text-muted-foreground">{t('attachmentHint')}</span>
+        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="h-9 min-w-0 w-full rounded-md border border-input bg-card px-3 py-1 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5" />
+        <span className="text-xs text-muted-foreground">{t('attachmentHint')}</span>
       </Field>
 
       <label className="flex flex-col gap-1.5 sm:col-span-2">
@@ -373,7 +373,7 @@ export function ClaimForm({
         <Button aria-busy={isPending} type="submit" name="intent" value="draft" variant="secondary" disabled={isPending}>
           {draft ? t('updateDraft') : t('saveDraft')}
         </Button>
-        <span className="text-xs text-muted-foreground">{t('draftHint')}</span>
+        <p className="basis-full text-xs text-muted-foreground">{t('draftHint')}</p>
       </div>
     </form>
   );
