@@ -128,19 +128,46 @@ async function proxy(){
   incoming.pipe(upstream);
  });
  server.listen(3443,'localhost');
- await once(server,'listening');
+ await once(server,'listening',{signal:AbortSignal.timeout(5000)});
 }
+function applicationStatus(path,method,deadlineMs){
+ return new Promise(resolve=>{
+  const probe=request({hostname:'127.0.0.1',port:appPort,path,method,agent:false,
+   headers:{host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
+    finish(response.statusCode??null);
+    response.destroy();
+   });
+  const timer=setTimeout(()=>{probe.destroy();finish(null);},deadlineMs);
+  function finish(status){clearTimeout(timer);resolve(status);}
+  probe.once('error',()=>finish(null));
+  probe.end();
+ });
+}
+
 async function waitForApp(){
- for(let attempt=0;attempt<120;attempt++){
-  assert(app.exitCode===null&&app.signalCode===null,'Application stopped during startup');
+ const expires=performance.now()+90000;
+ report.applicationStartup=[];
+ for(const [phase,path,method] of [['health','/health','HEAD'],['login-response','/login','GET']]){
+  const started=performance.now();
+  console.info('Fictional application readiness started',phase);
+  let status=null,requests=0;
   try{
-   const response=await fetch(`http://127.0.0.1:${appPort}/login`,{redirect:'manual',signal:AbortSignal.timeout(2000)});
-   await response.arrayBuffer();
-   if(response.status===200)return;
-  }catch{/* The started child may still be opening its socket. */}
-  await pause(500);
+   while(performance.now()<expires){
+    assert(app.exitCode===null&&app.signalCode===null,'Application stopped during startup');
+    const budget=Math.max(1,Math.min(2000,Math.floor(expires-performance.now())));
+    requests++;
+    status=await applicationStatus(path,method,budget);
+    if(status===200)break;
+    await pause(300);
+   }
+   assert.equal(status,200,'Application readiness deadline exceeded for '+phase);
+  }finally{
+   const row={phase,status,requests,elapsedMs:Math.round(performance.now()-started)};
+   report.applicationStartup.push(row);
+   console.info('Fictional application readiness finished',phase,status??'no-response',row.elapsedMs);
+   save();
+  }
  }
- throw Error('Application startup deadline exceeded');
 }
 
 function retainMixedStartupFailure(label){
@@ -1207,12 +1234,18 @@ try{
  }
  if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
  report.fixtureVerified=true;
+ save();
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
-  await waitForApp();
-  await proxy();
+  try{
+   await waitForApp();
+   await proxy();
+  }catch(error){
+   if(driverCommand)retainMixedStartupFailure('application');
+   throw error;
+  }
  }
  if(driverCommand&&!fixtureOnly)await measureMixedLoad(driverCommand);
  else if(!fixtureOnly){
