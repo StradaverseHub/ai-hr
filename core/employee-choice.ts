@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {sql,type SQL} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {withIndependentTransactions,withTenant,type SessionContext,type Tx} from '../db/client';
 import {employment,person,company,assignment,department,businessUnit} from '../db/schema';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {organisationFilterChoices} from '../lib/organisation-choice-label';
@@ -70,10 +70,15 @@ function prepareChoices(ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPa
  return {filters,offset,limit,labelMode,q,from,organisationFilter,scoped:populationScope,inCompany,inStatus,where};
 }
 /** General navigation owns its snapshot and keeps the public transport's 200-row cap. */
-export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal):Promise<EmployeeChoicePage>{
+export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInput&{companyIds:string[]},signal?:AbortSignal, options?:{initialJitOff?:true}):Promise<EmployeeChoicePage>{
  if('terminatedAfter' in p||'employmentIds' in p)throw new EmployeeChoiceInputError('Server population requires an explicit presentation transaction');
  const captured=captureContext(ctx),input=captureInput(p);
- return withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,{signal,ownedSnapshot:true}),{readOnlySnapshot:true,readSignal:signal});
+ const read=()=>withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,{
+  signal,ownedSnapshot:true,initialJitOff:options?.initialJitOff,
+ }),{readOnlySnapshot:true,readSignal:signal});
+ // A transaction-local planner experiment must own its connection and cannot change an
+ // enclosing render's shared snapshot, including sibling work started on that snapshot.
+ return options?.initialJitOff ? withIndependentTransactions(read) : read();
 }
 /** Borrow only an actual enforced RR/READ ONLY human presentation transaction.
  * The module still admits its own purpose. Its transport must derive population afresh.
@@ -84,13 +89,13 @@ export async function readEmployeeChoicesTx(tx:Tx,ctx:SessionContext,p:EmployeeC
 }
 async function readChoicePageTx(
  tx:Tx,ctx:SessionContext,p:EmployeeChoiceServerInput,maximumPageSize:number,
- {signal,ownedSnapshot}:{signal?:AbortSignal;ownedSnapshot?:true},
+ {signal,ownedSnapshot,initialJitOff}:{signal?:AbortSignal;ownedSnapshot?:true;initialJitOff?:true},
 ):Promise<EmployeeChoicePage>{
  const {filters,offset,limit,labelMode,q,from,organisationFilter,scoped,inCompany,inStatus,where}=prepareChoices(ctx,p,maximumPageSize);
  signal?.throwIfAborted();
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
   if(labelMode==='labels'&&!isAdmin(ctx))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
-  if(ownedSnapshot&&!q&&organisationFilter){
+  if(ownedSnapshot&&!q&&(organisationFilter||initialJitOff)){
    // JIT compilation added several hundred milliseconds in the native fixture.
    // The dedicated read-only transaction discards this setting when it ends.
    await tx.execute(sql`SET LOCAL jit = off`);

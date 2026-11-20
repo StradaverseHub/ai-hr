@@ -218,7 +218,7 @@ export default async function TransactionViewPage({
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
   const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
-    readPhase('employee-options', () => readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId})),
+    readPhase('employee-options', () => readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId},undefined,{initialJitOff:true})),
     readPhase('company-options', () => listCompanies(s)),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
