@@ -41,7 +41,7 @@ import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import {AssistantReplyClientEntry} from '@/components/assistant/chat-reply-boundary';
 import { assistantShellFor } from '@/core/assistant-launcher';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {AssistantImportHandoffProvider} from '@/components/assistant/import-handoff';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
@@ -160,6 +160,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   if (!usesOperatorShell && (pathname === '/payroll' || pathname === '/analytics')) {
     if (pathname === '/payroll') await requireModule('payroll', session);
     await requireAdmin(session);
+  }
+  // The register's loading boundary can stream before the run's scoped read completes.
+  // Check the same row visibility with its header reader before sending the document.
+  // The page's register read remains authoritative for client navigation and the actual rows.
+  const registerBatchId = /^\/payroll\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(pathname)?.[1];
+  if (!usesOperatorShell && registerBatchId) {
+    await requireAdmin(session);
+    const { batchHeader } = await import('@/packs/payroll/service');
+    if (!await batchHeader(session, registerBatchId)) notFound();
   }
   // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
   const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
