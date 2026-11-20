@@ -2858,12 +2858,21 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(sixItemPolicies).toHaveLength(2);
   expect(beforePerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual([]);
   expect(afterPerformancePrivileges.policies.filter(isSixItemPolicy)).toEqual(sixItemPolicies);
+  const payrollReadPolicies=['payroll_batch','payslip'].map(tablename=>({
+   schemaname:'public',tablename,policyname:tablename+'_current_human_read',
+   permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'SELECT',
+   qual:'( SELECT ((app.current_user_id() IS NULL) OR app.principal_snapshot_current()))',with_check:null,
+  }));
+  const isPayrollReadPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>
+   payrollReadPolicies.some(expected=>row.schemaname===expected.schemaname&&row.tablename===expected.tablename&&row.policyname===expected.policyname);
+  expect(beforePerformancePrivileges.policies.filter(isPayrollReadPolicy)).toEqual([]);
+  expect(afterPerformancePrivileges.policies.filter(isPayrollReadPolicy)).toEqual(payrollReadPolicies);
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)&&!isSixItemRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isContractPolicy(row)&&!isResignationPolicy(row)&&!isSixItemPolicy(row)&&!isPayrollReadPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:originalLegacyEmailAssetPredicate(row)),
