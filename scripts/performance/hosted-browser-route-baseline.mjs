@@ -89,6 +89,8 @@ function retainSeedPhases(){
   ...(row.failure&&{failure:{
    kind:['assertion-error','syntax-error','type-error','error','other'].includes(row.failure.kind)?row.failure.kind:'other',
    code:/^(?:ERR_[A-Z_]{1,60}|[0-9A-Z]{5})$/.test(row.failure.code)?row.failure.code:null,
+   locations:Array.isArray(row.failure.locations)?row.failure.locations.filter(value=>typeof value==='string'
+    &&/^(?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_./-]{1,140}:\d{1,5}:\d{1,5}$/.test(value)).slice(0,5):[],
   }}),
  }));
  if(report.seedPhases.some(row=>row.status==='failed')){
