@@ -153,6 +153,8 @@ describe('System Labels authenticated Excel browser journey',()=>{
   expect(url.pathname).toMatch(/test/);
   await migrateTestDb();sampleCapacity?.('migrations-ready');await resetDb();sampleCapacity?.('reset-ready');const b=await seedBase();sampleCapacity?.('seed-ready');
   const other=await createCompany(adminCtx(b),{legalName:'Fictional browser company B'});
+  await owner.db.insert(s.position).values({tenantId:b.tenantId,companyId:b.companyId,title:'BROWSER_POSITION_ONLY'});
+  await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:b.companyId,name:'BROWSER_INACTIVE_DEPARTMENT',archivedAt:new Date()});
   await owner.db.update(s.appUser).set({onboardedAt:new Date()}).where(eq(s.appUser.id,b.adminUserId));
   const [restricted]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'fictional-label-browser-restricted',onboardedAt:new Date()}).returning();
   await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:restricted.id,role:'hr_admin',companyId:b.companyId});
@@ -327,17 +329,37 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const context=await browser.newContext({viewport:{width:1440,height:1050},acceptDownloads:true});
   await context.addCookies([{name:'dev_user',value:b.adminUserId,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const page=await context.newPage();page.setDefaultTimeout(90000);
+  const downloadCategory=async(kind:string)=>{
+   const button=page.getByRole('button',{name:en.systemLabelExchange.export,exact:true});
+   await expect.poll(()=>button.count()).toBe(1);
+   const downloaded=page.waitForEvent('download');await button.click();
+   const download=await downloaded;
+   expect(download.suggestedFilename()).toBe(`system-labels-${kind}.xlsx`);
+   const path=await download.path();expect(path).toBeTruthy();
+   const rows=readSystemLabelWorkbook(readFileSync(path!));
+   expect(rows.every(row=>row.sheet===kind)).toBe(true);
+   return rows;
+  };
   await navigate(page,labelsPath,en);
   // Even a fresh personal catalogue must retain its category rail and Excel export.
   await navigate(page,profilePath,en);
   await page.screenshot({path:join(evidence,'system-label-profile-options-empty.png'),fullPage:true});
+  await owner.db.insert(s.profileOption).values({tenantId:b.tenantId,category:'religion',value:'BROWSER_RELIGION_ONLY',label:'Fictional religion option'});
+  await navigate(page,profilePath,en);
+  await page.getByRole('button',{name:/^Religion/}).click();
+  expect((await downloadCategory('religion')).map(row=>row.values.Code)).toContain('BROWSER_RELIGION_ONLY');
+
   await navigate(page,labelsPath,en);
-  const exports=page.getByRole('button',{name:en.systemLabelExchange.export,exact:true});await expect.poll(()=>exports.count()).toBe(1);
-  const downloaded=page.waitForEvent('download');await exports.click();const download=await downloaded;
-  expect(download.suggestedFilename()).toMatch(/\.xlsx$/);
-  const path=await download.path();expect(path).toBeTruthy();
-  const exported=readSystemLabelWorkbook(readFileSync(path!));
-  expect(exported.some(row=>row.sheet==='department'&&row.values.Code==='Finance')).toBe(true);
+  await page.getByRole('button',{name:en.admin.systemLabels.filter,exact:true}).click();
+  await page.getByPlaceholder(en.admin.systemLabels.searchPlaceholder,{exact:true}).fill('A code absent from the table');
+  const departments=await downloadCategory('department');
+  expect(departments.map(row=>row.values.Code)).toEqual(expect.arrayContaining(['Finance','BROWSER_INACTIVE_DEPARTMENT']));
+  expect(departments.map(row=>row.values.Code)).not.toContain('BROWSER_POSITION_ONLY');
+  await page.getByRole('button',{name:/^Positions/}).click();
+  const positions=await downloadCategory('position');
+  expect(positions.map(row=>row.values.Code)).toContain('BROWSER_POSITION_ONLY');
+  expect(positions.map(row=>row.values.Code)).not.toContain('Finance');
+  await page.getByRole('button',{name:/^Departments/}).click();
   const bytes=await buildSystemLabelWorkbook({kinds:['department','division','grade_groups'],includeStatus:true,references:{companies:[],grades:[],employees:[]},rows:{
    department:[{Code:'BROWSER_GLOBAL_LABEL',Label:'Fictional global label'},{Code:'BROWSER_INVALID_LABEL',Company:'Unknown company'}],
    division:[{Code:'BROWSER_COMPANY_LABEL',Label:'Fictional scoped label',Company:other.id}],
@@ -409,7 +431,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   publishResult=()=>{
    if(task.result?.state!=='pass')return;
    if(capacityEvidenceFailed)throw Error('System Labels capacity telemetry incomplete');
-   writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,locales:locales.length,viewports:2},null,2));
+   writeFileSync(join(evidence,'system-label-browser-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional and isolated',download:true,preview:true,imported:3,refused:1,restrictedGlobalRefused:true,foreignCompanyExportHidden:true,selectedCategoryDownloads:3,locales:locales.length,viewports:2},null,2));
   };
  },600000);
 });

@@ -94,10 +94,11 @@ describe('System Labels populated workbook round trip',()=>{
   expect(wb.Sheets.division.A2.v).toBe('00123');expect(wb.Sheets.division.A2.t).toBe('s');expect(wb.Sheets.division.A2.z).toBe('@');
   expect(systemLabelExportId(bytes)).toMatch(/^[0-9a-f-]{36}$/);
   expect(wb.Workbook?.Sheets?.find(s=>s.name==='_Export')?.Hidden).toBe(2);
-  const zip=await JSZip.loadAsync(bytes),xml=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
+  const zip=await JSZip.loadAsync(bytes),xml=await zip.file(`xl/worksheets/sheet${wb.SheetNames.indexOf('division')+1}.xml`)!.async('string');
   expect(xml).toContain('state="frozen"');expect(xml).toContain('autoFilter');
   const companyBook=await buildSystemLabelWorkbook({kinds:['department'],references:{companies:[['Company','id']],grades:[],employees:[]}});
-  const archive=await JSZip.loadAsync(companyBook),sheet=await archive.file('xl/worksheets/sheet2.xml')!.async('string');
+  const archive=await JSZip.loadAsync(companyBook),companySheets=XLSX.read(companyBook,{type:'buffer'}).SheetNames;
+  const sheet=await archive.file(`xl/worksheets/sheet${companySheets.indexOf('department')+1}.xml`)!.async('string');
   expect(sheet).toContain('dataValidation');expect(sheet).toContain('sqref="A2:A1001"');
   expect(readSystemLabelWorkbook(bytes)[0].values).toMatchObject({Code:'00123',Label:'Original',Description:'Keep this','Sort Order':'7'});
  });
