@@ -170,10 +170,43 @@ async function fixtureRoutes(db, fixture) {
   ];
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save }) {
-  const payrollCases = await fixtureRoutes(db, fixture);
-  const locationCases = await workLocationRoutes(db, fixture);
-  const cases = [...payrollCases, ...locationCases];
+async function payrollCorrectionState(db, fixture) {
+  const actor = fixture.users[0];
+  const { batchId } = fixture.tenants[0].companies[0];
+  const [state] = await db`
+    select b.status, p.status as period_status, count(s.id)::int as slips,
+      coalesce(sum(s.net_pay), 0)::text as total_net
+    from payroll_batch b
+    join pay_period p on p.id = b.pay_period_id and p.tenant_id = b.tenant_id
+    left join payslip s on s.batch_id = b.id and s.tenant_id = b.tenant_id
+    where b.id = ${batchId}::uuid and b.tenant_id = ${actor.tenantId}::uuid
+    group by b.status, p.status
+  `;
+  assert(state?.status === 'processed' && state.period_status === 'open' && state.slips === 50,
+    'Expected a processed, open fictional run with 50 payslips');
+  return state;
+}
+
+function payrollCorrectionRoutes(fixture) {
+  const actor = fixture.users[0];
+  const subject = fixture.users[4];
+  const { batchId } = fixture.tenants[0].companies[0];
+  assert.equal(actor.role, 'groupHR');
+  assert.equal(subject.companyId, actor.companyId);
+  return [
+    ['remove', 'Remove Employee Payroll'],
+    ['reprocess', 'Reprocess selected employees'],
+  ].map(([operation, exactHeading]) => ({
+    actor, exactHeading, template: '/payroll/[batchId]/' + operation, path: '/payroll/' + batchId + '/' + operation,
+    content: subject.name,
+    witness: `form:has(input[name="batchId"][value="${batchId}"]) textarea[name="reason"]`,
+  }));
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
+  const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
+  const cases = payrollCorrections ? payrollCorrectionRoutes(fixture)
+    : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture)];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
   const rows = report.fixtureRecordCensus.observations;
@@ -229,6 +262,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     } finally {
       await context.close();
     }
+  }
+  if (before) {
+    assert.deepEqual(await payrollCorrectionState(db, fixture), before, 'Opening correction forms must preserve the run');
+    report.payrollCorrectionRunPreserved = true;
+    save();
   }
   assert.equal(rows.length, cases.length * 2);
   assert(rows.every(row => row.outcome === 'usable-content'), 'One or more fictional record screens missed their readiness witness');

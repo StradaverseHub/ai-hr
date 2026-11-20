@@ -1,0 +1,33 @@
+/** Process one payroll run in the disposable browser database before opening correction forms. */
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+const env=process.env;
+assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
+assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
+assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests');
+assert(env.PERF_HTTP_SUITE==='browser-route-baseline'&&env.AUTH_PROVIDER==='internal');
+assert.equal(env.DATABASE_URL,'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
+assert.equal(env.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+const fixture=JSON.parse(readFileSync(resolve(env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
+const [group]=fixture.users;
+const company=fixture.tenants[0]?.companies[0];
+assert.equal(fixture.users.length,500);
+assert(group.role==='groupHR'&&group.tenantId===fixture.tenants[0].tenantId&&group.companyId===company.companyId);
+const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
+const [{client,createDb},{resolveEntitlementsTx},{generatePayslips},{setTenantSetting}]=await Promise.all([
+ source('db/client.ts'),source('core/entitlements.ts'),source('packs/payroll/service.ts'),source('core/tenant-settings.ts'),
+]);
+const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
+try{
+ await owner.client`insert into tenant_module (tenant_id,module_code,status)
+  values (${group.tenantId}::uuid,'multi_cycle_payroll','active')
+  on conflict (tenant_id,module_code) do update set status=excluded.status`;
+ const grants=[{role:'hr_admin',companyId:null}];
+ const ctx={tenantId:group.tenantId,userId:group.userId,personId:group.personId,grants,roles:['hr_admin'],
+  entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId))};
+ await setTenantSetting(ctx,{key:'payroll.reset_enabled',value:true});
+ await generatePayslips(ctx,{batchId:company.batchId});
+}finally{await Promise.all([owner.client.end(),client.end()]);}

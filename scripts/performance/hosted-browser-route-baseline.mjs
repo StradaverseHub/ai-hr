@@ -31,7 +31,8 @@ const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
-const censusFixtureRecords=shardInput==='fixture-records';
+const censusPayrollCorrections=shardInput==='payroll-corrections';
+const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1529,13 +1530,15 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   if(censusFixtureRecords){
+   if(censusFixtureRecords&&!censusPayrollCorrections){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
    save();
   }finally{await owner.end({timeout:5});}
  }
+ if(censusPayrollCorrections)await run('seed-payroll-correction-run',process.execPath,
+  ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],dbEnv);
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
@@ -1553,7 +1556,7 @@ try{
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
-   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save});}
+   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,payrollCorrections:censusPayrollCorrections});}
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
