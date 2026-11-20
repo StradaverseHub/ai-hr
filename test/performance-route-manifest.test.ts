@@ -5,7 +5,7 @@ import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
- requireNativeRenderedUnion,readManifestRoute,builtPageCoverage} from '../scripts/performance/system-route-manifest.mjs';
+ requireNativeRenderedUnion,readManifestRoute,builtPageCoverage,staticPageCensusPlan,STATIC_CENSUS_SHARDS} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
  const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards','/admin/rewards/plans','/admin/rewards/shared']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
@@ -38,6 +38,19 @@ it('keeps the real build inventory distinct from authorized usable browser evide
   staticPagesWithoutPlan:['/unplanned'],plannedStaticPagesWithoutUsableContent:['/','/approvals'],
   dynamicPageTemplates:['/profile/[id]'],
  });
+});
+
+it('assigns every compiled static page to one shard and leaves dynamic templates for fixture journeys',()=>{
+ const staticPaths=['/','/reports','/admin/personnel','/payroll','/leave','/me','/login','/feedback'];
+ const pages=Object.fromEntries(staticPaths.map(path=>[path+'/page',path]));
+ const manifest={
+  ...pages,'/(legacy)/reports/page':'/reports','/personnel/[id]/page':'/personnel/[id]',
+  '/api/actions/route':'/api/actions','/_not-found/page':'/_not-found',
+ };
+ const shards=Array.from({length:STATIC_CENSUS_SHARDS},(_,shard)=>staticPageCensusPlan(manifest,shard));
+ expect(shards.flatMap(plan=>plan.paths).sort()).toEqual([...staticPaths].sort());
+ expect(shards.every(plan=>plan.staticPageCount===staticPaths.length&&plan.dynamicTemplateCount===1)).toBe(true);
+ expect(()=>staticPageCensusPlan(manifest,STATIC_CENSUS_SHARDS)).toThrow('Invalid static browser census shard');
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,

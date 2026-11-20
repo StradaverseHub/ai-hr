@@ -9,7 +9,8 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {builtPageCoverage,nativePreflightRoutePlan} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS} from './system-route-manifest.mjs';
+import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -26,6 +27,9 @@ const appPort=3174;
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
+const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
+assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static census configuration');
+const staticShard=shardInput===''?null:Number(shardInput);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -42,7 +46,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -582,6 +586,71 @@ async function measureRoutes(fixture){
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
  save();
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+}
+
+async function measureStaticPageCensus(fixture,shard){
+ const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+ const plan=staticPageCensusPlan(appPathRoutes,shard);
+ const census={shard,shards:STATIC_CENSUS_SHARDS,...plan,outcomes:[]};
+ report.staticPageCensus=census;
+ save();
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const curated=nativePreflightRoutePlan();
+ const lanes=new Map();
+ for(const path of plan.paths){
+  assert(/^\/(?:[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*)?$/.test(path),'Unexpected static route shape');
+  // Prefer a known authorized fixture role, then choose the closest general role.
+  const owner=curated.find(route=>route.requested===path);
+  const actorIndex=isAuthRoute(path)?null:owner?.actorIndex??(path==='/me'||path.startsWith('/me/')?4:0);
+  if(!lanes.has(actorIndex))lanes.set(actorIndex,[]);
+  lanes.get(actorIndex).push(path);
+ }
+ const compiledPaths=new Set(Object.values(appPathRoutes));
+ const results=await Promise.allSettled(Array.from(lanes,async([actorIndex,paths])=>{
+  const actor=actorIndex===null?null:fixture.users[actorIndex];
+  const context=actor?await signedInContext(actor):await browser.newContext({ignoreHTTPSErrors:true,locale:'en-US'});
+  try{
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   for(const pass of ['first','repeat'])for(const path of paths){
+    const row={path,pass,role:actor?.role??'public',outcome:'browser-failure'};
+    const start=performance.now(),remaining=()=>Math.max(1,Math.floor(start+15000-performance.now()));
+    try{
+     const response=await page.goto(origin+path,{waitUntil:'commit',timeout:remaining()});
+     row.responseCommittedMs=Math.round(performance.now()-start);
+     row.httpStatus=response?.status()??null;
+     const redirected=()=>{
+      const finalUrl=new URL(page.url());
+      if(finalUrl.origin!==origin){row.outcome='external-destination';return true;}
+      if(finalUrl.pathname===path)return false;
+      row.outcome='redirect';
+      row.destination=compiledPaths.has(finalUrl.pathname)?finalUrl.pathname:'non-static-destination';
+      return true;
+     };
+     if(!redirected()){
+      if(row.httpStatus!==200)row.outcome='http-error';
+      else{
+       const heading=page.locator('main:visible h1:visible').first();
+       const fault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/}).first();
+       await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
+       if(!redirected()){
+        row.headingMs=Math.round(performance.now()-start);
+        row.outcome=await fault.isVisible()?'render-error':
+         await page.locator('main [data-read-unavailable]:visible').count()?'read-unavailable':'heading-visible';
+       }
+      }
+     }
+    }catch(error){row.outcome=error?.name==='TimeoutError'?'timeout':'browser-failure';}
+    row.elapsedMs=Math.round(performance.now()-start);
+    if(row.outcome==='heading-visible')row.documentTiming=await documentTiming(page);
+    census.outcomes.push(row);
+    save();
+   }
+  }finally{await context.close();}
+ }));
+ assert(results.every(result=>result.status==='fulfilled'),'A static census lane failed');
+ assert.equal(census.outcomes.length,plan.paths.length*2,'Static census observations incomplete');
 }
 
 function approvalCategoryRequest(request){
@@ -1326,23 +1395,26 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  await seedNotificationReads(fixture);
+  if(staticShard===null)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true'});
   await waitForApp();
   await proxy();
-  await measureRoutes(fixture);
-  await measureShellLinks(fixture);
-  await measureActions(fixture);
-  await measurePublicLogin();
-  const routesObserved=report.observations.length===2*report.plannedRoleRoutes
-   &&report.observations.every(row=>row.status==='observed');
-  const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
-  report.contentObserved=report.observations.filter(row=>row.status==='observed'&&
-   ['usable-content','scope-denial'].includes(row.readiness)).length;
-  report.complete=routesObserved&&journeysObserved&&report.contentObserved===report.observations.length;
-  assert(routesObserved,'Browser baseline had missing or failed visits');
-  assert(journeysObserved,'Browser baseline had missing or failed actions');
+  if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
+  else{
+   await measureRoutes(fixture);
+   await measureShellLinks(fixture);
+   await measureActions(fixture);
+   await measurePublicLogin();
+   const routesObserved=report.observations.length===2*report.plannedRoleRoutes
+    &&report.observations.every(row=>row.status==='observed');
+   const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
+   report.contentObserved=report.observations.filter(row=>row.status==='observed'&&
+    ['usable-content','scope-denial'].includes(row.readiness)).length;
+   report.complete=routesObserved&&journeysObserved&&report.contentObserved===report.observations.length;
+   assert(routesObserved,'Browser baseline had missing or failed visits');
+   assert(journeysObserved,'Browser baseline had missing or failed actions');
+  }
  }
 }finally{
  try{await browser?.close();}

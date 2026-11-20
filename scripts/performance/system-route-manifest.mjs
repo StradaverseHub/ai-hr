@@ -1,5 +1,6 @@
 /** Concrete read routes only; dynamic record/workflow routes retain their seeded owner journeys. */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 export const aiCentreRoutes=Object.freeze(['/assistant','/policies','/assistant?view=how','/assistant?view=privacy','/assistant?view=tools']);
 export const attendanceReadRoutes=Object.freeze(['/attendance','/attendance/daily']);
 export const architectureHrReadRoutes=Object.freeze(['/analytics','/roster','/admin/job-descriptions']);
@@ -29,13 +30,30 @@ export const wholeSystemRouteCount=concreteReadRoutes.size;
 /** Keep known static views distinct; discard arbitrary query values from measurement labels. */
 export function readRouteForMeasurement(path){return concreteReadRoutes.has(path)?path:path.split('?')[0];}
 
-/** Compare direct browser evidence with the pages present in the measured build. */
-export function builtPageCoverage(appPathRoutes,plan,observations){
+function appPagePaths(appPathRoutes){
  const frameworkPages=new Set(['/_not-found','/_global-error']);
  const pages=[...new Set(Object.entries(appPathRoutes)
   .filter(([entry,path])=>entry.endsWith('/page')&&typeof path==='string'&&path.startsWith('/')&&!frameworkPages.has(path))
   .map(([,path])=>path))].sort();
  assert(pages.length>0,'The build recorded no application pages');
+ return pages;
+}
+
+export const STATIC_CENSUS_SHARDS=8;
+export function staticPageCensusPlan(appPathRoutes,shard){
+ assert(Number.isInteger(shard)&&shard>=0&&shard<STATIC_CENSUS_SHARDS,'Invalid static browser census shard');
+ const pages=appPagePaths(appPathRoutes);
+ const staticPages=pages.filter(path=>!path.includes('['));
+ return {
+  staticPageCount:staticPages.length,
+  dynamicTemplateCount:pages.length-staticPages.length,
+  paths:staticPages.filter(path=>createHash('sha256').update(path).digest().readUInt32BE(0)%STATIC_CENSUS_SHARDS===shard),
+ };
+}
+
+/** Compare direct browser evidence with the pages present in the measured build. */
+export function builtPageCoverage(appPathRoutes,plan,observations){
+ const pages=appPagePaths(appPathRoutes);
  const key=(role,path)=>JSON.stringify([role,path]);
  const planned=new Map(plan.map(row=>[key(row.role,row.requested),(row.final??row.requested).split('?')[0]]));
  const plannedPaths=new Set(planned.values());
