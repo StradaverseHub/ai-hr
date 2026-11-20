@@ -86,7 +86,8 @@ export function projectMixedPreflightLockWaits(rows){
     &&modes.has(edge.waiterMode)&&modes.has(edge.blockerMode)&&states.has(edge.blockerState))
     .slice(0,maxEdges).map(edge=>({family:edge.family,waiterMode:edge.waiterMode,
      blockerMode:edge.blockerMode,blockerState:edge.blockerState,
-     waiterCategory:originalAuditQueryCategory(edge.waiterCategory),blockerCategory:originalAuditQueryCategory(edge.blockerCategory)})),
+     waiterCategory:originalAdvisoryQueryCategory(edge.family,edge.waiterCategory),
+     blockerCategory:originalAdvisoryQueryCategory(edge.family,edge.blockerCategory)})),
   };
  });
 }

@@ -127,7 +127,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 7a95199e662c58f9baa0f73ae8c3d2c073b1e04e ]];
+            [[ "$EXPECTED_SHA" != 3b744ecef2efa1ab9f06333300a966b23176d9fe ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -226,10 +226,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=0142e6d8aaeb6bbf96caaf58e1d9c99387ce9100
-          test "$AIHR_CI_HEAD" = 7a95199e662c58f9baa0f73ae8c3d2c073b1e04e
+          test "$AIHR_CI_HEAD" = 3b744ecef2efa1ab9f06333300a966b23176d9fe
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/mixed-workflows.mjs\nM\tscripts/performance/system-load-owner.mjs')"
+          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/lock-sample-attribution.mjs\nM\tscripts/performance/measured-lock-observer.mjs\nM\tscripts/performance/mixed-workflows.mjs\nM\tscripts/performance/system-load-owner.mjs')"
           archive="$(mktemp "$RUNNER_TEMP/register-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136243450014 --jq '
