@@ -55,8 +55,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44804736694,artifactId:14662224576,
-  sourceSha:'2ca2cfbd698b834dbda3ca048eb4ab058a5a718c'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44800424553,artifactId:14661084127,
+  sourceSha:'cb3baf33a9377f80a84fbe9f5c3dfa6ca21a16dc'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -404,7 +404,7 @@ function readMixedRootStatements(name,dockerConfig){
  // their nested SQL a second time.
  const query=`select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
    from (select calls,plans,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
-     jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800) as normalized_query
+     jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,8000) as normalized_query
      from pg_stat_statements
      where dbid=(select oid from pg_database where datname=current_database())
        and userid=(select oid from pg_roles where rolname='ai_hr_app') and toplevel
@@ -413,9 +413,12 @@ function readMixedRootStatements(name,dockerConfig){
   const result=execFileSync('/usr/bin/docker',[
    '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
    '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
-  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:256*1024,stdio:['ignore','pipe','pipe']});
+  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:2*1024*1024,stdio:['ignore','pipe','pipe']});
   const statements=JSON.parse(result);
-  const categories=summarizeMixedStatements(statements);
+  // Keep the category comparison on the same prefix as the earlier run.
+  const categories=summarizeMixedStatements(statements.map(statement=>({
+   ...statement,normalized_query:statement.normalized_query.slice(0,1800),
+  })));
   return categories?{
    scope:'up to 35 top-level statements executed under the application role',
    categories, rankedWork:projectMixedRootStatementWork(statements),

@@ -21,3 +21,15 @@ test('rejects invalid counters and bounds the number of published shapes', () =>
   assert.equal(projectMixedRootStatementWork(Array(35).fill(row)).length, 12);
   assert.deepEqual(projectMixedRootStatementWork(Array(36).fill(row)), []);
 });
+
+test('recognizes the task bundle and quoted relations without publishing identifiers or query text', () => {
+  const [row] = projectMixedRootStatementWork([{
+    ...defaults,
+    normalized_query: 'WITH task_caller AS MATERIALIZED (select 1) SELECT * FROM "public"."tenant_module" '
+      + 'JOIN "other_schema"."private_accounts" ON true JOIN "company" ON true WHERE fixture = $1',
+  }]);
+  assert.deepEqual(row, {
+    sourceMarkers: ['account-task-bundle', 'company', 'tenant_module'],
+    calls: 100, plans: 98, planningMs: 125, executionMs: 50,
+  });
+});
