@@ -22,6 +22,7 @@ import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 
 const origin='https://localhost:3443';
 const appPort=3174;
+const healthPath='/health';
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
@@ -142,7 +143,7 @@ async function verifyMixedProxy(certificate){
  assert(report.mixedProxy.bindingVerified,'Wrong loopback for the mixed-load HTTPS ingress');
  const codes=new Set(['ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','ABORT_ERR','CERT_HAS_EXPIRED',
   'DEPTH_ZERO_SELF_SIGNED_CERT','ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE']);
- const checks=[{name:'health',path:'/api/health',expected:200},{name:'anonymous-claims',path:'/claims',expected:307}];
+ const checks=[{name:'health',path:healthPath,expected:200},{name:'anonymous-claims',path:'/claims',expected:307}];
  for(const {name,path,expected} of checks){
   const started=performance.now(),row={name,httpStatus:null,elapsedMs:null,errorCode:null,redirectVerified:false};
   report.mixedProxy.checks.push(row);
@@ -187,7 +188,7 @@ function applicationStatus(path,method,deadlineMs){
 async function waitForApp(){
  const expires=performance.now()+90000;
  report.applicationStartup=[];
- for(const [phase,path,method] of [['health','/health','HEAD'],['login-response','/login','GET']]){
+ for(const [phase,path,method] of [['health',healthPath,'HEAD'],['login-response','/login','GET']]){
   const started=performance.now();
   console.info('Fictional application readiness started',phase);
   let status=null,requests=0;
