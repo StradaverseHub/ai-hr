@@ -20,12 +20,20 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
  const scoped:SessionContext={...context(scopedUser,['hr_admin']),grants:[{role:'hr_admin',companyId:single}]};
  const empty:SessionContext={...context(emptyUser,['hr_admin']),grants:[{role:'hr_admin',companyId:companies[0].id}]};
  const approver=context(members[0].userId,['hr_admin'],members[0].personId);
+ const groupHrWithoutQueue=await createAppUser(f.base.tenantId,null,'hr_admin');
+ const companyHrWithoutQueue=await createAppUser(f.base.tenantId,null,'hr_admin');
+ const unconfiguredGroup=context(groupHrWithoutQueue,['hr_admin']);
+ const unconfiguredCompany:SessionContext={
+  ...context(companyHrWithoutQueue,['hr_admin']),grants:[{role:'hr_admin',companyId:single}],
+ };
  const fixture=Array.from({length:1000},(_,n)=>({n,id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[n%70].id,sourceRef:randomUUID(),movementId:randomUUID(),name:`Fictional posting employee ${String(n).padStart(4,'0')}`,source:n%10===0?'probation':'offboarding',status:n%10===1?'approved':'pending',createdAt:new Date(Date.UTC(2025,0,1,0,0,n)).toISOString()}));
  // Imported historical queue manifest, independently defined before SQL/read execution. This is not a fabricated service approval.
  const pending=fixture.filter(p=>p.source==='offboarding'&&p.status==='pending').sort((a,b)=>b.n-a.n);
  expect({companies:companies.length,employments:fixture.length,pending:pending.length,probation:fixture.filter(p=>p.source==='probation').length,approved:fixture.filter(p=>p.status==='approved').length}).toEqual({companies:70,employments:1000,pending:800,probation:100,approved:100});
  await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) select x.id,${f.base.tenantId}::uuid,x.name from jsonb_to_recordset(${JSON.stringify(companies)}::jsonb) x(id uuid,name text)`);
  await owner.db.execute(sql`update role_assignment set company_id=case when app_user_id=${scopedUser}::uuid then ${single}::uuid else ${companies[0].id}::uuid end where tenant_id=${f.base.tenantId}::uuid and app_user_id=any(${`{${scopedUser},${emptyUser}}`}::uuid[])`);
+ await owner.db.execute(sql`update role_assignment set company_id=${single}::uuid
+  where tenant_id=${f.base.tenantId}::uuid and app_user_id=${companyHrWithoutQueue}::uuid`);
  const groups=[...f.config.groups.map(group=>group.id===f.groupId?{...group,members:[...group.members,scopedUser,emptyUser]}:group),{id:'waiting-scale',name:'Scale posting approvers',members:members.map(member=>member.userId),limit:0}];
  await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(jsonb_set(data,'{groups}',${JSON.stringify(groups)}::jsonb),'{access,offboarding}',${JSON.stringify([f.managerUserId,scopedUser,emptyUser])}::jsonb) where tenant_id=${f.base.tenantId}::uuid`);
  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',${JSON.stringify(groups)}::jsonb) where tenant_id=${f.base.tenantId}::uuid`);
@@ -38,6 +46,8 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
  const subjectUser=await createAppUser(f.base.tenantId,fixture[2].personId,'employee'),subject=context(subjectUser,['employee'],fixture[2].personId);
  const outsiderBase=await seedBase();await setModule(outsiderBase.tenantId,'lifecycle','active');
  const actors=[{name:'all PeopleOps',ctx:f.admin,wanted:pending},{name:'all configured approver',ctx:approver,wanted:pending},{name:'one-company PeopleOps',ctx:scoped,wanted:pending.filter(p=>p.companyId===single)},{name:'empty company',ctx:empty,wanted:[]},{name:'ordinary employee',ctx:f.watcher,wanted:[]},{name:'subject employee',ctx:subject,wanted:[]},{name:'other tenant',ctx:adminCtx(outsiderBase),wanted:[]}];
+ actors.push({name:'Group HR without queue access',ctx:unconfiguredGroup,wanted:[]},
+  {name:'Company HR without queue access',ctx:unconfiguredCompany,wanted:[]});
  for(const actor of actors){
   const got:string[]=[];
   for(let offset=0;;offset+=100){
@@ -74,11 +84,14 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
            set_config('app.agent_principal_id',${ctx.agent?.principalId??''},true),
            set_config('jit','off',true)
    `;
-   const [row]=await tx<{allowed:boolean}[]>`select app.offboarding_posting_queue_access() as allowed`;
+   const [row]=await tx<{allowed:boolean;current:boolean}[]>`
+    select app.offboarding_posting_queue_access() as allowed, app.principal_snapshot_current() as current
+   `;
+   if(ctx===unconfiguredGroup||ctx===unconfiguredCompany) expect(row.current).toBe(true);
    return row.allowed;
   };
   const verifyActors=async()=>{
-   const expected=[true,true,true,true,false,false,false];
+   const expected=[true,true,true,true,false,false,false,false,false];
    for(const [index,actor] of actors.entries()){
     expect(await readActor(actor.ctx),actor.name).toBe(expected[index]);
    }
@@ -87,6 +100,7 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
    const timings: Record<string, number[]>={};
    for(const [role,ctx] of [
     ['groupHr',f.admin],['companyHr',scoped],['employee',f.watcher],
+    ['groupHrWithoutQueue',unconfiguredGroup],['companyHrWithoutQueue',unconfiguredCompany],
    ] as const){
     await readActor(ctx);
     const samples: number[]=[];
