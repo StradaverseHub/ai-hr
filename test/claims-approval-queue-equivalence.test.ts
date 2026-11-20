@@ -7,12 +7,14 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withSharedReadSnapshot,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {createClaimType,listPendingClaimsPage,listPendingClaimSelection,type ClaimRow} from '../packs/claims/service';
 import {APPROVAL_SORTS} from '../lib/approvals-sort';
+import {pendingTaskSummary} from '../core/approvals-inbox';
+import {readShellTaskSummary} from '../lib/shell-task-summary';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {legacyClaimInbox} from './helpers/claims-legacy-queue';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -222,6 +224,30 @@ describe('the batched claims approvals queue equals the former per-row queue',()
   // The set holds nothing outside these employments (and no duplicates).
   expect(rows[0].setSize).toBe(seen);
  });
+
+ it('keeps exact shell Claims badges and the remaining preview across role and company scopes',async()=>{
+  const modules={attendance:false,claims:true,performance:false,rewards:false,recruitment:false,probation:false};
+  const cases=[
+   ['group HR with own claims','all'],
+   ['group HR with own claims','company'],
+   ['group HR with own claims','empty'],
+   ['company-scoped HR (sister company)','all'],
+   ['line manager','company'],
+   ['department-scoped delegate','company'],
+   ['leave-only delegate','company'],
+   ['employee','company'],
+  ] as const;
+  for(const [name,selection] of cases){
+   const {ctx}=approvers.get(name)!;
+   const scope=selection==='all'?undefined:selection==='company'?[b.companyId]:[];
+   const previous=await withSharedReadSnapshot(ctx,()=>pendingTaskSummary(ctx,scope,modules,{deferClaimPreview:true}));
+   const candidate=await withSharedReadSnapshot(ctx,()=>readShellTaskSummary(ctx,scope,modules));
+   expect(candidate,name+' / '+selection).toEqual(previous);
+   expect(candidate.items.every(item=>item.kind!=='claim')).toBe(true);
+   if(selection==='empty')expect(candidate.claimTotal).toBe(0);
+   if(name==='group HR with own claims'&&selection==='all')expect(candidate.claimTotal).toBeGreaterThan(25);
+  }
+ },120000);
 
  it('keeps the inbox order deterministic under ties and sub-millisecond instants',async()=>{
   const {ctx}=approvers.get('group HR with own claims')!;

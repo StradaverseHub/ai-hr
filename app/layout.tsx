@@ -27,7 +27,6 @@ import { Suspense } from 'react';
 import { Providers } from './providers';
 import { OperatorShell } from '@/components/operator-shell';
 import { Sidebar } from '@/components/sidebar';
-import {letterNavigation} from '@/core/letter-navigation';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
@@ -41,7 +40,6 @@ import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
 import {AssistantReplyClientEntry} from '@/components/assistant/chat-reply-boundary';
-import { assistantShellFor } from '@/core/assistant-launcher';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
@@ -54,9 +52,8 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {readShellNavigationAccess} from '@/core/shell-navigation-access';
-import { companyContextForPage } from '@/lib/scope';
-import {pendingTaskSummary} from '@/core/approvals-inbox';
+import { readSignedInShellNavigation } from '@/lib/shell-navigation-context';
+import { readShellTaskSummary } from '@/lib/shell-task-summary';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
@@ -66,8 +63,6 @@ import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
-import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
-import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -81,7 +76,6 @@ import { AiAskAvailability } from '@/components/ai-centre/ask-availability';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
-import { handlesPrivateCases } from '@/core/private-cases';
 
 // r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
 // on demand, for a Classic user). Monolith's two faces preload.
@@ -183,7 +177,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
@@ -195,16 +188,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-  ]);
-  const letterDestinations=isModuleEnabledOrFalse(session,'employees')
-    ? await letterNavigation(session,scopeIds) : [];
-  const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
-    ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
-      rewardNavigation(session),
-    ).catch(() => [])
-    : [];
+  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
+    await readSignedInShellNavigation(session);
+  const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
+  const {
+    letters: letterDestinations,
+    rewards: rewardDestinations,
+    assistant: { launcher, allowed: assistantAccess },
+    privateCases: privateCaseHandler,
+    recruitmentTeam,
+    referralPortal,
+  } = features;
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
@@ -239,38 +233,34 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
+  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
     lifecycleModuleNavigation(session),
     lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
-  const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
-  const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
-  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
-  // Navigation and the floating launcher share the current Assistant grant read.
-  // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
-  // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
-  // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with Recruitment
-  // (a tenant-wide grant, as for every HR screen; the service gate refuses a tenant without one before any SQL). Failure hides it.
-  const [{launcher,allowed:assistantAccess},privateCaseHandler,recruitmentTeam,referralPortal] = await Promise.all([
-    assistantShellFor(session),
-    handlesPrivateCases(session).catch(() => false),
-    isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
-      ? recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
-      : Promise.resolve(false),
-    referralEligible(session).catch(() => false),
-  ]);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
+  const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
+    const [onboardingQueue, inbox] = await Promise.all([
+      lifecycleEnabled ? onboardingTasks(session) : [],
+      lifecycleModuleInbox(session, scopedLifecycleNavigation),
+    ]);
+    return {
+      items: [...onboardingQueue.map(onboardingNotificationTask), ...inbox.items],
+      count: onboardingQueue.length + inbox.count,
+      myTasksCount: onboardingQueue.length + inbox.myTasksCount,
+      approvalCount: inbox.approvalCount,
+      queueLinks: inbox.queueLinks,
+    };
+  });
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
+  const approvalSummaryWork = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => readShellTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
@@ -280,15 +270,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }),undefined,requestReadScope()));
+  const approvalFacts: Promise<ShellApprovalResult> = Promise.all([approvalSummaryWork, lifecyclePreview]).then(([approvalSummary, lifecycle]): ShellApprovalResult => ({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
+    lifecycleMyTasksCount:lifecycle.myTasksCount,
+    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
@@ -344,7 +336,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleMyTasksCount}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
@@ -498,10 +489,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       scope={notificationScope}
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
-                      tasks={lifecycleTasks}
-                      taskQueueLinks={lifecycleInbox.queueLinks}
+                      lifecyclePreview={lifecyclePreview}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                      taskCount={lifecycleTaskCount}
                       canApprove={canApprove}
                     />
                   </Suspense>
