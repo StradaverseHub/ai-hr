@@ -471,7 +471,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '7060_payroll_reprocess_tax_source':'e6237d4418b007ba09a94b377294ebe65fd34fa3535af3b7cc882628f57150f8',
+ '7060_payroll_reprocess_tax_source':'7c7aa0905b7b9b6444c5597d3e8bde9e51ac5582ab8e7d02661450b0c3c83781',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',

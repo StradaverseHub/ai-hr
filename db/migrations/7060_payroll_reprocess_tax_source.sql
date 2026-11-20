@@ -26,7 +26,7 @@ BEGIN
   OR history.before->'statutory' IS DISTINCT FROM NEW.before_source->'source'->'statutory' OR history.after->'statutory' IS DISTINCT FROM to_jsonb(slip)->'statutory'
   OR octet_length(NEW.before_source::text)>2000000 OR octet_length(NEW.after_source::text)>2000000
  THEN RAISE EXCEPTION 'Payroll replacement source binding changed'; END IF;
- SELECT * INTO prior FROM public.payroll_tax_basis_replacement WHERE correction_id=NEW.correction_id ORDER BY created_at DESC,id DESC LIMIT 1;
+ SELECT * INTO prior FROM public.payroll_tax_basis_replacement WHERE correction_id=NEW.correction_id ORDER BY (after_source->'source'->>'version')::int DESC,id DESC LIMIT 1;
  IF NEW.recalculated THEN
   -- A freshly calculated result may bridge changed source bytes, but only for the same
   -- physical result and version. The correction itself remains bound to its old hash.

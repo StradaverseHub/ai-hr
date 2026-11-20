@@ -440,7 +440,6 @@ export function reprocessRunErrorCode(error: unknown): ReprocessRunErrorCode {
   if (error instanceof ReprocessRunBlockedError) return error.code;
   if (error instanceof BatchNotResettableError) return 'BATCH_NOT_PROCESSED';
   if (error instanceof PayrollPermissionDeniedError) return 'PERMISSION_DENIED';
-  if (error instanceof PayrollTaxBasisError) return 'TAX_BASIS_SOURCE_CHANGED';
   return 'REPROCESS_STOPPED';
 }
 
@@ -5180,7 +5179,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       }
       return result;
     } : undefined;
-    const reprocessTaxRead = subset ? {currentBatchId:p.batchId,replayHistory:replayTaxHistory} : undefined;
+    const reprocessTaxRead = replayTaxHistory ? {kind:'history' as const,replay:replayTaxHistory} : undefined;
     const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
     const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string}[]>();

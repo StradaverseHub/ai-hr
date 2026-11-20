@@ -29,15 +29,15 @@ export function validatedTaxBasis(value:unknown):TaxBasisValue{
  if(Math.round((Number(value.normal)+Number(value.additional))*100)!==Math.round(Number(value.pcb)*100))throw new PayrollTaxBasisError('The corrected remuneration totals do not reconcile.');
  return value as TaxBasisValue;
 }
-type Replacement={id:string;correctionId:string;beforeHash:string;afterHash:string;beforeSource:TaxBasisSource;afterSource:TaxBasisSource;recalculated?:boolean};
+type Replacement={correctionId:string;beforeHash:string;afterHash:string;beforeSource:TaxBasisSource;afterSource:TaxBasisSource;recalculated:boolean};
 async function replacementsTx(tx:Tx,ctx:SessionContext,ids:string[]):Promise<Replacement[]>{
  if(!ids.length)return [];
- return tx.execute<Replacement>(sql`select id,correction_id as "correctionId",before_hash as "beforeHash",after_hash as "afterHash",before_source as "beforeSource",after_source as "afterSource",recalculated from payroll_tax_basis_replacement
-  where tenant_id=${ctx.tenantId}::uuid and correction_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by created_at,id`);
+ return tx.execute<Replacement>(sql`select correction_id as "correctionId",before_hash as "beforeHash",after_hash as "afterHash",before_source as "beforeSource",after_source as "afterSource",recalculated from payroll_tax_basis_replacement
+  where tenant_id=${ctx.tenantId}::uuid and correction_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by correction_id,(after_source->'source'->>'version')::int,id`);
 }
 /** Every immutable link binds the same native slip, employer, employee and version step.
  * A recalculated link records a fresh result, never a reuse of the old correction on changed bytes. */
-function replacementTip(source:TaxBasisSource,rootHash:string,links:readonly Replacement[]):string|null{
+function replacementTip(source:TaxBasisSource,rootHash:string,links:readonly Replacement[]):{hash:string;version:number|undefined}|null{
  let expected=rootHash;
  let previousVersion:number|undefined;
  for(const link of links){
@@ -52,31 +52,21 @@ function replacementTip(source:TaxBasisSource,rootHash:string,links:readonly Rep
   expected=link.afterHash;
   previousVersion=Number(after.source.version);
  }
- return expected;
+ return {hash:expected,version:previousVersion};
 }
-export function taxBasisReplacementMatches(source:TaxBasisSource,rootHash:string,links:readonly Replacement[]):boolean{
- return links.length>0&&hashTaxBasisSource(source)===replacementTip(source,rootHash,links);
-}
-type ReplacementCorrection = {id:string;payslipId:string;sourceHash:string;basis:TaxBasisValue};
-export type TaxBasisReplacementPreparation={sources:TaxBasisSource[];corrections:(ReplacementCorrection&{sourceChanged:boolean})[]};
+type ReplacementCorrection = {id:string;payslipId:string;basis:TaxBasisValue;sourceChanged:boolean};
+export type TaxBasisReplacementPreparation={sources:TaxBasisSource[];corrections:ReplacementCorrection[]};
 const sourceChangedMessage='Saved payroll changed after an income-tax correction. Review and recalculate the affected employee before continuing.';
 
 /** The open run owns these currently locked native payslips. Its ordinary calculation can replace them. */
 export async function prepareTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,ids:string[]):Promise<TaxBasisReplacementPreparation>{
- const read=await sourceReadContextTx(tx,ctx,ids,true);
- const changed=new Set<string>();
- await read.readEffective({reprocess:{currentIds:new Set(ids),onCurrentSourceChanged:source=>changed.add(source.id)}});
- const candidates=ids.length?await tx.execute<ReplacementCorrection>(sql`select distinct on(payslip_id) id,payslip_id as "payslipId",source_hash as "sourceHash",basis from payroll_tax_basis_revision where tenant_id=${ctx.tenantId}::uuid and payslip_id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by payslip_id,ordinal desc`):[];
- const links=await replacementsTx(tx,ctx,candidates.map(row=>row.id));
- const corrections=candidates.map(correction=>{
-  const source=read.sources.find(row=>row.id===correction.payslipId)!;
-  const tip=replacementTip(source,correction.sourceHash,links.filter(row=>row.correctionId===correction.id));
-  if(!tip)throw new PayrollTaxBasisError('The saved income-tax replacement lineage is invalid.');
-  const sourceChanged=hashTaxBasisSource(source)!==tip;
-  if(sourceChanged&&!changed.has(source.id))throw new PayrollTaxBasisError(sourceChangedMessage);
-  return {...correction,sourceChanged};
- });
- return {sources:read.sources,corrections};
+ const sources=await taxBasisSourceRowsTx(tx,ids);
+ assertAllTaxBasisSources(sources,new Set(ids));
+ const corrections:ReplacementCorrection[]=[];
+ await effectiveTaxBasesForSourcesTx(tx,ctx,ids,sources,{reprocess:{
+  kind:'current',recordCorrection:correction=>corrections.push(correction),
+ }});
+ return {sources,corrections};
 }
 
 function cashEvidence(row:TaxBasisSource){
@@ -114,12 +104,9 @@ export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBa
 export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:EffectiveReadOptions={}):Promise<Map<string,EffectiveTaxBasis>>{
  return (await sourceReadContextTx(tx,ctx,payslipIds)).readEffective(options);
 }
-type ReprocessRead = {
- currentIds?:ReadonlySet<string>;
- currentBatchId?:string;
- onCurrentSourceChanged?:(source:TaxBasisSource)=>void;
- replayHistory?:(sources:readonly TaxBasisSource[],changed:readonly TaxBasisSource[],effective:ReadonlyMap<string,EffectiveTaxBasis>)=>Promise<ReadonlyMap<string,TaxBasisValue>>;
-};
+type ReprocessRead =
+ | {kind:'current';recordCorrection:(correction:ReplacementCorrection)=>void}
+ | {kind:'history';replay:(sources:readonly TaxBasisSource[],changed:readonly TaxBasisSource[],effective:ReadonlyMap<string,EffectiveTaxBasis>)=>Promise<ReadonlyMap<string,TaxBasisValue>>};
 type EffectiveReadOptions={includeImported?:boolean;sameMonth?:boolean;reprocess?:ReprocessRead};
 
 function overlayTaxBasis(original:Record<string,unknown>,basis:TaxBasisValue,correction:TaxBasisCorrectionRef|null){
@@ -127,14 +114,18 @@ function overlayTaxBasis(original:Record<string,unknown>,basis:TaxBasisValue,cor
   bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},
   ...(basis.lp!==undefined?{lp:basis.lp}:{}),...(correction?{taxBasisCorrection:correction}:{})};
 }
+function assertAllTaxBasisSources(sources:readonly TaxBasisSource[],requestedIds:ReadonlySet<string>){
+ if(sources.length!==requestedIds.size||new Set(sources.map(source=>source.id)).size!==sources.length||sources.some(source=>!requestedIds.has(source.id)))
+  throw new PayrollTaxBasisError('Original payroll source is unavailable.');
+}
 /** One authoritative source read, scoped to this transaction. Source rows stay private to the closure.
  * Preview hashes and effective corrections therefore use the same RLS-visible immutable inputs.
  * No caller-supplied rows, alternate hashing, cached cross-transaction authority or correction rules.
  */
 async function sourceReadContextTx(tx:Tx,ctx:SessionContext,payslipIds:string[],requireComplete=false){
- const requestedIds=new Set(payslipIds),ids=[...requestedIds],sources=await taxBasisSourceRowsTx(tx,ids),sourceIds=new Set(sources.map(source=>source.id));
- if(requireComplete&&(sources.length!==requestedIds.size||sourceIds.size!==sources.length||sources.some(source=>!requestedIds.has(source.id))))throw new PayrollTaxBasisError('Original payroll source is unavailable.');
- return {sources,sourceHashes:new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)])),readEffective:(options:EffectiveReadOptions={})=>effectiveTaxBasesForSourcesTx(tx,ctx,ids,sources,options)};
+ const requestedIds=new Set(payslipIds),ids=[...requestedIds],sources=await taxBasisSourceRowsTx(tx,ids);
+ if(requireComplete)assertAllTaxBasisSources(sources,requestedIds);
+ return {sourceHashes:new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)])),readEffective:(options:EffectiveReadOptions={})=>effectiveTaxBasesForSourcesTx(tx,ctx,ids,sources,options)};
 }
 /** Preview-only strict selection: a missing/foreign source must not become a partial preview. */
 export async function createTaxBasisPreviewReadTx(tx:Tx,ctx:SessionContext,payslipIds:string[]){return sourceReadContextTx(tx,ctx,payslipIds,true);}
@@ -173,13 +164,18 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
   const basis=validatedTaxBasis(row.basis),original=source.source.statutory;
   if(basis.period!==source.period)throw new PayrollTaxBasisError('The corrected tax period does not match its original source.');
   if(!object(original))throw new PayrollTaxBasisError('The original statutory source is unavailable.');
-  if(hashTaxBasisSource(source)!==tip){
-   const mode=options.reprocess;
-   if((mode?.currentIds?.has(source.id)||(mode?.currentBatchId!==undefined&&mode.currentBatchId===source.batch.id))&&!source.historyAttemptId&&source.importRevision===null){
-    mode?.onCurrentSourceChanged?.(source);
-    continue;
-   }
-   if(mode?.replayHistory&&requested.has(source.id)){
+  const sourceChanged=hashTaxBasisSource(source)!==tip.hash;
+  const mode=options.reprocess;
+  if(mode?.kind==='current'){
+   if(tip.version!==undefined&&source.source.version!==tip.version)
+    throw new PayrollTaxBasisError('The payroll result version no longer matches its saved replacement history.');
+   if(source.historyAttemptId||source.importRevision!==null)
+    throw new PayrollTaxBasisError('The corrected source is not an open native payroll result.');
+   mode.recordCorrection({id:row.id,payslipId:source.id,basis,sourceChanged});
+   continue;
+  }
+  if(sourceChanged){
+   if(mode?.kind==='history'){
     changed.push(source);
     continue;
    }
@@ -189,8 +185,8 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
   const correction:TaxBasisCorrectionRef={id:row.id,batchId:row.batchId,sourceHash:row.sourceHash,basisVersion:1};
   if(requested.has(row.payslipId))out.set(row.payslipId,{statutory:overlayTaxBasis(original,basis,correction),correction,basis});
  }
- if(changed.length){
-  const rebuilt=await options.reprocess!.replayHistory!(sources,changed,out);
+ if(changed.length&&options.reprocess?.kind==='history'){
+  const rebuilt=await options.reprocess.replay(sources,changed,out);
   for(const source of changed){
    const value=rebuilt.get(source.id);
    if(!value)throw new PayrollTaxBasisError(`${source.period}: original payroll tax inputs are unavailable.`);
