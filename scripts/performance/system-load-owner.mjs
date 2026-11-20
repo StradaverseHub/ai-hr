@@ -205,6 +205,7 @@ const serialComparison=measureDevelopment&&isWorkerComparisonCourse(process.env.
 const workerLoadedDiagnostics=serialComparison?createWorkerLoadedDiagnostics():null;
 let comparisonStage='driver-initialization',comparisonWorkload=null;
 const stageEvidence=process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&!nativePreflight;
+const attributePreflightLocks=fullDevelopmentRoutes||(stageEvidence&&!serialComparison&&suite==='whole-system');
 function markComparisonStage(stage){
  comparisonStage=stage;
  comparisonWorkload=null;
@@ -529,7 +530,7 @@ async function prepareDatabaseLockScope(){
 const waits=[];
 const preflightAttribution=createMeasuredPreflightAttribution();
 const preflightLockWorkload=createPreflightLockWorkload(preflightAttribution.setWorkload);
-const withLockWorkload=fullDevelopmentRoutes?preflightLockWorkload.within:serialComparison?async (stage,work)=>{
+const withLockWorkload=attributePreflightLocks?preflightLockWorkload.within:serialComparison?async (stage,work)=>{
  comparisonWorkload=stage;
  const result=await work();
  comparisonWorkload=null;
@@ -595,7 +596,7 @@ function sampleDatabaseLocks({lockLabels,accessLocks,auditLocks},phase,interval)
      .map(row=>lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)?.split(':',1)[0]));
    }catch{/* Attribution cannot alter the retained native sample. */}
    let attribution;
-   if(wait&&probe&&fullDevelopmentRoutes&&blockingAppSessions>0&&attributedSamples<6){
+   if(wait&&probe&&attributePreflightLocks&&blockingAppSessions>0&&attributedSamples<6){
     attributedSamples++;
     wait.observerSequence=probe.sequence;
     attribution={...measuredPreflightAttribution(probe.attributionStart,probe.attributionEnd),
