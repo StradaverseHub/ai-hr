@@ -328,6 +328,67 @@ function retainMixedDriverStage(path){
  save();
 }
 
+// The driver snapshots contain private SQL text and session details. Publish only
+// fixed category names and aggregate counters for its bounded statement sample.
+function retainMixedStatementSummary(driverEvidence){
+ const categories=[
+  ['offboarding-posting-access',/\boffboarding_posting_queue_access\b/i],
+  ['access-lock',/\b(?:pg_advisory_xact_lock(?:_shared)?|access_workforce_write_lock)\b/i],
+  ['session-context',/\b(?:set_config|reset role|set local role)\b/i],
+  ['authentication',/\b(?:auth_(?:session|account|identity)\w*|principal)\b/i],
+  ['audit',/\baudit_(?:log|event|chain)\w*\b/i],
+  ['delegations',/\b(?:access_)?delegation\w*\b/i],
+  ['payroll',/\b(?:payroll|payslip)\w*\b/i],
+  ['attendance',/\b(?:attendance|roster)\w*\b/i],
+  ['leave',/\bleave_\w+\b/i],
+  ['claims',/\bclaim(?:s|_\w*)?\b/i],
+  ['workflow',/\b(?:workflow|approval|lifecycle|notification)_\w+\b/i],
+  ['workforce',/\b(?:employment|employee|person|workforce)(?:_\w+)?\b/i],
+ ];
+ const metrics={
+  calls:['calls'],
+  executionMs:['total_exec_time'],
+  planningMs:['total_plan_time'],
+  jitMs:['jit_generation_time','jit_inlining_time','jit_optimization_time','jit_emission_time'],
+  sharedBlocksRead:['shared_blks_read'],
+  tempBlocksWritten:['temp_blks_written'],
+ };
+ const counter=value=>{
+  if(typeof value!=='number'&&!(typeof value==='string'&&/^\d+(?:\.\d+)?$/.test(value)))return 0;
+  const number=Number(value);
+  return Number.isFinite(number)&&number>=0&&number<=Number.MAX_SAFE_INTEGER?number:0;
+ };
+ for(const snapshot of ['loaded','failure','loaded-progress']){
+  const path=join(driverEvidence,'database-'+snapshot+'.json');
+  try{
+   const metadata=statSync(path);
+   if(!metadata.isFile()||metadata.size>1024*1024)continue;
+   const {statements}=JSON.parse(readFileSync(path,'utf8'));
+   if(!Array.isArray(statements)||statements.length===0||statements.length>35)continue;
+   const groups=new Map();
+   for(const statement of statements){
+    if(typeof statement?.normalized_query!=='string')continue;
+    const category=categories.find(([,pattern])=>pattern.test(statement.normalized_query))?.[0]??'unclassified';
+    const group=groups.get(category)??{
+     category,statements:0,...Object.fromEntries(Object.keys(metrics).map(key=>[key,0])),
+    };
+    group.statements++;
+    for(const [metric,columns] of Object.entries(metrics)){
+     for(const column of columns)group[metric]+=counter(statement[column]);
+    }
+    groups.set(category,group);
+   }
+   if(groups.size===0)continue;
+   const rows=[...groups.values()].sort((a,b)=>(b.executionMs+b.planningMs)-(a.executionMs+a.planningMs));
+   for(const row of rows){
+    for(const metric of Object.keys(metrics))row[metric]=Math.round(row[metric]);
+   }
+   return {snapshot,scope:'up to 35 statements ranked by combined cumulative execution and planning time',categories:rows};
+  }catch{/* Diagnostic snapshots are optional and never change the workload verdict. */}
+ }
+ return null;
+}
+
 async function measureMixedLoad(command){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
@@ -370,6 +431,11 @@ async function measureMixedLoad(command){
    retainMixedStartupFailure('measure-500-user-mixed-load');
   }else{
    const data=JSON.parse(readFileSync(resultPath,'utf8'));
+   // The driver resets statement counters immediately before loaded setup.
+   // Failure or startup snapshots before that reset would mix in preflight work.
+   if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
+    report.mixedDatabaseProfile.loadedStatements=retainMixedStatementSummary(driverEvidence);
+   }
    const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
    const counts=(obj,keys)=>Object.fromEntries(keys.map(key=>[key,nonnegative(obj?.[key])]));
    const sampleMetrics=['samples','p50Ms','p95Ms','p99Ms','maxMs'];
