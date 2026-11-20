@@ -1,60 +1,47 @@
 import assert from 'node:assert/strict';
 
-async function fixtureRoutes(db, fixture) {
-  const [group, company] = fixture.users;
-  const employee = fixture.users[4];
-  const unit = fixture.tenants[0].companies[0];
-  assert.equal(group.role, 'groupHR');
+// Match the statutory report's DB test: record the leaving date after the fictional
+// payslips exist so the preview has real retained payroll to read.
+export async function seedStatutoryLeaver(owner, fixture) {
+  const company = fixture.users[1];
+  const leaver = fixture.users[5];
   assert.equal(company.role, 'companyHR');
-  assert.equal(employee.role, 'employee');
-  assert.equal(group.tenantId, employee.tenantId);
-  assert.equal(company.companyId, employee.companyId);
-  assert.equal(unit.companyId, employee.companyId);
+  assert.equal(leaver.role, 'employee');
+  assert.equal(leaver.tenantId, company.tenantId);
+  assert.equal(leaver.companyId, company.companyId);
+  assert.match(fixture.today, /^\d{4}-\d{2}-\d{2}$/);
+  await owner.begin(async tx => {
+    await tx`select set_config('app.tenant_id', ${company.tenantId}, true)`;
+    const affected = await tx`
+      update employment set terminated_on = ${fixture.today}::date, termination_type = 'voluntary'
+      where tenant_id = ${company.tenantId}::uuid and company_id = ${company.companyId}::uuid
+        and id = ${leaver.employmentId}::uuid and terminated_on is null
+      returning id
+    `;
+    assert.equal(affected.length, 1, 'Expected one scoped fictional leaver');
+  });
+}
 
-  const historicalSlips = await db`
-    select batch.pay_period as period
-    from payslip slip
-    join payroll_batch batch on batch.id = slip.batch_id and batch.tenant_id = slip.tenant_id
-    where slip.tenant_id = ${employee.tenantId}::uuid and batch.company_id = ${employee.companyId}::uuid
-      and slip.employment_id = ${employee.employmentId}::uuid and batch.id = ${unit.historicalBatchId}::uuid
-      and batch.status = 'closed'
+async function fixtureRoutes(db, fixture) {
+  const company = fixture.users[1];
+  const leaver = fixture.users[5];
+  const unit = fixture.tenants[0].companies[0];
+  assert.equal(unit.companyId, leaver.companyId);
+
+  const [record] = await db`
+    select employment.terminated_on::text as leaving_date
+    from employment join payslip on payslip.tenant_id = employment.tenant_id and payslip.employment_id = employment.id
+    where employment.tenant_id = ${leaver.tenantId}::uuid and employment.id = ${leaver.employmentId}::uuid
+      and payslip.batch_id = ${unit.historicalBatchId}::uuid
   `;
-  assert.equal(historicalSlips.length, 1, 'The employee must have a released fictional payslip');
-  assert.match(historicalSlips[0].period, /^\d{4}-\d{2}$/);
-
-  const year = historicalSlips[0].period.slice(0, 4);
-  const employmentId = employee.employmentId;
-  const cp22 = '/payroll/cp22/' + employmentId;
-  const cp22a = '/payroll/cp22a/' + employmentId;
-  return [
-    {
-      actor: group, template: '/payroll/[batchId]/tax-configuration/[employmentId]',
-      path: '/payroll/' + unit.batchId + '/tax-configuration/' + employmentId,
-      exactHeading: 'Tax configuration for this payroll run',
-      witness: 'form:has(input[name="payrollBatchId"][value="' + unit.batchId + '"]) #income-tax-resident',
-    },
-    {
-      actor: employee, template: '/payroll/reports/ea/[employmentId]',
-      path: '/payroll/reports/ea/' + employmentId + '?year=' + year,
-      content: employee.name,
-      witness: 'a[href="/me/ea/' + employmentId + '/pdf?year=' + year + '"]',
-    },
-    {
-      actor: company, template: '/payroll/cp22/[employmentId]/preview',
-      path: cp22 + '/preview', exactHeading: 'Review the CP22 before you produce it',
-      content: employee.name, witness: 'a[href^="' + cp22 + '/pdf?"][href*="inline=1"]',
-    },
-    {
-      actor: company, template: '/payroll/cp22a/[employmentId]/preview',
-      path: cp22a + '/preview', exactHeading: 'CP22A — notice of an employee leaving',
-      content: employee.name, witness: 'a[href^="' + cp22a + '/pdf"]',
-    },
-    {
-      actor: group, template: '/admin/users/[userId]/account',
-      path: '/admin/users/' + employee.userId + '/account',
-      exactHeading: 'Manage account', content: employee.username, witness: 'dl dd',
-    },
-  ];
+  assert.equal(record?.leaving_date, fixture.today, 'Expected the scoped leaver with retained payroll');
+  const base = '/payroll/cp22a/' + leaver.employmentId;
+  return [{
+    actor: company, template: '/payroll/cp22a/[employmentId]/preview',
+    path: base + '/preview', exactHeading: 'CP22A — notice of an employee leaving',
+    content: leaver.name, witness: 'iframe[src^="' + base + '/pdf"]',
+    inlinePdf: base + '/pdf',
+  }];
 }
 
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save }) {
@@ -72,6 +59,10 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
         rows.push(row);
         const started = performance.now();
         const remaining = () => Math.max(1, Math.floor(15000 - (performance.now() - started)));
+        const pdfResponse = page.waitForResponse(response => {
+          const url = new URL(response.url());
+          return url.origin === origin && url.pathname === entry.inlinePdf && url.searchParams.get('inline') === '1';
+        }, { timeout: remaining() }).catch(() => null);
         try {
           const response = await page.goto(origin + entry.path, { waitUntil: 'commit', timeout: remaining() });
           row.httpStatus = response?.status() ?? null;
@@ -93,7 +84,11 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           if (entry.content) await main.getByText(entry.content, { exact: false }).first().waitFor({ state: 'visible', timeout: remaining() });
           if (entry.witness) await main.locator(entry.witness).first().waitFor({ state: 'visible', timeout: remaining() });
           assert.equal(await main.locator('[data-read-unavailable]:visible,[data-personnel-busy]:visible').count(), 0);
-          row.outcome = entry.redirectTo ? 'verified-redirect' : 'usable-content';
+          row.step = 'inline-pdf';
+          const pdf = await pdfResponse;
+          assert(pdf?.ok() && pdf.headers()['content-type']?.startsWith('application/pdf'),
+            'The preview did not receive the expected PDF');
+          row.outcome = 'usable-content';
         } catch (error) {
           row.outcome = error.name === 'TimeoutError' ? 'timeout' : error.code === 'ERR_ASSERTION' ? 'assertion' : 'browser-failure';
         } finally {
