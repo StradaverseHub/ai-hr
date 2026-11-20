@@ -428,6 +428,30 @@ export function getWorkLocation(ctx: SessionContext, id: string): Promise<Locati
   });
 }
 
+/**
+ * Work Location totals for the company register. Apply the same company join and scope as
+ * listLocations with archived sites included. Only a name search needs the location names.
+ */
+export function summarizeLocations(ctx: SessionContext, companyIds: string[], includeNames: boolean) {
+  const names = includeNames
+    ? sql<string[] | null>`array_agg(${location.name}::text)`
+    : sql<string[] | null>`null::text[]`;
+
+  return withTenant(ctx, (tx) =>
+    tx
+      .select({
+        companyId: location.companyId,
+        total: sql<number>`count(*)::int`,
+        archived: sql<number>`count(${location.archivedAt})::int`,
+        names,
+      })
+      .from(location)
+      .innerJoin(company, eq(company.id, location.companyId))
+      .where(companyIds.length ? inArray(location.companyId, companyIds) : undefined)
+      .groupBy(location.companyId),
+  );
+}
+
 /** A location's company id (for the cross-company coherence check in transferEmployee). Null if absent. */
 export async function locationCompanyId(ctx: SessionContext, locationId: string): Promise<string | null> {
   return withTenant(ctx, async (tx) => {
