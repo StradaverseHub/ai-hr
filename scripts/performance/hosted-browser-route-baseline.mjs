@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus','intent-tabs'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus','intent-tabs','intent-register'].includes(surfaceProbe),'Unknown browser surface');
 const rewardsFixture=surfaceProbe==='rewards'||surfaceProbe==='rewards-bonus';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
@@ -58,8 +58,8 @@ mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_INTENT_TAB_CONTROL==='true'&&{
-  verifiedBuildArtifact:{runId:44771584348,artifactId:14648282852,sourceSha:'e366a225e20215e0b7d4be01d352a914a0a4c84c'},
+ ...(env.AIHR_BROWSER_REGISTER_CONTROL==='true'&&{
+  verifiedBuildArtifact:{runId:44777355527,artifactId:14652085114,sourceSha:'92273f929d60cb66210dd40e225c48f9eea517f7'},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -588,6 +588,75 @@ async function measureIntentTabTraffic(fixture) {
     await context.close();
     save();
    }
+  }
+ }
+}
+
+async function measureRegisterPrefetch(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const actor=fixture.users[0],path='/admin/personnel',profilePath=/^\/admin\/personnel\/[0-9a-f-]{36}$/;
+ assert.equal(actor.role,'groupHR');
+ const profileSelector='main tbody a:not([aria-hidden])[href^="/admin/personnel/"]:not([href*="?"])';
+ const idleWindowMs=1200,focusedWindowMs=800;
+ const visits=report.intentRegisterTraffic={idleWindowMs,focusedWindowMs,observations:[]};
+ for(const flow of ['profile','pager'])for(let attempt=1;attempt<=3;attempt++){
+  const context=await signedInContext(actor);
+  const row={flow,attempt,status:'incomplete',idle:{profiles:0,registerPages:0,otherRegister:0},
+   focused:{profiles:0,registerPages:0,otherRegister:0},documentsAfterClick:0};
+  visits.observations.push(row);
+  try{
+   const page=await context.newPage();
+   let phase='idle';
+   page.on('request',request=>{
+    const url=new URL(request.url());
+    if(url.origin!==origin)return;
+    if(phase==='clicked'){
+     if(request.isNavigationRequest()&&request.frame()===page.mainFrame())row.documentsAfterClick++;
+     return;
+    }
+    const headers=request.headers();
+    if(headers.rsc!=='1'&&!headers['next-router-prefetch']&&!headers['next-router-segment-prefetch'])return;
+    if(profilePath.test(url.pathname))row[phase].profiles++;
+    else if(url.pathname===path&&url.searchParams.has('page'))row[phase].registerPages++;
+    else if(url.pathname===path||url.pathname.startsWith(path+'/'))row[phase].otherRegister++;
+   });
+   const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:20000});
+   assert.equal(response?.status(),200);
+   assert.equal(page.url(),origin+path);
+   const firstProfile=page.locator(profileSelector).first();
+   await firstProfile.waitFor({state:'visible',timeout:20000});
+   const originalProfile=await firstProfile.getAttribute('href');
+   assert(profilePath.test(originalProfile??''));
+   const target=flow==='profile'?firstProfile:page.locator('main [data-ui-pager] a[href*="page=1"]').first();
+   await target.scrollIntoViewIfNeeded({timeout:10000});
+   const href=await target.getAttribute('href');
+   assert(flow==='profile'?href===originalProfile:href?.startsWith(path+'?'));
+   const expectedName=flow==='profile'?(await firstProfile.innerText()).trim():null;
+   await pause(idleWindowMs);
+   phase='focused';
+   await target.focus({timeout:5000});
+   await pause(focusedWindowMs);
+   phase='clicked';
+   const clicked=performance.now();
+   await target.click({timeout:5000});
+   await page.waitForURL(origin+href,{timeout:20000});
+   if(flow==='profile'){
+    assert(expectedName);
+    await page.getByRole('main').getByRole('heading',{level:1,name:expectedName,exact:true}).waitFor({state:'visible',timeout:20000});
+   }else{
+    await firstProfile.waitFor({state:'visible',timeout:20000});
+    await page.waitForFunction(({selector,previous})=>{
+     const next=document.querySelector(selector);
+     return next&&next.getClientRects().length>0&&next.getAttribute('href')!==previous;
+    },{selector:profileSelector,previous:originalProfile},{timeout:20000});
+   }
+   row.clickToUsableMs=Math.round(performance.now()-clicked);
+   assert.equal(row.documentsAfterClick,0,'Register navigation reloaded the document');
+   row.status='observed';
+  }finally{
+   await context.close();
+   save();
   }
  }
 }
@@ -2041,6 +2110,7 @@ try{
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='intent-tabs')await measureIntentTabTraffic(fixture);
+  else if(surfaceProbe==='intent-register')await measureRegisterPrefetch(fixture);
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
     :surfaceProbe==='rewards'?['rewards-salary','rewards-bonus','rewards-uploaded']:[surfaceProbe];
