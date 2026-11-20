@@ -125,12 +125,14 @@ async function fixtureRoutes(db, fixture) {
   assert.equal(unit.companyId, leaver.companyId);
 
   const records = await db`
-    select employment.terminated_on::text as leaving_date, payroll_batch.pay_period
+    select employment.terminated_on::text as leaving_date, payroll_batch.pay_period, payslip.id as payslip_id
     from employment join payslip on payslip.tenant_id = employment.tenant_id and payslip.employment_id = employment.id
     join payroll_batch on payroll_batch.tenant_id = payslip.tenant_id and payroll_batch.id = payslip.batch_id
       and payroll_batch.company_id = employment.company_id
     where employment.tenant_id = ${leaver.tenantId}::uuid and employment.id = ${leaver.employmentId}::uuid
       and payslip.batch_id = ${unit.historicalBatchId}::uuid
+      and payroll_batch.status = 'closed'
+      and (payroll_batch.released_at is null or payroll_batch.released_at <= now())
   `;
   assert.equal(records.length, 1, 'Expected one retained fictional payslip for the scoped leaver');
   const [record] = records;
@@ -147,7 +149,29 @@ async function fixtureRoutes(db, fixture) {
   const taxConfiguration = '/payroll/' + unit.batchId + '/tax-configuration/' + citizenshipSubject.employmentId;
   const year = record.pay_period.slice(0, 4);
   const ea = '/payroll/reports/ea/' + leaver.employmentId + '?year=' + year + '&company=' + leaver.companyId;
+  const payslip = '/me/payslip/' + record.payslip_id;
+  const payMonth = new Intl.DateTimeFormat('en', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(record.pay_period + '-01T00:00:00Z'));
+  const person = '/personnel/' + citizenshipSubject.employmentId + '?from=org';
+  const legacyPerson = '/people/' + citizenshipSubject.employmentId + '?from=org';
+  const group = fixture.users[0];
+  assert.equal(group.role, 'groupHR');
+  assert.equal(group.tenantId, citizenshipSubject.tenantId);
   return [
+    {
+      actor: leaver, template: '/me/payslip/[payslipId]', path: payslip,
+      exactHeading: 'Payslip · ' + payMonth, content: leaver.name,
+      witness: 'a[download][href="' + payslip + '/pdf"]',
+    },
+    {
+      actor: company, template: '/people/[employmentId]', path: legacyPerson, redirectTo: person,
+      exactHeading: citizenshipSubject.name, witness: 'a[href="/org"]',
+    },
+    {
+      actor: group, template: '/admin/users/[userId]/account', path: '/admin/users/' + citizenshipSubject.userId + '/account',
+      exactHeading: 'Manage account', content: citizenshipSubject.username, exactContent: true,
+      witness: 'section ul',
+    },
     {
       actor: company, template: '/payroll/cp22a/[employmentId]/preview',
       path: base + '/preview', exactHeading: 'CP22A — notice of an employee leaving',
