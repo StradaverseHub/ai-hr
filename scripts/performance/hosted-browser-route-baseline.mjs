@@ -12,6 +12,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
+import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
@@ -353,6 +354,25 @@ async function measureMixedLoad(command){
    };
    const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
    if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;
+   if(report.mixedDriverStage?.stage==='baseline-language-switch'){
+    const languagePaths=new Set(['/claims','/admin/personnel']);
+    const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
+    report.mixedLanguageSwitch={
+     completed:(data.browserLanguageSwitches??[]).filter(row=>row.phase==='baseline'
+      &&languagePaths.has(row.path)&&roles.includes(row.role)&&knownLocales.has(row.locale)
+      &&row.usable===true&&row.translatedHeading===true).slice(0,4).map(row=>({
+       path:row.path,role:row.role,locale:row.locale,draftRetained:row.draftRetained===true,
+       ...counts(row,['elapsedMs','draftReadyWaitMs']),
+      })),
+     browserErrors:(data.browserErrors??[]).slice(-12).map(row=>({
+      path:languagePaths.has(row.path)?row.path:null,
+      role:roles.includes(row.role)?row.role:null,
+      locale:knownLocales.has(row.locale)?row.locale:null,
+      kind:['pageerror','console'].includes(row.kind)?row.kind:null,
+      fingerprint:browserPreflightErrorFingerprint(typeof row.error==='string'?row.error:''),
+     })),
+    };
+   }
    const primaryRequest=data.workerRequestFailure;
    if(primaryRequest){
     const status=primaryRequest.httpStatus;
