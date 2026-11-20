@@ -1245,7 +1245,7 @@ async function main(){
   });
  }
  function notePreflightStageFailure(reason,stage,user=null,page=null){
-  if(!fullDevelopmentRoutes)return;
+  if(!fullDevelopmentRoutes&&!(stageEvidence&&suite==='whole-system'))return;
   notePrimary(reason);
   if(failures.primary().reason!==reason)return;
   noteEvidence(()=>{
@@ -1267,9 +1267,10 @@ async function main(){
  const signInPreflight=await runLanes(primaryActors,async user=>{
   const ctx=await context(user,'en',true);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
-   await visit(page,user,'/','sign-in-preflight',true);
-   let stage='legacy-navigation-capture';
+   let stage='sign-in-root';
    try{
+    await visit(page,user,'/','sign-in-preflight',true);
+    stage='legacy-navigation-capture';
     requireNativeBusiness();
     if(baselineNavigation)await baselineNavigation.captureActor(page,user.index);
     if(strictRenderedPreflight){
@@ -1291,7 +1292,7 @@ async function main(){
     }
    }catch(reason){
     notePrimary(reason);
-    noteWorkerStageFailure(reason,stage,user,null);
+    if(stage!=='sign-in-root')noteWorkerStageFailure(reason,stage,user,null);
     notePreflightStageFailure(reason,stage,user,page);
     throw reason;
    }
