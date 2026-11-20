@@ -112,7 +112,20 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: { icon: presentation.iconUrl || '/login/favicon.svg' } };
 }
 
+const SHELL_PROFILE_ROUTES = new Set(['/', '/assistant', '/admin/personnel', '/approvals', '/payroll',
+  '/payroll/transaction-view', '/roster', '/attendance', '/recruitment']);
+
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const measure = process.env.AIHR_SHELL_OPEN_PROFILE === 'true';
+  const timings: Record<string, number> = {};
+  const started = measure ? performance.now() : 0;
+  let previous = started;
+  const mark = (name: string) => {
+    if (!measure) return;
+    const now = performance.now();
+    timings[name] = Math.round(now - previous);
+    previous = now;
+  };
   // Auth routes (ADR-0072) render WITHOUT the app shell and WITHOUT the getSession gate — otherwise
   // the redirect-to-/login would loop on /login itself. The prefix list lives in lib/auth-routes.ts
   // because middleware.ts needs the same list; keeping two copies is what let them drift apart.
@@ -125,6 +138,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // r401 — read through lib/ui-theme-server.ts, the ONE reader, so a page that branches on the theme (the
   // Dashboard, My Profile) gets the very value written here.
   const uiTheme = await currentUiTheme();
+
+  mark('requestPreferences');
 
   if (isAuthRoute) {
     // The public shell only needs sign-in and shared feedback copy.
@@ -154,6 +169,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
   }
+  mark('session');
   const usesOperatorShell = isOperator(session) && !isDemoDeployment();
   // These exact admin entry pages have loading boundaries. Refuse before rendering the shell so
   // a direct request can return HTTP 307 before a loading response starts streaming. Keep the
@@ -164,6 +180,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   }
   // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
   const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
+  mark('entryAndIdlePolicy');
   if (usesOperatorShell) {
     if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
     const viewer = await viewerIdentity(session);
@@ -200,13 +217,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
   ]));
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
+  mark('initialNavigation');
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
     ? await letterNavigation(session,scopeIds) : [];
+  mark('letters');
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
     ? await import('@/packs/rewards/service').then(({ rewardNavigation }) =>
       rewardNavigation(session),
     ).catch(() => [])
     : [];
+  mark('rewards');
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
   const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
@@ -246,6 +266,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
+  mark('lifecycle');
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -259,9 +280,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       : Promise.resolve(false),
     referralEligible(session).catch(() => false),
   ]);
+  mark('moduleNavigation');
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  mark('identityEmailAndPerformance');
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
@@ -306,6 +329,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
   });
+  if (measure && SHELL_PROFILE_ROUTES.has(pathname)) {
+    mark('renderPreparation');
+    console.info('PERF_SHELL_OPEN ' + JSON.stringify({
+      route: pathname,
+      role: isGroupAdmin(session) ? 'group-admin' : isAdmin(session) ? 'company-admin'
+        : (session.roles ?? []).includes('manager') ? 'manager' : 'employee',
+      elapsedMs: Math.round(previous - started),
+      timings,
+    }));
+  }
   return (
     <html
       lang={locale}
