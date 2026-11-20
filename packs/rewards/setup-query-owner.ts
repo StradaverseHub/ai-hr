@@ -1,6 +1,6 @@
 /** Internal canonical read owners. Real Tx only; no pool, authority issuer or audit timing choice.
  * Legacy and uninstalled receipt purposes share these exact validation/order/money queries. */
-import {sql} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {validateRewardLibrary,setupUuid,setupYear,RewardSetupError,type RewardLibrary,type PatInput} from './setup-model';
@@ -11,8 +11,8 @@ export type PatCompany={id:string;name:string;parentId:string|null;parentName:st
 /** Closed native helper vocabulary; never a SQL broker or a caller-supplied Tx. */
 export type RewardSetupQueryPort=Readonly<{
  authority:(tx:Tx,companyId:string|null,operation:'library_view'|'manage')=>Promise<void>;
- usedBy:(tx:Tx,id:string)=>PromiseLike<{plan:string;company:string;year:number}[]>;
- locked:(tx:Tx,id:string)=>PromiseLike<{locked:boolean}[]>;
+ usedByRelation:(id:SQL)=>SQL;
+ lockedExpression:(id:SQL)=>SQL;
  companiesWithStructure:(tx:Tx,year:number,at:string)=>PromiseLike<PatCompany[]>;
  companies:(tx:Tx,year:number)=>PromiseLike<{id:string;name:string;parentId:string|null;parentName:string|null}[]>;
  structure:(tx:Tx,companyId:string,at:string)=>PromiseLike<{tags:{businessGroupId?:string;businessGroupName?:string;businessUnitId?:string;businessUnitName?:string;status?:string}}[]>;
@@ -34,17 +34,49 @@ function compareRewardCompanies(a:RewardCompanyOrder,b:RewardCompanyOrder){
   ||(a.businessUnitName??'').localeCompare(b.businessUnitName??'')
   ||a.name.localeCompare(b.name)||a.id.localeCompare(b.id);
 }
-export async function libraryVersionQueryTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed:boolean,port:RewardSetupQueryPort):Promise<RewardLibraryVersion>{
- setupUuid.parse(id);await port.authority(tx,null,'library_view');
- const [r]=await tx.execute<Omit<RewardLibraryVersion,'usedBy'|'locked'>>(sql`select v.id,l.id as "libraryId",l.kind,l.name,l.year,l.tags,l.group_default as "groupDefault",l.previous_library_id as "previousLibraryId",l.source_policy_version_id as "sourcePolicyVersionId",v.revision as version,v.data,v.state,v.lock_version as "lockVersion",v.created_by as "createdBy",v.contributor_ids as contributors,v.created_by_person_id as "createdByPersonId",v.contributor_person_ids as "contributorPersonIds",v.confirmed_by as "confirmedBy",v.confirmed_at::text as "confirmedAt",v.reason from reward_library_version v join reward_library l on l.id=v.library_id and l.tenant_id=v.tenant_id where v.id=${id}::uuid and v.tenant_id=${ctx.tenantId}::uuid`);
- if(!r||requireConfirmed&&r.state!=='confirmed')throw new RewardSetupError('missing','Choose a confirmed library version.');
- validateRewardLibrary(r.data);
- const usage=await port.usedBy(tx,id);
- const [lock]=await port.locked(tx,id);
- return{...r,usedBy:[...usage],locked:lock?.locked??false};
+type LibraryVersionRecord=Omit<RewardLibraryVersion,'usedBy'|'locked'>;
+const libraryVersionColumns=sql`v.id,l.id as "libraryId",l.kind,l.name,l.year,l.tags,l.group_default as "groupDefault",
+ l.previous_library_id as "previousLibraryId",l.source_policy_version_id as "sourcePolicyVersionId",
+ v.revision as version,v.data,v.state,v.lock_version as "lockVersion",v.created_by as "createdBy",
+ v.contributor_ids as contributors,v.created_by_person_id as "createdByPersonId",
+ v.contributor_person_ids as "contributorPersonIds",v.confirmed_by as "confirmedBy",
+ v.confirmed_at::text as "confirmedAt",v.reason`;
+
+function libraryUsageColumns(port:RewardSetupQueryPort,id:SQL){
+ return sql`coalesce((select jsonb_agg(jsonb_build_object('plan',u.plan,'company',u.company,'year',u.year) order by u.ordinal)
+  from ${port.usedByRelation(id)} with ordinality u(plan,company,year,ordinal)),'[]'::jsonb) as "usedBy",
+  coalesce(${port.lockedExpression(id)},false) as locked`;
 }
 
-export async function rewardLibrariesQueryTx(tx:Tx,ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,port:RewardSetupQueryPort){await port.authority(tx,null,'library_view');const rows=await tx.execute<{id:string}>(sql`select v.id from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid ${kind?sql`and l.kind=${kind}`:sql``} ${year!==undefined?sql`and l.year=${year}`:sql``} order by l.year desc,l.name,v.revision desc`);const result=[];for(const row of rows)result.push(await libraryVersionQueryTx(tx,ctx,row.id,false,port));return result;}
+export async function libraryVersionQueryTx(tx:Tx,ctx:SessionContext,id:string,requireConfirmed:boolean,port:RewardSetupQueryPort):Promise<RewardLibraryVersion>{
+ setupUuid.parse(id);
+ await port.authority(tx,null,'library_view');
+ const [row]=await tx.execute<LibraryVersionRecord>(sql`
+  select ${libraryVersionColumns}
+  from reward_library_version v join reward_library l on l.id=v.library_id and l.tenant_id=v.tenant_id
+  where v.id=${id}::uuid and v.tenant_id=${ctx.tenantId}::uuid
+ `);
+ if(!row||requireConfirmed&&row.state!=='confirmed')throw new RewardSetupError('missing','Choose a confirmed library version.');
+ validateRewardLibrary(row.data);
+ const [usage]=await tx.execute<Pick<RewardLibraryVersion,'usedBy'|'locked'>>(sql`select ${libraryUsageColumns(port,sql`${id}::uuid`)}`);
+ return {...row,...usage};
+}
+
+export async function rewardLibrariesQueryTx(
+ tx:Tx,ctx:SessionContext,kind:'salary'|'bonus'|undefined,year:number|undefined,port:RewardSetupQueryPort,
+):Promise<RewardLibraryVersion[]>{
+ await port.authority(tx,null,'library_view');
+ const rows=await tx.execute<RewardLibraryVersion>(sql`
+  select ${libraryVersionColumns},${libraryUsageColumns(port,sql`v.id`)}
+  from reward_library l join reward_library_version v on v.library_id=l.id and v.tenant_id=l.tenant_id
+  where l.tenant_id=${ctx.tenantId}::uuid ${kind?sql`and l.kind=${kind}`:sql``} ${year!==undefined?sql`and l.year=${year}`:sql``}
+  order by l.year desc,l.name,v.revision desc
+ `);
+ for(const row of rows)validateRewardLibrary(row.data);
+ // Some native role writers can change viewer authority outside the shared Access lock.
+ await port.authority(tx,null,'library_view');
+ return [...rows];
+}
 
 export type RewardPlanLibraryChoice={id:string;libraryId:string;kind:'salary'|'bonus';name:string;version:number;bonusType:'standard'|'branch'|null};
 
