@@ -1380,7 +1380,9 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
   requireNativeBusiness();
-  await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),page.locator('a[href="/claims"]:visible').first().click()]);
+  const claimsLink=page.locator('[data-app-sidebar][data-shell-navigation-ready="true"] a[href="/claims"]:visible');
+  await claimsLink.waitFor({state:'visible',timeout:90000});
+  await Promise.all([page.waitForURL(url=>url.pathname==='/claims',{timeout:90000}),claimsLink.click()]);
   const catalog=JSON.parse(readFileSync(new URL('../../messages/en.json',import.meta.url),'utf8'));
   const heading=page.getByRole('heading',{level:1,name:catalog.claims.title,exact:true});
   const main=page.locator('main:visible').filter({has:heading});

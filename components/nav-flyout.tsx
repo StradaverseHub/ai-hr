@@ -104,6 +104,7 @@ export const isParentActive = (pathname: string, hrefs: string[]): boolean =>
  *  sub-items stay reachable in slim mode. */
 export function NavFlyout({
   labelKey,
+  disabled,
   icon: ParentIcon,
   open,
   active,
@@ -117,6 +118,7 @@ export function NavFlyout({
 }: {
   /** Parent label key in the `nav` namespace (also the sidebar's `openKey` identity). */
   labelKey: string;
+  disabled: boolean;
   icon: LucideIcon;
   /** Whether THIS module's panel is the open one (single-open state lives in the sidebar). */
   open: boolean;
@@ -141,6 +143,7 @@ export function NavFlyout({
       ref={triggerRef}
       data-tour={tour}
       type="button"
+      disabled={disabled}
       onClick={onOpen ?? onToggle}
       onPointerEnter={event => { if (event.pointerType === 'mouse') onOpen?.(); }}
       aria-haspopup="true"

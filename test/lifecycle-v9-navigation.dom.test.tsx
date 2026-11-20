@@ -1,5 +1,7 @@
 import {afterEach, expect, it, vi} from 'vitest';
-import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+import {hydrateRoot} from 'react-dom/client';
+import {renderToString} from 'react-dom/server';
 import {NextIntlClientProvider} from 'next-intl';
 import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 import {UiThemeProvider} from '../components/ui-theme-context';
@@ -21,6 +23,29 @@ function sidebar(theme:UiTheme='classic', allowed:typeof permissions & {records?
  if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
  return screen.getByRole('navigation',{name:'On/Off Boarding'});
 }
+it('opens the Lifecycle menu on the first click after the server-rendered rail becomes interactive', async()=>{
+ const tree=<UiThemeProvider theme="classic"><NextIntlClientProvider locale="en" messages={messages}>
+  <Sidebar isAdmin onboardingAccess onboardingV9Access onboardingV9Navigation={permissions} onboardingMaster defaultCollapsed={false} enabledModules={['lifecycle']}/>
+ </NextIntlClientProvider></UiThemeProvider>;
+ const host=document.createElement('div');
+ host.innerHTML=renderToString(tree);
+ document.body.append(host);
+ const menu=()=>within(host).getByRole('button',{name:'On/Off Boarding'});
+ let root:ReturnType<typeof hydrateRoot>|undefined;
+ try{
+  expect(menu()).toBeDisabled();
+  expect(host.querySelector('[data-app-sidebar]')).toHaveAttribute('data-shell-navigation-ready','false');
+  await act(async()=>{root=hydrateRoot(host,tree);});
+  expect(menu()).toBeEnabled();
+  expect(host.querySelector('[data-app-sidebar]')).toHaveAttribute('data-shell-navigation-ready','true');
+  fireEvent.click(menu());
+  expect(within(host).getByRole('link',{name:'Module Access'})).toHaveAttribute('href','/lifecycle/v9?view=access');
+ }finally{
+  await act(async()=>root?.unmount());
+  host.remove();
+ }
+});
+
 it.each(['classic','monolith','atelier'] as const)('renders the requested three-level hierarchy in the existing %s sidebar',theme=>{
  const menu=sidebar(theme), nav=within(menu);
  expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding']);

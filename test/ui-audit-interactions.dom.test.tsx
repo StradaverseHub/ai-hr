@@ -1,6 +1,8 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {hydrateRoot} from 'react-dom/client';
+import {renderToString} from 'react-dom/server';
 import {NextIntlClientProvider} from 'next-intl';
 import * as Dialog from '@radix-ui/react-dialog';
 import type {ReactNode} from 'react';
@@ -47,6 +49,24 @@ describe('audit picker recovery',()=>{
   const columns=screen.getByRole('button',{name:'Customize columns'});await userEvent.click(columns);
   await userEvent.keyboard('{Escape}');expect(columns).toHaveAttribute('aria-expanded','false');expect(more).toHaveAttribute('aria-expanded','true');
   columns.focus();await userEvent.keyboard('{Escape}');expect(more).toHaveAttribute('aria-expanded','false');expect(more).toHaveFocus();
+ });
+ it('opens the company switcher on the first click after hydration',async()=>{
+  const tree=<NextIntlClientProvider locale="en" messages={en}><CompanySwitcher companies={[{id:'a',name:'First company'}]} selected={['a']}/></NextIntlClientProvider>;
+  const host=document.createElement('div');
+  host.innerHTML=renderToString(tree);
+  document.body.append(host);
+  const menu=()=>within(host).getByRole('button',{name:en.topbar.allCompanies});
+  let root:ReturnType<typeof hydrateRoot>|undefined;
+  try{
+   expect(menu()).toBeDisabled();
+   await act(async()=>{root=hydrateRoot(host,tree);});
+   expect(menu()).toBeEnabled();
+   await userEvent.click(menu());
+   expect(within(host).getByRole('checkbox',{name:'First company'})).toBeChecked();
+  }finally{
+   await act(async()=>root?.unmount());
+   host.remove();
+  }
  });
  it('explains a cleared company draft without submitting an empty scope',async()=>{
   const submitted:FormDataEntryValue[][]=[];

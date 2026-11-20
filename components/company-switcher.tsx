@@ -1,5 +1,6 @@
 'use client';
 
+import { useClientReady } from './use-client-ready';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { usePathname } from 'next/navigation';
@@ -54,6 +55,7 @@ export function CompanySwitcher({
   companies: { id: string; name: string }[];
   selected: string[];
 }) {
+  const interactive = useClientReady();
   const pathname = usePathname();
   const personalCredits = pathname === '/leave/credit-details';
   const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
@@ -100,6 +102,7 @@ export function CompanySwitcher({
       <button
         ref={triggerRef}
         data-company-switcher
+        disabled={!interactive}
         type="button"
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an

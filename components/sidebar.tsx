@@ -1,5 +1,6 @@
 'use client';
 
+import { useClientReady } from './use-client-ready';
 import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { Fragment, useEffect, useRef, useState } from 'react';
@@ -110,6 +111,7 @@ export function Sidebar({
   viewerName?: string | null;
   viewerCode?: string | null;
 }) {
+  const interactive = useClientReady();
   const approvals=useShellApprovalFacts()?.result;
   const hasAssignedAttendanceApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedAttendanceApproval:assignedAttendanceFromProps;
   const hasAssignedApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedApproval:assignedApprovalFromProps;
@@ -380,7 +382,7 @@ export function Sidebar({
   const monolithModule = (item: CollapsibleGroupItem) => {
     const children = item.children.filter(canSeeChild);
     if (children.length === 0) return null;
-    if (item.labelKey === 'securityCenter') return <NavFlyout key={item.labelKey} labelKey={item.labelKey} icon={item.icon}
+    if (item.labelKey === 'securityCenter') return <NavFlyout key={item.labelKey} disabled={!interactive} labelKey={item.labelKey} icon={item.icon}
       open={openKey === item.labelKey} active={children.some(isRowActive)} collapsed={false} rowBase={railRow}
       panelId={`nav-flyout-${item.labelKey}`} onOpen={() => setOpenKey(item.labelKey)}
       onToggle={() => setOpenKey(key => key === item.labelKey ? null : item.labelKey)}
@@ -413,6 +415,7 @@ export function Sidebar({
               aria-label={label}
               aria-expanded={expanded}
               aria-controls={kidsId}
+              disabled={!interactive}
               onClick={() => toggleKids(item.labelKey, expanded)}
               className="inline-flex min-h-7 items-center px-1"
             >
@@ -424,6 +427,7 @@ export function Sidebar({
             type="button"
             aria-expanded={expanded}
             aria-controls={kidsId}
+            disabled={!interactive}
             onClick={() => toggleKids(item.labelKey, expanded)}
             className={cn(railRow, (active || expanded) && 'text-ink', active && 'border-ink')}
           >
@@ -569,13 +573,13 @@ export function Sidebar({
               <Link prefetchOnIntentOnly href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
-              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
+              <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} disabled={!interactive} onClick={flip}
                 className="atelier-row atelier-module-toggle">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
           ) : (
-            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
+            <button ref={register} type="button" aria-expanded={expanded} aria-controls={kidsId} disabled={!interactive} onClick={flip} title={collapsed ? label : undefined} className={cn('atelier-row', (active || expanded) && 'bg-accent font-medium text-foreground')}>
               <Icon aria-hidden /><span className="atelier-label truncate">{label}</span>
               <ChevronDown aria-hidden className="atelier-chevron" />
             </button>
@@ -593,7 +597,7 @@ export function Sidebar({
         <PanelLeftOpen aria-hidden className="size-4"/><span>{t('workspaceSwitch')}</span>
       </button>
       <div id="atelier-mobile-navigation" className={cn('atelier-navigation-shell relative h-full shrink-0 sm:flex', mobileNavigationOpen?'flex':'hidden', openNode && 'atelier-flyout-open z-50', collapsed && 'atelier-collapsed')}>
-        <aside data-app-sidebar data-atelier-navigation className="atelier-rail">
+        <aside data-app-sidebar data-shell-navigation-ready={interactive} data-atelier-navigation className="atelier-rail">
           <Link prefetchOnIntentOnly href="/" aria-label={t('home')} className="atelier-workspace">
             <span data-brand-tile aria-hidden>AI</span>
             <span className="atelier-label">{tCommon('appName')}</span>
@@ -701,6 +705,7 @@ export function Sidebar({
       <aside
         id="app-mobile-navigation"
         data-app-sidebar
+        data-shell-navigation-ready={interactive}
         className={cn(
           'flex h-full flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar py-4 shadow-[var(--shadow-card)] transition-[width] duration-200 ease-snappy',
           collapsed ? 'w-[66px] items-center px-3' : 'w-[232px] px-3',
@@ -796,6 +801,7 @@ export function Sidebar({
                   }
                   return (
                     <NavFlyout
+                      disabled={!interactive}
                       key={item.labelKey}
                       labelKey={item.labelKey}
                       icon={item.icon}

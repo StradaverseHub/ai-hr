@@ -1,6 +1,7 @@
 'use client';
 
-import {createContext,useContext,useEffect,useState,useSyncExternalStore,type ReactNode} from 'react';
+import { useClientReady } from './use-client-ready';
+import {createContext,useContext,useEffect,useState,type ReactNode} from 'react';
 import type {PendingTaskItem} from '@/core/approvals-inbox';
 
 export type ShellApprovalResult=
@@ -32,12 +33,9 @@ export function ShellApprovalFactsProvider({source,canOpenApprovalsWithoutAssign
 // Each streamed consumer hydrates against the same pending snapshot as its server HTML.
 // The provider may already have published by the time a delayed boundary hydrates.
 // Client-only mounts read live facts immediately; source changes still invalidate in the provider.
-const subscribeHydration=()=>()=>{};
-const clientSnapshot=()=>true;
-const serverSnapshot=()=>false;
 const pendingResult={state:'pending' as const};
 export function useShellApprovalFacts(){
  const facts=useContext(Context);
- const hydrated=useSyncExternalStore(subscribeHydration,clientSnapshot,serverSnapshot);
+ const hydrated=useClientReady();
  return facts&&!hydrated?{...facts,result:pendingResult}:facts;
 }
