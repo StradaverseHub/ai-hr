@@ -1938,8 +1938,10 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
+ // Rewards admits an approved plan through the whole-system seeder. The additional New Joiners
+ // adapter is still owned by the route-baseline fixture and checks that narrower suite itself.
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
-  '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
+  '../automation/scripts/performance/joiners-browser-fixture.mjs'],{...dbEnv,PERF_HTTP_SUITE:'browser-route-baseline'});
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
