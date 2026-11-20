@@ -281,6 +281,9 @@ const mixedDriverStages=new Set([
  'baseline-claim-draft-open','baseline-claim-draft-fields','baseline-claim-create',
  'baseline-claim-create-response','baseline-claim-create-persistence','baseline-claim-edit',
  'baseline-claim-delete','baseline-claim-delete-response','baseline-claim-draft-close','baseline-claim-action-protocol',
+ 'baseline-claim-http-response','baseline-claim-http-persistence','baseline-claim-http-cleanup',
+ 'baseline-claim-boundary-fixture','baseline-claim-boundary-denial','baseline-claim-boundary-cleanup',
+ 'baseline-mixed-workflows','baseline-attendance-rejection','baseline-own-payslip',
  'steady-plan','loaded-setup','loaded-workload','loaded-acceptance','driver-settlement',
 ]);
 
@@ -368,9 +371,15 @@ async function measureMixedLoad(command){
    const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
    if(data.browserErrors?.length){
     const pageRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
-    const staticPaths=new Set(Object.entries(pageRoutes)
-     .filter(([file,path])=>file.endsWith('/page')&&typeof path==='string'&&!path.includes('['))
+    const pagePaths=new Set(Object.entries(pageRoutes)
+     .filter(([file,path])=>file.endsWith('/page')&&typeof path==='string')
      .map(([,path])=>path));
+    const routesManifest='.next/routes-manifest.json';
+    const dynamicPages=existsSync(routesManifest)
+     ? (JSON.parse(readFileSync(routesManifest,'utf8')).dynamicRoutes??[])
+      .filter(route=>pagePaths.has(route.page)&&route.page.includes('[')&&typeof route.regex==='string')
+      .map(route=>({page:route.page,pattern:new RegExp(route.regex)}))
+     : [];
     const errorNames=new Set(['Error','TypeError','ReferenceError','SyntaxError','SecurityError',
      'AbortError','RangeError','NotFoundError','ChunkLoadError']);
     report.mixedBrowserErrors=data.browserErrors.slice(0,12).map(row=>{
@@ -379,7 +388,10 @@ async function measureMixedLoad(command){
      const errorName=row.kind==='pageerror'&&separator>0?error.slice(0,separator):null;
      const message=errorName?error.slice(separator+2):error;
      const reactCode=message.match(/^Minified React error #(\d{2,3});/)?.[1];
-     return {path:staticPaths.has(row.path)?row.path:null,external:row.path==='<external>',
+     const path=typeof row.path==='string'&&row.path.length<=4096
+      ? (pagePaths.has(row.path)?row.path:dynamicPages.find(route=>route.pattern.test(row.path))?.page??null)
+      : null;
+     return {path,external:row.path==='<external>',stage:mixedDriverStages.has(row.stage)?row.stage:null,
       role:roles.includes(row.role)?row.role:null,locale:knownLocales.has(row.locale)?row.locale:null,
       kind:['pageerror','console'].includes(row.kind)?row.kind:null,
       errorName:errorNames.has(errorName)?errorName:null,

@@ -125,7 +125,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != c77a5441c8e37492c83d3986cc8095f3e29660ce ]];
+            [[ "$EXPECTED_SHA" != 7adc5708347eae1b8fcedb64befd541005c607f8 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -224,7 +224,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=edf2dc5ca00a893898ab3c0918faa14e585d2fc2
-          test "$AIHR_CI_HEAD" = c77a5441c8e37492c83d3986cc8095f3e29660ce
+          test "$AIHR_CI_HEAD" = 7adc5708347eae1b8fcedb64befd541005c607f8
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
           test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
