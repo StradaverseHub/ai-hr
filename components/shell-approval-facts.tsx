@@ -5,7 +5,7 @@ import type {PendingTaskItem} from '@/core/approvals-inbox';
 
 export type ShellApprovalResult=
  | {state:'ready';items:PendingTaskItem[];total:number;approvalCount:number;claimTotal:number;
-    hasAssignedAttendanceApproval:boolean;hasAssignedApproval:boolean}
+    lifecycleMyTasksCount?:number;hasAssignedAttendanceApproval:boolean;hasAssignedApproval:boolean}
  | {state:'unavailable'};
 type ShellApprovalFacts={result:ShellApprovalResult|{state:'pending'};canOpenApprovalsWithoutAssignment:boolean};
 const Context=createContext<ShellApprovalFacts|undefined>(undefined);
