@@ -847,33 +847,39 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
  assert(employee,'Daily Attendance needs a known employee in the selected company');
  const code='PERF'+String(employee.index).padStart(4,'0');
  const date=fixture.today;
+ report.attendanceFilterSteps=[];
+ report.attendanceStage='open-attendance';
  const initial=await page.goto(origin+path+'?date='+encodeURIComponent(date),{waitUntil:'domcontentloaded',timeout:15000});
  assert.equal(initial?.status(),200);
  const card=page.locator('main [data-tour="attendance-day"]');
  const form=card.locator('form');
  const search=form.locator('input[name="q"]');
+ report.attendanceStage='select-company';
  await form.locator('select[name="company"]').selectOption(company.companyId,{timeout:15000});
+ report.attendanceStage='select-department';
  await form.locator('select[name="dept"]').selectOption(company.departmentId,{timeout:15000});
  const matching=card.getByRole('row').filter({has:page.getByRole('cell',{name:code,exact:true})});
  const anyEmployee=card.locator('tbody a[href^="/attendance/individual/"]');
  const empty=card.getByText('No employees in scope.',{exact:true});
- report.attendanceFilterSteps=[];
  for(const [step,query,expected] of [
   ['filter-employee',code,true],
   ['filter-no-matches','PERF-NO-FIXTURE-MATCH',false],
   ['restore-filtered-employee',code,true],
  ]){
+  report.attendanceStage=step+'-input';
   await search.fill(query,{timeout:15000});
   const matchesSubmission=url=>url.origin===origin&&url.pathname===path&&url.searchParams.get('date')===date
    &&url.searchParams.get('company')===company.companyId&&url.searchParams.get('dept')===company.departmentId
    &&url.searchParams.get('q')===query;
   const started=performance.now();
+  report.attendanceStage=step+'-navigation';
   await Promise.all([
    page.waitForURL(matchesSubmission,{waitUntil:'commit',timeout:15000}),
    form.getByRole('button',{name:'Apply',exact:true}).click({timeout:15000}),
   ]);
+  report.attendanceStage=step+'-result';
   if(expected){
-   await matching.getByRole('cell',{name:employee.name,exact:true}).waitFor({state:'visible',timeout:15000});
+   await matching.getByText(employee.name,{exact:true}).waitFor({state:'visible',timeout:15000});
    await matching.locator('a[href="/attendance/individual/'+date+'?emp='+employee.employmentId+'"]')
     .waitFor({state:'visible',timeout:15000});
   }else{
@@ -1148,7 +1154,7 @@ async function measureActions(fixture){
     report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
-    const step=result.joinerStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
+    const step=result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
    finally{retain();await context.close();}
