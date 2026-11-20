@@ -1537,7 +1537,7 @@ export async function writeDirectSuperiorTx(tx: Tx, ctx: SessionContext, input: 
 } & (
   | { effectiveDate: string; movement: MovementTag }
   | { expectedLineId: string | null }
-), beforeWrite?: () => Promise<unknown>) {
+)) {
   const { employmentId, managerEmploymentId } = input;
   const amendment = 'expectedLineId' in input;
   const date = amendment ? todayInKualaLumpur() : input.effectiveDate;
@@ -1578,7 +1578,7 @@ export async function writeDirectSuperiorTx(tx: Tx, ctx: SessionContext, input: 
   if (historicalAssignment?.companyId) await assertWorkforceCompanyTx(tx, ctx, historicalAssignment.companyId, 'maintain');
   if (managerEmploymentId) await assertDirectSuperiorCandidateTx(tx, ctx, { employmentId, managerEmploymentId, from, until });
 
-  await beforeWrite?.();
+  if (amendment) await preserveMovementPayrollTx(tx, employmentId, message => new Error(message));
   if (prior) {
     // A dated decision can leave a zero-length version at an explicitly ordered same-day boundary.
     // Its inverse needs that predecessor. An amendment supersedes the existing version instead.

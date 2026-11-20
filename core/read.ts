@@ -6040,9 +6040,13 @@ export async function ownReportingManagersTx(tx: Tx, employmentId: string): Prom
  *  in force today. Taking either one alone would REMOVE a row somebody can see today, and this round
  *  takes nothing away. */
 /** reportingLinesFor's `managers` predicate: the current, unsuperseded, non-delegate lines above `employmentId`. */
-const visibleReportingManagersWhere = (employmentId: string) => and(
+const visibleReportingManagersWhere = (employmentId: string, administrativeAsOf?: string) => and(
   eq(reportingLine.subordinateEmploymentId, employmentId),
-  isNull(reportingLine.validTo),
+  administrativeAsOf === undefined ? isNull(reportingLine.validTo) : sql`
+    case when ${reportingLine.lineType} = 'administrative' then
+      ${reportingLine.validFrom} <= ${administrativeAsOf}::date and
+      (${reportingLine.validTo} is null or ${reportingLine.validTo} > ${administrativeAsOf}::date)
+    else ${reportingLine.validTo} is null end`,
   isNull(reportingLine.supersededAt),
   sql`${reportingLine.lineType} <> 'delegate'`,
 );
@@ -6064,7 +6068,9 @@ export function reportingManagerIdsFromBundle(value: unknown): string[] {
   return [...new Set([...raw.visible, ...raw.own] as string[])];
 }
 
-export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx) {
+export function reportingLinesFor(ctx: SessionContext, employmentId: string, existingTx?: Tx,
+  options: { administrativeAsOf?: string } = {},
+) {
   return withReadTx(ctx, existingTx, async (tx) => {
     const visibleManagers = await tx
       .select({
@@ -6081,7 +6087,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string, exi
       .from(reportingLine)
       .innerJoin(employment, eq(employment.id, reportingLine.managerEmploymentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(visibleReportingManagersWhere(employmentId))
+      .where(visibleReportingManagersWhere(employmentId, options.administrativeAsOf))
       .orderBy(reportingLine.lineType);
     // r375 — the caller's OWN supervisors, which the query above cannot reach (see ownReportingManagersTx).
     // Keyed by reporting-line id so a row both reads return appears ONCE: `test/direct-superior.test.ts`
@@ -6089,6 +6095,9 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string, exi
     // here would read as a second supervisor rather than as the same edge seen twice.
     const byLineId = new Map(visibleManagers.map((m) => [m.id, m]));
     for (const own of await ownReportingManagersTx(tx, employmentId)) {
+      const asOf = options.administrativeAsOf;
+      if (asOf && own.lineType === 'administrative' &&
+        (own.validFrom > asOf || (own.validTo && own.validTo <= asOf))) continue;
       if (byLineId.has(own.id)) continue;
       byLineId.set(own.id, {
         id: own.id,
@@ -6138,7 +6147,7 @@ export function reportingLinesFor(ctx: SessionContext, employmentId: string, exi
  *  history disclosure on the Personnel Employment tab; the effective-dating stays internal (the screen
  *  no longer asks admins to manage dates), but the audit visibility is preserved here. Excludes the
  *  open line (that is the CURRENT superior, rendered separately) and superseded corrections. */
-export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: string) {
+export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: string, asOf = todayInKualaLumpur()) {
   return withTenant(ctx, async (tx) => {
     return tx
       .select({
@@ -6156,7 +6165,8 @@ export function directSuperiorHistoryFor(ctx: SessionContext, employmentId: stri
         and(
           eq(reportingLine.subordinateEmploymentId, employmentId),
           eq(reportingLine.lineType, 'administrative'),
-          isNotNull(reportingLine.validTo),
+          lte(reportingLine.validTo, asOf),
+          sql`${reportingLine.validTo} > ${reportingLine.validFrom}`,
           isNull(reportingLine.supersededAt),
         ),
       )

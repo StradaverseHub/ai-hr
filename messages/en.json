@@ -1787,6 +1787,7 @@
           "blacklist": "Blacklist",
           "blacklistCleared": "Blacklist Cleared",
           "orgAssignmentChange": "Organisation Assignment Change",
+          "legacyReportingLineChange": "Reporting Line Change",
           "reportingLineChange": "Changed Direct Superior",
           "employmentTypeChange": "Employment Type Change",
           "gradeChange": "Grade Change",

@@ -416,7 +416,7 @@ export default async function EmployeePage({
   const [history, currentOrganisationOptions, reporting, employees, grades, delegations] = await Promise.all([
     readProfileCards ? assignmentHistory(s, employmentId) : [],
     readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
-    readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
+    readProfileCards ? reportingLinesFor(s, employmentId, undefined, { administrativeAsOf: today }) : {managers:[],reports:[]},
     readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
     readMovementEditorChoices ? listJobGrades(s, { companyId: orgScopeCompanyId }) : [],
     readProfileCards ? delegationsFor(s, employmentId) : [],
@@ -582,7 +582,7 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId) : [];
+  const superiorHistory = readProfileCards ? await directSuperiorHistoryFor(s, employmentId, today) : [];
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -3139,6 +3139,13 @@ export default async function EmployeePage({
   };
   const movementKindLabel = (kind: string): string =>
     movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t);
+  const movementRecordLabel = (kind: string, superiorChange: MovementHistoryRow['superiorChange']) => {
+    const configured = movementTypeByCode.get(kind)?.label;
+    if (kind === 'reportingLineChange' && !superiorChange && !configured) {
+      return t('movement.eventType.legacyReportingLineChange');
+    }
+    return movementKindLabelOf(kind, configured, t);
+  };
   const movementEmpTypeLabel = (v: string | null): string | null =>
     v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
 
@@ -3267,7 +3274,7 @@ export default async function EmployeePage({
             >
               <td className="px-4 py-2.5 font-medium text-foreground">
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
-                  {movementKindLabel(m.kind)}
+                  {movementRecordLabel(m.kind, m.superiorChange)}
                 </span>
                 {m.superiorChange && <dl className="mt-1 space-y-1 text-xs font-normal text-muted-foreground">
                   <div><dt className="inline">{t('directSuperiorPrevious')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.before)}</dd></div>
@@ -3363,7 +3370,7 @@ export default async function EmployeePage({
               <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
               <td className="px-4 py-2.5">
                 <MovementHistoryActions context={movementContext} employmentId={employmentId} row={m} standalone={movementPage==='history'}
-                  eventLabel={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
+                  eventLabel={`${movementRecordLabel(m.kind, m.superiorChange)} · ${formatDmy(m.effectiveDate)}`}
                   canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}
                   rehireRollBack={m.kind === 'rehire' ? {action: rollBackRehireAction, labels: {
                     button: t('movement.rehire.rollBack'), title: t('movement.rehire.rollBackTitle'),
@@ -3465,7 +3472,7 @@ export default async function EmployeePage({
       <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.eventType')}</dt>
-          <dd className="font-medium text-foreground">{movementKindLabel(movementDetailData.row.kind)}</dd>
+          <dd className="font-medium text-foreground">{movementRecordLabel(movementDetailData.row.kind, movementDetailData.superiorChange)}</dd>
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">{t('movement.columns.effectiveDate')}</dt>
@@ -4029,7 +4036,7 @@ export default async function EmployeePage({
               {pendingMovements.map((m) => (
                 <li key={m.id}>
                   {t('employmentInfo.pendingMovementItem', {
-                    kind: movementKindLabel(m.kind),
+                    kind: movementRecordLabel(m.kind, m.superiorChange),
                     date: formatDmy(m.effectiveDate),
                   })}
                 </li>

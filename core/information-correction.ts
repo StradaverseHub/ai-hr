@@ -1,4 +1,3 @@
-import { preserveMovementPayrollTx } from './movement-payroll-protection';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {correctionAuditLabelsTx} from './information-correction-audit';
@@ -600,8 +599,7 @@ export function amendDirectSuperior(ctx: SessionContext, input: {
       .where(and(eq(employment.id, input.employmentId), eq(employment.tenantId, ctx.tenantId))).limit(1);
     if (!subject) fail('Employee record is unavailable.');
     await administratorTx(tx, ctx, subject.companyId);
-    const corrected = await writeDirectSuperiorTx(tx, ctx, input, () =>
-      preserveMovementPayrollTx(tx, input.employmentId, message => new InformationCorrectionError(message)));
+    const corrected = await writeDirectSuperiorTx(tx, ctx, input);
 
     await appendEvent(tx, {
       tenantId: ctx.tenantId, actor: actorOf(ctx), subjectEmploymentId: input.employmentId,

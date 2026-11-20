@@ -1787,6 +1787,7 @@
           "blacklist": "列入黑名单",
           "blacklistCleared": "移出黑名单",
           "orgAssignmentChange": "组织安排变更",
+          "legacyReportingLineChange": "汇报线变更",
           "reportingLineChange": "变更直属上司",
           "employmentTypeChange": "雇佣类型变更",
           "gradeChange": "职级变更",

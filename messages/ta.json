@@ -1787,6 +1787,7 @@
           "blacklist": "தடுப்புப்பட்டியல்",
           "blacklistCleared": "தடுப்புப்பட்டியல் நீக்கம்",
           "orgAssignmentChange": "அமைப்பு நியமன மாற்றம்",
+          "legacyReportingLineChange": "அறிக்கை வரிசை மாற்றம்",
           "reportingLineChange": "நேரடி மேலாளர் மாற்றம்",
           "employmentTypeChange": "வேலை வகை மாற்றம்",
           "gradeChange": "பணி நிலை மாற்றம்",

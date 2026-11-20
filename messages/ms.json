@@ -1787,6 +1787,7 @@
           "blacklist": "Senarai Hitam",
           "blacklistCleared": "Senarai Hitam Dibatalkan",
           "orgAssignmentChange": "Perubahan Penempatan Organisasi",
+          "legacyReportingLineChange": "Perubahan Barisan Laporan",
           "reportingLineChange": "Pertukaran Penyelia Langsung",
           "employmentTypeChange": "Perubahan Jenis Pekerjaan",
           "gradeChange": "Perubahan Gred",

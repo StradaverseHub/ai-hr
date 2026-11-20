@@ -1787,6 +1787,7 @@
           "blacklist": "Đưa vào danh sách đen",
           "blacklistCleared": "Xóa khỏi danh sách đen",
           "orgAssignmentChange": "Thay đổi phân công tổ chức",
+          "legacyReportingLineChange": "Thay đổi tuyến báo cáo",
           "reportingLineChange": "Thay đổi cấp trên trực tiếp",
           "employmentTypeChange": "Thay đổi loại hình lao động",
           "gradeChange": "Thay đổi cấp bậc",

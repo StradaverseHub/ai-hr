@@ -1787,6 +1787,7 @@
           "blacklist": "ขึ้นบัญชีดำ",
           "blacklistCleared": "ถอนออกจากบัญชีดำ",
           "orgAssignmentChange": "เปลี่ยนการมอบหมายองค์กร",
+          "legacyReportingLineChange": "เปลี่ยนสายการรายงาน",
           "reportingLineChange": "เปลี่ยนผู้บังคับบัญชาโดยตรง",
           "employmentTypeChange": "เปลี่ยนประเภทการจ้างงาน",
           "gradeChange": "เปลี่ยนระดับงาน",

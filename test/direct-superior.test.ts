@@ -354,6 +354,8 @@ describe('Changed Direct Superior movement', () => {
     const [closed] = await withTenant(ctx, tx => tx.select().from(schema.reportingLine)
       .where(and(eq(schema.reportingLine.subordinateEmploymentId, employee), eq(schema.reportingLine.managerEmploymentId, manager))));
     expect(closed.validTo).toBe(tomorrow);
+    expect((await reportingLinesFor(ctx, employee, undefined, { administrativeAsOf: todayInKualaLumpur() })).managers[0]?.employmentId).toBe(manager);
+    expect((await reportingLinesFor(ctx, employee, undefined, { administrativeAsOf: tomorrow })).managers).toEqual([]);
     await reverseMovementEvent(ctx, { employmentId: employee, movementId: pending!.id, reason: 'Entered for the wrong employee' });
     const [restored] = await withTenant(ctx, tx => tx.select().from(schema.reportingLine)
       .where(eq(schema.reportingLine.id, closed.id)));

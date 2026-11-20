@@ -1261,7 +1261,7 @@ type SuperiorReferences = { before: string | null | undefined; after: string | n
 function reportingReferencesByEvent(events: RawEvent[]): Map<string, SuperiorReferences> {
   type ReportingPayload = { lineType?: string; validFrom?: string; endDate?: string; managerEmploymentId?: string | null;
     previousManagerEmploymentId?: string | null; supersededBy?: { lineType?: string; managerEmploymentId?: string };
-    input?: { managerEmploymentId?: string | null } };
+    input?: { managerEmploymentId?: string | null }; retainedDecision?: boolean };
   const added = new Map<string, string | null>();
   const references = new Map<string, SuperiorReferences>();
   let previous: RawEvent | undefined;
@@ -1281,8 +1281,9 @@ function reportingReferencesByEvent(events: RawEvent[]): Map<string, SuperiorRef
       if (event.eventType === 'reporting-line.set' && typeof payload.managerEmploymentId === 'string') {
         added.set(event.aggregateId, payload.managerEmploymentId);
       }
-    } else if (event.eventType === 'employment.movement.scheduled' && payload.input &&
-      Object.hasOwn(payload.input, 'managerEmploymentId')) {
+    } else if ((event.eventType === 'employment.movement.scheduled' ||
+      (event.eventType === 'employment.movement.recorded' && payload.retainedDecision === true)) &&
+      payload.input && Object.hasOwn(payload.input, 'managerEmploymentId')) {
       references.set(event.id, { before: payload.previousManagerEmploymentId, after: payload.input.managerEmploymentId });
     }
     previous = event;
@@ -4409,7 +4410,11 @@ function movementDateConflicts(rows:ProjectedRow[],events:RawEvent[]):Set<string
  return conflicts;
 }
 async function assertMovementDateOrderTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,fields:readonly string[]){
- const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+ const {emp,events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,p.employmentId);
+ if (p.kind === 'reportingLineChange' && (p.effectiveDate < emp.hiredOn ||
+   (emp.terminatedOn && p.effectiveDate >= emp.terminatedOn))) {
+   throw new Error('The Effective Date must fall within the employee’s employment.');
+ }
  for(const row of rows){
   if(row.kind==='hired'||row.reversed||row.effectiveDate!==p.effectiveDate)continue;
   if(statusOf(row)==='superseded'&&!row.scheduled)continue;
@@ -4956,19 +4961,23 @@ async function reverseLegTx(
 
     case 'reporting-line.ended': {
       if (!isReportingMovementLeg(e)) return;
+      const endedOn: unknown = p.validFrom;
+      if (typeof endedOn !== 'string' || typeof p.previousReportingLineId !== 'string') {
+        throw new MovementNotCorrectableError('The prior Direct Superior assignment was not recorded.');
+      }
       const preceding = liveIncarnationOf(p.previousReportingLineId, hireCorrections);
       const [prior] = await tx.select().from(reportingLine).where(and(eq(reportingLine.id, preceding),
         eq(reportingLine.subordinateEmploymentId, employmentId), isNull(reportingLine.supersededAt))).limit(1);
-      if (!prior || prior.validTo !== p.validFrom) throw new MovementNotCorrectableError('The prior Direct Superior assignment changed.');
+      if (!prior || prior.validTo !== endedOn) throw new MovementNotCorrectableError('The prior Direct Superior assignment changed.');
       const [next] = await tx.select({ date: reportingLine.validFrom }).from(reportingLine)
         .where(and(eq(reportingLine.subordinateEmploymentId, employmentId), eq(reportingLine.lineType, 'administrative'),
-          isNull(reportingLine.supersededAt), sql`${reportingLine.validFrom} >= ${prior.validTo}::date`,
+          isNull(reportingLine.supersededAt), sql`${reportingLine.validFrom} >= ${endedOn}::date`,
           sql`(${reportingLine.validTo} is null or ${reportingLine.validTo} > ${reportingLine.validFrom})`))
         .orderBy(reportingLine.validFrom).limit(1);
       const until = [p.previousValidTo, next?.date].filter((date): date is string => typeof date === 'string').sort()[0] ?? null;
-      if (!until || until > prior.validTo) {
+      if (!until || until > endedOn) {
         await assertDirectSuperiorCandidateTx(tx, ctx, { employmentId, managerEmploymentId: prior.managerEmploymentId,
-          from: prior.validTo, until });
+          from: endedOn, until });
       }
       await tx.update(reportingLine).set({ validTo: until }).where(eq(reportingLine.id, prior.id));
       await appendEvent(tx, {
