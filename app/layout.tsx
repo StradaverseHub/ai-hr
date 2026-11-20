@@ -51,7 +51,7 @@ import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import { readSignedInShellNavigation } from '@/lib/shell-navigation-context';
-import {pendingTaskSummary} from '@/core/approvals-inbox';
+import { readShellTaskSummary } from '@/lib/shell-task-summary';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
@@ -257,7 +257,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalSummaryWork = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
+  const approvalSummaryWork = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => readShellTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
@@ -267,7 +267,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope()));
+  }),undefined,requestReadScope()));
   const approvalFacts: Promise<ShellApprovalResult> = Promise.all([approvalSummaryWork, lifecyclePreview]).then(([approvalSummary, lifecycle]): ShellApprovalResult => ({
     state:'ready',
     items:approvalSummary.items,

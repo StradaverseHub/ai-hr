@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),claimCount:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -23,6 +23,7 @@ vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:
 vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async()=>({
  accessConfigurationAvailable:false,workforceAvailable:false,onboarded:m.onboarded,
 })}));
+vi.mock('../packs/claims/service',()=>({countPendingClaimTasks:m.claimCount}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
@@ -48,7 +49,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.claimCount.mockReset();m.claimCount.mockResolvedValue(0);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -183,12 +184,16 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});m.operator.mockResolvedValue(false);
  m.module.mockImplementation((_ctx:unknown,module:string)=>module==='claims');
  const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
- m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
+ m.scopeIds=['selected-company'];
+ m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:2,approvalCount:1,claimTotal:0};m.lifecycleCount=7;
+ m.claimCount.mockResolvedValue(10000);
  const tree=await Layout({children:null});
  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
  await expect(approvalSource(tree)).resolves.toMatchObject({lifecycleMyTasksCount:7});
+ expect(m.tasks.mock.calls[0]?.[2]).toMatchObject({claims:false});
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
+ expect(m.claimCount).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({userId:'hr'}),['selected-company']);
  const bell=await bellElement(tree);
  expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
  expect(propsOf(bell,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
@@ -235,6 +240,7 @@ it('returns the authenticated shell while the approval owner is still pending',a
  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
  finish([]);
  await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',total:0});
+ expect(m.claimCount).not.toHaveBeenCalled();
 });
 
 it('reports a failed approval read without exposing its details or failing the page',async()=>{
