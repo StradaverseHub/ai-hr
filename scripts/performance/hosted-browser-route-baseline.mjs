@@ -22,6 +22,7 @@ import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
+import {PROJECT_INSTALLED_OWNERSHIP} from '../../test/helpers/installed-owner-projection.ts';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -30,7 +31,10 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+const offboardingVariant=env.AIHR_BROWSER_OFFBOARDING_VARIANT??'none';
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
+assert(['none','control','optimized'].includes(offboardingVariant));
+assert(offboardingVariant==='none'||(mixedLoad&&establishedAttendance&&!fixtureOnly&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -415,6 +419,65 @@ function readMixedRootStatements(name,dockerConfig){
   const categories=summarizeMixedStatements(JSON.parse(result));
   return categories?{scope:'up to 35 top-level statements executed under the application role',categories}:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
+}
+
+async function withMixedOffboardingComparison(work){
+ if(offboardingVariant==='none')return work();
+ assert.equal(sha,'8e5a6009b0dc90e1fde3323ab5145f4aaec478f0');
+ assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+ const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
+ assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
+ const dockerConfig=join(privateDir,'offboarding-docker-config');
+ mkdirSync(dockerConfig,{mode:0o700});
+ const label=execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
+  '--format','{{index .Config.Labels "aihr-owner"}}',name,
+ ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim();
+ assert.equal(label,name,'Expected the job-owned fictional database');
+
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{statement_timeout:'90s',lock_timeout:'3s'}});
+ const readFunction=async sql=>{
+  const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition
+   from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure`;
+  return row;
+ };
+ try{
+  await owner.begin(async tx=>{
+   const [{exists}]=await tx`select exists(select 1 from pg_roles where rolname='ai_hr_owner')`;
+   if(!exists)await tx.unsafe('create role ai_hr_owner nologin nosuperuser nobypassrls nocreatedb nocreaterole noreplication');
+   const [role]=await tx`select rolsuper,rolbypassrls,rolcanlogin from pg_roles where rolname='ai_hr_owner'`;
+   assert(role&&!role.rolsuper&&!role.rolbypassrls&&!role.rolcanlogin,'Expected the restricted fictional owner');
+   if((await readFunction(tx)).owner==='postgres')await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+   assert.equal((await readFunction(tx)).owner,'ai_hr_owner');
+  });
+  const {definition:original,...boundary}=await readFunction(owner);
+  const install=(statement,expected)=>owner.begin(async tx=>{
+   await tx.unsafe('set local role ai_hr_owner');
+   await tx.unsafe(statement);
+   const {definition,...observed}=await readFunction(tx);
+   assert.deepEqual(observed,boundary);
+   if(expected==='original')assert.equal(definition,original);
+   else assert.notEqual(definition,original);
+  });
+  report.mixedOffboarding={variant:offboardingVariant,restrictedOwner:true,replacementInstalled:false,restored:false};
+  try{
+   if(offboardingVariant==='optimized'){
+    const replacement=readFileSync(new URL('../../test/fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
+    await install(replacement,'optimized');
+    report.mixedOffboarding.replacementInstalled=true;
+   }
+   save();
+   return await work();
+  }finally{
+   if(report.mixedOffboarding.replacementInstalled){
+    await install(original,'original');
+    report.mixedOffboarding.restored=true;
+    save();
+   }
+  }
+ }finally{await owner.end({timeout:5});}
 }
 
 async function measureMixedLoad(command){
@@ -1595,9 +1658,11 @@ try{
   }
  }
  if(driverCommand&&!fixtureOnly){
-  await startMixedWorker(driverCommand);
-  await measureMixedLoad(driverCommand);
-  assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+  await withMixedOffboardingComparison(async()=>{
+   await startMixedWorker(driverCommand);
+   await measureMixedLoad(driverCommand);
+   assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+  });
  }
  else if(!fixtureOnly){
   await measureRoutes(fixture);
