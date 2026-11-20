@@ -44,6 +44,7 @@ it('measures the full ordered Claims task headers under current authority', asyn
         || (previous.createdAt.getTime() === row.createdAt.getTime() && previous.id < row.id);
     })).toBe(true);
     expect(telemetry.totals.failed).toBe(0);
+    expect(subjectChecks).toBe(1);
     console.info('CLAIMS_TASK_METADATA_SCALE', JSON.stringify({
       role: name, rows: rows.length, elapsedMs, statements: telemetry.totals.statements, subjectChecks,
     }));
