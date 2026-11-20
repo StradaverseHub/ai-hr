@@ -84,11 +84,23 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
    }
   };
   const measure=async()=>{
-   await readActor(f.watcher);
-   const [plan]=await tx<{'QUERY PLAN':[{'Execution Time':number}]}[]>`
-    explain (analyze,format json,timing off) select app.offboarding_posting_queue_access()
-   `;
-   return plan['QUERY PLAN'][0]['Execution Time'];
+   const timings: Record<string, number[]>={};
+   for(const [role,ctx] of [
+    ['groupHr',f.admin],['companyHr',scoped],['employee',f.watcher],
+   ] as const){
+    await readActor(ctx);
+    const samples: number[]=[];
+    for(let sample=0;sample<3;sample++){
+     const [plan]=await tx<{'QUERY PLAN':[{'Execution Time':number}]}[]>`
+      explain (analyze,format json,timing off) select app.offboarding_posting_queue_access()
+     `;
+     const duration=plan['QUERY PLAN'][0]['Execution Time'];
+     expect(Number.isFinite(duration),role).toBe(true);
+     samples.push(duration);
+    }
+    timings[role]=samples;
+   }
+   return timings;
   };
 
   const before=await readDefinition();
@@ -100,7 +112,6 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
   expect(await readDefinition()).toEqual(before);
   await verifyActors();
   const candidateMs=await measure();
-  expect(Number.isFinite(canonicalMs)&&Number.isFinite(candidateMs)).toBe(true);
   console.info('OFFBOARDING_QUEUE_REPLACEMENT_PROOF '+JSON.stringify({canonicalMs,candidateMs}));
   throw rollback;
  })).rejects.toBe(rollback);
