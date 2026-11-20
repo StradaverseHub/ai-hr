@@ -43,8 +43,8 @@ describe('Direct Superior Employment confirmation', () => {
     const data = new FormData(form);
     expect(data.get('superiorChangeMode')).toBe('amend');
     expect(data.get('currentLineId')).toBe('line');
-    expect(data.get('superiorChangeReason')).toBe('Correct the existing assignment');
-    expect(data.has('superiorEffectiveDate')).toBe(false);
+    expect(data.get('reason')).toBe('Correct the existing assignment');
+    expect(data.has('effectiveDate')).toBe(false);
   });
 
   it('requires an empty-by-default date for a new movement and discards the choice on Cancel', async () => {

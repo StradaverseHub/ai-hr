@@ -330,30 +330,6 @@
     },
     {
       "tag": "input",
-      "context": "directSuperiorCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by directSuperiorCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "directSuperiorCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "currentSuperiorEmploymentId",
-      "reason": "Current reporting-line compare-and-change proof, validated by the manager owner; not a replacement superior selection."
-    },
-    {
-      "tag": "input",
-      "context": "directSuperiorCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "currentLineId",
-      "reason": "Current reporting-line compare-and-change proof, validated by the manager owner; not a replacement superior selection."
-    },
-    {
-      "tag": "input",
       "context": "delegationsCard",
       "hidden": true,
       "occurrences": 2,
@@ -1096,6 +1072,32 @@
       "hidden": false,
       "occurrences": 1,
       "reason": "Historical pay evidence is submitted separately from live salary and payment fields and checked under native Payroll company scope."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/direct-superior-change-form.tsx": [
+    {
+      "tag": "input",
+      "context": "DirectSuperiorChangeForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by directSuperiorCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "DirectSuperiorChangeForm",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "currentLineId",
+      "reason": "Current reporting-line compare-and-change proof, validated by the manager owner; not a replacement superior selection."
+    },
+    {
+      "tag": "input",
+      "context": "DirectSuperiorChangeForm",
+      "hidden": false,
+      "occurrences": 1,
+      "name": "superiorChangeMode",
+      "reason": "Selects the guarded reporting-line amendment or dated Movement command without storing a Personnel value."
     }
   ]
 }

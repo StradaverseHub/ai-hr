@@ -26,7 +26,11 @@ it('keeps passive Org evidence outside the original native Movement business-eve
  const start=source.indexOf('const MOVEMENT_EVENT_TYPES = ['),end=source.indexOf('\n];',start)+3;
  expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);
  const list=source.slice(start,end);
- const historyRevision='  MOVEMENT_HISTORY_EDITED_EVENT,\n';
- expect(list.split(historyRevision)).toHaveLength(2);
- expect(createHash('sha256').update(list.replace(historyRevision,'')).digest('hex')).toBe('519fd1a3e19ac1940d31514b44406e754e5323cb77f14fc73323a323a3351d07');
+ let legacyList=list;
+ for(const recorded of ['MOVEMENT_HISTORY_EDITED_EVENT', "'reporting-line.superseded'", "'reporting-line.ended'"]){
+  const entry='  '+recorded+',\n';
+  expect(legacyList.split(entry)).toHaveLength(2);
+  legacyList=legacyList.replace(entry,'');
+ }
+ expect(createHash('sha256').update(legacyList).digest('hex')).toBe('519fd1a3e19ac1940d31514b44406e754e5323cb77f14fc73323a323a3351d07');
 });

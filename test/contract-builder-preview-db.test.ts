@@ -36,8 +36,9 @@ async function seedScale(){
     jsonb_build_object('revision',1,'state','upcoming','term',jsonb_build_object('startOn','2026-01-01','endOn','2027-12-31'),'decision',NULL,'decisionDraft',NULL) from fixture`);
 }
 describe('Native Contract builder preview authority and source values',()=>{
+ beforeEach(seedScale,90_000);
  it('matches the real case-view page across70 companies/1000 employments and excludes current pay from template values',async()=>{
-  await seedScale();admin={...await entitledCtx(b),personId:admin.personId};
+  admin={...await entitledCtx(b),personId:admin.personId};
   const native=await contractSharedPage(admin,{limit:20}),choices=await contractTemplatePreviewCases(admin);
   expect(choices.map(row=>row.id)).toEqual(native.rows.map(row=>row.id));expect(choices).toHaveLength(20);
   expect(choices[0].label).toContain('Contract scale employee 0001');
@@ -48,7 +49,7 @@ describe('Native Contract builder preview authority and source values',()=>{
   await expect(contractTemplatePreviewValues(editor,native.rows[1].id)).rejects.toMatchObject({code:'forbidden'});
  });
  it('requires separate template and actual case-view authority, with no writes or false identity',async()=>{
-  await seedScale();admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),editor=await ordinary(),roleId=randomUUID();
+  admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),editor=await ordinary(),roleId=randomUUID();
   await saveContractSharedRole(admin,{id:roleId,name:'Template editor only',permissions:['templates'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:editor.userId,companyId:cases.rows[0].companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
   expect(await contractTemplatePreviewCases(editor)).toEqual([]);await expect(contractTemplatePreviewValues(editor,cases.rows[0].id)).rejects.toMatchObject({code:'forbidden'});
   await expect(contractRoutingPreviewCases(editor)).rejects.toMatchObject({code:'forbidden'});
@@ -56,7 +57,7 @@ describe('Native Contract builder preview authority and source values',()=>{
   await expect(withTenant(editor,tx=>tx.execute(sql`select * from contract_shared_case`))).rejects.toThrow();
  },90000); // The 1,000-case fixture exceeded 30s in hosted gate 44585205934.
  it('checks only the selected matching routing row and real active named people, without simulating a fallback',async()=>{
-  await seedScale();admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),named=await ordinary();
+  admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),named=await ordinary();
   const routing:Routing={id:randomUUID(),name:'Fictional matching row',rows:[{match:{company:[cases.rows[0].companyId]},assignTo:{kind:'people',userIds:[named.userId!]}},{match:{},assignTo:{kind:'people',userIds:[admin.userId!]}}]};
   const checker=await ordinary(),roleId=randomUUID();await saveContractSharedRole(admin,{id:roleId,name:'Scoped routing checker',permissions:['view','groups'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:checker.userId,companyId:cases.rows[0].companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
   expect(await contractRoutingCheck(checker,routing,cases.rows[0].id)).toEqual({employee:'Contract scale employee 0001',row:1,people:['Fictional Contract operator']});

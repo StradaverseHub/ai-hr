@@ -7904,6 +7904,13 @@
       "when": 1795028007051,
       "tag": "7051_payroll_read_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 10452,
+      "version": "7",
+      "when": 1795028007052,
+      "tag": "7052_contract_posting_reporting_end_date",
+      "breakpoints": true
     }
   ]
 }

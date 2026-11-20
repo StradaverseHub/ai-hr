@@ -203,14 +203,11 @@ describe('65e2d5de · C — Recalculation History arrives closed, the fresh resu
 });
 
 describe('65e2d5de · D — the reprocess search cannot shrink the submitted set', () => {
-  it('the ticked-but-hidden ids ride hidden inputs, over BOTH groups', () => {
-    // The failure this prevents is silent: the review names three people, one id is posted, and the screen
-    // agrees with itself throughout. Proved by FormData in the dom test; pinned at the source here because
-    // the contract spans the review block and the form, and either half alone passes whatever the other does.
+  it('carries hidden selections across both groups and posts only ready ids after tax review', () => {
     expect(REPROCESS_FORM).toMatch(
-      /picked\.map\(\(e\) => \(\s*<input key=\{e\.employmentId\} type="hidden" name="employmentIds" value=\{e\.employmentId\} \/>/,
+      /\(review \? ready : picked\)\.map\(row\s*=>\s*<input key=\{row\.employmentId\} type="hidden" name="employmentIds" value=\{row\.employmentId\} \/>/,
     );
-    // Every reviewed selection, including additions and rows on other pages, is posted once.
+    expect(REPROCESS_FORM).toMatch(/held\.map\(row\s*=>\s*<input[^>]+name="heldEmploymentIds"/);
     expect(REPROCESS_FORM).toContain('{picked.map((e) => (');
     expect(REPROCESS_FORM).not.toMatch(/type="checkbox"\s+name="employmentIds"/);
   });

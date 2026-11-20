@@ -1,3 +1,10 @@
+# Contract replay reporting end date — 20 November 2026
+
+Candidate reservation `7052_contract_posting_reporting_end_date`, journal index `10452`, timestamp
+`1795028007052`, SQL SHA-256 `b878e9a1355f48088c8b80ed5a1b1cd93bc5ef59a1be125dc77d001d974e37c3`.
+The private Contract date projection accepts tagged administrative reporting ends and keeps its owner and
+existing privileges. Migration `6431` remains byte-for-byte intact. Recheck reservations and ledgers at admission.
+
 # Payroll restricted-owner read authorization — 20 November 2026
 
 Candidate reservation `7051_payroll_read_authorization`, journal index `10451`, timestamp

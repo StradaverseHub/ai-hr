@@ -260,8 +260,8 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     fd.set('employmentId', hire.employmentId);
     fd.set('superiorEmploymentId', other.employmentId);
     fd.set('superiorChangeMode', 'movement');
-    fd.set('superiorEffectiveDate', todayInKualaLumpur());
-    fd.set('superiorChangeReason', 'Official reassignment');
+    fd.set('effectiveDate', todayInKualaLumpur());
+    fd.set('reason', 'Official reassignment');
     await expect(setDirectSuperiorAction(fd)).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('toast=Saved');
 

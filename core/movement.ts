@@ -905,9 +905,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
         });
         break;
       case 'employment.grade.changed':
-        // 30325fc1 — GENERIC WRITER, TAG REQUIRED. r78c deleted the last untagged grade writer
-        // (setEmploymentGradeAction, the Leave tab's one-field Job Grade save), so nothing an admin can
-        // do today reaches here without a tag.
+        // Only a recorded Movement can project a dated reporting change.
         if (!knownKind(mv?.type)) break;
         rows.push({
           ...base,
@@ -1249,19 +1247,20 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
   return facts;
 }
 
-/** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
- *  groupId), or the single event a legacy / one-leg movement projects. Empty for the synthesized Hired row. */
+type ReportingPayload = { lineType?: string; validFrom?: string; endDate?: string; managerEmploymentId?: string | null;
+  previousManagerEmploymentId?: string | null; supersededBy?: { lineType?: string; managerEmploymentId?: string };
+  input?: { managerEmploymentId?: string | null }; retainedDecision?: boolean };
+
 function isReportingMovementLeg(event: RawEvent): boolean {
   if (event.eventType === 'reporting-line.set') return true;
-  return event.eventType === 'reporting-line.ended' && !!tagOf(event);
+  return event.eventType === 'reporting-line.ended'
+    && (event.payload as ReportingPayload | null)?.lineType === 'administrative'
+    && !!tagOf(event);
 }
 
 type SuperiorReferences = { before: string | null | undefined; after: string | null | undefined };
 
 function reportingReferencesByEvent(events: RawEvent[]): Map<string, SuperiorReferences> {
-  type ReportingPayload = { lineType?: string; validFrom?: string; endDate?: string; managerEmploymentId?: string | null;
-    previousManagerEmploymentId?: string | null; supersededBy?: { lineType?: string; managerEmploymentId?: string };
-    input?: { managerEmploymentId?: string | null }; retainedDecision?: boolean };
   const added = new Map<string, string | null>();
   const references = new Map<string, SuperiorReferences>();
   let previous: RawEvent | undefined;
@@ -1309,6 +1308,8 @@ async function superiorChangeLabelsTx(tx: Tx, tenantId: string, references: Supe
   return (ref: SuperiorReferences): SuperiorChange => ({ before: fact(ref.before), after: fact(ref.after) });
 }
 
+/** The ledger events one movement is made of: every leg of a comparison-form submit (they share a
+ *  groupId), or the single event a legacy / one-leg movement projects. Empty for the synthesized Hired row. */
 const groupEventsOf = (events: RawEvent[], row: ProjectedRow): RawEvent[] =>
   row.groupId ? events.filter((e) => tagOf(e)?.groupId === row.groupId) : events.filter((e) => e.id === row.id);
 
@@ -4443,12 +4444,14 @@ async function laterReplayPlanTx(
   target: ProjectedRow | null,
   targetSpanEnd: number,
   correctedDate: string,
+  retainIndependentReporting = false,
 ): Promise<ReplayStep[]> {
   const steps: ReplayStep[] = [];
   for (const r of rows) {
     if (r.id === target?.id || (!target && r.effectiveDate <= correctedDate) || r.reversed || r.scheduled && statusOf(r) !== 'applied') continue;
     const g = groupEventsOf(events, r);
-    if (!g.some((e) => eventChangesMovementState(e))) continue;
+    const changes = g.filter(eventChangesMovementState);
+    if (changes.length === 0) continue;
     const end = Math.max(...g.map((e) => e.sequence));
     if (end <= targetSpanEnd) continue;
     const behaviour = resolvedTypes.get(recordedMovementKind(r, g))?.behaviourKind ?? null;
@@ -4456,6 +4459,11 @@ async function laterReplayPlanTx(
     // Preserve it in place while rebuilding employment fields; reversing/replaying it would needlessly
     // change login access and make unrelated earlier corrections depend on that override.
     if(behaviour==='blacklist')continue;
+    // Contract posting owns terms and employment type. Leave independent reporting decisions
+    // in place under that protected source so its approver never needs Workforce write access.
+    if (retainIndependentReporting && behaviour === 'reportingLineChange' &&
+      changes.every(event => isReportingMovementLeg(event) &&
+        (event.payload as ReportingPayload | null)?.lineType === 'administrative')) continue;
     const label = resolvedTypes.get(r.kind)?.label || r.kind;
     const when = r.effectiveDate;
     const replayable =
@@ -4533,7 +4541,7 @@ async function recordComparisonInEffectiveOrderBodyTx(tx: Tx, ctx: SessionContex
     if (behaviour === 'confirmation') return dispatchMovementEventTx(tx, ctx, input, undefined, undefined, captureGradeBefore);
     throw new MovementBeforeGroupJoinDateError(emp.hiredOn);
   }
-  const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate);
+  const later = await laterReplayPlanTx(tx, events, rows, statusOf, resolvedTypes, null, -1, input.effectiveDate, historySource);
   const inverse=[...later].sort((a,b)=>b.sequence-a.sequence);
   if(historySource){
    if(!sourceTarget)throw Error('A fixed approved Contract target is required.');

@@ -122,7 +122,7 @@ describe('pending Movement View shows saved intent separately from applied histo
     const end = source.indexOf('      ) : (',start);
     expect(start).toBeGreaterThan(-1); expect(end).toBeGreaterThan(start);
     const pending = source.slice(start,end);
-    expect(pending).toContain('movementDetailData.pendingIntent.values.map');
+    expect(pending).toMatch(/movementDetailData\.pendingIntent\.values\s*\.filter\(\(\{ field \}\) => field !== 'manager' \|\| !movementDetailData\.superiorChange\)\s*\.map\(/);
     expect(pending).toContain("t('movement.detail.scheduledValues')");
     expect(pending).toContain("t('movement.detail.scheduledValuesNote')");
     expect(pending).not.toContain('movement.detail.beforeChanges');

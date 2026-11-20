@@ -775,7 +775,7 @@ export async function setDirectSuperiorAction(formData: FormData) {
   const href = `/admin/personnel/${encodeURIComponent(employmentId)}?tab=job`;
   const mode = formData.get('superiorChangeMode');
   const superior = formData.get('superiorEmploymentId');
-  const reason = String(formData.get('superiorChangeReason') ?? '').trim();
+  const reason = String(formData.get('reason') ?? '').trim();
   const t = await getTranslations('people.detail');
   try {
     if (typeof superior !== 'string' || (mode !== 'amend' && mode !== 'movement')) {
@@ -789,7 +789,7 @@ export async function setDirectSuperiorAction(formData: FormData) {
         expectedLineId: String(formData.get('currentLineId') ?? '').trim() || null,
       });
     } else {
-      const effectiveDate = String(formData.get('superiorEffectiveDate') ?? '').trim();
+      const effectiveDate = String(formData.get('effectiveDate') ?? '').trim();
       if (!isCalendarDate(effectiveDate)) throw new Error(t('directSuperiorDateRequired'));
       await createMovementEvent(session, { employmentId, managerEmploymentId, effectiveDate, remarks: reason,
         kind: 'reportingLineChange' });

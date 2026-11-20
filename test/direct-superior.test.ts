@@ -89,7 +89,7 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
     expect(hasPersonnelPostedBinding(picker, 'employment.direct_superior_and_history.superioremploymentid', 'superiorEmploymentId')).toBe(true);
     expect(FORM).toContain('name="currentLineId"');
     expect(FORM).toContain('name="superiorChangeMode"');
-    expect(FORM).toContain('name="superiorEffectiveDate"');
+    expect(FORM).toContain("personnelWorkflowInput('employment_history.event_information.effectivefrom', 'movement', 'record')");
     expect(PAGE.includes('setDirectSuperiorAction')).toBe(true);
   });
 

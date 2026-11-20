@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react';
 import { btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { ActionButton } from '@/components/ui/action-button';
+import { personnelWorkflowInput } from '@/lib/personnel-form-contract';
 
 type ChangeMode = '' | 'amend' | 'movement';
 
@@ -37,11 +38,11 @@ export function DirectSuperiorChangeForm({ action, children, employmentId, curre
           </div>
           {mode === 'movement' && <label className="block max-w-48 text-sm">
             {labels.effectiveDate}
-            <input className={inputCls} name="superiorEffectiveDate" type="date" required />
+            <input className={inputCls} {...personnelWorkflowInput('employment_history.event_information.effectivefrom', 'movement', 'record')} />
           </label>}
           {!!mode && <label className="block text-sm">
             {labels.reason}
-            <input className={inputCls} name="superiorChangeReason" required maxLength={200} />
+            <input className={inputCls} {...personnelWorkflowInput('employment_history.event_information.correctionreason', 'movement', 'record')} maxLength={200} />
           </label>}
           <div className="flex flex-wrap justify-end gap-2">
             <button type="button" className={btnGhost} onClick={() => { setMode(''); setReview(false); }}>{labels.cancel}</button>

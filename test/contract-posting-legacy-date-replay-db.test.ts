@@ -8,7 +8,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {createBusinessUnit} from '../core/admin';
 import {setLabelGlobal} from '../core/system-labels';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
-import {movementHistory,movementCorrectionBaseTx} from '../core/movement';
+import {createMovementEvent,movementHistory,movementCorrectionBaseTx} from '../core/movement';
 import {prepareCompanyOrganisationRun,companyOrganisationRunReport,decideCompanyOrganisationRun,processCompanyOrganisationRun} from '../core/company-organisation';
 import {approveContractSharedPosting,readContractSharedPostingApprovalJob} from '../packs/contracts/service';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
@@ -62,11 +62,52 @@ it.each(['without-effective-date','without-end-date'] as const)('replays a genui
  const[eventAfter]=await owner.db.execute<{row:Record<string,unknown>}>(sql`select to_jsonb(d) as row from public.domain_event d where tenant_id=${f.b.tenantId}::uuid and id=${String(originalEvent!.id)}::uuid`);expect(eventAfter.row).toEqual(originalEvent);
 },180_000);
 
+it('keeps a later Direct Superior removal intact when the Contract approver posts an earlier renewal',async()=>{
+ const target=addCalendarMonths(todayInKualaLumpur().slice(0,7)+'-01',-1);
+ const f=await contractPostingFixture({endOn:addDaysIso(target,-1),beforeAdopt:async({admin,employee})=>{
+  await createMovementEvent(admin,{employmentId:employee.employmentId,kind:'reportingLineChange',
+    effectiveDate:addDaysIso(target,1),managerEmploymentId:null,remarks:'Fictional dated reporting change'});
+ }});
+ const [rights]=await withTenant(f.approver,tx=>tx.execute<{maintain:boolean}>(
+  sql`select app.access_workforce_employment(${f.employee.employmentId}::uuid,'workforce.maintain') as maintain`));
+ expect(rights.maintain).toBe(false);
+ const reportingFacts=async()=>{
+  const [row]=await owner.db.execute<{lines:unknown[];events:unknown[]}>(sql`
+   select (select jsonb_agg(to_jsonb(r) order by r.id) from public.reporting_line r
+      where r.tenant_id=${f.b.tenantId}::uuid and r.subordinate_employment_id=${f.employee.employmentId}::uuid) as lines,
+    (select jsonb_agg(to_jsonb(d) order by d.sequence) from public.domain_event d
+      where d.tenant_id=${f.b.tenantId}::uuid and d.subject_employment_id=${f.employee.employmentId}::uuid
+       and d.aggregate_type='reporting-line') as events`);
+  return row;
+ };
+ const before=await reportingFacts();
+ expect(before.lines).toEqual(expect.arrayContaining([expect.objectContaining({valid_to:addDaysIso(target,1)})]));
+ expect(before.events).toEqual(expect.arrayContaining([expect.objectContaining({event_type:'reporting-line.ended'})]));
+ const posting=await releaseContractPosting(f);
+ const queued=await approveContractSharedPosting(f.approver,{id:posting.id,revision:posting.revision});
+ if(queued.postingStatus!=='pending')throw Error('The genuine first approval must queue.');
+ await finishContractPostingJob(queued.jobId,f.approver,'contract_posting_apply');
+ expect(await readContractSharedPostingApprovalJob(f.approver,queued.jobId))
+  .toMatchObject({jobState:'completed',postingStatus:'approved',applicationState:'applied'});
+ expect(await reportingFacts()).toEqual(before);
+},180_000);
+
 // Read-only scalar projection examples. These JSON values never enter business admission or a worker frame.
 const group='11111111-1111-4111-8111-111111111111',otherGroup='22222222-2222-4222-8222-222222222222';
 const root=(occurred_at:string,effectiveDate?:string)=>({event_type:'employment.info.updated',occurred_at,payload:{movement:{type:'probationExtension',groupId:group,...(effectiveDate===undefined?{}:{effectiveDate})},before:{extendedConfirmationDate:null},after:{extendedConfirmationDate:'2028-04-01'},fields:['extendedConfirmationDate']}});
 const dated=(day:string,groupId=group)=>({event_type:'compensation.set',occurred_at:'2028-01-01T00:00:00.000Z',payload:{effectiveFrom:day,movement:{type:'probationExtension',groupId,secondary:true}}});
+const ended=(lineType:string, movement?:{type:string;groupId:string})=>({
+ event_type:'reporting-line.ended',occurred_at:'2028-01-01T00:00:00.000Z',
+ payload:{validFrom:'2028-02-29',lineType,movement},
+});
+const reportingMovement={type:'reportingLineChange',groupId:group};
 const scalarCases=[
+ {name:'tagged administrative end has its recorded day',event:ended('administrative',reportingMovement),group:[],day:'2028-02-29'},
+ {name:'ordinary administrative end is outside Movement',event:ended('administrative'),group:[],day:null},
+ {name:'delegate end is outside Movement',event:ended('delegate',reportingMovement),group:[],day:null},
+ {name:'tagged administrative end is group date evidence',event:root('2028-01-01T00:00:00.000Z'),group:[ended('administrative',reportingMovement)],day:'2028-02-29'},
+ {name:'delegate end cannot date a group',event:root('2028-01-01T00:00:00.000Z'),group:[ended('delegate',reportingMovement)],day:'2028-01-01'},
+
  {name:'valid explicit day wins',event:root('2028-01-01T00:00:00.000Z','2028-02-29'),group:[dated('2028-03-01')],day:'2028-02-29'},
  {name:'unique matching group day',event:root('2028-01-01T00:00:00.000Z'),group:[dated('2028-02-29'),dated('2028-02-29'),dated('2028-03-01',otherGroup)],day:'2028-02-29'},
  {name:'reporting delegate is not group date evidence',event:root('2028-02-28T16:00:00.000Z'),group:[{event_type:'reporting-line.set',payload:{validFrom:'2028-03-10',lineType:'delegate',movement:{groupId:group,secondary:true}}}],day:'2028-02-29'},

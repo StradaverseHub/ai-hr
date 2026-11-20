@@ -10,6 +10,7 @@ it('requires review if the actual native date-selection/calendar/timezone owner 
  const switchStart=source.indexOf('    switch (e.eventType) {');
  const line=(text:string,start:string)=>text.slice(text.indexOf(start),text.indexOf('\n',text.indexOf(start)));
  const fragments={
+  reportingMovementLeg:source.slice(source.indexOf('function isReportingMovementLeg('),source.indexOf('\n}',source.indexOf('function isReportingMovementLeg('))+2),
   groupEvidenceAndFallback:source.slice(source.indexOf('  const groupDates = '),source.indexOf('  let sawHiredEvent = ')),
   primaryDateSelection:source.slice(switchStart,source.indexOf("      case 'employment.blacklisted':")),
   datedReportingAndRecorded:source.slice(source.indexOf("      case 'reporting-line.set':",switchStart),source.indexOf("      case 'employment.movement.applied':",switchStart)),
