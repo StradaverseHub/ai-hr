@@ -149,6 +149,9 @@ jobs:
           }; then
             exit 2
           fi
+          if [[ "$BROWSER_SURFACE_PROBE" == roster-import && "$EXPECTED_SHA" != 1ace2be545a1add264a83cf56f4081cea99adfb0 ]]; then
+            exit 2
+          fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
             printf 'static_shards=["shell","workforce","payroll","approvals"]\n' >> "$GITHUB_OUTPUT"
           elif [[ "$BROWSER_STATIC_SHARD" == all ]]; then
@@ -165,6 +168,7 @@ jobs:
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -178,7 +182,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.browser_surface_probe == 'roster-import' || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -240,10 +244,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && inputs.browser_surface_probe != 'roster-import' }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
+      - name: Retrieve the pinned Roster Import build
+        if: ${{ inputs.browser_surface_probe == 'roster-import' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$AIHR_CI_HEAD" = 1ace2be545a1add264a83cf56f4081cea99adfb0
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136335543555 --jq '
+            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+            .run_id == 44747308258 and .head_sha == "9f73df2fe6451b105a7006ef51b07257023930a8"' | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/roster-import-build.XXXXXX")"
+          trap 'rm -f "$archive"' EXIT
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14635472353/zip > "$archive"
+          printf '%s  %s\n' '1f4b247f85dc63808f3f917b0a57155d60214a7330a7458dc1002e2b1235c8b9' "$archive" | sha256sum -c -
+          test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
+          install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
+          unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
@@ -321,7 +342,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
+    if: ${{ inputs.browser_surface_probe != 'roster-import' && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}

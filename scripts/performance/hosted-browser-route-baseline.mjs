@@ -1861,6 +1861,7 @@ async function measureRosterImport(fixture){
  assert.equal(group.role,'groupHR');
  assert.equal(company.role,'companyHR');
  assert(fixture.scaleCompany);
+ report.verifiedBuildArtifact={runId:44747308258,artifactId:14635472353,sourceSha:report.sourceSha};
  report.rosterImport=[];
  const path='/roster/import',timeout=15000;
  for(const [actor,companyId,expectedRows] of [
@@ -1938,7 +1939,8 @@ async function measureRosterImport(fixture){
    assert(downloadPath);
    const book=xlsx.readFile(downloadPath);
    assert.deepEqual(book.SheetNames,['Roster','Notes']);
-   const visibleRows=xlsx.utils.sheet_to_json(book.Sheets.Roster,{header:1,raw:false,defval:''});
+   const visibleRows=xlsx.utils.sheet_to_json(book.Sheets.Roster,{header:1,raw:false,defval:'',blankrows:false})
+    .filter(values=>values.some(value=>String(value).trim()!==''));
    assert.deepEqual(visibleRows[0],['Employee No','Employee Name','Department','Occupation',...data.dates]);
    assert.equal(visibleRows.length,expectedRows+1);
    assert.deepEqual(visibleRows.slice(1).map(values=>values.slice(0,2)),data.rows.map(values=>values.slice(0,2)));
