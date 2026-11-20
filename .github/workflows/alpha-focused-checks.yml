@@ -155,7 +155,7 @@ jobs:
           fi
           if [[ "$REUSE_COMBINED_REWARDS" == true ]] && {
             [[ "$BROWSER_SURFACE_PROBE" != rewards || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
+            [[ "$EXPECTED_SHA" != 399ff167b7a9be7c8a023d345aab5705cd547f14 ]];
           }; then
             exit 2
           fi
@@ -261,15 +261,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 111852a4b932fbf49a7bd7df6056f390f5f11409
+          test "$AIHR_CI_HEAD" = 399ff167b7a9be7c8a023d345aab5705cd547f14
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136381859095 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136635082065 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44763397635 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+            .run_id == 44836726517 and .head_sha == "5653dd03515c2c5f5a1208881f2b919bba5f917b"' | grep -qx true
           archive="$(mktemp "$RUNNER_TEMP/combined-rewards-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14644151151/zip > "$archive"
-          printf '%s  %s\n' 'ff70731a259ef46c3b1e55a844d4a8244becd73b45bf24df07ce9ccbc423ed9a' "$archive" | sha256sum -c -
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14680025921/zip > "$archive"
+          printf '%s  %s\n' 'fcc17157cf4e229ef94379e03774f66c6eb3c577716fcd4d0d462eff5cd81d3a' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
