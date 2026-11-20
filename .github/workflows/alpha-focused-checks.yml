@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       browser_static_shard:
-        description: Optional static-page census shard (0–7) for a fictional Chromium run
+        description: Static browser census shard (0–7), or all to cover the compiled inventory
         default: ''
         type: string
       model_eval:
@@ -107,6 +107,7 @@ jobs:
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       tests: ${{ steps.selection.outputs.tests }}
+      static_shards: ${{ steps.selection.outputs.static_shards }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -116,12 +117,17 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs .github/ci/browser-static-census.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^[0-7]$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
+          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
+          fi
+          if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
+            printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
           fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -137,6 +143,11 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: [resolve, linux-build]
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
     if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
@@ -217,16 +228,42 @@ jobs:
         env:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
-          AIHR_BROWSER_STATIC_SHARD: ${{ inputs.browser_static_shard }}
+          AIHR_BROWSER_STATIC_SHARD: ${{ matrix.static_shard }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: browser-route-baseline
+          name: ${{ inputs.browser_static_shard == 'all' && format('browser-route-baseline-shard-{0}', matrix.static_shard) || 'browser-route-baseline' }}
           path: ${{ runner.temp }}/browser-route-baseline.json
           if-no-files-found: warn
+          retention-days: 14
+  static-census:
+    if: ${{ inputs.browser_static_shard == 'all' && !cancelled() && needs.resolve.result == 'success' }}
+    needs: [resolve, selected-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: browser-route-baseline-shard-*
+          path: ${{ runner.temp }}/browser-static-shards
+      - name: Reconcile the exact browser inventory and outcomes
+        run: node scripts/performance/browser-static-census.mjs
+        env:
+          AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-static-census
+          path: ${{ runner.temp }}/browser-static-census.json
+          if-no-files-found: error
           retention-days: 14
   typecheck:
     if: ${{ inputs.run_typecheck }}
