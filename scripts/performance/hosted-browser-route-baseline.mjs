@@ -364,7 +364,42 @@ async function measureMixedLoad(command){
    const roles=['employee','manager','companyHR','groupHR'];
    const kinds=['navigation','read','write'];
    const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
-    '/attendance/my-records/[date]','/attendance/application-history/[id]']);
+    '/attendance/my-records/[date]','/attendance/application-history/[id]','/api/personnel/search']);
+   const failureCode=value=>typeof value==='string'&&/^(?:[0-9A-Z]{5}|[A-Za-z][A-Za-z_0-9]{1,50})$/.test(value)?value:null;
+   const summarizeFailures=(rows,key)=>{
+    const groups=new Map();
+    for(const row of rows??[]){
+     const parts=key(row),id=JSON.stringify(parts);
+     const group=groups.get(id)??{...parts,count:0};
+     group.count++;
+     groups.set(id,group);
+    }
+    return [...groups.values()].sort((a,b)=>b.count-a.count).slice(0,40);
+   };
+   if(data.functionalAccountingComplete===true||data.requestErrors?.length){
+    const loadedStart=data.measurementWindow?.startPerformanceMs;
+    const requestErrors=(data.requestErrors??[]).filter(row=>Number.isFinite(loadedStart)&&row.startedMs>=loadedStart);
+    report.mixedFailureBreakdown={
+     lanes:summarizeFailures(data.functionalErrors,row=>({cause:failureCode(row.error)})),
+     requests:summarizeFailures(requestErrors,row=>({
+      route:knownRoutes.has(row.route)?row.route:null,role:roles.includes(row.role)?row.role:null,
+      method:['GET','POST'].includes(row.method)?row.method:null,cause:failureCode(row.error),
+      responseHeadersReceived:row.responseHeaders!=null,
+     })),
+     transportFailures:requestErrors.length,
+    };
+   }
+   if(data.resourceCpu||data.cpu){
+    const seconds=(obj,keys)=>Object.fromEntries(keys.map(key=>[
+     key,Number.isFinite(obj?.[key])&&obj[key]>=0?Math.round(obj[key]*1000)/1000:null,
+    ]));
+    report.mixedResources={
+     cpu:seconds(data.cpu,['appCpuSeconds','driverCpuSeconds','elapsedSeconds']),
+     components:seconds(data.resourceCpu,['postgresCpuSeconds','postgresThrottledSeconds','proxyCpuSeconds',
+      'hostUserSystemSeconds','hostIoWaitSeconds','hostStealSeconds']),
+     webMemory:(data.appMemory?.processes??[]).slice(0,4).map(row=>counts(row,['rssMiB','peakRssMiB'])),
+    };
+   }
    const routeRows=steady?.routeLatency?.rows??[];
    const routes=routeRows.filter(row=>roles.includes(row.role)&&kinds.includes(row.kind)
     &&typeof row.route==='string'&&(knownRoutes.has(row.route)||/^\/[a-z/-]{0,120}$/.test(row.route)))
@@ -400,11 +435,15 @@ async function measureMixedLoad(command){
    }:null;
    if(data.lockSampling){
     const preflight=data.lockSampling.preflight,loaded=data.lockSampling.loaded;
+    const sessionSamples=(loaded?.samples??[]).flatMap(sample=>
+     sample.state==='complete'&&Number.isSafeInteger(sample.appSessions)&&sample.appSessions>=0?[sample.appSessions]:[]);
     report.mixedLockSampling={
      preflight:{...cadenceFacts(preflight?.cadence),...counts(preflight,['completed','failures']),
       sampleFailures:(preflight?.samples??[]).filter(sample=>sample.state==='failed').slice(0,8)
        .map(safeFailure).filter(Boolean)},
-     loaded:{...cadenceFacts(loaded?.cadence),...counts(loaded,['completed','failures'])},
+     loaded:{...cadenceFacts(loaded?.cadence),...counts(loaded,['completed','failures']),
+      sessionSamples:sessionSamples.length,
+      peakOpenAppDatabaseSessions:sessionSamples.length?Math.max(...sessionSamples):null},
      preflightClient:cadenceFacts(data.lockSampling.privatePreflightClientCadence),
      preflightWidestGap:counts(data.lockSampling.privatePreflightTiming,['gapUs','launchSpacingUs',
       'timerAfterReadyUs','callbackToProbeUs','combinedRoundTripUs','activityRoundTripUs','advisoryRoundTripUs']),
