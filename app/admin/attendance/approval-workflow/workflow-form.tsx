@@ -15,8 +15,8 @@ import { AttendanceStageEditor, emptyAttendanceStage } from './stage-editor';
 import { companyWorkflowHref } from './navigation';
 import { Button, Card, inputCls } from '@/components/ui';
 import { attendanceWorkflowCriteriaFields, attendanceLevelName, type AttendanceWorkflowOptions, type AttendanceWorkflowInput, type AttendanceResolvedStage } from '@/lib/attendance-workflow';
-import { generateAttendanceWorkflowPreviewAction, previewAttendanceWorkflowAction, saveAttendanceWorkflowAction } from './actions';
-export function WorkflowForm({ initial, lineageId, context, options, defaultPriority = 1, copiedFrom }: {
+import { generateAttendanceWorkflowPreviewAction, loadAttendanceAssignmentOptionsAction, previewAttendanceWorkflowAction, saveAttendanceWorkflowAction } from './actions';
+export function WorkflowForm({ initial, lineageId, context, options, defaultPriority = 1, copiedFrom, deferAssignmentOptions = false }: {
     initial: AnyAttendanceWorkflowInput | null;
     /** Create Workflow opened by Copy Workflow: provenance only; the source is never written. */
     copiedFrom?: { lineageId: string; version: number; code: string };
@@ -24,12 +24,25 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
     lineageId: string | null;
     context: Pick<AttendanceWorkflowInput, 'companyId' | 'applicationType'>;
     options: AttendanceWorkflowOptions;
+    deferAssignmentOptions?: boolean;
 }) {
     const employmentTypeLabel = useTranslations('people.wizard.employmentType');
     const v3 = useTranslations('attendanceWorkflow.v3');
     const t = useTranslations('attendanceWorkflow'), router = useRouter();
+    const common = useTranslations('common');
     const [input, setInput] = useState<AnyAttendanceWorkflowInput>(initial ?? { ...context, companyIds:options.canManageAllCompanies?options.companies.map(c=>c.id):[context.companyId], allCompanies:options.canManageAllCompanies===true, routingVersion: 4, cc:[], code: '', name: '', description: '', priority: defaultPriority, criteria: {}, stages: [emptyAttendanceV4Level(0)], active: true });
     const [levelProblems, setLevelProblems] = useState<AttendanceLevelProblem[]>([]);
+    const [assignmentOptions, setAssignmentOptions] = useState<Awaited<ReturnType<typeof loadAttendanceAssignmentOptionsAction>>>();
+    const [catalogError, setCatalogError] = useState(false);
+    const loadingCatalog = useRef(false);
+    const loadAssignmentOptions = async () => {
+        if (assignmentOptions || loadingCatalog.current) return;
+        loadingCatalog.current = true;
+        setCatalogError(false);
+        try { setAssignmentOptions(await loadAttendanceAssignmentOptionsAction()); }
+        catch { setCatalogError(true); }
+        finally { loadingCatalog.current = false; }
+    };
     const [error, setError] = useState(''), [pending, start] = useTransition();
     const [savedRevision, setSavedRevision] = useState(0);
     const [savedDestination, setSavedDestination] = useState<string | null>(null);
@@ -101,7 +114,12 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
        } catch { setError(t('requestFailed')); } finally { inFlight.current = false; }
       });
     };
-    const fields = attendanceWorkflowCriteriaFields(options, employmentTypeLabel);
+    const fields = attendanceWorkflowCriteriaFields({...options,...assignmentOptions}, employmentTypeLabel);
+    const assignmentCatalog = deferAssignmentOptions && !assignmentOptions ? {
+        load: loadAssignmentOptions,
+        status: catalogError ? <div className="space-y-2 p-2"><p role="alert">{t('requestFailed')}</p><Button type="button" variant="secondary" onClick={loadAssignmentOptions}>{t('retryEmployees')}</Button></div>
+            : <p role="status" className="p-2 text-sm text-muted-foreground">{common('loading')}</p>,
+    } : undefined;
     return <WorkflowCompanyContext.Provider value={input.allCompanies?options.companies.map(c=>c.id):input.companyIds??[input.companyId]}><AttendanceSettingsNavigation formId="attendance-workflow-form" savedRevision={savedRevision}/><form id="attendance-workflow-form" className="space-y-5" onSubmit={e => { e.preventDefault(); run(true); }}><fieldset disabled={pending || !!savedDestination} className="min-w-0 space-y-5">
   {copiedFrom&&<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm">{t('copy.banner',{code:copiedFrom.code,version:copiedFrom.version})}</p>}
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('information')}</h2><div className="grid gap-4 sm:grid-cols-2">
@@ -111,7 +129,7 @@ export function WorkflowForm({ initial, lineageId, context, options, defaultPrio
    <label>{t('code')}<input name="code" required maxLength={40} pattern="[A-Za-z0-9_-]+" className={inputCls} value={input.code} placeholder={copiedFrom ? t('copy.codePlaceholder') : undefined} onChange={e => change('code', e.target.value)}/></label>
    <label>{t('name')}<input name="name" required maxLength={120} className={inputCls} value={input.name} placeholder={copiedFrom ? t('copy.namePlaceholder') : undefined} onChange={e => change('name', e.target.value)}/></label>
   </div><label className="block">{t('description')}<textarea name="description" maxLength={1000} className={inputCls} value={input.description ?? ''} onChange={e => change('description', e.target.value)}/></label></Card>
-  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => { priorityEdited.current = true; change('priority', Number(e.target.value)); }}/></label><AssignmentGroupsEditor criteria={input.criteria} fields={fields} onChange={criteria => change('criteria', criteria)}/></Card>
+  <div className="grid items-start gap-5 xl:grid-cols-2"><Card className="space-y-4 p-5"><h2 className="font-semibold">{t('assignment')}</h2><p className="text-sm text-muted-foreground">{t('assignmentHelp')}</p><label className="block max-w-xs">{t('priority')}<input name="priority" required type="number" min={0} max={9999} className={inputCls} value={input.priority} onChange={e => { priorityEdited.current = true; change('priority', Number(e.target.value)); }}/></label><AssignmentGroupsEditor criteria={input.criteria} fields={fields} catalog={assignmentCatalog} onChange={criteria => change('criteria', criteria)}/></Card>
   <Card className="space-y-4 p-5"><h2 className="font-semibold">{t('stages')}</h2>{input.routingVersion === 4
     ? <><AttendanceStageEditorV4 stages={input.stages} employees={options.approverEmployees ?? []} problems={levelProblems} onChange={stages=>change('stages',stages)}/><AttendanceCcEditor sources={input.cc} employees={options.approverEmployees ?? []} onChange={cc=>{setInput(old=>old.routingVersion===4?{...old,cc}:old);setPreview(null);}}/></>
     : input.routingVersion === 3
