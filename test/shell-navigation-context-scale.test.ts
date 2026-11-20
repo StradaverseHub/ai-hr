@@ -4,6 +4,8 @@ import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
 import { employment } from '../db/schema';
 import { readShellNavigationContext } from '../lib/shell-navigation-context';
+import { attendanceHistoryFilterOptions } from '../packs/attendance/service';
+import { observeNativeRead } from './helpers/native-read-observer';
 import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
@@ -73,3 +75,19 @@ it('keeps group, selected company and scoped roles equivalent on one shell read 
     hooks.__aihrPerfSharedRead = oldHook;
   }
 });
+
+
+it('reads History filters at group scale without evaluating approval-editor choices', async () => {
+  const probe=observeNativeRead({captureQueries:true});
+  try {
+    const all=await attendanceHistoryFilterOptions(group.personas.group, group.companyIds);
+    const selected=await attendanceHistoryFilterOptions(group.personas.group, [group.singleCompanyId]);
+    expect(all.companies).toHaveLength(71);
+    expect(all.employees).toHaveLength(1000);
+    expect(selected.employees).toEqual(all.employees.filter(row=>row.companyId===group.singleCompanyId));
+    expect(selected.employees.length).toBeGreaterThan(0);
+    expect(probe.queries.some(query=>/attendance_workflow_v3_approver_options|attendance_workflow_approver_availability/i.test(query.sql))).toBe(false);
+  } finally {
+    probe.restore();
+  }
+}, 60_000);
