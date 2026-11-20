@@ -381,8 +381,15 @@ export default async function TransactionViewPage({
   const historyBatchIds = [
     ...new Set(shownHistoryRows.map((r) => r.batchId).filter((b): b is string => b != null)),
   ];
-  const recordedOutcomes = tab === 'history' && historyBatchIds.length
-    ? await listReprocessEmployeeOutcomes(s, {batchIds:historyBatchIds}) : [];
+  const [recordedOutcomes,sourceTxnRows]=tab==='history'&&historyBatchIds.length
+    ? await Promise.all([
+      listReprocessEmployeeOutcomes(s,{batchIds:historyBatchIds}),
+      listPayslipSourceTxns(s,{
+        companyIds,
+        pairs:shownHistoryRows.map(({batchId,employmentId})=>({batchId,employmentId})),
+      }),
+    ])
+    : [[],[]];
   const byResult = new Map(recordedOutcomes.map(outcome => [`${outcome.batchId}:${outcome.employmentId}`,outcome]));
   // Only outcomes joined to visible, exact-version payslips cross the client boundary.
   const processingOutcomes = Object.fromEntries(shownHistoryRows.flatMap(row => {
@@ -391,33 +398,10 @@ export default async function TransactionViewPage({
       status:outcome.status, reasonCode:outcome.reasonCode, resultRetained:outcome.resultRetained,
     }]] : [];
   }));
-  // …and the EMPLOYMENTS on screen. Batch + company alone would return every employee's ledger rows on
-  // every shown run and serialise them all into the flight payload for a table that can only look up
-  // `${batchId}:${employmentId}` — invisible on screen, and a whole company's ledger on a tab filtered to
-  // one person. The read requires this list for that reason.
-  const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];
-  const sourceTxnRows =
-    tab === 'history' && historyBatchIds.length > 0
-      ? await listPayslipSourceTxns(s, {
-          companyIds,
-          batchIds: historyBatchIds,
-          employmentIds: historyEmploymentIds,
-        })
-      : [];
-  // Keyed by (run, employee) — the pair a payslip IS. Built here so the client table does no grouping.
-  //
-  // AND FILTERED TO THE PAIRS ACTUALLY ON SCREEN, which is not what the fence alone gives you. The read is
-  // fenced `batchIds × employmentIds` — a CROSS PRODUCT — so 200 shown rows spanning 20 runs and 100
-  // employees fence in up to 2,000 pairs. The surplus renders nothing (its `${batchId}:${employmentId}`
-  // key never matches a shown row) and would ship in the flight payload anyway, which is exactly the
-  // invisible surplus core/payroll-view.ts claims this read does not have. Cheap to close, and closing it
-  // keeps that docblock true rather than aspirational.
-  const shownKeys = new Set(shownHistoryRows.map((r) => `${r.batchId}:${r.employmentId}`));
+  // The database returns transactions only for the exact displayed (run, employee) pairs.
   const sourceTxnsByPayslip: Record<string, PayslipSourceTxnRow[]> = {};
-  for (const r of sourceTxnRows) {
-    const key = `${r.batchId}:${r.employmentId}`;
-    if (!shownKeys.has(key)) continue;
-    (sourceTxnsByPayslip[key] ??= []).push(r);
+  for (const row of sourceTxnRows) {
+    (sourceTxnsByPayslip[`${row.batchId}:${row.employmentId}`] ??= []).push(row);
   }
 
   // ── 080de5cf — the Grid tab's pivot + the plain data its client component needs ──

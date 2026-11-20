@@ -691,10 +691,18 @@ export type PayslipSourceTxnRow = {
 
 export function listPayslipSourceTxns(
   ctx: SessionContext,
-  p: { companyIds: string[]; batchIds: string[]; employmentIds: string[] },
+  p: {companyIds:string[]} & (
+    | {batchIds:string[];employmentIds:string[]}
+    | {pairs:readonly {batchId:string;employmentId:string}[]}
+  ),
 ): Promise<PayslipSourceTxnRow[]> {
-  // Fail closed on all three: no scope, no runs, or no employments ⇒ nothing this caller can render.
-  if (p.companyIds.length === 0 || p.batchIds.length === 0 || p.employmentIds.length === 0) {
+  const batchIds='pairs' in p ? [...new Set(p.pairs.map(pair=>pair.batchId))] : p.batchIds;
+  const employmentIds='pairs' in p ? [...new Set(p.pairs.map(pair=>pair.employmentId))] : p.employmentIds;
+  const exactPairs='pairs' in p ? sql`exists (
+    select 1 from jsonb_to_recordset(${JSON.stringify(p.pairs)}::jsonb) wanted("batchId" uuid,"employmentId" uuid)
+    where wanted."batchId"=${payrollIndividualTxn.batchId} and wanted."employmentId"=${payrollIndividualTxn.employmentId}
+  )` : undefined;
+  if (!p.companyIds.length || !batchIds.length || !employmentIds.length) {
     return Promise.resolve([]);
   }
   return withTenant(ctx, async (tx) => {
@@ -721,11 +729,10 @@ export function listPayslipSourceTxns(
       .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
       .where(
         and(
-          inArray(payrollIndividualTxn.batchId, p.batchIds),
+          inArray(payrollIndividualTxn.batchId, batchIds),
           inArray(payrollBatch.companyId, p.companyIds),
-          // The employments on screen. Third leg of the fence and the one that keeps the payload the size
-          // of what is rendered — see the note above.
-          inArray(payrollIndividualTxn.employmentId, p.employmentIds),
+          inArray(payrollIndividualTxn.employmentId, employmentIds),
+          exactPairs,
         ),
       )
       .orderBy(asc(payrollIndividualTxn.txnDate), asc(payrollIndividualTxn.createdAt), asc(payrollIndividualTxn.id));

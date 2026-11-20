@@ -146,15 +146,10 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-  // The employment list is the third leg of the fence, not a nicety: batch + company alone returns every
-  // employee's ledger rows on every shown run, and the client table can only ever look up
-  // `${batchId}:${employmentId}` — so the surplus renders nothing and ships anyway. No DOM assertion can
-  // see that, which is exactly why it is pinned on the source of both callers and of the read.
-  it('Transaction View → History passes the scoped company ids, the runs AND the employees on screen', () => {
+  it('Transaction View History asks for the exact company-scoped visible pairs', () => {
     const page = src('app/payroll/transaction-view/page.tsx');
-    expect(page).toContain('const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];');
     expect(page).toMatch(
-      /listPayslipSourceTxns\(s, \{\s*companyIds,\s*batchIds: historyBatchIds,\s*employmentIds: historyEmploymentIds,\s*\}\)/,
+      /listPayslipSourceTxns\(s,\{\s*companyIds,\s*pairs:shownHistoryRows.map\(/,
     );
     expect(page).toContain('sourceTxnsByPayslip={sourceTxnsByPayslip}');
   });
@@ -173,11 +168,12 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
   it('the read itself fails closed on an empty scope, on no runs and on no employees', () => {
     const read = src('core/payroll-view.ts');
     expect(read).toMatch(
-      /if \(p\.companyIds\.length === 0 \|\| p\.batchIds\.length === 0 \|\| p\.employmentIds\.length === 0\)/,
+      /if \(!p\.companyIds\.length \|\| !batchIds\.length \|\| !employmentIds\.length\)/,
     );
     // The company fence is on the BATCH, which is where a payslip's company actually lives.
     expect(read).toContain('inArray(payrollBatch.companyId, p.companyIds),');
-    expect(read).toContain('inArray(payrollIndividualTxn.employmentId, p.employmentIds),');
+    expect(read).toContain('inArray(payrollIndividualTxn.employmentId, employmentIds),');
+    expect(read).toContain('exactPairs,');
   });
 });
 
