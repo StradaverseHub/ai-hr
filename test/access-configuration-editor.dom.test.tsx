@@ -32,7 +32,7 @@ describe('access editor decisions and stale preview behavior',()=>{
   fixture();
   expect(screen.getByRole('heading',{name:'Security & permissions',level:1})).toBeVisible();
   const search=screen.getByRole('searchbox',{name:'Search users'});
-  const users=screen.getByRole('combobox',{name:'User',exact:true});
+  const users=screen.getByRole('combobox',{name:/^User$/});
   fireEvent.change(search,{target:{value:'missing user'}});
   expect(Array.from((users as HTMLSelectElement).options,option=>option.text)).toEqual(['Fictional root']);
   fireEvent.change(search,{target:{value:'WORKER'}});
