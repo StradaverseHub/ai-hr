@@ -18,7 +18,13 @@ const auditRequested=process.env.AUDIT_HASH_CHAIN_ENABLED==='true';
 assert(auditRequested,'the production workload requires audit chaining');
 const fullDevelopmentRoutes=fullDevelopmentBrowserRouteCourse(process.env);
 const includeOrgExplorerMember=fullDevelopmentRoutes||process.env.PERF_HTTP_SUITE==='whole-system';
-const establishedAttendance=fullDevelopmentRoutes||(isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)
+const hostedEstablishedAttendance=process.env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+assert(!hostedEstablishedAttendance||(
+ process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
+ &&process.env.AIHR_BROWSER_MIXED_LOAD==='true'&&process.env.PERF_HTTP_SUITE==='whole-system'
+),'Established Attendance comparison requires the owned hosted mixed fixture');
+const establishedAttendance=hostedEstablishedAttendance||fullDevelopmentRoutes||
+ (isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)
  &&['whole-system','workflow-preflight'].includes(process.env.PERF_HTTP_SUITE));
 const {seedBase,entitledCtx,owner,closeAll,setModule}=await import('../../test/harness.ts');
 // The ordinary unit harness deliberately clears deployment gates. Restore this fixture's
