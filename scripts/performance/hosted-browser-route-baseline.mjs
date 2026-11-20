@@ -1362,15 +1362,17 @@ try{
      '/payroll/transaction-view','/roster','/attendance','/recruitment']);
     const shellPhases=new Set(['requestPreferences','session','entryAndIdlePolicy','initialNavigation','letters',
      'rewards','lifecycle','moduleNavigation','identityEmailAndPerformance','renderPreparation']);
+    const lifecycleOwnerPhases=new Set(['onboardingNavigation','scopedLifecycleNavigation','offboardingPostingAccess']);
     const shellOpens=[];
     for(const [,record] of log.matchAll(/^PERF_SHELL_OPEN (.{1,1000})$/gm)){
      let entry;
      try{entry=JSON.parse(record);}catch{continue;}
      if(!entry||!shellRoutes.has(entry.route)||!['group-admin','company-admin','manager','employee'].includes(entry.role)
        ||!Number.isSafeInteger(entry.elapsedMs)||entry.elapsedMs<0||entry.elapsedMs>120000)continue;
-     const timings=Object.entries(entry.timings??{}).filter(([phase,ms])=>shellPhases.has(phase)
+     const timings=Object.entries(entry.timings??{}).filter(([phase,ms])=>
+      (shellPhases.has(phase)||lifecycleOwnerPhases.has(phase))
       &&Number.isSafeInteger(ms)&&ms>=0&&ms<=entry.elapsedMs);
-     if(timings.length!==shellPhases.size)continue;
+     if(timings.filter(([phase])=>shellPhases.has(phase)).length!==shellPhases.size)continue;
      shellOpens.push({route:entry.route,role:entry.role,elapsedMs:entry.elapsedMs,timings:Object.fromEntries(timings)});
      if(shellOpens.length===128)break;
     }
