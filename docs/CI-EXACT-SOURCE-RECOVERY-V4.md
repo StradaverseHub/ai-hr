@@ -1,4 +1,4 @@
-# Exact-source recovery v4
+# Exact-source recovery for failed test units (v5)
 
 This is an independently reviewed operator controller, not a new application gate or automatic deployment.
 It adapts the existing exact-source v3 architecture from `7bc5b7d5` to the current published controller.
@@ -12,7 +12,18 @@ changed, failed or zero-case replacements refuse. Failed processes supply case i
 Successful unaffected units retain their original producing jobs, artifact digests and report hashes.
 Complete execution history rejects unaccounted, later-failed, pending or rerun attempts.
 
-The distinct certificate is `aihr-exact-source-recovery/v4`. It records the original producing controller
+The focused workflow accepts up to 64 files. A larger failed no-database unit
+is rerun in disjoint partitions. Each partition belongs to one failed unit and
+the union must account for every original file and assertion exactly once.
+Database units still rerun as a single unit. The focused route refuses PDF
+tooling units, which require their original environment evidence.
+
+Focused runs can use bound aliases named `<candidate-ref>-recovery-<original-run-id>-<1–64>`.
+Before verification the aliases must still resolve to the frozen candidate.
+Recovery checks the execution history for the original ref and every reserved
+alias, including active runs and failed runs missing from the supplied IDs.
+
+The distinct certificate is `aihr-exact-source-recovery/v5`. It records the original producing controller
 separately from the verification controller and each focused producer. It does not rewrite the original failure,
 issue a fabricated original PASS or reuse a compiled build on another source. The operator validates the new
 certificate before creating the existing format-2 installation grant. The receiver's policy, exact grant shape,

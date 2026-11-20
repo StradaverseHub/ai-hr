@@ -6,7 +6,7 @@ import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {exactCanonicalRefs,validateCanonicalContext} from './canonical-docs-advance.mjs';
-export const EXACT_RECOVERY_POLICY='aihr-exact-source-recovery/v4';
+export const EXACT_RECOVERY_POLICY='aihr-exact-source-recovery/v5';
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
@@ -52,8 +52,9 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,cl
   same(r.files,[...r.files].sort(),'Focused selection must be canonical');
   const database=r.groups?.DB?.length>0,kind=database?'DB':'NODB';
   same(r.groups,database?{NODB:[],DB:r.files}:{NODB:r.files,DB:[]},'One homogeneous focused partition required');
-  const unit=plan.units.find(u=>failed.has(u.id)&&u.kind===(database?'db':'nodb')&&isDeepStrictEqual(u.files.slice().sort(),r.files));
-  assert(unit,'Every replacement must cover one entire original failed unit');
+  const unit=plan.units.find(u=>failed.has(u.id)&&u.kind===(database?'db':'nodb')&&!u.pdfTools&&
+    (database?isDeepStrictEqual(u.files.slice().sort(),r.files):r.files.every(file=>u.files.includes(file))));
+  assert(unit,'Replacement must cover one full DB unit or files from one failed no-DB unit');
   assert(r.batches?.length===1&&r.batches[0].kind===kind&&r.batches[0].exitCode===0&&r.batches[0].processExitCode===0&&r.batches[0].signal===null,'Focused process did not pass');
   if(database){
    validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
@@ -111,13 +112,22 @@ export function validateExactRecoveryGrantEvidence(evidence,run){
 
 export function requireReviewedExactController({controller,reviewedController}){assert(sha(controller)&&reviewedController===controller,'Exact independently reviewed recovery controller required');}
 
+/** Each reserved alias can run concurrently and must point at the same frozen candidate. */
+export function exactRecoveryBranch(candidateBranch,runId,ref){
+ if(ref===candidateBranch)return true;
+ const prefix=candidateBranch+'-recovery-'+runId+'-';
+ if(typeof ref!=='string'||!ref.startsWith(prefix))return false;
+ return /^(?:[1-9]|[1-5][0-9]|6[0-4])$/.test(ref.slice(prefix.length));
+}
+
 /** Complete API history, including overlapping failures and active executions. */
 export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,focusedRunIds,focusedController=sourceRun.head_sha}){
  assert(sourceRun.display_title===`Alpha CI · ${candidateBranch}`&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact original candidate branch required');
  assert(Array.isArray(rows)&&rows.length<=8000,'Bounded complete history required');
- const expected=new Set(focusedRunIds),names=new Set([sourceRun.display_title,`Focused only · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`]),found=new Map();
+ const expected=new Set(focusedRunIds),found=new Map();
  for(const r of rows){
-  if(r.id===sourceRun.id||!names.has(r.display_title))continue;
+  const title=typeof r.display_title==='string'?r.display_title.match(/^(?:Alpha CI|Focused only|Canonical build only) · (.+)$/):null;
+  if(r.id===sourceRun.id||!title||!exactRecoveryBranch(candidateBranch,sourceRun.id,title[1]))continue;
   assert(positive(r.id)&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at)&&['queued','in_progress','waiting','requested','pending','completed'].includes(r.status),'Malformed relevant history');
   const record={id:r.id,title:r.display_title,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
   assert(!found.has(r.id)||isDeepStrictEqual(found.get(r.id),record),'Conflicting history snapshots; retry after stabilization');found.set(r.id,record);

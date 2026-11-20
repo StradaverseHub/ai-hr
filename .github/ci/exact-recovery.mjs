@@ -1,4 +1,4 @@
-/** Unchanged-source recovery v4: independently authenticate complete failed DB/Node processes.
+/** Unchanged-source recovery v5: independently authenticate complete failed DB/Node processes.
  * Original app source, producer, successful build and failures keep their own exact identities.
  */
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ import {proveCanonicalRefs} from './canonical-docs-advance.mjs';
 import {assessResumeSource} from './resume-source.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateFocusedMetadata,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {verifyExactRecovery,requireReviewedExactController,validateExactRecoveryHistory} from './exact-recovery-policy.mjs';
+import {verifyExactRecovery,requireReviewedExactController,validateExactRecoveryHistory,exactRecoveryBranch} from './exact-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const d=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(d[key]),'Missing API inventory');rows.push(...d[key]);if(d[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -62,11 +62,18 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  const assessment=assessResumeSource({...source,expectedPlan,expected:p});
  const workflow=api('actions/workflows/alpha-focused-checks.yml');
  assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
+ const candidateBranch=source.run.display_title?.slice('Alpha CI · '.length);
+ assert(typeof candidateBranch==='string'&&source.run.display_title===`Alpha CI · ${candidateBranch}`&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact frozen candidate branch required');
+ const assertSourceRef=ref=>assert(api('git/ref/heads/'+ref.split('/').map(encodeURIComponent).join('/')).object?.sha===candidate,'Candidate or recovery branch moved');
+ assertSourceRef(candidateBranch);
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
   const sub=join(dir,`focused-${id}`),prefetch=process.env.AIHR_CI_PREFETCH_DIR?join(process.env.AIHR_CI_PREFETCH_DIR,`focused-${id}`):null;
   const f=await collectRecoveryEvidence(id,sub,{reuse,exactPackets:true,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller:focusedController,workflowId:workflow.id,after:source.run.updated_at}});
+  const branch=typeof f.run.display_title==='string'?f.run.display_title.match(/^Focused only · (.+)$/)?.[1]:null;
+  assert(exactRecoveryBranch(candidateBranch,runId,branch),'Focused run title does not identify a bound candidate or recovery branch');
+  if(branch!==candidateBranch)assertSourceRef(branch);
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   const report=packet.get('focused.json'),resultName=report?.groups?.DB?.length>0?'db.vitest.json':'nodb.vitest.json';
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName].sort()),'Exact homogeneous focused packet members required');
@@ -74,9 +81,6 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const recovery=verifyExactRecovery({plan:expectedPlan,assessment,run:source.run,jobs:source.jobs,reports,focused,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,canonicalAdvance});
- const candidateBranch=source.run.display_title?.slice('Alpha CI · '.length);
- assert(typeof candidateBranch==='string'&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact frozen candidate branch required');
- assert(api('git/ref/heads/'+candidateBranch.split('/').map(encodeURIComponent).join('/')).object?.sha===candidate,'Candidate branch moved');
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${source.run.workflow_id}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[source.run.workflow_id,workflow.id].includes(r.workflow_id)));

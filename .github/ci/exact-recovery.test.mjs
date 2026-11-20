@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {exactCanonicalRefs} from './canonical-docs-advance.mjs';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
-import {hash} from './manifest.mjs';
+import {buildUnits,hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {verifyExactRecovery,validateExactRecoveryGrantEvidence,validateExactRecoveryHistory,requireReviewedExactController} from './exact-recovery-policy.mjs';
 import {validateFocusedMetadata,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
@@ -53,6 +53,42 @@ for(const [name,mutate] of [
  ['wrong focused run identity',f=>f.focused[0].report.runId='201'],['focused rerun',f=>f.focused[0].report.attempt='2'],
  ['focused execution outside producer',f=>f.focused[0].report.startedAt=time(10)],
 ])test('Recovery refuses '+name,()=>{const f=input();mutate(f);assert.throws(()=>verifyExactRecovery(f));});
+function splitNoDbInput(){
+ const f=input(),previous=f.plan.units.find(unit=>unit.kind==='nodb');
+ const extra='test/another.no-db.test.ts',files=[extra,...previous.files].sort();
+ f.plan.suite=[...f.plan.suite,extra].sort();
+ f.plan.units=buildUnits(f.plan.suite,{nodb:files,db:f.plan.units.find(unit=>unit.kind==='db').files},f.plan.units.find(unit=>unit.kind==='browser').files);
+ const unit=f.plan.units.find(unit=>unit.kind==='nodb'),{fingerprint,...body}=f.plan;
+ f.plan.fingerprint=hash(body);
+ for(const report of f.reports)report.fingerprint=f.plan.fingerprint;
+ const rejected=f.reports.find(report=>report.id===previous.id);
+ rejected.id=unit.id;rejected.files=unit.files;
+ const original=rejected.batches[0].result;
+ original.testResults.push({name:'/candidate/'+extra,status:'passed',assertionResults:[{fullName:'independent no-DB assertion',status:'passed'}]});
+ f.jobs.find(job=>job.name===`test (${previous.id})`).name=`test (${unit.id})`;
+ f.assessment={...assessResumeCoverage({expectedPlan:f.plan,expected:{candidate:f.plan.sha,controller:f.plan.controller,baseline:f.plan.migrationBase},reports:f.reports}),sourceRun:{id:f.run.id},observations:[{id:unit.id,conclusion:'failure'}]};
+ for(const r of f.assessment.reusable)r.source={runId:f.run.id,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
+ const additional=structuredClone(f.focused[0]);additional.run.id++;additional.producer.id++;additional.producer.run_id++;
+ additional.artifact.id++;additional.artifact.workflow_run.id++;
+ additional.report.runId=String(additional.run.id);additional.report.files=[extra];
+ additional.report.groups.NODB=[extra];additional.report.batches[0].files=[extra];
+ additional.report.manifestHash=hash(JSON.stringify([extra]));
+ additional.result.testResults=[{...original.testResults.at(-1),name:'/home/runner/work/ai-hr/ai-hr/source/'+extra}];
+ f.focused.push(additional);
+ return f;
+}
+test('No-DB partitions together replace every original assertion while retaining the successful build',()=>{
+ const f=splitNoDbInput(),certificate=verifyExactRecovery(f),unit=certificate.units.find(unit=>unit.kind==='focused-recovery');
+ assert.equal(unit.tests,2);assert.equal(new Set(unit.files.map(file=>file.runId)).size,2);
+});
+test('No-DB partitioning rejects gaps, duplicates and a file from another unit',()=>{
+ for(const mutate of [f=>f.focused.pop(),f=>f.focused.push(structuredClone(f.focused[0])),f=>{
+  const report=f.focused[1].report,files=['test/db.test.ts'];
+  report.files=files;report.groups.NODB=files;report.batches[0].files=files;report.manifestHash=hash(JSON.stringify(files));
+ }]){
+  const f=splitNoDbInput();mutate(f);assert.throws(()=>verifyExactRecovery(f));
+ }
+});
 function metadata(){const f=input(),a=f.focused[0];return {run:a.run,jobs:a.jobs,artifacts:[a.artifact],expected:{runId:a.run.id,controller:f.plan.controller,workflowId:999,after:time(5)},now};}
 test('Focused metadata authenticates exact producing job and artifact',()=>assert.equal(validateFocusedMetadata(metadata()).name,'selected-tests'));
 for(const [name,mutate] of [
@@ -109,6 +145,12 @@ test('v4 grant binds original successful build and explicit independent review',
 test('operator import and independent controller pin remain explicit',()=>{assert.equal(typeof operatorRelease,'function');assert.throws(()=>requireReviewedExactController({controller:'a'.repeat(40)}));assert.doesNotThrow(()=>requireReviewedExactController({controller:'a'.repeat(40),reviewedController:'a'.repeat(40)}));});
 function historyInput(){const f=input();f.run.display_title='Alpha CI · owned';return {sourceRun:f.run,candidateBranch:'owned',focusedRunIds:[200],rows:[{...f.focused[0].run,display_title:'Focused only · owned'}]};}
 test('v4 authenticates exact complete latest history',()=>assert.deepEqual(validateExactRecoveryHistory(historyInput()).runIds,[200]));
+test('History binds all numbered recovery aliases and refuses unaccounted aliases',()=>{
+ const f=historyInput();f.rows[0].display_title='Focused only · owned-recovery-100-1';
+ assert.deepEqual(validateExactRecoveryHistory(f).runIds,[200]);
+ f.rows.push({...f.rows[0],id:201,display_title:'Focused only · owned-recovery-100-2',status:'in_progress'});
+ assert.throws(()=>validateExactRecoveryHistory(f),/Unaccounted/);
+});
 for(const [name,change] of [
  ['later failure',f=>f.rows.push({...f.rows[0],id:201,conclusion:'failure'})],['active older execution',f=>f.rows.push({...f.rows[0],id:201,status:'in_progress',created_at:time(60),updated_at:time(59)})],['superseding success',f=>f.rows.push({...f.rows[0],id:201})],['missing known run',f=>f.rows=[]],['conflicting snapshots',f=>f.rows.push({...f.rows[0],conclusion:'failure'})],['rerun',f=>f.rows[0].run_attempt=2],['overlapping failure',f=>f.rows.push({...f.rows[0],id:201,created_at:time(30),conclusion:'failure'})]
 ])test('v4 history refuses '+name,()=>{const f=historyInput();change(f);assert.throws(()=>validateExactRecoveryHistory(f));});
@@ -124,7 +166,7 @@ test('The original 9bdf receiver accepts the unchanged format-2 grant from a dis
   assert.deepEqual(original.validateInstallGrant(grant,{now:g.now}),grant);assert.equal(grant.kind,'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL');assert.equal(grant.format,2);
   assert.equal(original.validateInstallGrant.toString(),(await import('./ci-install-grant.mjs')).validateInstallGrant.toString());
   assert.throws(()=>original.validateInstallGrant({...grant,target:'production'},{now:g.now}));
-  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v4');
+  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v5');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 test('Focused evidence cannot silently replace the original producing controller',()=>{const f=dbInput();f.focused[0].run.head_sha='d'.repeat(40);f.focused[0].report.controller='d'.repeat(40);assert.throws(()=>verifyExactRecovery(f));});
