@@ -253,8 +253,11 @@ export function EmployeeScopePanel({
 }: {
   /** The already access-fenced employee set, mapped from the server's `listEmployees`. */
   employees?: ScopeEmployee[];
-  /** Opt-in: plain server-authorized first page; later choices use the same native read port. */
-  remote?:{initial:EmployeeChoicePage;endpoint?:string};
+  /** Use the native read port. A collapsed panel can open with an empty request context. */
+  remote?:{endpoint?:string} & (
+    {initial:EmployeeChoicePage;start?:never} |
+    {initial?:never;start:Pick<EmployeeChoicePage,'contextId'|'labelMode'|'limit'>}
+  );
   /** The server's RESOLVED selection — i.e. after its scope guard, not the raw query param. */
   selectedId: string | null;
   /** Route the selection navigates to, e.g. `/payroll/transactions/zakat`. */
@@ -295,8 +298,9 @@ export function EmployeeScopePanel({
 
   const initialPickerValue = (key: typeof INQUIRY_PICKER_KEYS[number]) => {
     if (!preservePicker) {
-      if(!remote)return '';
-      const values={pickerQ:remote.initial.filters.query,pickerCompany:remote.initial.filters.companyId,pickerBusinessUnit:remote.initial.filters.businessUnitId,pickerDepartment:remote.initial.filters.departmentId,pickerStatus:remote.initial.filters.status};
+      const filters=remote?.initial?.filters;
+      if(!filters)return '';
+      const values={pickerQ:filters.query,pickerCompany:filters.companyId,pickerBusinessUnit:filters.businessUnitId,pickerDepartment:filters.departmentId,pickerStatus:filters.status};
       return values[key];
     }
     // After collapsing/reopening, server props may predate the last client-side filter change.
@@ -308,33 +312,33 @@ export function EmployeeScopePanel({
   const [businessUnitId, setBusinessUnitId] = useState(() => initialPickerValue('pickerBusinessUnit'));
   const [departmentId, setDepartmentId] = useState(() => initialPickerValue('pickerDepartment'));
   const [status, setStatus] = useState(() => initialPickerValue('pickerStatus'));
-  const [offset,setOffset]=useState(()=>remote?.initial.offset??0),[retry,setRetry]=useState(0);
+  const initial=remote?.initial,config=initial??remote?.start;
+  const [offset,setOffset]=useState(()=>initial?.offset??0),[retry,setRetry]=useState(0);
   const remoteFilters={query,companyId,businessUnitId,departmentId,status};
-  const remoteKey=remote?remote.initial.contextId+employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode)+':'+retry:'';
-  const [remoteState,setRemoteState]=useState<{key:string;data?:EmployeeChoicePage;error?:boolean}>(()=>({
-    key:remote?remote.initial.contextId+employeeChoiceKey(remote.initial.filters,remote.initial.offset,remote.initial.labelMode)+':0':'',data:remote?.initial,
-  }));
-  const remoteLoading=Boolean(remote&&remoteState.key!==remoteKey);
-  const remoteError=Boolean(remote&&remoteState.key===remoteKey&&remoteState.error);
-  const remoteData=remote&&remoteState.key.startsWith(remote.initial.contextId)?remoteState.data??remote.initial:remote?.initial;
+  const initialKey=initial?initial.contextId+employeeChoiceKey(initial.filters,initial.offset,initial.labelMode)+':0':'';
+  const remoteKey=config?config.contextId+employeeChoiceKey(remoteFilters,offset,config.labelMode)+':'+retry:'';
+  const [remoteState,setRemoteState]=useState<{key:string;data?:EmployeeChoicePage;error?:boolean}>(()=>({key:initialKey,data:initial}));
+  const remoteLoading=Boolean(config&&remoteState.key!==remoteKey);
+  const remoteError=Boolean(config&&remoteState.key===remoteKey&&remoteState.error);
+  const remoteData=config&&remoteState.key.startsWith(config.contextId)?remoteState.data??initial:initial;
   useEffect(()=>{
-    if(!remote||remoteState.key===remoteKey)return;
-    if(remoteKey===remote.initial.contextId+employeeChoiceKey(remote.initial.filters,remote.initial.offset,remote.initial.labelMode)+':0'){
-      setRemoteState({key:remoteKey,data:remote.initial});return;
+    if(!config||remoteState.key===remoteKey)return;
+    if(initial&&remoteKey===initialKey){
+      setRemoteState({key:remoteKey,data:initial});return;
     }
     const controller=new AbortController();let current=true;
     const timer=setTimeout(()=>{
-      const input={query,companyId,businessUnitId,departmentId,status:status||undefined,offset,limit:remote.initial.limit,labelMode:remote.initial.labelMode,selectedId:selectedId??undefined};
-      void fetch(remote.endpoint??'/api/employee-choices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',credentials:'same-origin',signal:controller.signal})
+      const input={query,companyId,businessUnitId,departmentId,status:status||undefined,offset,limit:config.limit,labelMode:config.labelMode,selectedId:selectedId??undefined};
+      void fetch(remote?.endpoint??'/api/employee-choices',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input),cache:'no-store',credentials:'same-origin',signal:controller.signal})
         .then(async response=>{
           if(!response.ok)throw Error('Employee choices unavailable');
           const data:unknown=await response.json();
-          if(!isEmployeeChoicePage(data)||data.limit!==remote.initial.limit||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(remoteFilters,offset,remote.initial.labelMode))throw Error('Employee choices unavailable');
+          if(!isEmployeeChoicePage(data)||data.limit!==config.limit||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(remoteFilters,offset,config.labelMode))throw Error('Employee choices unavailable');
           if(current)setRemoteState({key:remoteKey,data});
         }).catch(()=>{if(current&&!controller.signal.aborted)setRemoteState({key:remoteKey,data:remoteData,error:true});});
-    },180);
+    },!initial&&!query?0:180);
     return()=>{current=false;clearTimeout(timer);controller.abort();};
-  },[remoteKey,remoteState.key,remote,query,companyId,businessUnitId,departmentId,status,offset,selectedId]);
+  },[remoteKey,initialKey,remoteState.key,initial,config,remote?.endpoint,query,companyId,businessUnitId,departmentId,status,offset,selectedId]);
   useEffect(() => {
     if (!preservePicker) return;
     const url = new URL(window.location.href);
