@@ -39,8 +39,9 @@ type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:stri
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
 const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
-const PREFIX=924,TAIL=145,BOARD_TAIL=50,GUIDANCE_TAIL=1,SIX_ITEM_TAIL=4,OWNER='ai_hr_owner';
+const PREFIX=924,TAIL=145,BOARD_TAIL=50,GUIDANCE_TAIL=1,SIX_ITEM_TAIL=4,PAYROLL_ACCESS_TAIL=1,OWNER='ai_hr_owner';
 const GUIDANCE:Entry={idx:10360,version:'7',when:1795028006960,tag:'6960_board_public_guidance_function_kinds',breakpoints:true};
+const PAYROLL_ACCESS:Entry={idx:10440,version:'7',when:1795028007040,tag:'7040_payroll_original_employer_row_security',breakpoints:true};
 const GUIDANCE_SHA256='c1b4926b4d1860e6a4a79019685c39ba0988af3a97f30dbdebf2365565c0972b';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
 const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
@@ -61,6 +62,45 @@ const HISTORICAL=[
 const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const exec=promisify(execFile);
 afterAll(closeAll);
+
+async function verifyPayrollProcessFourGrants(observer:postgres.Sql,tenantId:string) {
+ const companies=Array.from({length:5},()=>randomUUID());
+ const [selected,second,third,fourth,ungranted]=companies;
+ const userId=randomUUID(),attemptId=randomUUID(),importedBatchId=randomUUID(),ungrantedBatchId=randomUUID();
+ const grants=[second,third,fourth,selected].map(companyId=>({role:'hr_admin',companyId}));
+ const source='fictional payroll process regression';
+ await observer.begin(async tx=>{
+  // Only the disposable rehearsal database uses fixture inserts in place of an import job.
+  await tx`set local session_replication_role = replica`;
+  await tx`insert into public.company(id,tenant_id,legal_name)
+    select id,${tenantId},'Payroll Process rehearsal '||id from unnest(${companies}::uuid[]) ids(id)`;
+  await tx`insert into public.app_user(id,tenant_id,workos_user_id) values(${userId},${tenantId},${'user_'+userId})`;
+  await tx`insert into public.role_assignment(tenant_id,app_user_id,company_id,role)
+    select ${tenantId},${userId},id,'hr_admin' from unnest(${[second,third,fourth,selected]}::uuid[]) ids(id)`;
+  await tx`insert into public.payroll_history_import_attempt
+    (id,tenant_id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
+    values(${attemptId},${tenantId},${userId},${attemptId},'payroll-process-rehearsal.csv','text/csv',
+      ${sha(source)},${Buffer.from(source)},array[${selected}::uuid],'{}'::jsonb)`;
+  await tx`insert into public.payroll_batch
+    (id,tenant_id,company_id,pay_period,batch_date,run_type,status,employee_count,history_import_attempt_id)
+    values(${importedBatchId},${tenantId},${selected},'2026-11','2026-11-28','adjustment','closed',0,${attemptId}),
+          (${randomUUID()},${tenantId},${selected},'2026-10','2026-10-28','regular','draft',0,null),
+          (${ungrantedBatchId},${tenantId},${ungranted},'2026-12','2026-12-28','regular','draft',0,null)`;
+  await tx`set local session_replication_role = origin`;
+  await tx`set local role ai_hr_app`;
+  await tx`select set_config('app.tenant_id',${tenantId},true),set_config('app.user_id',${userId},true),
+    set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(grants)},true),
+    set_config('app.payroll_tax_basis_reader','1',true),set_config('jit','off',true)`;
+  const [period]=await tx<{latest:string|null}[]>`select max(b.pay_period) as latest
+    from public.payroll_history_effective_batch b join public.company c on c.id=b.company_id
+    where b.company_id=${selected} and (b.history_import_attempt_id is null or b.employee_count>0)`;
+  expect(period.latest).toBe('2026-10');
+  const [permission]=await tx<{selected:boolean;ungranted:boolean}[]>`select
+    app.payroll_tax_basis_original_employer_read(${importedBatchId}) as selected,
+    app.payroll_tax_basis_original_employer_read(${ungrantedBatchId}) as ungranted`;
+  expect(permission).toEqual({selected:true,ungranted:false});
+ });
+}
 
 it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, preserving native data and matching a superuser twin',async()=>{
  const root=process.cwd(),base=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
@@ -115,11 +155,14 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   // cannot redefine its145 bodies, digest, order or rehearsal merely by appending a migration.
   const journal=candidate;
   expect(frozen.entries).toHaveLength(PREFIX);expect(journal.entries).toHaveLength(PREFIX+TAIL);
-  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
+  expect(currentJournal.entries).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+PAYROLL_ACCESS_TAIL);
   const guidanceStart=PREFIX+TAIL+BOARD_TAIL;
   const guidanceTail=currentJournal.entries.slice(guidanceStart,guidanceStart+GUIDANCE_TAIL);
   expect(guidanceTail).toEqual([GUIDANCE]);
-  const sixItemTail=currentJournal.entries.slice(guidanceStart+GUIDANCE_TAIL);
+  const sixItemStart=guidanceStart+GUIDANCE_TAIL;
+  const sixItemTail=currentJournal.entries.slice(sixItemStart,sixItemStart+SIX_ITEM_TAIL);
+  const payrollAccessTail=currentJournal.entries.slice(sixItemStart+SIX_ITEM_TAIL);
+  expect(payrollAccessTail).toEqual([PAYROLL_ACCESS]);
   expect(sixItemTail).toHaveLength(SIX_ITEM_TAIL);
   expect(sha(readFileSync(join(root,'db/migrations',GUIDANCE.tag+'.sql')))).toBe(GUIDANCE_SHA256);
   expect({...currentJournal,entries:currentJournal.entries.slice(0,PREFIX+TAIL)}).toEqual(candidate);
@@ -300,8 +343,8 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   assertApprovedUpgradeTail(currentJournal.entries);
   const boardTail=currentJournal.entries.slice(PREFIX+TAIL,PREFIX+TAIL+BOARD_TAIL);expect(boardTail).toHaveLength(BOARD_TAIL);
   expect(boardTail[0].tag).toBe('6600_probation_reconciliation');
-  const forwardTail=[...boardTail,...guidanceTail,...sixItemTail];
-  expect(forwardTail).toHaveLength(BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
+  const forwardTail=[...boardTail,...guidanceTail,...sixItemTail,...payrollAccessTail];
+  expect(forwardTail).toHaveLength(BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+PAYROLL_ACCESS_TAIL);
   const boardIdentities=forwardTail.map((entry,index)=>{
    expect(entry.when).toBeGreaterThan(index?forwardTail[index-1].when:journal.entries.at(-1)!.when);
    const bytes=readFileSync(join(root,'db/migrations',entry.tag+'.sql'));
@@ -309,7 +352,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
    writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
    return {hash:sha(bytes),created_at:String(entry.when)};
   });
-  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL);
+  const expectedCurrentLedger=[...expectedLedger,...boardIdentities];expect(expectedCurrentLedger).toHaveLength(PREFIX+TAIL+BOARD_TAIL+GUIDANCE_TAIL+SIX_ITEM_TAIL+PAYROLL_ACCESS_TAIL);
   const referenceNoticeOffset=referenceNotices.length,ownerNoticeOffset=ownerNotices.length;
   writeFileSync(join(migrations,'meta/_journal.json'),JSON.stringify(currentJournal));
   await migrate(drizzle(reference),{migrationsFolder:migrations});
@@ -345,6 +388,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   expect(await snapshotCatalogue(observer,superuser)).toEqual(currentCatalogue);
   expect(await purposeOwned(observer,superuser)).toEqual(combinedPurpose);expect(await ownerRoleGraph(observer)).toEqual(combinedGraph);
   expect(await ownerAttributes(restricted)).toEqual(ATTRIBUTES);expect(await leftovers(observer)).toEqual([]);
+  await verifyPayrollProcessFourGrants(observer,b.tenantId);
  }finally{
   for(const client of [...pools].filter(client=>client!==admin))await close(client);
   if(admin){for(const name of Object.values(names))await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);await close(admin);}

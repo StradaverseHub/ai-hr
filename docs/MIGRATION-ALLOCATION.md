@@ -1,3 +1,10 @@
+# Payroll Process company access — 20 November 2026
+
+Reserve `7040_payroll_original_employer_row_security`, journal idx 10440, timestamp 1795028007040.
+SQL SHA-256 `c74f60e1f0a25c721c6b4a1b03b73cc001acd33eed980e89060f9d745cf53115`. The function retains its owner, grant checks and
+execute privileges. This migration allows its nested company hierarchy read
+to use the existing row-level security policy.
+
 # Approved board candidates — 19 November 2026 (draft allocation)
 
 | Candidate migration | Journal index | Timestamp | SQL SHA-256 |
