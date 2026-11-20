@@ -1553,23 +1553,29 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
 
 async function measureJobDescriptionEditor({page,user,report,save}){
  const list='/admin/job-descriptions',create=list+'/new';
+ report.actionStage='job-description-list-open';
  const response=await page.goto(origin+list,{waitUntil:'commit',timeout:15000});
  assert.equal(response?.status(),200);
+ report.actionStage='job-description-list-usable';
  await readyContent(page,user,list,()=>15000);
  const main=page.locator('main:visible').first();
  const picker=main.locator('form select[name="company"]');
  const started=performance.now();
+ report.actionStage='job-description-create-link';
  await main.locator(`a[href="${create}"]`).click({timeout:15000});
  await page.waitForURL(origin+create,{timeout:15000});
+ report.actionStage='job-description-company-picker';
  await picker.waitFor({state:'visible',timeout:15000});
  const label=await picker.locator(`option[value="${user.companyId}"]`).textContent();
  assert(label?.trim());
  report.jobEditorSteps=[{step:'open-company-picker',elapsedMs:Math.round(performance.now()-started)}];
  save();
- await picker.selectOption(user.companyId);
+ report.actionStage='job-description-company-selection';
+ await picker.selectOption(user.companyId,{timeout:15000});
  const editorStarted=performance.now();
  await main.getByRole('button',{name:'Continue',exact:true}).click({timeout:15000});
  await page.waitForURL(url=>url.pathname===create&&url.searchParams.get('company')===user.companyId,{timeout:15000});
+ report.actionStage='job-description-company-editor';
  const company=main.getByRole('textbox',{name:'Company',exact:true});
  await company.waitFor({state:'visible',timeout:15000});
  assert.equal(await company.inputValue(),label);
@@ -1612,12 +1618,16 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
   const matchesSubmission=url=>url.origin===origin&&url.pathname===path&&url.searchParams.get('date')===date
    &&url.searchParams.get('company')===company.companyId&&url.searchParams.get('dept')===company.departmentId
    &&url.searchParams.get('q')===query;
+  report.attendanceStage=step+'-form-values';
+  assert.equal(await form.locator('select[name="company"]').inputValue(),company.companyId);
+  assert.equal(await form.locator('select[name="dept"]').inputValue(),company.departmentId);
+  assert.equal(await form.locator('input[name="date"]').inputValue(),date);
+  assert.equal(await search.inputValue(),query);
   const started=performance.now();
+  report.attendanceStage=step+'-submit-button';
+  await form.getByRole('button',{name:'Apply',exact:true}).click({timeout:15000});
   report.attendanceStage=step+'-navigation';
-  await Promise.all([
-   page.waitForURL(matchesSubmission,{waitUntil:'commit',timeout:15000}),
-   form.getByRole('button',{name:'Apply',exact:true}).click({timeout:15000}),
-  ]);
+  await page.waitForURL(matchesSubmission,{waitUntil:'commit',timeout:15000});
   report.attendanceStage=step+'-result';
   if(expected){
    await matching.getByText(employee.name,{exact:true}).waitFor({state:'visible',timeout:15000});

@@ -104,6 +104,8 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  save();
  assert.equal(total,70);
  assert.equal(checked,70);
+ const allCompanyIds=await companies.evaluateAll(inputs=>inputs.map(input=>input.value).sort());
+ assert.equal(new Set(allCompanyIds).size,70);
  const clear=companyForm.getByRole('button',{name:'Choose a new selection',exact:true});
  await clear.click({timeout});
  const option=companyForm.getByRole('checkbox',{name:fixture.scaleCompany.name,exact:true});
@@ -128,10 +130,18 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeStage='group-scope-restored';
  if(await switcher.getAttribute('aria-expanded')!=='true')await switcher.click({timeout});
  const restored=performance.now();
- await companyForm.getByRole('button',{name:'Select all',exact:true}).click({timeout});
+ const [restoredResponse]=await Promise.all([
+  page.waitForResponse(response=>response.request().method()==='POST'
+   &&new URL(response.url()).pathname==='/admin/personnel',{timeout}),
+  companyForm.getByRole('button',{name:'Select all',exact:true}).click({timeout}),
+ ]);
+ assert.equal(restoredResponse.status(),200);
  await switcher.getByText('All companies',{exact:true}).waitFor({state:'visible',timeout});
  await groupRows.first().waitFor({state:'visible',timeout});
- assert.equal(await selectedScope(),'');
+ report.groupScopeStage='group-scope-restored-cookie';
+ // The switcher submits all checked IDs and the server persists that explicit scope.
+ assert.deepEqual((await selectedScope()).split(',').sort(),allCompanyIds);
+ report.groupScopeStage='group-scope-restored-checkboxes';
  await page.waitForFunction(()=>
   document.querySelectorAll('input[type="checkbox"][name="companyId"]:checked').length===70,
   undefined,{timeout});
