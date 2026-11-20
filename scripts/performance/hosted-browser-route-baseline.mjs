@@ -31,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','roster-import','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -46,7 +46,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!['leave-inbox','roster','roster-import'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1853,6 +1853,109 @@ function countRosterRequests(request,counts){
  else if(headers.rsc==='1'||url.searchParams.has('_rsc'))counts.otherFlight++;
 }
 
+async function measureRosterImport(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const xlsx=require('xlsx');
+ const [group,company]=fixture.users;
+ assert.equal(group.role,'groupHR');
+ assert.equal(company.role,'companyHR');
+ assert(fixture.scaleCompany);
+ report.rosterImport=[];
+ const path='/roster/import',timeout=15000;
+ for(const [actor,companyId,expectedRows] of [
+  [group,fixture.scaleCompany.id,125],
+  [company,company.companyId,fixture.users.filter(user=>user.companyId===company.companyId).length],
+ ]){
+  const context=await signedInContext(actor);
+  const row={role:actor.role,opens:[]};
+  report.rosterImport.push(row);
+  try{
+   const page=await context.newPage();
+   const main=page.locator('main:visible').first();
+   const button=main.getByRole('button',{name:'Download Template',exact:true});
+   let templateRequests=0;
+   const isTemplate=url=>url.origin===origin&&url.pathname==='/roster/template';
+   page.on('request',request=>{if(isTemplate(new URL(request.url())))templateRequests++;});
+   const url=origin+path+'?'+new URLSearchParams({companyId});
+   for(const pass of ['first','repeat']){
+    const started=performance.now();
+    const response=await page.goto(url,{waitUntil:'commit',timeout});
+    assert.equal(response?.status(),200);
+    assert.equal(page.url(),url);
+    const month=main.locator('input[type="month"]');
+    await Promise.all([
+     month.waitFor({state:'visible',timeout}),
+     button.waitFor({state:'visible',timeout}),
+     main.getByRole('button',{name:/Choose a file or drop it here/}).waitFor({state:'visible',timeout}),
+    ]);
+    assert(await month.isEnabled({timeout})&&await button.isEnabled({timeout}));
+    const select=main.getByRole('combobox');
+    if(actor.role==='groupHR')assert.equal(await select.inputValue({timeout}),companyId);
+    assert.equal(templateRequests,0,'The workbook must not be requested during navigation');
+    row.opens.push({pass,formReadyMs:Math.round(performance.now()-started),templateRequests});
+    save();
+   }
+
+   await page.waitForLoadState('load',{timeout});
+   const month=await main.locator('input[type="month"]').inputValue();
+   assert.match(month,/^\d{4}-\d{2}$/);
+   const matchesTemplate=(response,field)=>{
+    const url=new URL(response.url());
+    return isTemplate(url)&&url.searchParams.get('companyId')===companyId
+     &&url.searchParams.get('month')===month&&url.searchParams.get('fields')===field;
+   };
+   const codeStarted=performance.now();
+   const [codeResponse]=await Promise.all([
+    page.waitForResponse(response=>matchesTemplate(response,'codes'),{timeout}),
+    main.locator('summary').getByText('What to type in a cell',{exact:true}).click({timeout}),
+   ]);
+   assert.equal(codeResponse.status(),200);
+   const codeData=await codeResponse.json();
+   assert.deepEqual(Object.keys(codeData),['codes']);
+   assert(Array.isArray(codeData.codes)&&codeData.codes.every(code=>typeof code==='string'));
+   const labels=main.locator('details[open] li').filter({hasText:'Shift codes accepted:'});
+   if(codeData.codes.length){
+    await labels.locator('code').first().waitFor({state:'visible',timeout});
+    assert.deepEqual(await labels.locator('code').allTextContents(),codeData.codes);
+   }else{
+    await labels.getByText('—',{exact:true}).waitFor({state:'visible',timeout});
+   }
+   row.codeReference={elapsedMs:Math.round(performance.now()-codeStarted),count:codeData.codes.length};
+   save();
+
+   const downloadStarted=performance.now();
+   const [download,response]=await Promise.all([
+    page.waitForEvent('download',{timeout}),
+    page.waitForResponse(response=>matchesTemplate(response,null),{timeout}),
+    button.click({timeout}),
+   ]);
+   assert.equal(response.status(),200);
+   const data=await response.json();
+   assert.equal(data.rows.length,expectedRows);
+   assert.deepEqual(data.codes,codeData.codes);
+   const downloadPath=await download.path();
+   assert(downloadPath);
+   const book=xlsx.readFile(downloadPath);
+   assert.deepEqual(book.SheetNames,['Roster','Notes']);
+   const visibleRows=xlsx.utils.sheet_to_json(book.Sheets.Roster,{header:1,raw:false,defval:''});
+   assert.deepEqual(visibleRows[0],['Employee No','Employee Name','Department','Occupation',...data.dates]);
+   assert.equal(visibleRows.length,expectedRows+1);
+   assert.deepEqual(visibleRows.slice(1).map(values=>values.slice(0,2)),data.rows.map(values=>values.slice(0,2)));
+   assert.equal(templateRequests,2,'One request per explicitly opened resource');
+   row.workbook={elapsedMs:Math.round(performance.now()-downloadStarted),rows:expectedRows,dates:data.dates.length,
+    explicitRequests:templateRequests};
+   if(actor.role==='companyHR'){
+    const denied=await context.request.get(origin+'/roster/template?'+new URLSearchParams({companyId:fixture.scaleCompany.id,month}));
+    assert.equal(denied.status(),403);
+    row.foreignCompanyDenied=true;
+   }
+   await assertContentAvailable(page);
+   save();
+  }finally{await context.close();}
+ }
+}
+
 async function measureFocusedRoster(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
@@ -2198,6 +2301,7 @@ try{
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='roster-import')await measureRosterImport(fixture);
   else if(surfaceProbe==='content-readiness'){
    await measureRoutes(fixture,readinessRoutes);
    assert.equal(report.observations.length,2*report.plannedRoleRoutes);
