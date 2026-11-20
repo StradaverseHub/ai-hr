@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','workflow-both','access-editor','rewards','rewards-bonus'].includes(surfaceProbe),'Unknown browser surface');
 const rewardsFixture=surfaceProbe==='rewards'||surfaceProbe==='rewards-bonus';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
@@ -58,7 +58,7 @@ mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_COMBINED_REWARDS_BUILD==='true'&&{
+ ...(env.AIHR_BROWSER_COMBINED_SURFACE_BUILD==='true'&&{
   verifiedBuildArtifact:{runId:44763397635,artifactId:14644151151,sourceSha:'111852a4b932fbf49a7bd7df6056f390f5f11409'},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
@@ -738,7 +738,7 @@ async function measureAttendanceJourneys(fixture){
 
 async function measureAttendanceWorkflowEditor(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
- browser=await require('playwright').chromium.launch();
+ browser??=await require('playwright').chromium.launch();
  const path='/admin/attendance/approval-workflow/new';
  const visits=report.attendanceWorkflowEditor=[];
  for(const actorIndex of [0,1]){
@@ -1978,6 +1978,10 @@ try{
   await proxy();
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='workflow-both'){
+   try{await measureSurfaceProbe(fixture,'workflow-list');}
+   finally{await measureAttendanceWorkflowEditor(fixture);}
+  }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
     :surfaceProbe==='rewards'?['rewards-salary','rewards-bonus','rewards-uploaded']:[surfaceProbe];
