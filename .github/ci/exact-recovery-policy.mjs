@@ -48,7 +48,7 @@ export function verifyExactRecovery({plan,assessment,run,jobs,reports,focused,mi
   const unit=validateMixedOriginal({run,jobs,artifacts:missingProof.originalArtifacts},plan);
   const observed=assessment.observations.find(row=>row.id===unit.id);
   assert(failed.has(unit.id)&&observed?.artifact===null&&observed.jobId===MIXED.interruptedJob,'Interrupted unit must remain without an original report');
-  assert(missingProof.proof.freshPlan.controller===verificationController&&missingProof.proof.expected.after===run.updated_at,'Replacement unit controller or chronology differs');
+  assert(missingProof.proof.freshPlan.controller===MIXED.producerController&&missingProof.proof.expected.after===run.updated_at,'Replacement unit controller or chronology differs');
   missing={...verifyMissingUnitEvidence({sourcePlan:plan,plan,missing:unit.id,proof:missingProof.proof}),nativePrepull:missingProof.nativePrepull};
  }
  assert(Array.isArray(reports)&&reports.length===plan.units.length-(missing?1:0)&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete available original report inventory required');
@@ -123,7 +123,7 @@ export function validateExactRecoveryGrantEvidence(evidence,run){
  assert(c.focusedController===c.canonicalAdvance.focusedController&&c.focusedSources.every(f=>f.controller===c.focusedController),'Focused producer differs from audited canonical context');
  const runIds=c.focusedSources.map(f=>f.runId);
  if(c.runId===MIXED.originalRun){
-  assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===c.verificationController&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
+  assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===MIXED.producerController&&c.missingUnit.source.runId===MIXED.producerUnitRun&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
   runIds.push(c.missingUnit.source.runId);
   same(c.history?.previousFailures?.map(entry=>entry.id).sort((a,b)=>a-b),[MIXED.failedFocusedRun,MIXED.refusedUnitRun],'Both previous failed recovery attempts must remain in the certificate');
  }

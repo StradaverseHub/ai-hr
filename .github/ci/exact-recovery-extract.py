@@ -5,7 +5,7 @@ prerequisites={'personnel-draft-discard-premigration-role-prerequisites.json':'P
 source_diagnostics={'claims-approval-queue-100k.json':('test/claims-approval-queue-scale.test.ts','CLAIMS_APPROVAL_QUEUE_SCALE_V1'),'personnel-page-projection.json':('test/personnel-page-projection.test.ts','NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY')}
 with zipfile.ZipFile(archive) as z:
     entries=z.infolist()
-    if len(entries)>128 or sum(i.file_size for i in entries)>128*1024*1024:
+    if len(entries)>384 or sum(i.file_size for i in entries)>128*1024*1024:
         raise ValueError('Repair packet exceeds bounds')
     names=set()
     for i in entries:
@@ -27,6 +27,10 @@ with zipfile.ZipFile(archive) as z:
     report=json.loads(z.read('focused.json'))
     groups=report.get('groups',{})
     database=bool(groups.get('DB'))
+    # Some focused browser fixtures save hundreds of screenshots. Keep the prior DB cap.
+    # The aggregate/member-byte caps still apply, and screenshot members are never extracted.
+    if database and len(entries)>128:
+        raise ValueError('Database repair packet exceeds member bound')
     if bool(groups.get('NODB'))==database:
         raise ValueError('One homogeneous repair partition required')
     result='db.vitest.json' if database else 'nodb.vitest.json'

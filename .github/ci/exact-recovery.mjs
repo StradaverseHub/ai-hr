@@ -86,18 +86,18 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  }
  validateMixedOriginal(source,expectedPlan);
  const missingRunId=Number(process.env.AIHR_EXACT_MISSING_RUN_ID);
- assert(Number.isSafeInteger(missingRunId)&&missingRunId>0&&!focusedRunIds.includes(missingRunId)&&missingRunId!==runId,'Exact dedicated System Labels recovery run required');
- const {fingerprint:sourceFingerprint,...freshBody}={...expectedPlan,controller:verificationController};
+ assert(missingRunId===MIXED.producerUnitRun&&!focusedRunIds.includes(missingRunId)&&missingRunId!==runId,'Exact dedicated System Labels recovery run required');
+ const {fingerprint:sourceFingerprint,...freshBody}={...expectedPlan,controller:MIXED.producerController};
  const freshPlan={...freshBody,fingerprint:hash(freshBody)};
  const missingProof=await collectMissingUnitRecovery({candidatePath,originalPath:candidatePath,sourcePlan:expectedPlan,plan:freshPlan,source,options:{
-  runId:missingRunId,controller:verificationController,branch:MIXED.branch,candidateBranch,unitId:MIXED.unit,
-  expectation:{runId:MIXED.expectedRun,source:MIXED.expectedSource,controller:MIXED.baseline,branch:'main'},controllerDiagnosticRunId:diagnosticId
+  runId:missingRunId,controller:MIXED.producerController,branch:MIXED.branch,candidateBranch,unitId:MIXED.unit,
+  expectation:{runId:MIXED.expectedRun,source:MIXED.expectedSource,controller:MIXED.baseline,branch:'main'},controllerDiagnosticRunId:MIXED.producerControlRun
  },directory:dir,reuse,after:source.run.updated_at});
  const {proof}=missingProof;
  assert(isDeepStrictEqual(proof.freshPlan,freshPlan),'Dedicated execution full plan differs');
  assert(proof.metadata.jobs.find(job=>job.name==='deployment-hold')?.steps.some(step=>step.name==='Deployment remains disabled'&&step.conclusion==='success'),'Missing dedicated deployment hold evidence');
  const owner=nativePostgresOwner(readFileSync(join(candidatePath,'.github/ci/postgres.sh')),git(candidatePath,'rev-parse',candidate+':.github/ci/postgres.sh'));
- missingProof.nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:candidate,controller:verificationController,runId:missingRunId,unit:MIXED.unit,producer:proof.producer,prepullStep:proof.producer.steps.find(step=>step.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(step=>step.name==='Provision System Labels multilingual fonts before tests')});
+ missingProof.nativePrepull=validatePostgresPrepull(proof.nativePrepull,{owner,source:candidate,controller:MIXED.producerController,runId:missingRunId,unit:MIXED.unit,producer:proof.producer,prepullStep:proof.producer.steps.find(step=>step.name==='Bounded source-owned native PostgreSQL image transport'),fontStep:proof.producer.steps.find(step=>step.name==='Provision System Labels multilingual fonts before tests')});
  missingProof.originalArtifacts=source.artifacts;
  const rejected=await collectRecoveryEvidence(MIXED.failedFocusedRun,join(dir,'superseded-focused'),{reuse,exactPackets:true});
  const rejectedRun=rejected.run,rejectedJob=rejected.jobs.find(job=>job.name==='selected-tests');
@@ -115,7 +115,7 @@ export async function verifyExactRecoveredCi({candidatePath,runId,baseline,focus
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${source.run.workflow_id}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${workflow.id}/runs?${query}`,'workflow_runs')];
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[source.run.workflow_id,workflow.id].includes(r.workflow_id)));
- recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController,missingRunId,missingController:verificationController,previousFailures});
+ recovery.history=validateExactRecoveryHistory({sourceRun:source.run,rows,candidateBranch,focusedRunIds,focusedController,missingRunId,missingController:MIXED.producerController,previousFailures});
  recovery.verificationDiagnostic=verificationDiagnostic;recovery.reviewedController=verificationController;
  const build=await sourceBoundBuild({candidatePath,dir,p:{...p,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');

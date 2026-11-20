@@ -49,6 +49,11 @@ class ExactExtraction(unittest.TestCase):
     def test_nodb_db_diagnostic(self):self.assertNotEqual(self.invoke(extra=[('postgres.log','x')])[0],0)
     def test_duplicate(self):self.assertNotEqual(self.invoke(extra=[('focused.json','{}')])[0],0)
     def test_screenshot(self):self.assertEqual(self.invoke(extra=[('ui-screenshots/page.png',b'PNG')])[0],0)
+    def test_screenshot_inventory_of_large_nodb_partition(self):
+        screenshots=[('ui-screenshots/page-%d.png'%i,b'PNG') for i in range(328)]
+        self.assertEqual(self.invoke(extra=screenshots),(0,['focused.json','nodb.vitest.json']))
+        self.assertNotEqual(self.invoke(True,extra=screenshots)[0],0)
+        self.assertNotEqual(self.invoke(extra=screenshots+[('ui-screenshots/other-%d.png'%i,b'PNG') for i in range(55)])[0],0)
     def prerequisites(self,**change):
         values=[]
         for name,kind in [('personnel-draft-discard-premigration-role-prerequisites.json','PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES'),('personnel-draft-discard-role-prerequisites.json','PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES')]:
