@@ -239,13 +239,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       probation: { page: false, configure: false, intake: false, access: false },
       contractStaff: { page: false, configure: false, intake: false, automation: false, postings: false },
     }));
-  const lifecycleNavigation = withBackgroundReadWork(session.tenantId, async () => {
-    const [onboarding, scoped, offboardingPostingsAccess] = await Promise.all([
-      lifecycleEnabled ? onboardingNavigation(session).catch(() => null) : null,
-      scopedLifecycleNavigation,
-      lifecycleEnabled ? offboardingPostingAccess(session).catch(() => false) : false,
-    ]);
-    return {
+  const legacyLifecycleNavigation = lifecycleEnabled
+    ? withBackgroundReadWork(session.tenantId, () => Promise.all([
+      onboardingNavigation(session).catch(() => null),
+      offboardingPostingAccess(session).catch(() => false),
+    ])).catch(() => [null, false] as const)
+    : Promise.resolve([null, false] as const);
+  const lifecycleNavigation = Promise.all([legacyLifecycleNavigation, scopedLifecycleNavigation])
+    .then(([[onboarding, offboardingPostingsAccess], scoped]) => ({
       probationAccess: scoped.probation,
       contractStaffAccess: scoped.contractStaff,
       offboardingPostingsAccess,
@@ -256,8 +257,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       onboardingChecklistCount: onboarding?.checklists,
       onboardingMaster: onboarding?.master,
       onboardingRequisitionsAccess: onboarding?.requisitions,
-    };
-  });
+    }));
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -280,10 +280,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
   // Lifecycle task previews are passive too. Share their result between the bell and rail
   // without making case queries a condition for rendering navigation or the page.
-  const lifecycleWork = withBackgroundReadWork(session.tenantId, async () => {
+  // Admission is for runnable database work. Wait for the navigation dependency
+  // before taking an inbox permit.
+  const lifecycleWork = scopedLifecycleNavigation.then(navigation => withBackgroundReadWork(session.tenantId, async () => {
     const [queue, inbox] = await Promise.all([
       lifecycleEnabled ? onboardingTasks(session) : [],
-      scopedLifecycleNavigation.then(navigation => lifecycleModuleInbox(session, navigation)),
+      lifecycleModuleInbox(session, navigation),
     ]);
     return {
       tasks: [...queue.map(onboardingNotificationTask), ...inbox.items],
@@ -292,7 +294,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       myTasksCount: queue.length + inbox.myTasksCount,
       approvalCount: inbox.approvalCount,
     };
-  });
+  }));
   const approvals = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
