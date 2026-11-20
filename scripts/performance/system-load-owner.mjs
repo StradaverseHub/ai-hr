@@ -735,7 +735,7 @@ async function main(){
    observe('requestfailed',req=>{if(homeRequest(req))report.browserHomeRequests.push({role:user.role,path:new URL(req.url()).pathname,elapsedMs:performance.now()-(started.get(req)??performance.now()),outcome:'failed',error:req.failure()?.errorText});});
    observe('response',response=>{if(homeRequest(response.request())&&!response.ok())report.browserHomeRequests.push({role:user.role,path:new URL(response.url()).pathname,status:response.status(),outcome:'http-error'});});
    // Associate failures with a route and monotonic time without publishing query parameters.
-   const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now()};};
+   const errorContext=()=>{let path='<unavailable>';try{const url=new URL(page.url());path=url.origin===base?url.pathname:'<external>';}catch{}return {role:user.role,locale,path,atMs:performance.now(),...(stageEvidence?{stage:comparisonStage}:{})};};
    const recordError=(kind,message,error)=>report.browserErrors.push({...errorContext(),kind,error,
     ...(fullDevelopmentRoutes?{fingerprint:browserPreflightErrorFingerprint(message)}:{})});
    observe('pageerror',error=>recordError('pageerror',error.message,error.name+': '+error.message.slice(0,300)));
@@ -1532,13 +1532,16 @@ async function main(){
   delete fields[createTemplate.prefix+'draftId'];
   let draft;
   await ownClaimDraft('http',employee,description,async custody=>{
+   markWorkflow('baseline-claim-http-response');
    const response=await claimRequest(employee,createTemplate,fields,custody,'create');
    report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
     publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1]).filter(value=>value!=='$undefined')};save();
+   markWorkflow('baseline-claim-http-persistence');
    const drafts=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
    [draft]=drafts;assert(draft,'same-actor HTTP action preflight did not persist');
    if(custody)assert.equal(drafts.length,1,'Protected HTTP draft identity is ambiguous');
    custody?.verify('create',draft.id);
+   markWorkflow('baseline-claim-http-cleanup');
    await restoreKnownClaimDraft(employee,draft,custody);
    report.actionPreflight.persisted=true;save();
   },custody=>restoreKnownClaimDraft(employee,draft,custody));
@@ -1552,11 +1555,13 @@ async function main(){
   const scope=actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'same-company';
   let protectedDraft;
   await ownClaimDraft(scope,victim,description,async custody=>{
+   markWorkflow('baseline-claim-boundary-fixture');
    await claimRequest(victim,createTemplate,fields,custody,'create');
    const drafts=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
    [protectedDraft]=drafts;assert(protectedDraft,'boundary fixture did not persist through HTTP');
    if(custody)assert.equal(drafts.length,1,'Protected boundary draft identity is ambiguous');
    custody?.verify('create',protectedDraft.id);
+   markWorkflow('baseline-claim-boundary-denial');
    for(const selector of [actor.employmentId,victim.employmentId]){
     requireNativeBusiness();
     const stage=selector===actor.employmentId?'foreign-own':'foreign-other';
@@ -1568,16 +1573,19 @@ async function main(){
     custody?.verify(stage);
     report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
    }
+   markWorkflow('baseline-claim-boundary-cleanup');
    await restoreKnownClaimDraft(victim,protectedDraft,custody);
   },custody=>restoreKnownClaimDraft(victim,protectedDraft,custody));
  }
  if(suite!=='claims-heavy'){
+  markWorkflow('baseline-mixed-workflows');
   requireNativeBusiness();
   mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}));
  }
  requireCleanDriver();
  let loadedAttendanceRejection;
  if(attendanceRejectionProbeEnabled&&suite!=='claims-heavy'){
+  markWorkflow('baseline-attendance-rejection');
   const baseline=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'baseline'});
   requireNativeBusiness();
   await withLockWorkload('attendance-rejection',()=>baseline.run());
@@ -1585,6 +1593,7 @@ async function main(){
   if(suite==='whole-system')loadedAttendanceRejection=await prepareAttendanceRejection({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,db,report,save,phase:'loaded'});
  }
  if(suite!=='claims-heavy'){
+  markWorkflow('baseline-own-payslip');
   const ctx=await context(employee);
   await withContext(ctx,async()=>{
   const page=await ctx.newPage();let automaticPdfRequests=0;
