@@ -3,6 +3,7 @@ import { ExportDownloadLink } from '@/components/export-download-link';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import Link from 'next/link';
+import { Suspense, use } from 'react';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
 import { listCompanies, listDepartments } from '@/core/read';
@@ -28,6 +29,12 @@ import {
 
 import {rosterTeamContext,rosterTeamWindow} from './my-team-scope';
 import { todayInKualaLumpur } from '@/lib/hr-date';
+import { withBackgroundReadWork } from '@/db/client';
+
+function RosterExceptionLabel({label, fallback}: {label: Promise<string | null>; fallback: string}) {
+  const resolved = use(label);
+  return <span data-roster-exception-count={resolved === null ? 'unavailable' : 'ready'}>{resolved ?? fallback}</span>;
+}
 
 /**
  * Roster scheduling (ADR-0032 C3) — the MONTHLY shift roster for one company's employees. Manager/admin
@@ -137,15 +144,7 @@ export default async function RosterPage({
   });
   const view=rosterView;
 
-  /**
-   * a57f0584 rev 2 — ONLY THE COUNT. "This week's exceptions" was a full listing rendered at the foot of
-   * this screen; it is now the Exceptions button below, and the rows live on /roster/exceptions. The
-   * roster therefore reads a number, and the TOIL policy read that only ever existed to decide whether a
-   * rest-worked row got a "Bank in lieu" button went WITH the rows — it belongs to the screen that draws
-   * them.
-   */
-  const [exceptionCount, departments, writeEmployees] = await Promise.all([
-    rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) }),
+  const [departments, writeEmployees] = await Promise.all([
     listDepartments(s, { companyIds }),
     // Generate and Copy target the WHOLE filtered workforce the unpaged roster listed, not the grid's page:
     // the same people rosterWindowView reads, without hydrating their cells. Only read when the forms render.
@@ -253,7 +252,12 @@ export default async function RosterPage({
     return `/roster?${qs({ view: anchor.kind, month: anchor.month, from: anchor.kind === 'month' ? undefined : anchor.from, to: anchor.kind === 'custom' ? anchor.to : undefined })}`;
   };
   const navBtn = 'rounded-md border border-border px-2.5 py-1 text-sm text-foreground hover:bg-muted';
-
+  // Counting still uses the full variance rules. Publish the schedule and the link while that work runs.
+  const exceptionLinkTitle = t('exceptionsTitle');
+  const exceptionLabel = withBackgroundReadWork(s.tenantId, async () => {
+    const exceptionCount = await rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) });
+    return t('exceptionsButton', { count: exceptionCount });
+  }).catch(() => null);
 
   return (
     <div className={pageWideCls}>
@@ -341,8 +345,10 @@ export default async function RosterPage({
               are any"); the rows are a screen of their own, reached from here with the same month and the
               same filters. It is NOT hidden when the count is zero: an Exceptions button that vanishes
               cannot tell you there is nothing wrong, it can only look like a missing feature. */}
-          <Link href={`/roster/exceptions?${qs({})}`} className={navBtn}>
-            {t('exceptionsButton', { count: exceptionCount })}
+          <Link href={`/roster/exceptions?${qs({})}`} prefetch={false} className={navBtn}>
+            <Suspense fallback={<span data-roster-exception-count="pending">{exceptionLinkTitle}</span>}>
+              <RosterExceptionLabel label={exceptionLabel} fallback={exceptionLinkTitle} />
+            </Suspense>
           </Link>
           <ExportDownloadLink href={`/roster/export?${qs({ format: 'xlsx' })}`}  className={navBtn}>
             {t('exportLabel')}
