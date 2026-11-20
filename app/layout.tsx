@@ -6,7 +6,7 @@ import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import {NextIntlClientProvider} from 'next-intl';
 import {CatalogClientProvider} from '@/i18n/client-provider';
-import { getLocale, getMessages } from 'next-intl/server';
+import { getLocale } from 'next-intl/server';
 import './globals.css';
 import './action-feedback.css';
 import './login/login.css';
@@ -127,8 +127,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const uiTheme = await currentUiTheme();
 
   if (isAuthRoute) {
-    // The public shell only needs sign-in and shared feedback copy.
-    const {common,internalAuth,loginPresentation,loginTour,mobileSetup,pageStyleRecovery} = await getMessages();
+    // Bare shell for the login flow: fonts + theme + intl, no sidebar / topbar / session.
     return (
       <html
         lang={locale}
@@ -137,9 +136,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
-          <NextIntlClientProvider messages={{common,internalAuth,loginPresentation,loginTour,mobileSetup,pageStyleRecovery}}>
+          <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}>
             <Providers>{children}</Providers>
-          </NextIntlClientProvider>
+          </CatalogClientProvider></NextIntlClientProvider>
         </body>
       </html>
     );
