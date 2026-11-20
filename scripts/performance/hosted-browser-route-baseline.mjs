@@ -1147,6 +1147,69 @@ async function measureShellPopovers({page,user,report,save}){
   ['/me/notifications','/approvals','/approvals/history']);
 }
 
+async function measureDelegationCommand({page,user,report,save}){
+ const route='/me/cases';
+ const response=await page.goto(origin+route,{waitUntil:'domcontentloaded',timeout:15000});
+ assert.equal(response?.status(),200);
+ await readyContent(page,user,route,()=>15000);
+ const search=page.getByPlaceholder('Search for an action…',{exact:true});
+ const command=page.getByRole('button',{name:/^Approval Delegation/});
+ const panel=page.getByRole('dialog');
+ const list=panel.locator('[data-ui-section-header]').filter({hasText:/^Delegations/});
+ const admin=user.role==='groupHR';
+ report.delegationSteps=[];
+ let posts=0,documents=0;
+ const observe=request=>{
+  if(new URL(request.url()).origin!==origin)return;
+  if(request.method()==='POST'&&request.headers()['next-action'])posts++;
+  if(request.isNavigationRequest()&&request.frame()===page.mainFrame())documents++;
+ };
+ page.on('request',observe);
+ const mark=async(step,started)=>{
+  const elapsedMs=Math.round(performance.now()-started);
+  const timing=await documentTiming(page);
+  assert(timing?.appScripts.count>0,'Delegation journey needs the browser script inventory');
+  report.delegationSteps.push({step,elapsedMs,serverActionRequests:posts,documentRequests:documents,appScripts:timing.appScripts});
+  save();
+ };
+ try{
+  let started=performance.now();
+  await page.keyboard.press('Control+k');
+  await search.waitFor({state:'visible',timeout:15000});
+  await search.fill('Approval Delegation',{timeout:15000});
+  await command.waitFor({state:'visible',timeout:15000});
+  await mark('search-ready',started);
+  assert.equal(posts,0,'Searching never needs the delegation authority read');
+
+  started=performance.now();
+  await command.click({timeout:15000});
+  await list.waitFor({state:'visible',timeout:15000});
+  await mark('workspace-ready',started);
+  assert.equal(posts,1,'The delegation context loads once at intent');
+  assert.equal(documents,0,'The workspace stays in the command dialog');
+
+  const history=panel.getByRole('button',{name:'Show history',exact:true});
+  if(admin){
+   started=performance.now();
+   const [historyResponse]=await Promise.all([
+    page.waitForResponse(response=>new URL(response.url()).origin===origin&&
+     response.request().method()==='POST'&&!!response.request().headers()['next-action'],{timeout:15000}),
+    history.click({timeout:15000}),
+   ]);
+   assert.equal(historyResponse.ok(),true);
+   assert.equal(await historyResponse.finished(),null);
+   await panel.getByRole('button',{name:'Hide history',exact:true}).waitFor({state:'visible',timeout:15000});
+   await mark('history-response-complete',started);
+   assert.equal(posts,2,'History is a separate requested context read');
+  }else{
+   assert.equal(await history.count(),0,'Employee delegation keeps the admin history control hidden');
+  }
+  await page.keyboard.press('Escape');
+  await panel.waitFor({state:'hidden',timeout:15000});
+  assert.equal(new URL(page.url()).pathname,route);
+ }finally{page.off('request',observe);}
+}
+
 async function measureWalkthrough({page,user,report,save}){
  report.walkthroughSteps=[];
  report.actionStage='welcome-profile-open';
@@ -1291,6 +1354,8 @@ async function measureActions(fixture){
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
+  ...[0,4].map(actorIndex=>({name:'delegation-command',actorIndex,run:measureDelegationCommand,
+   timings:result=>result.delegationSteps})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
