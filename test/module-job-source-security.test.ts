@@ -39,9 +39,11 @@ describe('actual canonical module-job carrier and independent authorization cont
   const view=await loadCanonicalModuleJob(f.ctx,{module});
   expect(view.state).toBe('ready');assertCanonicalModuleJobView(view,f.ctx);expect(transactions).toHaveBeenCalledTimes(1);
   const text=JSON.stringify(view);for(const marker of ['PRIVATE_PEER_','PRIVATE_OTHER_COMPANY_PERSON','PRIVATE_NOTIFICATION_','PRIVATE_MANAGER_FEEDBACK','/private/embedded-link'])expect(text).not.toContain(marker);
-  // The peer's workedMinutes as a standalone number. A bare substring check failed whenever a millisecond
-  // timestamp or UUID in the view happened to contain the same four digits.
-  expect(text).not.toMatch(/(?<![0-9a-fA-F])9999(?![0-9a-fA-F])/);
+  // This generated view identifier can contain the peer's minute sentinel in a full UUID group.
+  // Validate its shape separately and continue checking the complete data payload for that sentinel.
+  const {viewId,...payload}=view;
+  expect(viewId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(JSON.stringify(payload)).not.toMatch(/(?<![0-9a-fA-F])9999(?![0-9a-fA-F])/);
   // Rewards/schema/case metadata are permitted administrative scopes, not an invented own-record claim.
   // Recruitment counts list every company the caller administers recruitment for (this caller is a group HR
   // admin); company scoping and candidate absence are proven in test/recruitment-service.test.ts.
