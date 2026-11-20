@@ -233,3 +233,87 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
   assert.equal(rows.length, cases.length * 2);
   assert(rows.every(row => row.outcome === 'usable-content'), 'One or more fictional record screens missed their readiness witness');
 }
+
+export async function measureWorkLocationActions({ db, fixture, origin, signedInContext, report, save }) {
+  const actor = fixture.users[1];
+  assert.equal(actor.role, 'companyHR');
+  const register = '/admin/work-locations/clocking';
+  const returnTo = register + '?company=' + actor.companyId;
+  const create = new URL('/admin/work-locations/new', origin);
+  create.searchParams.set('companyId', actor.companyId);
+  create.searchParams.set('from', returnTo);
+  const code = 'PERF-CENSUS-ACTIONS';
+  const names = ['Fictional action site', 'Fictional action site renamed'];
+  const actions = [];
+  report.workLocationActions = actions;
+  const context = await signedInContext(actor);
+  try {
+    const page = await context.newPage();
+    const main = page.locator('main:visible').first();
+    const form = main.locator('form:has(input[name="name"])');
+    const row = main.locator('[id^="row-"]').filter({ has: page.getByText(code, { exact: true }) });
+    const persisted = () => db`
+      select id, name, archived_at is not null as archived from location
+      where tenant_id = ${actor.tenantId} and company_id = ${actor.companyId} and code = ${code}
+    `;
+    async function submit(action, button, expectedName, archived, existingId) {
+      const path = new URL(page.url()).pathname;
+      const started = performance.now();
+      const observation = { action, role: actor.role, status: 'incomplete' };
+      actions.push(observation);
+      try {
+        const [response] = await Promise.all([
+          page.waitForResponse(response => {
+            const target = new URL(response.url());
+            return target.origin === origin && target.pathname === path && response.request().method() === 'POST';
+          }, { timeout: 15000 }),
+          button.click({ timeout: 15000 }),
+        ]);
+        observation.responseMs = Math.round(performance.now() - started);
+        assert([200, 303].includes(response.status()), 'Unexpected location action response');
+        await page.waitForURL(url => url.origin === origin && url.pathname === register &&
+          url.searchParams.get('company') === actor.companyId && !url.searchParams.has('error'), { timeout: 15000 });
+        await row.getByText(expectedName, { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+        await row.getByText(archived ? 'Archived' : 'Active', { exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+        observation.usableMs = Math.round(performance.now() - started);
+        const stored = await persisted();
+        assert.equal(stored.length, 1, 'Expected precisely one fictional location in the authorized company');
+        const [record] = stored;
+        assert.equal(record.name, expectedName);
+        assert.equal(record.archived, archived);
+        if (existingId) assert.equal(record.id, existingId);
+        observation.status = 'verified';
+        return record.id;
+      } finally {
+        save();
+      }
+    }
+    assert.deepEqual(await persisted(), []);
+    const response = await page.goto(create.href, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    assert.equal(response?.status(), 200);
+    await main.getByRole('heading', { name: 'New location', exact: true }).waitFor();
+    await form.locator('input[name="code"]').fill(code);
+    await form.locator('input[name="name"]').fill(names[0]);
+    const id = await submit('create', form.getByRole('button', { name: 'Save', exact: true }), names[0], false);
+
+    const openEditor = async () => {
+      await row.getByRole('link', { name: 'Edit', exact: true }).click();
+      await main.getByRole('heading', { name: 'Edit location', exact: true }).waitFor();
+    };
+    await openEditor();
+    await form.locator('input[name="name"]').fill(names[1]);
+    await submit('rename', form.getByRole('button', { name: 'Save', exact: true }), names[1], false, id);
+    await openEditor();
+    await submit('archive', main.getByRole('button', { name: 'Archive', exact: true }), names[1], true, id);
+    await openEditor();
+    await submit('restore', main.getByRole('button', { name: 'Restore', exact: true }), names[1], false, id);
+    const events = await db`select event_type from domain_event
+      where tenant_id = ${actor.tenantId} and aggregate_type = 'location' and aggregate_id = ${id}`;
+    assert.deepEqual(events.map(event => event.event_type).sort(),
+      ['location.archived', 'location.created', 'location.restored', 'location.updated']);
+    report.workLocationAuditVerified = true;
+    save();
+  } finally {
+    await context.close();
+  }
+}

@@ -1,4 +1,4 @@
-import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
+import {measureFixtureRecordCensus,measureWorkLocationActions,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -1553,7 +1553,11 @@ try{
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
-   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save});}
+   try{
+    const settings={db,fixture,origin,compiledPages,signedInContext,report,save};
+    await measureFixtureRecordCensus(settings);
+    await measureWorkLocationActions(settings);
+   }
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
