@@ -65,6 +65,7 @@ import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
 import { ShellNotificationCenter } from './shell-notification-center';
+import {notificationBellScope} from './notification-bell-view';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
@@ -211,10 +212,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // `entitlementsError` on the session precisely so the app stays navigable. See the helper: it
   // swallows ONLY EntitlementsResolutionFailedError (the infrastructure state), and still throws for a
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
-  const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
-  const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
-  const notificationScope = notifEnabled ? {} :
-    letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
+  const notificationScope = notificationBellScope(session, scopeIds);
+  const notifEnabled = notificationScope !== null && notificationScope.letterCompanyIds === undefined;
   const catchUpNotifications = notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session));
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
   // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a

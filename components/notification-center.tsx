@@ -1,7 +1,7 @@
 'use client';
 
 import { ActionButton } from '@/components/ui/action-button';
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { startTransition, useActionState, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
@@ -9,6 +9,7 @@ import { useIsMonolith } from '@/components/ui-theme-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
+import type { NotificationBellView } from '@/app/notification-bell-view';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
@@ -59,15 +60,16 @@ function relTime(d: Date): string {
 }
 
 export function NotificationCenter({
-  unread,
-  items,
+  unread:initialUnread,
+  items:initialItems,
   tasks:baseTasks = [],
-  taskNotifications = [],
+  taskNotifications:initialTaskNotifications = [],
+  notificationTaskCount = 0,
   taskQueueLinks = [],
   taskCount:baseTaskCount = 0,
   claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
-  readItems = [],
+  readItems:initialReadItems = [],
   canApprove = false,
 }: {
   /** Unread informational (non-action) notifications — the Notification tab badge. */
@@ -82,6 +84,7 @@ export function NotificationCenter({
   taskQueueLinks?:NotificationTaskQueueLink[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
+  notificationTaskCount?: number;
   /** Exact claim total when the shell supplies a bounded preview. */
   claimTaskCount?:number;
   /** Present when the authenticated shell loads the Claims rows on demand. */
@@ -90,10 +93,28 @@ export function NotificationCenter({
   readItems?: NotificationRow[];
   canApprove?: boolean;
 }) {
+  type BellCommand = { source: NotificationRow[]; id?: string };
+  type BellResult = { source: NotificationRow[]; view: NotificationBellView | null; failed: boolean };
+  const [result,mark,marking]=useActionState(async (previous:BellResult|null,command:BellCommand):Promise<BellResult>=>{
+    const last=previous?.source===command.source?previous.view:null;
+    try {
+      const view=command.id===undefined?await markAllNotificationsReadAction():await markNotificationReadAction(command.id);
+      return {source:command.source,view:view??last,failed:false};
+    } catch {
+      return {source:command.source,view:last,failed:true};
+    }
+  },null);
+  const committed=result?.source===initialItems?result:undefined;
+  const view=committed?.view;
+  const unread=view?.unread??initialUnread;
+  const items=view?.items??initialItems;
+  const taskNotifications=view?.taskNotifications??initialTaskNotifications;
+  const readItems=view?.readItems??initialReadItems;
+  const bellTaskCount=baseTaskCount-notificationTaskCount+(view?.notificationTaskCount??notificationTaskCount);
   const approvals=useShellApprovalFacts()?.result;
   const tasksKnown=!approvals||approvals.state==='ready';
   const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
-  const taskCount=approvals?.state==='ready'?baseTaskCount+approvals.total:baseTaskCount;
+  const taskCount=approvals?.state==='ready'?bellTaskCount+approvals.total:bellTaskCount;
   const claimTaskCount=approvals?.state==='ready'?approvals.claimTotal:baseClaimTaskCount;
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
@@ -175,11 +196,9 @@ export function NotificationCenter({
     return () => controller.abort();
   }, [loadClaimPreview, claimPreviewRevision]);
 
-  const [marking, start] = useTransition();
+  const markRead = (id: string) => startTransition(() => mark({source:initialItems,id}));
+  const markAll = () => startTransition(() => mark({source:initialItems}));
 
-  // Both actions return the revalidated shell with the updated notification counts.
-  const markRead = (id: string) => start(() => markNotificationReadAction(id));
-  const markAll = () => start(() => markAllNotificationsReadAction());
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
@@ -333,6 +352,7 @@ export function NotificationCenter({
 
   return (
     <div className="relative">
+      {committed?.failed&&<span role="alert" className="sr-only">{tLoad('loadError')}</span>}
       <button
         type="button"
         onClick={() => {
