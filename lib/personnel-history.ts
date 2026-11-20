@@ -36,7 +36,7 @@ export function personnelInformationCorrections(events:readonly Event[],rows:rea
   const p=object(correction.payload),after=object(p.after),fields=Array.isArray(p.fields)?p.fields:[];
   // Board 4604dccc — a dated correction (Effective Date before the day it was made) decorates only the rows inside
   // its own period: from its Effective Date until the field's next recorded change.
-  const dated=p.dated===true&&typeof p.effectiveOn==='string'?{from:p.effectiveOn,until:object(p.until)}:null;
+  const dated=(p.dated===true||typeof p.originalEffectiveOn==='string')&&typeof p.effectiveOn==='string'?{from:p.effectiveOn,until:object(p.until)}:null;
   for(const field of INFORMATION_FIELDS){
    if(!fields.includes(field)||!(typeof after[field]==='string'||after[field]===null))continue;
    const writers=ordered.filter(event=>sets(event,field));

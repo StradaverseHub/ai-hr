@@ -1,3 +1,4 @@
+import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {correctionAuditLabelsTx} from './information-correction-audit';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx} from './company-organisation';
 /** Approved 8550b282: one transactional owner for manual and Excel information-only correction. */
@@ -586,4 +587,32 @@ async function boundedSuperiorTx(tx:Tx,ctx:SessionContext,employmentId:string,ma
  return{supersededId,replacementId:row.id,validFrom:from,validTo:end,...(removed.length?{replacedLineIds:removed.map(l=>l.id)}:{})};
 }
 export function correctInformation(ctx:SessionContext,input:Parameters<typeof correctInformationTx>[2]){return withTenant(ctx,tx=>correctInformationTx(tx,ctx,input));}
-export function informationCorrectionHistory(ctx:SessionContext,employmentId:string){return withAccessDisplayRead(()=>withTenant(ctx,async tx=>{await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');const [allowed]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from employment where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid and app.principal_snapshot_current() and app.is_admin_for(company_id)) as ok`);if(!allowed?.ok)fail('You do not have permission to review this correction history.');const history=await tx.select({id:domainEvent.id,at:domainEvent.occurredAt,actorId:domainEvent.actorId,actorName:correctionActor.fullName,payload:domainEvent.payload}).from(domainEvent).leftJoin(correctionAccount,and(eq(correctionAccount.id,domainEvent.actorId),eq(correctionAccount.tenantId,ctx.tenantId))).leftJoin(correctionActor,and(eq(correctionActor.id,correctionAccount.personId),eq(correctionActor.tenantId,ctx.tenantId))).where(and(eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,INFORMATION_CORRECTED_EVENT))).orderBy(desc(domainEvent.sequence)).limit(100);return correctionAuditLabelsTx(tx,ctx.tenantId,history);}));}
+export function informationCorrectionHistory(ctx: SessionContext, employmentId: string) {
+  return withAccessDisplayRead(() => withTenant(ctx, async tx => {
+    await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`
+      select exists(
+        select 1 from employment
+        where id=${employmentId}::uuid and tenant_id=${ctx.tenantId}::uuid
+          and app.principal_snapshot_current() and app.is_admin_for(company_id)
+      ) as ok
+    `);
+    if (!allowed?.ok) fail('You do not have permission to review this correction history.');
+    const history = await tx.select({
+      id: domainEvent.id,
+      at: domainEvent.occurredAt,
+      actorId: domainEvent.actorId,
+      actorName: correctionActor.fullName,
+      payload: domainEvent.payload,
+      alignedDate: alignedInformationDateSql(),
+    }).from(domainEvent)
+      .leftJoin(correctionAccount, and(eq(correctionAccount.id, domainEvent.actorId), eq(correctionAccount.tenantId, ctx.tenantId)))
+      .leftJoin(correctionActor, and(eq(correctionActor.id, correctionAccount.personId), eq(correctionActor.tenantId, ctx.tenantId)))
+      .where(and(eq(domainEvent.tenantId, ctx.tenantId), eq(domainEvent.subjectEmploymentId, employmentId),
+        eq(domainEvent.eventType, INFORMATION_CORRECTED_EVENT)))
+      .orderBy(desc(domainEvent.sequence)).limit(100);
+    return correctionAuditLabelsTx(tx, ctx.tenantId, history.map(({ alignedDate, ...row }) => ({
+      ...row, payload: withAlignedInformationDate(row.payload, alignedDate),
+    })));
+  }));
+}

@@ -12,8 +12,11 @@ export function movementInformationEvidence(events:readonly Event[],asOf:string,
  const earliestCorrectedStart=correctedStarts.sort()[0];
  const candidates:{date:string;sequence:number;id:string;values:Record<string,unknown>}[]=[];
  for(const event of events){
-  if(inclusive?event.sequence>sequence:event.sequence>=sequence)continue;
   const payload=obj(event.payload),movement=obj(payload.movement);
+  // A date amendment can make a later-saved correction applicable to the recorded After
+  // side. The date filter below still applies, and original sequence breaks same-day ties.
+  const alignedAfter=inclusive&&event.eventType==='employment.information.corrected'&&typeof payload.originalEffectiveOn==='string';
+  if(!alignedAfter&&(inclusive?event.sequence>sequence:event.sequence>=sequence))continue;
   if(event.eventType==='employment.hired'){
    const date=typeof payload.hiredOn==='string'?payload.hiredOn:todayInKualaLumpur(event.occurredAt);
    candidates.push({date:earliestCorrectedStart&&earliestCorrectedStart<date?earliestCorrectedStart:date,sequence:event.sequence,id:event.id,values:{...obj(payload.employmentInformation),hiredOn:payload.hiredOn}});
