@@ -6,18 +6,30 @@ import { guideTourId, tourSteps } from '../lib/onboarding-tour';
 import en from '../messages/en.json';
 import '../app/globals.css';
 
-const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', roles: ['employee'], push: vi.fn(), complete: vi.fn(async () => {}) }));
+const state = vi.hoisted(() => ({ pathname: '/knowledge-base/example', roles: ['employee'], read: vi.fn(), push: vi.fn(), complete: vi.fn(async () => {}) }));
 vi.mock('next/navigation', () => ({ usePathname: () => state.pathname, useRouter: () => ({ push: state.push }) }));
-vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete, readTourStepsAction: async (id: string) => tourSteps(id, state.roles) }));
+vi.mock('../app/onboarding-actions', () => ({ completeOnboardingAction: state.complete, readTourStepsAction: async (id: string) => { state.read(id); return tourSteps(id, state.roles); } }));
 
 // Resolve the components after the server-action stub, as in the other browser harnesses. A static
 // scan must not prebundle the action's database and installation-identity dependencies for Chromium.
 const { GuideTourButton } = await import('../components/guide-tour-button');
 const { OnboardingTour } = await import('../components/onboarding-tour');
+const { TourLauncher } = await import('../components/tour-launcher');
 
 afterEach(async () => { cleanup(); vi.clearAllMocks(); state.roles = ['employee']; state.pathname = '/knowledge-base/example'; document.documentElement.removeAttribute('data-ui-theme'); await page.viewport(1280, 720); });
 
 describe('guide walkthrough launch in Chromium', () => {
+  it('opens the preloaded welcome tour on the first click without requesting guide steps', async () => {
+    render(<NextIntlClientProvider locale="en" messages={en}>
+      <TourLauncher />
+      <OnboardingTour welcomeSteps={tourSteps('welcome', ['employee'])} />
+    </NextIntlClientProvider>);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: en.onboarding.launch }));
+    expect(await screen.findByRole('heading', { name: en.onboarding.welcomeTitle })).toBeTruthy();
+    expect(state.read).not.toHaveBeenCalled();
+  });
+
   it('launches a new guide, navigates to its module and spotlights a real-sized control', async () => {
     const id = guideTourId('employee-claims')!;
     const ui = () => <NextIntlClientProvider locale="en" messages={en}>

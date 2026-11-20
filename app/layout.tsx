@@ -157,6 +157,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     throw e;
   }
   const usesOperatorShell = isOperator(session) && !isDemoDeployment();
+  const welcomeSteps = tourSteps(WELCOME_TOUR_ID, session.roles);
   // These exact admin entry pages have loading boundaries. Refuse before rendering the shell so
   // a direct request can return HTTP 307 before a loading response starts streaming. Keep the
   // page and service checks for client navigation and the narrower rules on child routes.
@@ -175,7 +176,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} sessionChannel={idleSessionChannel} />
-          <OnboardingTour/>
+          <OnboardingTour welcomeSteps={welcomeSteps}/>
           <Toaster/>
         </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
       </body>
@@ -533,7 +534,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </AiAskAvailability>
           </NavIndexProvider>
-          <OnboardingTour initialSteps={onboarded || (pathname==='/'&&!isAdmin(session)) ? undefined : tourSteps(WELCOME_TOUR_ID, session.roles)} />
+          <OnboardingTour welcomeSteps={welcomeSteps}
+            initialSteps={onboarded || (pathname==='/'&&!isAdmin(session)) ? undefined : welcomeSteps} />
           </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most

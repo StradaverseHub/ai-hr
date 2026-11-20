@@ -14,6 +14,7 @@ const BUBBLE_W = 320;
 const GAP = 14;
 
 type Box = { top: number; left: number; width: number; height: number };
+const NO_STEPS: readonly TourStep[] = [];
 
 /**
  * Product tour (ADR-0018): a self-contained spotlight walkthrough. A transparent blocker captures
@@ -23,9 +24,11 @@ type Box = { top: number; left: number; width: number; height: number };
  * appear. Lives in the layout so it survives navigation. Finishing/skipping persists completion.
  */
 export function OnboardingTour({
-  initialSteps = [],
+  initialSteps = NO_STEPS,
+  welcomeSteps = NO_STEPS,
 }: {
   initialSteps?: readonly TourStep[];
+  welcomeSteps?: readonly TourStep[];
 }) {
   const t = useTranslations('onboarding');
   const router = useRouter();
@@ -67,6 +70,11 @@ export function OnboardingTour({
     let current = true;
     const launch = (id: string) => {
       const generation = ++launchGeneration.current;
+      if (id === WELCOME_TOUR_ID) {
+        setSteps(welcomeSteps);
+        setIndex(0);
+        return;
+      }
       void readTourStepsAction(id).then(selected => {
         if (!current || generation !== launchGeneration.current) return;
         if (!selected.length) return;
@@ -84,7 +92,7 @@ export function OnboardingTour({
       current = false;
       window.removeEventListener(START_TOUR_EVENT, onStart as EventListener);
     };
-  }, []);
+  }, [welcomeSteps]);
 
   // Navigate to the step's route if we're not already there.
   useEffect(() => {
