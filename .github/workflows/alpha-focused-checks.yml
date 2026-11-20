@@ -73,7 +73,7 @@ on:
         default: ''
         type: string
       reuse_combined_action_build:
-        description: Run the scripted browser actions on the verified combined performance build
+        description: Reuse a pinned production build for scripted browser actions or locale startup
         type: boolean
         default: false
       browser_static_shard:
@@ -152,16 +152,20 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|content-readiness)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|content-readiness|locale-startup)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]] ||
             [[ "$BROWSER_SURFACE_PROBE" != actions && -n "$BROWSER_STATIC_SHARD" ]];
           }; then
             exit 2
           fi
-          if [[ "$REUSE_ACTION_BUILD" == true ]] && {
-            [[ "$BROWSER_SURFACE_PROBE" != actions || "$RUN_BUILD" == true || "$EXPECTED_SHA" != f27f355c89530c994a084bfddaa38823425fcd4d ]];
-          }; then exit 2; fi
+          if [[ "$REUSE_ACTION_BUILD" == true ]]; then
+            [[ "$RUN_BUILD" != true ]] || exit 2
+            case "$BROWSER_SURFACE_PROBE:$EXPECTED_SHA" in
+              actions:f27f355c89530c994a084bfddaa38823425fcd4d|locale-startup:f27f355c89530c994a084bfddaa38823425fcd4d|locale-startup:6e60f99e07ad3b83955caebce69b5672c093d7a3) ;;
+              *) exit 2 ;;
+            esac
+          fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions && -n "$BROWSER_STATIC_SHARD" ]]; then
             printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
           elif [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
@@ -262,19 +266,34 @@ jobs:
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the verified combined production build
+      - name: Retrieve the pinned production build
         if: ${{ inputs.reuse_combined_action_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = f27f355c89530c994a084bfddaa38823425fcd4d
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136474975628 --jq '
-            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44789974570 and .head_sha == "5653dd03515c2c5f5a1208881f2b919bba5f917b"' | grep -qx true
-          archive="$(mktemp "$RUNNER_TEMP/combined-action-build.XXXXXX")"
+          case "$AIHR_CI_HEAD" in
+            f27f355c89530c994a084bfddaa38823425fcd4d)
+              job_id=136474975628
+              run_id=44789974570
+              artifact_id=14656093852
+              archive_sha256=8f92d81f1cf532a862a34e62fa51c4c26dcf66cb251b7db1d0c442794a05360d
+              ;;
+            6e60f99e07ad3b83955caebce69b5672c093d7a3)
+              job_id=136512219651
+              run_id=44797819460
+              artifact_id=14661647116
+              archive_sha256=1259158bd2ce86f863bc6f4396febfa61331e0da8743b0d4ec4dd06eeeefbad9
+              ;;
+            *) exit 2 ;;
+          esac
+          gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job_id" --jq "
+            .conclusion == \"success\" and .run_attempt == 1 and .name == \"linux-build\" and
+            .run_id == $run_id and .head_sha == \"5653dd03515c2c5f5a1208881f2b919bba5f917b\"" | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/reused-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14656093852/zip > "$archive"
-          printf '%s  %s\n' '8f92d81f1cf532a862a34e62fa51c4c26dcf66cb251b7db1d0c442794a05360d' "$archive" | sha256sum -c -
+          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact_id/zip" > "$archive"
+          printf '%s  %s\n' "$archive_sha256" "$archive" | sha256sum -c -
+          printf 'AIHR_BROWSER_REUSE_RUN_ID=%s\nAIHR_BROWSER_REUSE_ARTIFACT_ID=%s\n' "$run_id" "$artifact_id" >> "$GITHUB_ENV"
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"

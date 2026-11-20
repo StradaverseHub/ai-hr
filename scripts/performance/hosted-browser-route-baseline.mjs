@@ -11,6 +11,7 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage,serverActionPageMatcher} from './system-route-manifest.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
+import {locales,LOCALE_COOKIE} from '../../i18n/config.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -32,7 +33,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness','locale-startup'].includes(surfaceProbe),'Unknown browser surface');
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -68,10 +69,16 @@ const report={kind:actionLane?'FICTIONAL_SCRIPTED_ACTIONS':surfaceProbe?'FICTION
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(actionLane&&{actionLane}),
  ...(env.AIHR_BROWSER_REUSED_ACTION_BUILD==='true'&&{
-  verifiedBuildArtifact:{runId:44789974570,artifactId:14656093852,sourceSha:sha},
+  verifiedBuildArtifact:{
+   runId:Number(env.AIHR_BROWSER_REUSE_RUN_ID),artifactId:Number(env.AIHR_BROWSER_REUSE_ARTIFACT_ID),sourceSha:sha,
+  },
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
+if(report.verifiedBuildArtifact){
+ assert(Number.isSafeInteger(report.verifiedBuildArtifact.runId)&&report.verifiedBuildArtifact.runId>0);
+ assert(Number.isSafeInteger(report.verifiedBuildArtifact.artifactId)&&report.verifiedBuildArtifact.artifactId>0);
+}
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
@@ -551,6 +558,61 @@ async function documentTiming(page){
    ...globalThis.readFixtureStartupTiming?.(),
   };
  }).catch(()=>null);
+}
+
+async function measureLocalizedStartup(fixture){
+ const actor=fixture.users[4];
+ assert.equal(actor.role,'employee');
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ report.localizedStartup=[];
+ for(const trial of [1,2]){
+  const order=trial===1?locales:[...locales].reverse();
+  for(const locale of order){
+   const context=await signedInContext(actor);
+   try{
+    await context.addCookies([{name:LOCALE_COOKIE,value:locale,url:origin}]);
+    const page=await context.newPage();
+    await page.addInitScript(observeStartup);
+    const copy=JSON.parse(readFileSync('messages/'+locale+'.json','utf8')).topbar;
+    assert(copy?.accountMenu&&copy.viewProfile,'Missing localized account action labels');
+    let errors=0;
+    page.on('pageerror',()=>{errors++;});
+    page.on('console',message=>{if(message.type()==='error'&&message.text().includes('MISSING_MESSAGE'))errors++;});
+    for(const pass of ['first','repeat']){
+     const row={trial,locale,pass,status:'incomplete',stage:'document'};
+     report.localizedStartup.push(row);
+     const started=performance.now(),deadline=started+15000;
+     const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+     try{
+      const response=await page.goto(origin+'/me/cases',{waitUntil:'domcontentloaded',timeout:remaining()});
+      assert.equal(response?.status(),200);
+      assert.equal(page.url(),origin+'/me/cases');
+      assert.equal(await page.locator('html').getAttribute('lang'),locale);
+      row.stage='authenticated-content';
+      const account=page.locator('button[data-tour="account"]').filter({hasText:actor.name});
+      await page.locator('main h1:visible').first().waitFor({timeout:remaining()});
+      await account.waitFor({timeout:remaining()});
+      await assertContentAvailable(page);
+      row.contentMs=Math.round(performance.now()-started);
+      row.stage='localized-account-menu';
+      const clicked=performance.now();
+      await account.click({timeout:remaining()});
+      const menu=page.getByRole('menu',{name:copy.accountMenu,exact:true});
+      await menu.getByRole('menuitem',{name:copy.viewProfile,exact:true}).waitFor({timeout:remaining()});
+      row.accountMenuMs=Math.round(performance.now()-clicked);
+      row.usableMs=Math.round(performance.now()-started);
+      row.documentTiming=await documentTiming(page);
+      assert.equal(errors,0,'Browser or translation error in signed-in shell');
+      assert(row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false,
+       'Missing or truncated localized startup asset timing');
+      row.status='observed';
+     }finally{save();}
+    }
+   }finally{await context.close();}
+  }
+ }
+ assert.equal(report.localizedStartup.length,2*locales.length*2);
 }
 
 async function visit(page,actor,route,pass,fixture) {
@@ -2240,6 +2302,7 @@ try{
    assert(report.journeys.every(row=>row.status==='observed'),
     'Some scripted actions did not reach their verified result');
   }
+  else if(surfaceProbe==='locale-startup')await measureLocalizedStartup(fixture);
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
