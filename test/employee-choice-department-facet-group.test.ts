@@ -62,6 +62,7 @@ it('compares first-witness and represented department reads across a 70-company 
     const batch=employees.slice(offset,offset+250);
     await owner.db.insert(person).values(batch.map(row=>({
       id:row.personId,tenantId:base.tenantId,fullName:'Fictional employee '+row.index,
+      primaryEmail:row.personId+'@example.invalid',
     })));
     await owner.db.insert(employment).values(batch.map(row=>({
       id:row.id,tenantId:base.tenantId,personId:row.personId,companyId:row.company.id,hiredOn:'2020-01-01',
