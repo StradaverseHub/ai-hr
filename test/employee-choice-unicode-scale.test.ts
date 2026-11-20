@@ -16,7 +16,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {applicationDatabaseBudget} from '../db/capacity';
 import {closeAll,migrateTestDb,owner,type Base} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
-import {departmentFacetBinds,firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
+import {departmentFacetBinds,firstWitnessDepartmentFacet,isDepartmentFacet,isRepresentedDepartmentFacet,isSparseDepartmentFacet,representedDepartmentFacetBinds,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 // This additional course is selected only by the existing focused controller. Other
 // Vitest runs keep the original setup and measurement, with their original URLs.
 const facetAdmission=await vi.hoisted(async()=>{
@@ -83,9 +83,19 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
   active();await tx.execute(sql`set local lock_timeout='300ms'`);active();await tx.execute(sql`set local statement_timeout='20s'`);
   return read(new Proxy(tx,{get(target,key,receiver){
    if(key==='execute')return async(query:SQL)=>{
-    active();const entry:Record<string,unknown>={sql:dialect.sqlToQuery(query).sql},started=performance.now();statements.push(entry);save();
-    if(facetAdmission&&isDepartmentFacet(String(entry.sql)))captured.push(query);
-    try{return await target.execute(query);}catch(error){entry.error=String(error);throw error;}finally{entry.ms=performance.now()-started;save();}
+    active();
+    let statement=query;
+    const compiled=dialect.sqlToQuery(query);
+    if(facetAdmission&&isRepresentedDepartmentFacet(compiled.sql)){
+     // The optional historical experiment compares pinned statements on a disposable fixture.
+     // Ordinary 50k checks above still exercise the live reader.
+     const scope={companyIds:[b.companyId]};
+     expect(compiled.params).toEqual(representedDepartmentFacetBinds(ctx.tenantId,scope));
+     statement=firstWitnessDepartmentFacet(ctx.tenantId,scope);
+     captured.push(statement);
+    }
+    const entry:Record<string,unknown>={sql:dialect.sqlToQuery(statement).sql},started=performance.now();statements.push(entry);save();
+    try{return await target.execute(statement);}catch(error){entry.error=String(error);throw error;}finally{entry.ms=performance.now()-started;save();}
    };
    const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
   }}));
