@@ -199,13 +199,61 @@ export async function assertRestrictedOwnerPayrollRuntime(observer: postgres.Sql
       assert.equal((await latestPeriod(tx, [first.id]))[0].period, period(0));
       assert.equal((await latestPeriod(tx, [revoked.id]))[0].period, null);
     });
-    await app.withTenant({
+    const self: SessionContext = {
       tenantId: fixture.tenant, userId: fixture.employee, roles: ['employee'],
       grants: [{ role: 'employee', companyId: null }],
-    }, async tx => {
-      const visible = await tx.execute<{ id: string }>(sql`
+    };
+    const readOwnRows = async (tx: Tx) => {
+      const slips = await tx.execute<{ id: string }>(sql`
         select id from payslip where id in (${first.slip}::uuid,${second.slip}::uuid,${foreign.slip}::uuid)`);
-      assert.deepEqual(visible.map(row => row.id), [first.slip]);
+      const batches = await tx.execute<{ id: string }>(sql`
+        select id from payroll_batch where id in (${first.batch}::uuid,${second.batch}::uuid,${foreign.batch}::uuid)`);
+      return { slips: slips.map(row => row.id), batches: batches.map(row => row.id) };
+    };
+    const ownRows = { slips: [first.slip], batches: [first.batch] };
+    const noRows = { slips: [], batches: [] };
+    assert.deepEqual(await app.withTenant(self, readOwnRows), ownRows);
+
+    await observer`update public.employment set terminated_on=current_date-1 where id=${first.employment}`;
+    const [login] = await observer`select app.login_blocked(${fixture.employee}::uuid) as blocked`;
+    assert.equal(login.blocked, true, 'former-employee history does not enable login');
+    assert.deepEqual(await app.withTenant(self, readOwnRows), ownRows);
+    for (const role of ['hr_admin', 'super_admin', 'payroll_partner']) {
+      const grants = [...(self.grants ?? []), { role, companyId: second.id }];
+      assert.deepEqual(await app.withTenant({
+        ...self, roles: ['employee', role], grants,
+      }, readOwnRows), noRows, `a stale ${role} claim denies the self-history exception`);
+      assert.deepEqual(await app.withTenant({
+        ...self, grants,
+      }, readOwnRows), noRows, `a stale ${role} grant denies self-history even when roles says employee only`);
+    }
+    assert.deepEqual(await app.withTenant({
+      ...self, tenantId: foreign.tenant,
+    }, readOwnRows), noRows, 'a tenant mismatch must not qualify for the self-history exception');
+
+    await observer`update public.employment set blacklisted_at=now() where id=${first.employment}`;
+    assert.deepEqual(await app.withTenant(self, readOwnRows), noRows, 'blacklisted employment is not leaver evidence');
+    await observer`update public.employment set blacklisted_at=null where id=${first.employment}`;
+    await observer`update public.app_user set archived_at=now() where id=${fixture.employee}`;
+    assert.deepEqual(await app.withTenant(self, readOwnRows), noRows, 'an archived identity cannot read employee history');
+    await observer`update public.app_user set archived_at=null where id=${fixture.employee}`;
+    assert.deepEqual(await app.withTenant(self, readOwnRows), ownRows, 'the restored identity still has its employee grant');
+    await observer.begin(async control => {
+      await control`set local session_replication_role = replica`;
+      const removed = await control`delete from role_assignment where app_user_id=${fixture.employee}
+        and role='employee' returning role`;
+      assert.equal(removed.length, 1);
+    });
+    assert.deepEqual(await app.withTenant(self, readOwnRows), noRows, 'revoking the employee grant denies self-history');
+
+    const [leaverHelper] = await observer`select p.prosecdef as definer,pg_get_userbyid(p.proowner) as owner,
+      'row_security=on'=any(p.proconfig) as rls,
+      array(select a.grantee::regrole::text from aclexplode(p.proacl) a
+        where a.privilege_type='EXECUTE' and not a.is_grantable order by a.grantee::regrole::text) as executors,
+      (select count(*)::int from aclexplode(p.proacl)) as acl_count
+      from pg_proc p where p.oid='app.payroll_leaver_self_history()'::regprocedure`;
+    assert.deepEqual({ ...leaverHelper }, {
+      definer: true, owner: 'ai_hr_owner', rls: true, executors: ['ai_hr_app', 'ai_hr_owner'], acl_count: 2,
     });
 
     const active = await observer<{ patched: boolean }[]>`

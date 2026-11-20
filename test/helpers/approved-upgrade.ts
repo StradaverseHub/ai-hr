@@ -471,7 +471,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '7041_payroll_read_authorization':'5211279c62499fb323880968fabe448e5e65c7781788431aaf6ec6db59b62518',
+ '7041_payroll_read_authorization':'de2c9597fbf2dfa341270b00d05b0b7336a6ea56700fd5800f2b281b361f983a',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
