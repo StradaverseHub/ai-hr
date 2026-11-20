@@ -6,8 +6,8 @@ import { MobileApp } from '@/components/mobile-preview/mobile-app';
 import { isGroupAdmin } from '@/lib/authz';
 import { mobileBuilderState, publishedMobileDesign } from '@/core/mobile-design';
 import { MobileBuilder } from '@/components/mobile-preview/mobile-builder';
-import { loadMobilePreview } from './data';
-import type { MobilePreviewData } from '@/components/mobile-preview/types';
+import { streamMobilePreview } from './data';
+import type { MobilePreviewView } from '@/components/mobile-preview/types';
 
 /** Tenant builder for group administrators; published experience for other authenticated viewers. */
 export default async function MobilePreviewPage({ searchParams }: { searchParams: Promise<{ live?: string }> }) {
@@ -17,7 +17,7 @@ export default async function MobilePreviewPage({ searchParams }: { searchParams
   const builder = isGroupAdmin(s) && query.live !== '1';
   if (builder) {
     const initial = await mobileBuilderState(s);
-    const data = loadMobilePreview(s, scopeIds, locale);
+    const data = streamMobilePreview(s, scopeIds, locale);
     return <MobileBuilder key={`${s.tenantId}:${initial.draftRevision}`} initial={initial} data={data} />;
   }
   return (
@@ -29,7 +29,7 @@ export default async function MobilePreviewPage({ searchParams }: { searchParams
       </div>
       <div className="flex justify-center py-2">
         <Suspense fallback={<p role="status">{t('live.refreshing')}</p>}>
-          <LiveMobilePreview userId={s.userId} data={loadMobilePreview(s, scopeIds, locale)} design={publishedMobileDesign(s)} />
+          <LiveMobilePreview userId={s.userId} data={streamMobilePreview(s, scopeIds, locale)} design={publishedMobileDesign(s)} />
         </Suspense>
       </div>
     </div>
@@ -38,7 +38,7 @@ export default async function MobilePreviewPage({ searchParams }: { searchParams
 
 async function LiveMobilePreview({userId,data,design}:{
   userId:string|undefined;
-  data:Promise<MobilePreviewData>;
+  data:Promise<MobilePreviewView>;
   design:ReturnType<typeof publishedMobileDesign>;
 }){
   const [preview,published]=await Promise.all([data,design]);

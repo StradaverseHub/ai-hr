@@ -8,11 +8,11 @@ import { UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, type MobileBuilderState, composeMobileDesign, parseMobileDesign, type MobileDesignV2 } from '@/lib/mobile-design';
 import { CompositionNavigator, CompositionInspector, StyleControls } from './composer-controls';
 import { MobileApp, type Tab } from './mobile-app';
-import type { MobilePreviewData } from './types';
+import type { MobilePreviewView } from './types';
 import styles from './mobile-builder.module.css';
 
 /** Editing is always non-mutating for HR records. Only the deliberately selected live mode enables clocking. */
-export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; data: MobilePreviewData | Promise<MobilePreviewData> }) {
+export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; data: MobilePreviewView | Promise<MobilePreviewView> }) {
   const t = useTranslations('mobilePreview.builder');
   const previewText = useTranslations('mobilePreview.live');
   const [state, setState] = useState(initial);
@@ -123,7 +123,7 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
 }
 
 function BuilderPhone({data,...props}:Omit<ComponentProps<typeof MobileApp>,'data'>&{
-  data:MobilePreviewData|Promise<MobilePreviewData>;
+  data:MobilePreviewView|Promise<MobilePreviewView>;
 }){
   const preview='then' in data ? use(data) : data;
   return <MobileApp {...props} data={preview}/>;
