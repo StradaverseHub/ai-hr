@@ -763,16 +763,22 @@ async function measureAttendanceWorkflowEditor(fixture){
      await assertContentAvailable(page);
      await page.waitForLoadState('domcontentloaded',{timeout:5000});
      stage='approver-source';
+     const sourceStarted=performance.now();
      await editor.locator('select:has(option[value="specific_employee"])').first().selectOption('specific_employee',{timeout:5000});
-     const trigger=editor.getByRole('button',{name:'Search Employee ID or name',exact:true}).first();
+     stage='approver-picker-trigger';
+     // The associated form label supplies the name; the button text describes the search.
+     const trigger=editor.getByRole('button',{name:'Select Employee',exact:true,expanded:false}).first();
      await trigger.waitFor({state:'visible',timeout:5000});
+     row.approverSourceMs=Math.round(performance.now()-sourceStarted);
      stage='approver-search';
      const actionStarted=performance.now();
      const reply=page.waitForResponse(response=>response.request().method()==='POST'
+      && new URL(response.url()).pathname===path
       && Boolean(response.request().headers()['next-action']),{timeout:15000});
      const [result]=await Promise.all([reply,trigger.click({timeout:5000})]);
      assert.equal(result.status(),200);
      row.approverResponseMs=Math.round(performance.now()-actionStarted);
+     await editor.getByRole('searchbox',{name:'Search Employee ID or name',exact:true}).waitFor({state:'visible',timeout:Math.max(1,15000-(performance.now()-actionStarted))});
      const eligible=editor.locator('button[role="checkbox"]:enabled').first();
      await eligible.waitFor({state:'visible',timeout:Math.max(1,15000-(performance.now()-actionStarted))});
      row.approverReadyMs=Math.round(performance.now()-actionStarted);
