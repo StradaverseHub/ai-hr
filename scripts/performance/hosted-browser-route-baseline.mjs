@@ -30,7 +30,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+const genericPlans=env.AIHR_BROWSER_GENERIC_PLANS==='true';
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
+assert(!genericPlans||(mixedLoad&&establishedAttendance&&!fixtureOnly&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -350,6 +352,7 @@ function summarizeMixedStatements(statements){
  ];
  const metrics={
   calls:['calls'],
+  ...(statements.every(statement=>statement?.plans!=null)?{plans:['plans']}:{}),
   executionMs:['total_exec_time'],
   planningMs:['total_plan_time'],
   jitMs:['jit_generation_time','jit_inlining_time','jit_optimization_time','jit_emission_time'],
@@ -401,7 +404,7 @@ function readMixedRootStatements(name,dockerConfig){
  // Include only the application role's direct statements to avoid counting
  // their nested SQL a second time.
  const query=`select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
-   from (select calls,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
+   from (select calls,plans,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
      jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800) as normalized_query
      from pg_stat_statements
      where dbid=(select oid from pg_database where datname=current_database())
@@ -415,6 +418,31 @@ function readMixedRootStatements(name,dockerConfig){
   const categories=summarizeMixedStatements(JSON.parse(result));
   return categories?{scope:'up to 35 top-level statements executed under the application role',categories}:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
+}
+
+async function enableFictionalGenericPlans(){
+ assert.equal(sha,'8e5a6009b0dc90e1fde3323ab5145f4aaec478f0');
+ assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+ assert.equal(dbEnv.DATABASE_URL,'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
+ const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
+ assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
+ const dockerConfig=join(privateDir,'generic-plan-docker-config');
+ mkdirSync(dockerConfig,{mode:0o700});
+ const label=execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
+  '--format','{{index .Config.Labels "aihr-owner"}}',name,
+ ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim();
+ assert.equal(label,name,'Expected the job-owned fictional database');
+ const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+ const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
+ const application=postgres(dbEnv.DATABASE_URL,{max:1,connect_timeout:5});
+ try{
+  await owner`alter role ai_hr_app in database ai_hr_dev set plan_cache_mode = force_generic_plan`;
+  const [row]=await application`select current_setting('plan_cache_mode') as mode`;
+  assert.equal(row?.mode,'force_generic_plan');
+  report.mixedApplicationPlanMode='force_generic_plan';
+  save();
+ }finally{await Promise.all([owner.end({timeout:5}),application.end({timeout:5})]);}
 }
 
 async function measureMixedLoad(command){
@@ -1579,6 +1607,7 @@ try{
   }
  }
  if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
+ if(genericPlans)await enableFictionalGenericPlans();
  report.fixtureVerified=true;
  save();
  if(!fixtureOnly){

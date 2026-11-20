@@ -68,6 +68,10 @@ on:
         description: Reuse the verified first-use build for the pinned established Attendance comparison
         default: false
         type: boolean
+      browser_generic_plans:
+        description: Test generic application-role plans in the disposable mixed workload database
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -136,6 +140,7 @@ jobs:
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
             [[ "$EXPECTED_SHA" != 8e5a6009b0dc90e1fde3323ab5145f4aaec478f0 ]];
           }; then exit 2; fi
+          if [[ "$GENERIC_PLANS" == true && "$REUSE_BUILD" != true ]]; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
@@ -144,6 +149,7 @@ jobs:
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
+          GENERIC_PLANS: ${{ inputs.browser_generic_plans }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -270,6 +276,7 @@ jobs:
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
+          AIHR_BROWSER_GENERIC_PLANS: ${{ inputs.browser_generic_plans }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
