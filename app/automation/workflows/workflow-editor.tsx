@@ -62,6 +62,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const [converted]=useState(()=>conditionsWithIds(initial,refs.conditionValues));
  const [draft,setDraft]=useState(converted),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0||converted!==initial),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
+ const savedWorkflow=useRef(initial);
  const [autoSaving,setAutoSaving]=useState(false),latestDraft=useRef(draft),failedSnapshot=useRef<string|null>(null);latestDraft.current=draft;
  const readOnly=!editable||initial.status==='retired'||busy;
  const change=(edit:(workflow:AutomationWorkflow)=>void)=>{setDraft(current=>{const next=structuredClone(current);edit(next);return next;});setDirty(true);setMessage(null);};
@@ -78,11 +79,14 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const save=(status:AutomationWorkflow['status'],reason:string)=>{
   if(autoSaving)return;
   if(status==='live'){const gate=setAutomationWorkflowStatus(draft,'live',problems);if(!gate.ok){setMessage({kind:'error',text:gate.reason,problems});return;}}
-  const next={...draft,status};
+  const pausing=draft.status==='live'&&status==='paused';
+  // Pausing applies to the acknowledged definition even when the current edits cannot be saved.
+  const next={...(pausing?savedWorkflow.current:draft),status};
   start(async()=>{try{
    const result=await saveWorkflowAction({workflow:next,expectedRevision:revision,reason:note.trim()||reason});
    if(!result.ok){setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
-   setRevision(result.result.revision);setDraft(next);setDirty(false);setNote('');
+   savedWorkflow.current=next;
+   setRevision(result.result.revision);setDraft(pausing?{...draft,status}:next);setDirty(pausing&&dirty);setNote('');
    const liveWarnings=status==='live'&&next.module==='contract_staff'?result.result.warnings:[];
    const statusText=status==='live'?t('editor.isLive',{name:next.name}):status==='retired'?t('editor.retired',{name:next.name}):draft.status==='live'&&status==='paused'?t('editor.paused',{name:next.name}):t('editor.saved');
    setMessage({kind:'status',text:statusText+(liveWarnings.length?' '+t('editor.warnings')+': '+liveWarnings.join(' '):'')});
@@ -97,7 +101,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
   const timer=setTimeout(()=>{setAutoSaving(true);void(async()=>{
    try{const result=await saveWorkflowAction({workflow:draft,expectedRevision:revision,reason:'Automatically saved workflow changes'});
     if(!result.ok){failedSnapshot.current=snapshot;setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
-    setRevision(result.result.revision);failedSnapshot.current=null;
+    savedWorkflow.current=draft;setRevision(result.result.revision);failedSnapshot.current=null;
     if(JSON.stringify(latestDraft.current)===snapshot)setDirty(false);
     setMessage({kind:'status',text:t('editor.saved')});router.refresh();
    }catch{failedSnapshot.current=snapshot;setMessage({kind:'error',text:'Changes are not saved. Your entries are kept here. Retry saving.'});}
@@ -195,7 +199,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    actions={<>
     {message&&<div className={message.kind==='error'?'v9-notice v9-error':'v9-notice'} role={message.kind==='error'?'alert':'status'}>{message.text}{message.problems?.length?<ul>{message.problems.map((p,i)=><li key={i}>{p}</li>)}</ul>:null}</div>}
     {editable&&initial.status!=='retired'&&<>
-     <p className="v9-muted" role="status">{autoSaving?'Saving…':dirty?'Changes waiting to save':'Changes save automatically'}</p>
+     <p className="v9-muted" role="status">{busy||autoSaving?'Saving…':dirty?'Changes waiting to save':'Changes save automatically'}</p>
     <WorkflowField label={t('editor.note')}><input className="v9-input" value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
      <div className="automation-row">
       {draft.status==='live'
