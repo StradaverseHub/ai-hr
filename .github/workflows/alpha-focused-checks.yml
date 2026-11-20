@@ -124,6 +124,10 @@ jobs:
           if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
           fi
+          if [[ "$BROWSER_STATIC_SHARD" =~ ^(retry-timeouts|fixture-records|payroll-corrections)$ && "$BROWSER_GROUP_SHAPE" != true ]]; then
+            echo 'The selected browser shard requires the group-scale fixture.'
+            exit 2
+          fi
           if [[ "$BROWSER_STATIC_SHARD" == payroll-corrections && "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
             exit 2
           fi
@@ -142,6 +146,7 @@ jobs:
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs

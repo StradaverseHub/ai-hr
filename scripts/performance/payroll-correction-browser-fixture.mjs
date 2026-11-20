@@ -26,7 +26,8 @@ try{
  mark('module');
  await owner.client`insert into tenant_module (tenant_id,module_code,status)
   values (${group.tenantId}::uuid,'multi_cycle_payroll','active')
-  on conflict (tenant_id,module_code) do update set status=excluded.status`;
+  on conflict (tenant_id,module_code,coalesce(company_id,'00000000-0000-0000-0000-000000000000'::uuid))
+  do update set status=excluded.status,expires_at=null`;
  mark('principal');
  const [principal]=await owner.client`select tenant_id,grants from app.principal(${group.userId}::uuid)`;
  assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
@@ -40,4 +41,10 @@ try{
  mark('calculate');
  await generatePayslips(ctx,{batchId:company.batchId});
  mark('complete');
+}catch(error){
+ const code=error?.cause?.code??error?.code;
+ if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code)){
+  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'payroll-correction-seed-failure'),code,{mode:0o600});
+ }
+ throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

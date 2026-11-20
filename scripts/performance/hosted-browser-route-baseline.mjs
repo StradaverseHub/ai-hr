@@ -1548,9 +1548,14 @@ try{
     const stage=readFileSync(path,'utf8');
     if(['module','principal','reset-setting','calculate','complete'].includes(stage)){
      report.payrollCorrectionSeedStage=stage;
-     save();
     }
    }
+   const failurePath=join(privateDir,'payroll-correction-seed-failure');
+   if(existsSync(failurePath)){
+    const code=readFileSync(failurePath,'utf8');
+    if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))report.payrollCorrectionSeedFailure=code;
+   }
+   save();
   }
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
