@@ -121,9 +121,16 @@ async function stopProcess(child){
  const hardStop=setTimeout(()=>child.kill('SIGKILL'),5000);
  try{await closed;}finally{clearTimeout(hardStop);}
 }
+function namedDatabase(url,name){
+ const connection=new URL(url);
+ connection.searchParams.set('application_name',name);
+ return connection.href;
+}
 async function startMixedWorker(command){
  mixedWorker=start('bulk-job-worker',command,['--import','tsx','scripts/bank-import-runner.ts'],
-  {...dbEnv,NODE_ENV:'production',AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'2'});
+  {...dbEnv,NODE_ENV:'production',AIHR_DB_PROCESS_ROLE:'worker',AIHR_DB_POOL_MAX:'2',
+   DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-worker'),
+   MIGRATION_DATABASE_URL:namedDatabase(dbEnv.MIGRATION_DATABASE_URL,'aihr-fixture-mixed-worker')});
  const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
  const deadline=performance.now()+30000;
@@ -131,8 +138,10 @@ async function startMixedWorker(command){
   while(performance.now()<deadline){
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before readiness');
    const [row]=await db`select exists(select 1 from bulk_job_worker where pid=${mixedWorker.pid}
-    and 'payroll_process'=any(kinds) and beat_at>=now()-interval '30 seconds') as ready`;
-   if(row?.ready){report.mixedWorkerReady=true;save();return;}
+    and 'payroll_process'=any(kinds) and beat_at>=now()-interval '30 seconds') as ready,
+    exists(select 1 from pg_stat_activity where datname=current_database()
+     and application_name='aihr-fixture-mixed-worker') as named`;
+   if(row?.ready&&row.named){report.mixedWorkerReady=true;report.mixedWorkerDatabaseSourceVerified=true;save();return;}
    await pause(250);
   }
   assert.fail('The mixed workload worker did not register a fresh Payroll heartbeat');
@@ -1472,7 +1481,8 @@ try{
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',
+    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')})});
   try{
    await waitForApp();
    await proxy();

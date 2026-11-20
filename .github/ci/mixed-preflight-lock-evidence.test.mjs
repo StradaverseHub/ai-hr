@@ -39,7 +39,7 @@ test('retains recognized Access statements and rejects labels from another lock 
  const key={classid:'1',objid:'2',objsubid:1};
  const locks=[
   {...key,pid:1,blockers:[2],app_session:true,mode:'ShareLock',granted:false,category:'access-acquire-shared'},
-  {...key,pid:2,blockers:null,app_session:false,mode:'ExclusiveLock',granted:true,category:'bulk-job'},
+  {...key,pid:2,blockers:null,app_session:false,mode:'ExclusiveLock',granted:true,category:'worker-transaction-end'},
  ];
  const labels=new Map([['1:2:1','access-configuration:fixture-tenant-0']]);
  const nativeEdge=originalAdvisoryAttribution(locks,labels).edges[0];
@@ -47,6 +47,6 @@ test('retains recognized Access statements and rejects labels from another lock 
   phase:'pilot-http',edges:[nativeEdge,{...nativeEdge,blockerCategory:'audit-append'}],
  }}]);
  assert.equal(projected.advisoryEdges[0].waiterCategory,'access-acquire-shared');
- assert.equal(projected.advisoryEdges[0].blockerCategory,'bulk-job');
+ assert.equal(projected.advisoryEdges[0].blockerCategory,'worker-transaction-end');
  assert.equal(projected.advisoryEdges[1].blockerCategory,'unknown');
 });
