@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import type { NextConfig } from 'next';
 import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import {NOTICE_UPLOAD_PROXY_MAX_BYTES} from './lib/notice-upload-policy';
@@ -109,14 +110,27 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default (phase: string) => withNextIntl({
-  ...nextConfig,
-  experimental: {
-    ...nextConfig.experimental,
-    // Skip persistent Turbopack dependency tracking during production compilation.
-    ...(phase === PHASE_PRODUCTION_BUILD && { turbopackFileSystemCacheForBuild: false }),
-  },
-  // Both canonical pnpm build and direct Next builds pass this validating boundary.
-  // No selector means five explicit empty substitutions, despite inherited or dotenv values.
-  env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() }),
-});
+export default (phase: string) => {
+  const building = phase === PHASE_PRODUCTION_BUILD;
+  if (building) {
+    execFileSync(process.execPath, ['--import', 'tsx', 'scripts/prepare-client-catalogues.ts'], { stdio: 'inherit' });
+  }
+  return withNextIntl({
+    ...nextConfig,
+    ...(building && {
+      turbopack: {
+        resolveAlias: {
+          '@/i18n/catalogs': { browser: './i18n/premerged-client-catalogs.ts' },
+        },
+      },
+    }),
+    experimental: {
+      ...nextConfig.experimental,
+      // Skip persistent Turbopack dependency tracking during production compilation.
+      ...(building && { turbopackFileSystemCacheForBuild: false }),
+    },
+    // Both canonical pnpm build and direct Next builds pass this validating boundary.
+    // No selector means five explicit empty substitutions, despite inherited or dotenv values.
+    env: systemTestingNextCompileEnvironment({ phase, worktree: process.cwd() }),
+  });
+};
