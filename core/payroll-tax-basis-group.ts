@@ -13,6 +13,8 @@ const unavailable=()=>new PayrollTaxBasisError('The selected companies or recalc
 type PreviewRef={companyId:string;previewId:string;previewHash:string};
 export const TAX_BASIS_GROUP_PAGE_SIZE=30;
 type BatchRef={companyId:string;id:string|null};
+type GroupResult={phase:'preview';refs:PreviewRef[]}|{phase:'confirmation';outcomes:(BatchRef&{error:string|null})[]};
+type CompanyProgress={companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed'};
 type Input={selections:TaxBasisSelection[]}|{previewJobId:string};
 type Step=TaxBasisSelection|PreviewRef;
 
@@ -41,16 +43,19 @@ async function checkCompanies(tx:Tx,ctx:SessionContext,companyIds:string[]){
 async function reviewedTx(tx:Tx,ctx:SessionContext,id:string){
  const job=await bulkJobTx(tx,id,{kind:KIND});
  await checkCompanies(tx,ctx,job.company_ids);
- if(job.state!=='completed'||job.result!=='preview'||job.counters.failed)throw unavailable();
- const rows=await tx.execute<{preview:Omit<TaxBasisPreview,'employees'>;count:number;expired:boolean}>(sql`
-  select p.preview-'employees' as preview,jsonb_array_length(p.preview->'employees') as count,p.expires_at<now() as expired from bulk_job_step s
-   join payroll_tax_basis_preview p on p.id=(s.result->>'previewId')::uuid
-     and p.preview_hash=s.result->>'previewHash' and p.company_id=(s.result->>'companyId')::uuid
-   where s.job_id=${job.id}::uuid and s.kind='preview' and s.state='applied'
-     and p.tenant_id=${ctx.tenantId}::uuid and p.created_by=${ctx.userId??null}::uuid
-   order by s.seq`);
+ const result=job.result as GroupResult|null;
+ if(job.state!=='completed'||result?.phase!=='preview'||job.counters.failed)throw unavailable();
+ const rows=await tx.execute<{preview:Omit<TaxBasisPreview,'employees'>;count:number}>(sql`
+  select p.preview-'employees' as preview,jsonb_array_length(p.preview->'employees') as count
+   from jsonb_array_elements(${JSON.stringify(result.refs)}::jsonb) with ordinality r(ref,ord)
+   join payroll_tax_basis_preview p on p.id=(r.ref->>'previewId')::uuid
+     and p.preview_hash=r.ref->>'previewHash' and p.company_id=(r.ref->>'companyId')::uuid
+   where p.tenant_id=${ctx.tenantId}::uuid and p.created_by=${ctx.userId??null}::uuid
+     and p.company_id=any(${ids(job.company_ids)})
+   order by r.ord`);
  if(rows.length!==job.company_ids.length)throw unavailable();
- return {job,rows};
+ const expiresAt=new Date(new Date(job.finished_at??job.updated_at).getTime()+15*60_000);
+ return {job,rows,expiresAt};
 }
 
 export async function requestTaxBasisGroupPreview(ctx:SessionContext,selections:TaxBasisSelection[],operationKey:string){
@@ -70,8 +75,8 @@ export async function requestTaxBasisGroupConfirmation(ctx:SessionContext,id:str
    select id,company_ids as "companyIds" from bulk_job where kind=${KIND} and operation_key=${id}::uuid
     and created_by=${ctx.userId??null}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   if(existing[0]){await checkCompanies(tx,ctx,existing[0].companyIds);return existing[0].id;}
-  const {job,rows}=await reviewedTx(tx,ctx,id);
-  if(rows.some(row=>row.expired)||!rows.some(row=>row.preview.eligibleCount))throw unavailable();
+  const {job,rows,expiresAt}=await reviewedTx(tx,ctx,id);
+  if(expiresAt.getTime()<Date.now()||!rows.some(row=>row.preview.eligibleCount))throw unavailable();
   const {row}=await enqueueBulkJobTx(tx,ctx,{kind:KIND,companyIds:job.company_ids,operationKey:id,input:{previewJobId:id} satisfies Input});
   return row.id;
  });
@@ -82,11 +87,27 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
  return withTenant(ctx,async tx=>{
   const job=await bulkJobTx(tx,id,{kind:KIND});
   await checkCompanies(tx,ctx,job.company_ids);
-  const progress=bulkJobProgress(job);
-  if(job.state!=='completed')return {progress};
-  if(job.result==='preview'){
+  const progress={...bulkJobProgress(job),result:null};
+  if(job.state!=='completed'){
+   if(job.state==='failed'||job.state==='cancelled')return {progress};
+   const companies=await tx.execute<CompanyProgress>(sql`
+    select c.id as "companyId",c.legal_name as name,case
+     when s.state='failed' then 'failed'
+     when s.state='applied' and (s.result->>'id' is null or exists(
+      select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
+       and e.kind in ('completed','completed_with_errors','failed')
+     )) then 'completed'
+     when s.state='applied' then 'processing'
+     else 'pending' end as state
+    from company c left join bulk_job_step s on s.job_id=${id}::uuid and (s.payload->>'companyId')::uuid=c.id
+    where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${ids(job.company_ids)})
+    order by c.legal_name,c.id`);
+   return {progress,companies:[...companies]};
+  }
+  const result=job.result as GroupResult|null;
+  if(result?.phase==='preview'){
    if(job.counters.failed)return {progress};
-   const {rows}=await reviewedTx(tx,ctx,id);
+   const {rows,expiresAt}=await reviewedTx(tx,ctx,id);
    const totalEmployees=rows.reduce((total,row)=>total+row.count,0);
    const end=offset+TAX_BASIS_GROUP_PAGE_SIZE;
    let from=0;
@@ -103,14 +124,14 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,off
        as r("previewId" uuid,"companyId" uuid,"companyName" text,ord int,first int,last int)
      join payroll_tax_basis_preview p on p.id=r."previewId" and p.company_id=r."companyId"
      cross join lateral generate_series(r.first,r.last) n(index) order by r.ord,n.index`):[];
-   return {progress,previews:rows.map(row=>row.preview),totalEmployees,
+   return {progress,previews:rows.map(({preview})=>({...preview,expiresAt:expiresAt.toISOString()})),totalEmployees,
     employees:page.map(row=>({...row.employee,companyId:row.companyId,companyName:row.companyName}))};
   }
-  const batches=await tx.execute<{companyId:string;companyName:string;id:string|null;error:string|null}>(sql`
-   select c.id as "companyId",c.legal_name as "companyName",s.result->>'id' as id,s.error
-   from bulk_job_step s join company c on c.id=(s.payload->>'companyId')::uuid
-   where s.job_id=${id}::uuid and s.kind='confirm' order by s.seq`);
-  return {progress,batches:[...batches]};
+  if(result?.phase!=='confirmation')throw unavailable();
+  const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name
+   from company where tenant_id=${ctx.tenantId}::uuid and id=any(${ids(job.company_ids)})`);
+  const names=new Map(companies.map(company=>[company.id,company.name]));
+  return {progress,batches:result.outcomes.map(outcome=>({...outcome,companyName:names.get(outcome.companyId)??''}))};
  });
 }
 
@@ -131,8 +152,8 @@ export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
     return {steps:input.selections.map(selection=>({kind:'preview',payload:selection}))};
    }
    if(!validId(input.previewJobId)||job.operation_key!==input.previewJobId)throw unavailable();
-   const {rows,job:previewJob}=await reviewedTx(tx,ctx,input.previewJobId);
-   if(rows.some(row=>row.expired)||previewJob.company_ids.length!==job.company_ids.length||
+   const {rows,job:previewJob,expiresAt}=await reviewedTx(tx,ctx,input.previewJobId);
+   if(new Date(job.created_at)>expiresAt||previewJob.company_ids.length!==job.company_ids.length||
       previewJob.company_ids.some(id=>!job.company_ids.includes(id)))throw unavailable();
    return {steps:rows.map(({preview})=>({kind:'confirm',payload:{
     companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash,
@@ -146,20 +167,25 @@ export const taxBasisGroupJobHandler:BulkJobHandler<Step>={
    return {result:{companyId:preview.companyId,previewId:preview.previewId,previewHash:preview.previewHash} satisfies PreviewRef};
   }
   if(step.kind!=='confirm'||!('previewId' in selection))throw unavailable();
-  const result=await confirmTaxBasisRecalculation(ctx,selection,{defer:true});
+  const result=await confirmTaxBasisRecalculation(ctx,selection,{defer:true,groupReviewed:true});
   return {result:{companyId:selection.companyId,id:result.id} satisfies BatchRef};
  },
  async finalize(ctx,job){
   const rows=await withTenant(ctx,async tx=>{
    await checkCompanies(tx,ctx,job.company_ids);
-   return tx.execute<{kind:string;batchId:string|null;pending:boolean}>(sql`
-    select s.kind,s.result->>'id' as "batchId",s.state='applied' and s.result->>'id' is not null and not exists(
-     select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
-       and e.kind in ('completed','completed_with_errors','failed')
-    ) as pending from bulk_job_step s where s.job_id=${job.id}::uuid order by s.seq`);
+   return tx.execute<{kind:string;companyId:string;ref:PreviewRef|null;batchId:string|null;pending:boolean;error:string|null}>(sql`
+    select s.kind,s.payload->>'companyId' as "companyId",s.result as ref,s.error,s.result->>'id' as "batchId",
+     s.state='applied' and s.result->>'id' is not null and not exists(
+      select 1 from payroll_tax_basis_event e where e.batch_id=(s.result->>'id')::uuid
+        and e.kind in ('completed','completed_with_errors','failed')
+     ) as pending from bulk_job_step s where s.job_id=${job.id}::uuid order by s.seq`);
   });
   const next=rows.find(row=>row.pending);
   if(next?.batchId){await continueTaxBasisBatch(ctx,next.batchId,{budgetMs:15000});return 'more';}
-  return {result:rows[0]?.kind==='preview'?'preview':'confirmation'};
+  // The bulk kernel removes step payloads after completion. Retain only the authorized references.
+  const result:GroupResult=rows[0]?.kind==='preview'
+   ?{phase:'preview',refs:rows.flatMap(row=>row.ref?[row.ref]:[])}
+   :{phase:'confirmation',outcomes:rows.map(row=>({companyId:row.companyId,id:row.batchId,error:row.error}))};
+  return {result};
  },
 };

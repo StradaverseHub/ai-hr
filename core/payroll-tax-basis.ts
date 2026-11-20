@@ -120,7 +120,11 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   const opening=resolveTaxOpeningEvidence({year:selection.year,employmentId:who.id,companyId:selection.companyId,required:capped,requiredSourceIds:included.map(slip=>slip.id),sources:slips.map(slip=>({id:slip.id,sourceHash:hashes.get(slip.id)!,statutory:slip.statutory}))});
   const partialMonths=()=>input.map(row=>({payslipId:row.id,period:row.period,items:row.sourceLines.map(line=>{const setting=settings.find(setting=>setting.code===line.code)!;return{code:line.code,name:setting.name,amount:line.amount,direction:line.direction,includedInPcb:setting.includedInPcb,remunerationType:setting.pcbRemunerationType,exemptionCode:setting.pcbExemptionCode};})}));
   const heldDetail=(reason:string,field:string,affects:string[]):TaxBasisEmployee=>({...blocked(reason),recordCount:included.length,partialMonths:partialMonths(),missingEvidence:[{field,affects,reason}]});
-  if(opening.state!=='known')return {...heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']),status:'skipped'};
+  if(opening.state!=='known'){
+   const held=heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
+   if(opening.state==='conflict')return held;
+   return {...held,status:'skipped',reason:'Saved taxable and exempt values were kept because prior-employer exemption use is unknown.'};
+  }
   const openingExemptionUsed=opening.used;
   let replay:ReturnType<typeof pack.payroll.replayTaxBasis>;
   try{replay=pack.payroll.replayTaxBasis({year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod,openingExemptionUsed});}
@@ -285,7 +289,7 @@ async function taxBasisInputsDigestTx(tx:Tx,selection:TaxBasisSelection){
  return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
-async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{resume?:boolean;defer?:boolean;budgetMs?:number}={}):Promise<{id:string|null}>{
+async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{resume?:boolean;defer?:boolean;budgetMs?:number;groupReviewed?:true}={}):Promise<{id:string|null}>{
  const {resume=false,defer=false,budgetMs=40000}=options;
  if(!uuid.test(input.previewId)||!/^[a-f0-9]{64}$/.test(input.previewHash))fail('Choose a valid recalculation preview.');
  type Stored={preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean};
@@ -293,7 +297,7 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
   const [stored]=await tx.execute<Stored>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid ${lock?sql`for update`:sql``}`);
   if(!stored||stored.previewHash!==input.previewHash)fail('The recalculation preview is unavailable.');await permission(tx,ctx,stored.selection.companyId,true);
   const [existing]=await tx.execute<{id:string}>(sql`select id from payroll_tax_basis_batch where preview_id=${input.previewId}::uuid`);
-  if(!existing&&stored.expired)fail('The preview expired. Preview the recalculation again.');
+  if(!existing&&stored.expired&&!options.groupReviewed)fail('The preview expired. Preview the recalculation again.');
   return{stored,existing:existing?.id??null};
  };
  // The whole selection is recomputed in one read-only snapshot with no tenant-wide lock (up to 25 s), and refused
@@ -378,8 +382,8 @@ export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise
 }
 
 export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string}):Promise<{id:string}>;
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{defer:true}):Promise<{id:string|null}>;
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options?:{defer:true}){return executeTaxBasisRecalculation(ctx,input,options);}
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{defer:true;groupReviewed:true}):Promise<{id:string|null}>;
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options?:{defer:true;groupReviewed:true}){return executeTaxBasisRecalculation(ctx,input,options);}
 /** Bounded continuation keeps the reviewed configuration and rechecks each remaining employee. */
 export async function continueTaxBasisBatch(ctx:SessionContext,id:string,options:{budgetMs?:number}={}):Promise<{id:string}>{
  if(!uuid.test(id))fail('Choose a valid recalculation batch.');

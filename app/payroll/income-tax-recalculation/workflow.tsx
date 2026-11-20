@@ -54,7 +54,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
   const [totalResultEmployees,setTotalResultEmployees]=useState(0);
   const [loadingResultPage,setLoadingResultPage]=useState(false);
   const [job,setJob]=useState<TaxBasisGroupProgressLink|null>(initialGroup??null);
-  const [jobProgress,setJobProgress]=useState<{done:number;total:number}|null>(null);
+  const [jobProgress,setJobProgress]=useState<{done:number;total:number;companies:{companyId:string;name:string;state:'pending'|'processing'|'completed'|'failed'}[]}|null>(null);
   const [companyOutcomes,setCompanyOutcomes]=useState<{companyId:string;companyName:string;id:string|null;error:string|null}[]>([]);
   const [year,setYear]=useState(initialSelection?.year??options.years[0]??0);
   const [upToMonth,setUpToMonth]=useState(initialSelection?.upToMonth??12);
@@ -106,7 +106,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         if(cancelled)return;
         failures=0;
         const {progress}=result;
-        setJobProgress({done:progress.stepsDone,total:progress.stepsTotal});
+        setJobProgress({done:progress.stepsDone,total:progress.stepsTotal,companies:result.companies??[]});
         if(progress.state==='completed'){
           if(job.phase==='preview'&&result.previews?.length){
             setPreview(combinePreviews(result.previews,result.employees));
@@ -153,7 +153,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
     }
   }
   async function generatePreview(){
-    updateGroupProgressLink(null);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);
+    updateGroupProgressLink(null);setCompaniesOpen(false);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);
     setCompanyOutcomes([]);setError(null);setBusy('preview');
     try{
       const selections=companyIds.map(companyId=>({companyId,year,upToMonth,
@@ -195,7 +195,7 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
       <fieldset disabled={busy!==null||loadingResultPage} className="space-y-5 disabled:opacity-70">
         <legend id="tax-basis-period-title" className="font-semibold">{t('recalculationPeriod')}</legend>
         <div className="grid gap-4 md:grid-cols-3">
-          <div className="relative text-sm">
+          <div className="relative text-sm" onBlur={event=>{if(!event.currentTarget.contains(event.relatedTarget))setCompaniesOpen(false);}}>
             <span id="tax-company-label" className="font-medium">{t('company')}</span>
             <button type="button" aria-labelledby="tax-company-label tax-company-value" aria-expanded={companiesOpen}
               aria-controls="tax-company-options" className={input+' flex items-center justify-between gap-2 text-left'}
@@ -235,7 +235,14 @@ export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{option
         <div className="flex justify-end"><ActionButton guardNavigation={false} aria-busy={busy==='preview'} actionKind="generating" type="button" className={button} onClick={generatePreview} disabled={!canRecalculate||!year||(!all&&includedEmployees.length===0)}>{t(busy==='preview'?'previewing':'previewAction')}</ActionButton></div>
       </fieldset>
     </section>
-    {jobProgress&&<p role="status" className="text-sm">{t('companyProgress',{done:jobProgress.done,total:jobProgress.total||companyIds.length})}</p>}
+    {jobProgress&&<div className="space-y-2 rounded-lg border border-border p-4 text-sm">
+      <p role="status">{t('companyProgress',{done:jobProgress.done,total:jobProgress.total||companyIds.length})}</p>
+      {jobProgress.companies.length>0&&<ul className="max-h-60 divide-y divide-border overflow-y-auto">
+        {jobProgress.companies.map(company=><li key={company.companyId} className="flex justify-between gap-3 py-2">
+          <span>{company.name}</span><span>{t(`batchStates.${company.state}`)}</span>
+        </li>)}
+      </ul>}
+    </div>}
     {companyOutcomes.length>0&&<section className="space-y-3 rounded-xl border border-border p-5">
       <h2 className="font-semibold">{t('outcomes')}</h2>
       <ul className="divide-y divide-border">{companyOutcomes.map(company=><li key={company.companyId} className="flex flex-wrap justify-between gap-3 py-2 text-sm">
