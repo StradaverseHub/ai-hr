@@ -1,13 +1,13 @@
 import json,pathlib,subprocess,sys,tempfile,unittest,zipfile,stat
 SCRIPT=pathlib.Path(__file__).with_name('focused-recovery-extract.py')
 class FocusedExtraction(unittest.TestCase):
-    def invoke(self,extra=(),missing=None,database=False,visual=False):
+    def invoke(self,extra=(),missing=None,database=False,visual=False,db_files=None):
         with tempfile.TemporaryDirectory() as root:
             root=pathlib.Path(root);archive=root/'in.zip';destination=root/'out'
             with zipfile.ZipFile(archive,'w') as z:
                 result='db.vitest.json' if database else 'nodb.vitest.json'
                 db_file='test/operational-visual-browser.test.ts' if visual else 'test/db.test.ts'
-                files=[db_file] if database else ['test/plain.test.ts']
+                files=(db_files or [db_file]) if database else ['test/plain.test.ts']
                 report=json.dumps({'files':files,'groups':{'DB':files if database else [],'NODB':[] if database else files}})
                 for name in ['focused.json',result]:
                     if name!=missing:z.writestr(name,report if name=='focused.json' else '{}')
@@ -42,6 +42,12 @@ class FocusedExtraction(unittest.TestCase):
         self.assertEqual(self.invoke(screens),(0,['focused.json','nodb.vitest.json']))
     def test_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(385)])[0],0)
     def test_database_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(129)],database=True)[0],0)
+    def test_database_diagnostics_are_bound_to_their_selected_owners(self):
+        extras=[('contract-email-current-source-plan.json','{}'),('rewards-review-list-profile.json','{}')]
+        owners=['test/contract-email-work-scale-db.test.ts','test/rewards-review-list-profile.test.ts']
+        self.assertEqual(self.invoke(extras,database=True,db_files=owners),(0,['db.vitest.json','focused.json']))
+        self.assertNotEqual(self.invoke(extras,database=True,db_files=owners[:1])[0],0)
+        self.assertNotEqual(self.invoke(extras)[0],0)
     def test_visual_requires_every_screenshot_and_keeps_images_in_archive(self):
         routes=('admin-settings-system-labels','roster','rewards','admin-personnel','attendance-daily',
                 'payroll','me','claims','approvals','leave','leave-employee-balances','leave-employee-records',

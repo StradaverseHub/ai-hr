@@ -3,6 +3,10 @@ import json,pathlib,re,stat,sys,zipfile
 archive,destination=map(pathlib.Path,sys.argv[1:])
 results={'focused.json','nodb.vitest.json','db.vitest.json'}
 diagnostics={'postgres.log','postgres-state.json','postgres-stats.txt'}
+db_diagnostics={
+    'contract-email-current-source-plan.json':'test/contract-email-work-scale-db.test.ts',
+    'rewards-review-list-profile.json':'test/rewards-review-list-profile.test.ts',
+}
 role='personnel-draft-discard-premigration-role-prerequisites.json'
 runtime_role='personnel-draft-discard-role-prerequisites.json'
 visual_file='test/operational-visual-browser.test.ts'
@@ -25,7 +29,7 @@ with zipfile.ZipFile(archive) as z:
         raise ValueError('Focused artifact exceeds bounds')
     names=set()
     for i in entries:
-        allowed=i.filename in results|diagnostics|{role,runtime_role} or re.fullmatch(r'ui-screenshots/[A-Za-z0-9_-]+\.(png|json)',i.filename) or visual_attachment(i.filename)
+        allowed=i.filename in results|diagnostics|set(db_diagnostics)|{role,runtime_role} or re.fullmatch(r'ui-screenshots/[A-Za-z0-9_-]+\.(png|json)',i.filename) or visual_attachment(i.filename)
         if not allowed or i.filename in names or i.is_dir() or stat.S_ISLNK(i.external_attr>>16) or i.flag_bits&1:
             raise ValueError('Unsafe, duplicate or unknown focused artifact member')
         if i.file_size>(64*1024*1024 if i.filename in results else 10*1024*1024):
@@ -35,6 +39,9 @@ with zipfile.ZipFile(archive) as z:
         raise ValueError('Focused recovery JSON missing')
     report=json.loads(z.read('focused.json'))
     database=bool(report.get('groups',{}).get('DB'))
+    for name,owner in db_diagnostics.items():
+        if name in names and (not database or owner not in report['groups']['DB']):
+            raise ValueError('Database diagnostic has no selected owning test')
     visual=database and report['groups']['DB']==[visual_file] and report.get('files')==[visual_file]
     if any(visual_attachment(name) for name in names) and not visual:
         raise ValueError('Operational visual attachments require the isolated visual unit')
