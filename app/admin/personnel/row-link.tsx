@@ -70,5 +70,5 @@ export const ROW_NAME_LINK_CLS =
  * row that offered one link per column would be a new defect traded for the old one.
  */
 export function RowOverlayLink({ href }: { href: string }) {
-  return <Link href={href} className={ROW_OVERLAY_CLS} aria-hidden="true" tabIndex={-1} />;
+  return <Link href={href} prefetch={false} className={ROW_OVERLAY_CLS} aria-hidden="true" tabIndex={-1} />;
 }

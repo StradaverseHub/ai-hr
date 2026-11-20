@@ -30,7 +30,7 @@
  * otherwise be RENDERED in a test — and every claim above is a claim about rendered markup. The hit areas
  * themselves are measured in a real engine by test/personnel-row-click.browser.test.tsx.
  */
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { Avatar, EmployeeCode, StatusBadge } from '@/components/ui';
 import type { EmployeeColumnKey } from '@/lib/employee-columns';
 import type { EmploymentStatus } from '@/core/employment-status';
@@ -91,9 +91,9 @@ export function EmployeeRow({
             <div className="flex items-center gap-3">
               <Avatar name={name} src={photoPersonId ? `/personnel/photo/${photoPersonId}` : undefined} />
               <div className="min-w-0">
-                <Link href={href} className={ROW_NAME_LINK_CLS}>
+                <IntentLink href={href} className={ROW_NAME_LINK_CLS}>
                   {name}
-                </Link>
+                </IntentLink>
                 <div className="truncate text-xs text-muted-foreground">{email}</div>
               </div>
             </div>

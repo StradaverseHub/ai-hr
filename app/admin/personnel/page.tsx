@@ -7,7 +7,7 @@ import {ResponsiveActions} from '@/components/responsive-actions';
 import { PersonnelExportOptions } from './export-options';
 import { PersonnelAutoFilters } from './auto-filter';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { getTranslations } from 'next-intl/server';
 import { PROFILE_REQUEST_OPTION_NAMESPACE } from '@/lib/profile-requestable-fields';
 import { requireWorkforceAccess, type WorkforcePageRead } from '@/lib/workforce-authz';
@@ -229,7 +229,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
   const filterLabels = {filter:t('filter'),apply:t('applyFilters'),clearAll:t('clearAllFilters'),activeCount:t('activeFilters',{count:activeFilterCount}),selectAll:to('selectAll'),deselectAll:to('deselectAll')};
 
   // ── Headcount cards (point 5) + card-as-quick-filter (point 6) ────────────────────────────────────
-  // Each card is a plain <Link> carrying the CURRENT filters plus its own bucket, so a card click
+  // Each card is a plain <IntentLink> carrying the CURRENT filters plus its own bucket, so a card click
   // narrows rather than replaces, works without JavaScript, and appears as a removable chip like every
   // other filter. `page` is deliberately dropped: a new narrowing starts at page one.
   const cardHref = (bucket: string | null) => {const next=personnelQueryParams(sp);next.delete('bucket');if(bucket)next.set('bucket',bucket);return '/admin/personnel'+(next.size?'?'+next.toString():'');};
@@ -321,8 +321,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               />
             )}
             <ResponsiveActions>
-{canCreate && <Link href="/admin/personnel/import" data-tour="people-import" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('importCsv')}</Link>}
-{isAdmin && <Link href="/admin/personnel/duplicates" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('duplicateRecords')}</Link>}
+{canCreate && <IntentLink href="/admin/personnel/import" data-tour="people-import" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('importCsv')}</IntentLink>}
+{isAdmin && <IntentLink href="/admin/personnel/duplicates" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('duplicateRecords')}</IntentLink>}
             {/* 04b88724 (r339) — THE "CHILD RELIEF REVIEW (PCB)" LINK WAS REMOVED FROM HERE, DELIBERATELY,
                 AND THE ROUTE WAS DELIBERATELY KEPT. Do not restore the link; do not delete the route
                 without reading this.
@@ -381,9 +381,10 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
         {cards.map((c) => {
           const on = activeCard === c.key;
           return (
-            <Link
+            <IntentLink
               key={c.key ?? 'total'}
               href={cardHref(c.key)}
+              prefetch={on ? false : undefined}
               aria-current={on ? 'true' : undefined}
               data-headcount={c.key ?? 'total'}
               className={`min-w-32 shrink-0 rounded-xl border px-3 py-2 sm:min-w-0 sm:px-4 sm:py-3 transition-colors ${
@@ -399,7 +400,7 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               <div className="mt-0.5 text-[11px] text-muted-foreground">
                 {on ? t('cardShowing') : c.hint}
               </div>
-            </Link>
+            </IntentLink>
           );
         })}
       </div>

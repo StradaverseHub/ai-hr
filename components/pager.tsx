@@ -1,5 +1,5 @@
 import { ExportDownloadLink } from '@/components/export-download-link';
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { getTranslations } from 'next-intl/server';
 import {
   ALL_ROW_CEILING,
@@ -111,12 +111,12 @@ export async function Pager({
         </span>
         <span className="atelier-pager-steps">
           {state.hasPrev ? (
-            <Link href={href({ page: state.page - 1 })} aria-label={t('previousPage')} title={t('previousPage')}><ChevronLeft aria-hidden /></Link>
+            <IntentLink href={href({ page: state.page - 1 })} aria-label={t('previousPage')} title={t('previousPage')}><ChevronLeft aria-hidden /></IntentLink>
           ) : (
             <button type="button" disabled aria-label={t('previousPage')}><ChevronLeft aria-hidden /></button>
           )}
           {state.hasNext ? (
-            <Link href={href({ page: state.page + 1 })} aria-label={t('nextPage')} title={t('nextPage')}><ChevronRight aria-hidden /></Link>
+            <IntentLink href={href({ page: state.page + 1 })} aria-label={t('nextPage')} title={t('nextPage')}><ChevronRight aria-hidden /></IntentLink>
           ) : (
             <button type="button" disabled aria-label={t('nextPage')}><ChevronRight aria-hidden /></button>
           )}
@@ -149,16 +149,16 @@ export async function Pager({
         </span>
         <div className="flex items-center gap-2 text-sm">
           {state.hasPrev ? (
-            <Link href={href({ page: 0 })} className={pagerStepCls}>
+            <IntentLink href={href({ page: 0 })} className={pagerStepCls}>
               {t('first')}
-            </Link>
+            </IntentLink>
           ) : (
             <span className={pagerStepMutedCls}>{t('first')}</span>
           )}
           {state.hasPrev ? (
-            <Link href={href({ page: state.page - 1 })} className={pagerStepCls}>
+            <IntentLink href={href({ page: state.page - 1 })} className={pagerStepCls}>
               {t('previous')}
-            </Link>
+            </IntentLink>
           ) : (
             <span className={pagerStepMutedCls}>{t('previous')}</span>
           )}
@@ -168,22 +168,22 @@ export async function Pager({
                 {n + 1}
               </span>
             ) : (
-              <Link key={n} href={href({ page: n })} aria-label={t('pageNumber', { n: n + 1 })} className={pagerPageNumCls}>
+              <IntentLink key={n} href={href({ page: n })} aria-label={t('pageNumber', { n: n + 1 })} className={pagerPageNumCls}>
                 {n + 1}
-              </Link>
+              </IntentLink>
             ),
           )}
           {state.hasNext ? (
-            <Link href={href({ page: state.page + 1 })} className={pagerStepCls}>
+            <IntentLink href={href({ page: state.page + 1 })} className={pagerStepCls}>
               {t('next')}
-            </Link>
+            </IntentLink>
           ) : (
             <span className={pagerStepMutedCls}>{t('next')}</span>
           )}
           {state.hasNext ? (
-            <Link href={href({ page: last })} className={pagerStepCls}>
+            <IntentLink href={href({ page: last })} className={pagerStepCls}>
               {t('last')}
-            </Link>
+            </IntentLink>
           ) : (
             <span className={pagerStepMutedCls}>{t('last')}</span>
           )}
