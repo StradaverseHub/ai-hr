@@ -60,6 +60,10 @@ on:
         description: Use the 500-user mixed-workflow fixture and run it unless browser_fixture_only is selected
         default: false
         type: boolean
+      reuse_register_diagnostic_build:
+        description: Use the verified browser build from run 44705668396 for the exact Payroll Register candidate
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -119,11 +123,19 @@ jobs:
           if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
             exit 2
           fi
+          if [[ "$REUSE_BUILD" == true ]] && {
+            [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
+            [[ "$EXPECTED_SHA" != edf2dc5ca00a893898ab3c0918faa14e585d2fc2 ]];
+          }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
           BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
+          BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          REUSE_BUILD: ${{ inputs.reuse_register_diagnostic_build }}
+          RUN_BUILD: ${{ inputs.run_build }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -132,7 +144,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: [resolve, linux-build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_register_diagnostic_build || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -202,10 +214,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_register_diagnostic_build }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
+      - name: Retrieve the pinned exact-source diagnostic build
+        if: ${{ inputs.reuse_register_diagnostic_build }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$AIHR_CI_HEAD" = edf2dc5ca00a893898ab3c0918faa14e585d2fc2
+          archive="$(mktemp "$RUNNER_TEMP/register-browser-build.XXXXXX")"
+          trap 'rm -f "$archive"' EXIT
+          gh api repos/StradaverseHub/ai-hr/actions/runs/44705668396 --jq '
+            .conclusion == "success" and .run_attempt == 1 and
+            .head_sha == "a43c00d3dbf96c7f01111188777222be75db78bd" and
+            .head_repository.full_name == "StradaverseHub/ai-hr"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14615123587/zip > "$archive"
+          printf '%s  %s\n' '4a0991a4d62044ceb16c3d5c8ca34cdb20d8e24e29215ad174c3092c066e410c' "$archive" | sha256sum -c -
+          test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
+          install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
+          unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
@@ -220,6 +249,7 @@ jobs:
         env:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
+          AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_register_diagnostic_build }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
@@ -254,7 +284,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
+    if: ${{ !inputs.reuse_register_diagnostic_build && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
