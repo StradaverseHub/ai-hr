@@ -36,20 +36,21 @@ const target = 'pointer-coarse:min-h-11';
 
 type Reads = Readonly<{ view: Awaited<ReturnType<typeof assessProcesses>>; outcomes: Awaited<ReturnType<typeof assistantOutcomes>> }>;
 
-/** The two readers, started by the HR capacity section beside its own read. */
-export function readCapacityProcesses(session: SessionContext, query: ProcessQuery): Promise<Reads | null> {
+/** Read the process evidence only when its section renders. */
+function readCapacityProcesses(session: SessionContext, query: ProcessQuery): Promise<Reads | null> {
   const window = parseWindow(query.pdays);
   return Promise.all([assessProcesses(session, window), assistantOutcomes(session, window)])
     .then(([view, outcomes]) => ({ view, outcomes })).catch(() => null);
 }
 
-export async function CapacityProcesses({ reads, query, companies, baselines, keep }: {
-  reads: Reads | null; query: ProcessQuery; companies: readonly Readonly<{ id: string; name: string }>[]; baselines: readonly CurrentBaseline[];
+export async function CapacityProcesses({ session, query, companies, baselines, keep }: {
+  session: SessionContext; query: ProcessQuery; companies: readonly Readonly<{ id: string; name: string }>[]; baselines: readonly CurrentBaseline[];
   /** The ledger's own filter, kept when the window changes. */
   keep: Readonly<Record<string, string | null | undefined>>;
 }) {
-  const [t, tc, o, kinds, f] = await Promise.all([getTranslations('processAssessment'), getTranslations('aiCentre.capacity.processes'),
-    getTranslations('processAssessment.outcomes'), getTranslations('assistant.workspace.nativeOutcomes'), getFormatter()]);
+  const [t, tc, o, kinds, f, reads] = await Promise.all([getTranslations('processAssessment'), getTranslations('aiCentre.capacity.processes'),
+    getTranslations('processAssessment.outcomes'), getTranslations('assistant.workspace.nativeOutcomes'), getFormatter(),
+    readCapacityProcesses(session, query)]);
   if (!reads) return <section id="capacity-processes" aria-labelledby="capacity-processes-title" className="scroll-mt-4 space-y-2" data-capacity-processes="unavailable">
     <h3 id="capacity-processes-title" className="font-semibold">{tc('title')}</h3>
     <p role="status" className="text-sm text-muted-foreground">{tc('unavailable')}</p>
