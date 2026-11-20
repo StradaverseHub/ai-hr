@@ -8,7 +8,7 @@ import { NoRecruitmentCompany, Notice, RecruitmentTabs, recruitmentErrorText, re
 import { RecruitmentTasksPanel } from './tasks-panel';
 
 /**
- * Recruitment › Overview. Administrators see the tiles: every tile is one count query over the applications and
+ * Recruitment › Overview. Administrators see aggregate tiles over the applications and
  * interviews the viewer administers, and a tile whose page the viewer cannot open renders as text, not a link. Since
  * slice 9 everyone with Recruitment access (administrators, job-team members, interviewers and approvers) also sees the
  * Tasks panel: their live to-do list and the updates of the companies in the current selection.
