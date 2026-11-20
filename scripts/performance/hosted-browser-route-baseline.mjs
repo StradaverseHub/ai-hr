@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -788,6 +788,11 @@ async function measureAttendanceWorkflowEditor(fixture){
 }
 
 const focusedSurfaces={
+ 'workflow-list':{path:'/admin/attendance/approval-workflow',witnesses:{
+  heading:'main h1',
+  workflowTable:'main table',
+  createLink:'main a[href="/admin/attendance/approval-workflow/new?applicationType=irregularity"]',
+ }},
  insights:{path:'/assistant?view=insights',witnesses:{
   heading:'[data-ai-centre-insights] h1',
   capacity:'[data-capacity-ledger] [data-capacity-period] a[aria-current]',
@@ -828,6 +833,15 @@ async function measureSurfaceProbe(fixture,surface){
      }));
      assert(milestones.every(result=>result.status==='fulfilled'),'A focused browser milestone did not become visible');
      await assertContentAvailable(page);
+     if(surface==='workflow-list'){
+      const overtimePath=path+'?applicationType=self_overtime';
+      const overtime=page.locator(`main a[href="${overtimePath}"]`);
+      const tabStarted=performance.now();
+      await Promise.all([page.waitForURL(origin+overtimePath,{timeout:15000}),overtime.click({timeout:5000})]);
+      await page.locator(`main a[href="${overtimePath}"][aria-current="page"]`).waitFor({state:'visible',timeout:5000});
+      await page.locator(`main a[href="${path}/new?applicationType=self_overtime"]`).waitFor({state:'visible',timeout:5000});
+      row.overtimeTabMs=Math.round(performance.now()-tabStarted);
+     }
      row.status='observed';
     }finally{save();}
    }
@@ -1895,7 +1909,7 @@ try{
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe){
-   const requested=surfaceProbe==='both'?Object.keys(focusedSurfaces):[surfaceProbe];
+   const requested=surfaceProbe==='both'?['insights','recruitment']:[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);
   }
   else if(mobileTaskTrace)await measureMobileTaskTrace(fixture);

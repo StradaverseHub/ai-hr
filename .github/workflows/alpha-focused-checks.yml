@@ -143,7 +143,7 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
