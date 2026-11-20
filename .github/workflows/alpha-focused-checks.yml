@@ -64,8 +64,8 @@ on:
         description: Provision the default Attendance rule before mixed traffic for the existing-tenant comparison
         default: false
         type: boolean
-      reuse_first_use_build:
-        description: Reuse the verified combined control build for bounded statement and preflight diagnostics
+      reuse_combined_topology_build:
+        description: Run the pinned combined build with two web processes and a 16-connection application budget
         default: false
         type: boolean
       model_eval:
@@ -87,7 +87,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_topology_build && '-two-worker-capacity' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != fdcad2919542d64b1bf59823ba20581523355c5d ]];
+            [[ "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -143,7 +143,7 @@ jobs:
           BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
-          REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
+          REUSE_BUILD: ${{ inputs.reuse_combined_topology_build }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -154,7 +154,7 @@ jobs:
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
     needs: [resolve, linux-build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_first_use_build || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_combined_topology_build || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -224,39 +224,36 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_first_use_build }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_combined_topology_build }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned combined control build
-        if: ${{ inputs.reuse_first_use_build }}
+      - name: Retrieve the pinned combined topology build
+        if: ${{ inputs.reuse_combined_topology_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build_source=f49895a2e800ddf8156d6f6c3ddd7e4121742ad9
-          test "$AIHR_CI_HEAD" = fdcad2919542d64b1bf59823ba20581523355c5d
+          test "$AIHR_CI_HEAD" = 111852a4b932fbf49a7bd7df6056f390f5f11409
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          test "$(git diff --name-status --no-renames "$build_source" "$AIHR_CI_HEAD")" = "$(printf 'M\tscripts/performance/system-load-owner.mjs')"
-          archive="$(mktemp "$RUNNER_TEMP/combined-control-build.XXXXXX")"
+          archive="$(mktemp "$RUNNER_TEMP/combined-topology-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136379388795 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136381859095 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44762713497 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14642887375/zip > "$archive"
-          printf '%s  %s\n' 'f000395c5f1085a0aa7c028c53c86c12381fc3806d535e477fd8c5d1cb05f3e4' "$archive" | sha256sum -c -
+            .run_id == 44763397635 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14644151151/zip > "$archive"
+          printf '%s  %s\n' 'ff70731a259ef46c3b1e55a844d4a8244becd73b45bf24df07ce9ccbc423ed9a' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         env:
-          REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
+          REUSE_BUILD: ${{ inputs.reuse_combined_topology_build }}
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true ]]; then
-            expected_build_source=f49895a2e800ddf8156d6f6c3ddd7e4121742ad9
+            expected_build_source=111852a4b932fbf49a7bd7df6056f390f5f11409
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"
@@ -269,7 +266,7 @@ jobs:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
-          AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
+          AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_combined_topology_build }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
@@ -304,7 +301,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ !inputs.reuse_first_use_build && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
+    if: ${{ !inputs.reuse_combined_topology_build && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}

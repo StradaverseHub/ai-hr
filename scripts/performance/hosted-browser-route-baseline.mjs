@@ -24,12 +24,17 @@ import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 
 const origin='https://localhost:3443';
-const appPort=3174;
 const healthPath='/health';
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+const twoWorkerTopology=env.AIHR_BROWSER_REUSED_BUILD==='true';
+assert(!twoWorkerTopology||mixedLoad&&establishedAttendance&&!fixtureOnly,'Invalid two-worker topology configuration');
+const appPorts=twoWorkerTopology?[3174,3175]:[3174];
+const connectionsPerWorker=8;
+const totalPool=appPorts.length*connectionsPerWorker;
+const heapPerWorkerMiB=twoWorkerTopology?2048:null;
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
@@ -53,8 +58,9 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44762713497,artifactId:14642887375,
-  sourceSha:'f49895a2e800ddf8156d6f6c3ddd7e4121742ad9'}}),
+ ...(twoWorkerTopology&&{buildArtifact:{runId:44763397635,artifactId:14644151151,
+  sourceSha:'111852a4b932fbf49a7bd7df6056f390f5f11409'}}),
+ applicationTopology:{webProcesses:appPorts.length,connectionsPerWorker,totalPool,heapPerWorkerMiB},
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -116,7 +122,8 @@ function retainSeedPhases(){
  save();
 }
 
-let server,app,browser,mixedWorker,databaseStarted=false;
+let server,browser,mixedWorker,databaseStarted=false;
+const applications=[];
 async function stopProcess(child){
  if(!child||child.exitCode!==null||child.signalCode!==null)return;
  const closed=once(child,'close');
@@ -155,8 +162,11 @@ async function proxy(){
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,
   '-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost'],env);
  const certificate=readFileSync(cert);
+ let nextWorker=0;
  server=createServer({key:readFileSync(key),cert:certificate},(incoming,outgoing)=>{
-  const upstream=request({hostname:'127.0.0.1',port:appPort,path:incoming.url,method:incoming.method,
+  const port=appPorts[nextWorker];
+  nextWorker=(nextWorker+1)%appPorts.length;
+  const upstream=request({hostname:'127.0.0.1',port,path:incoming.url,method:incoming.method,
    headers:{...incoming.headers,host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
     outgoing.writeHead(response.statusCode,response.headers);
     response.pipe(outgoing);
@@ -205,9 +215,9 @@ async function verifyMixedProxy(certificate){
   }
  }
 }
-function applicationStatus(path,method,deadlineMs){
+function applicationStatus(port,path,method,deadlineMs){
  return new Promise(resolve=>{
-  const probe=request({hostname:'127.0.0.1',port:appPort,path,method,agent:false,
+  const probe=request({hostname:'127.0.0.1',port,path,method,agent:false,
    headers:{host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
     finish(response.statusCode??null);
     response.destroy();
@@ -219,9 +229,8 @@ function applicationStatus(path,method,deadlineMs){
  });
 }
 
-async function waitForApp(){
+async function waitForApp({process:app,port,worker}){
  const expires=performance.now()+90000;
- report.applicationStartup=[];
  for(const [phase,path,method] of [['health',healthPath,'HEAD'],['login-response','/login','GET']]){
   const started=performance.now();
   console.info('Fictional application readiness started',phase);
@@ -231,13 +240,13 @@ async function waitForApp(){
     assert(app.exitCode===null&&app.signalCode===null,'Application stopped during startup');
     const budget=Math.max(1,Math.min(2000,Math.floor(expires-performance.now())));
     requests++;
-    status=await applicationStatus(path,method,budget);
+    status=await applicationStatus(port,path,method,budget);
     if(status===200)break;
     await pause(300);
    }
    assert.equal(status,200,'Application readiness deadline exceeded for '+phase);
   }finally{
-   const row={phase,status,requests,elapsedMs:Math.round(performance.now()-started)};
+   const row={worker,phase,status,requests,elapsedMs:Math.round(performance.now()-started)};
    report.applicationStartup.push(row);
    console.info('Fictional application readiness finished',phase,status??'no-response',row.elapsedMs);
    save();
@@ -465,7 +474,8 @@ async function measureMixedLoad(command){
   await run('measure-500-user-mixed-load',command,['--import','tsx','scripts/performance/system-load.mjs'],{
    ...dbEnv,AIHR_CI_UNIT:pgEnv.AIHR_CI_UNIT,PERF_EVIDENCE_DIR:driverEvidence,PERF_HTTP_THINK_MS:'1000',
    PERF_DRIVER_STAGE_RECEIPT:'1',
-   PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:'1',PERF_APP_PID:String(app.pid),PERF_PROXY_PID:String(process.pid),
+   PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:String(applications.length),
+   PERF_APP_PIDS:applications.map(application=>application.process.pid).join(','),PERF_PROXY_PID:String(process.pid),
    PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
   },1800000);
  }finally{
@@ -1621,21 +1631,29 @@ try{
  save();
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
-  app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',
-    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')})});
-  try{
-   await waitForApp();
-   await proxy();
-  }catch(error){
-   if(driverCommand)retainMixedStartupFailure('application');
-   throw error;
+  report.applicationStartup=[];
+  for(const [worker,port] of appPorts.entries()){
+   const label='application-'+worker;
+   const child=start(label,process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
+    '--port',String(port)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(connectionsPerWorker),
+     ...(twoWorkerTopology&&{AIHR_APP_WORKERS:String(appPorts.length),AIHR_DB_TOTAL_CONNECTIONS:String(totalPool),
+      NODE_OPTIONS:'--max-old-space-size='+heapPerWorkerMiB}),
+     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')})});
+   applications.push({process:child,worker,port,label});
   }
+  const readiness=await Promise.allSettled(applications.map(waitForApp));
+  const failedWorker=readiness.findIndex(result=>result.status==='rejected');
+  if(failedWorker!==-1){
+   if(driverCommand)retainMixedStartupFailure(applications[failedWorker].label);
+   throw readiness[failedWorker].reason;
+  }
+  await proxy();
  }
  if(driverCommand&&!fixtureOnly){
   await startMixedWorker(driverCommand);
   await measureMixedLoad(driverCommand);
   assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+  assert(applications.every(({process:app})=>app.exitCode===null&&app.signalCode===null),'A web worker stopped before workload completion');
  }
  else if(!fixtureOnly){
   await measureRoutes(fixture);
@@ -1656,10 +1674,11 @@ try{
  finally{
   try{
    if(server?.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
-   await Promise.all([stopProcess(app),stopProcess(mixedWorker)]);
-   const appLog=join(privateDir,'application.log');
-   if(existsSync(appLog)){
-    const log=readFileSync(appLog,'utf8');
+   report.applicationExitStates=applications.map(({process:app,worker})=>({worker,code:app.exitCode,signal:app.signalCode}));
+   await Promise.all([...applications.map(application=>stopProcess(application.process)),stopProcess(mixedWorker)]);
+   const appLogs=applications.map(({label})=>join(privateDir,label+'.log')).filter(existsSync);
+   if(appLogs.length){
+    const log=appLogs.map(path=>readFileSync(path,'utf8')).join('\n');
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
      counts[code]=(counts[code]??0)+1;
