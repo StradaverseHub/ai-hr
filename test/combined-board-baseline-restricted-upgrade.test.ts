@@ -64,41 +64,52 @@ const exec=promisify(execFile);
 afterAll(closeAll);
 
 async function verifyPayrollProcessFourGrants(observer:postgres.Sql,tenantId:string) {
- const companies=Array.from({length:5},()=>randomUUID());
- const [selected,second,third,fourth,ungranted]=companies;
- const userId=randomUUID(),attemptId=randomUUID(),importedBatchId=randomUUID(),ungrantedBatchId=randomUUID();
- const grants=[second,third,fourth,selected].map(companyId=>({role:'hr_admin',companyId}));
- const source='fictional payroll process regression';
+ const allowed=Array.from({length:4},(_,index)=>({
+  id:randomUUID(),historyBatchId:randomUUID(),draftBatchId:randomUUID(),period:'2026-0'+String(index+6),
+ }));
+ const ungrantedCompanyId=randomUUID(),ungrantedBatchId=randomUUID();
+ const userId=randomUUID(),attemptId=randomUUID(),source='fictional payroll process regression';
+ const allowedIds=allowed.map(company=>company.id);
+ const grants=allowedIds.map(companyId=>({role:'hr_admin',companyId}));
  await observer.begin(async tx=>{
   // Only the disposable rehearsal database uses fixture inserts in place of an import job.
   await tx`set local session_replication_role = replica`;
   await tx`insert into public.company(id,tenant_id,legal_name)
-    select id,${tenantId},'Payroll Process rehearsal '||id from unnest(${companies}::uuid[]) ids(id)`;
+    select id,${tenantId},'Payroll Process rehearsal '||id from unnest(${[...allowedIds,ungrantedCompanyId]}::uuid[]) ids(id)`;
   await tx`insert into public.app_user(id,tenant_id,workos_user_id) values(${userId},${tenantId},${'user_'+userId})`;
   await tx`insert into public.role_assignment(tenant_id,app_user_id,company_id,role)
-    select ${tenantId},${userId},id,'hr_admin' from unnest(${[second,third,fourth,selected]}::uuid[]) ids(id)`;
+    select ${tenantId},${userId},id,'hr_admin' from unnest(${allowedIds}::uuid[]) ids(id)`;
   await tx`insert into public.payroll_history_import_attempt
     (id,tenant_id,created_by,operation_key,source_name,mime_type,source_hash,source_content,company_ids,plan)
     values(${attemptId},${tenantId},${userId},${attemptId},'payroll-process-rehearsal.csv','text/csv',
-      ${sha(source)},${Buffer.from(source)},array[${selected}::uuid],'{}'::jsonb)`;
-  await tx`insert into public.payroll_batch
-    (id,tenant_id,company_id,pay_period,batch_date,run_type,status,employee_count,history_import_attempt_id)
-    values(${importedBatchId},${tenantId},${selected},'2026-11','2026-11-28','adjustment','closed',0,${attemptId}),
-          (${randomUUID()},${tenantId},${selected},'2026-10','2026-10-28','regular','draft',0,null),
-          (${ungrantedBatchId},${tenantId},${ungranted},'2026-12','2026-12-28','regular','draft',0,null)`;
+      ${sha(source)},${Buffer.from(source)},${allowedIds}::uuid[],'{}'::jsonb)`;
+  for (const company of allowed) {
+   await tx`insert into public.payroll_batch
+     (id,tenant_id,company_id,pay_period,batch_date,run_type,status,employee_count,history_import_attempt_id)
+     values(${company.historyBatchId},${tenantId},${company.id},'2026-11','2026-11-28','adjustment','closed',0,${attemptId}),
+           (${company.draftBatchId},${tenantId},${company.id},${company.period},${company.period+'-28'},'regular','draft',0,null)`;
+  }
+  await tx`insert into public.payroll_batch(id,tenant_id,company_id,pay_period,batch_date,run_type,status,employee_count)
+    values(${ungrantedBatchId},${tenantId},${ungrantedCompanyId},'2026-12','2026-12-28','regular','draft',0)`;
   await tx`set local session_replication_role = origin`;
   await tx`set local role ai_hr_app`;
   await tx`select set_config('app.tenant_id',${tenantId},true),set_config('app.user_id',${userId},true),
     set_config('app.roles','hr_admin',true),set_config('app.grants',${JSON.stringify(grants)},true),
-    set_config('app.payroll_tax_basis_reader','1',true),set_config('jit','off',true)`;
-  const [period]=await tx<{latest:string|null}[]>`select max(b.pay_period) as latest
-    from public.payroll_history_effective_batch b join public.company c on c.id=b.company_id
-    where b.company_id=${selected} and (b.history_import_attempt_id is null or b.employee_count>0)`;
-  expect(period.latest).toBe('2026-10');
-  const [permission]=await tx<{selected:boolean;ungranted:boolean}[]>`select
-    app.payroll_tax_basis_original_employer_read(${importedBatchId}) as selected,
+    set_config('app.payroll_tax_basis_reader','1',true),set_config('app.payroll_import_tax_basis_reader','1',true),
+    set_config('jit','off',true)`;
+  const latestPeriod=async(companyIds:string[])=>{
+   const [period]=await tx<{latest:string|null}[]>`select max(b.pay_period) as latest
+     from public.payroll_history_effective_batch b join public.company c on c.id=b.company_id
+     where b.company_id=any(${companyIds}::uuid[]) and (b.history_import_attempt_id is null or b.employee_count>0)`;
+   return period.latest;
+  };
+  for (const company of allowed) expect(await latestPeriod([company.id])).toBe(company.period);
+  expect(await latestPeriod(allowedIds)).toBe('2026-09');
+  expect(await latestPeriod([ungrantedCompanyId])).toBeNull();
+  const [permission]=await tx<{allowed:boolean;ungranted:boolean}[]>`select
+    app.payroll_tax_basis_original_employer_read(${allowed[0].historyBatchId}) as allowed,
     app.payroll_tax_basis_original_employer_read(${ungrantedBatchId}) as ungranted`;
-  expect(permission).toEqual({selected:true,ungranted:false});
+  expect(permission).toEqual({allowed:true,ungranted:false});
  });
 }
 
