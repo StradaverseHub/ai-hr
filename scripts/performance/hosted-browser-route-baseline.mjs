@@ -55,8 +55,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44818108767,artifactId:14671621980,
-  sourceSha:'09022db78fe78c78a167d8e118c0d7b352c10874'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44823850681,artifactId:14673786023,
+  sourceSha:'3dbb03b6221f631448af3ac572c81b174b527f08'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -525,6 +525,11 @@ async function measureMixedLoad(command){
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const navigationFailure=projectMixedNavigationPreflightFailure(data.mixedNavigationPreflightFailure);
    if(navigationFailure)report.mixedNavigationPreflightFailure=navigationFailure;
+   const claimFailure=data.mixedClaimBrowserFailure;
+   if(['create-response','delete-response'].includes(claimFailure?.stage)
+      &&['baseline','loaded'].includes(claimFailure.phase)&&roles.includes(claimFailure.role)){
+    report.mixedClaimBrowserFailure={stage:claimFailure.stage,phase:claimFailure.phase,role:claimFailure.role};
+   }
    const driverFacts=data.driverFailures;
    const privateFailureLog=join(privateDir,'driver-failures.log');
    if(driverFacts?.primary&&existsSync(privateFailureLog)){
