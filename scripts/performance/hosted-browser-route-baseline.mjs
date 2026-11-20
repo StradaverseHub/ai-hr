@@ -31,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','walkthrough'].includes(surfaceProbe),'Unknown browser surface');
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -1643,7 +1643,7 @@ async function measureShellPopovers({page,user,report,save}){
   ['/me/notifications','/approvals','/approvals/history']);
 }
 
-async function measureWalkthrough({page,user,report,save}){
+async function measureWalkthrough({page,user,report,save,recordDocument=false}){
  report.walkthroughSteps=[];
  report.actionStage='welcome-profile-open';
  const response=await page.goto(origin+'/me',{waitUntil:'commit',timeout:15000});
@@ -1668,7 +1668,43 @@ async function measureWalkthrough({page,user,report,save}){
  await dialog.getByRole('button',{name:'Next',exact:true}).waitFor({state:'visible',timeout:15000});
  assert.equal(await account.getAttribute('aria-expanded'),'false');
  report.walkthroughSteps.push({step:'open-welcome-tour',elapsedMs:Math.round(performance.now()-started)});
+ if(recordDocument){
+  const document=await response.body();
+  report.walkthroughDocument={
+   bytes:document.length,
+   includesUnopenedClaimsWalkthrough:document.includes('Submit an expense claim'),
+   includesUnopenedClaimsWalkthroughLaterStep:document.includes('Prepare the claim')&&document.includes('Track the result'),
+  };
+ }
  save();
+}
+
+async function measureFocusedWalkthrough(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ report.walkthroughStartup=[];
+ const user=fixture.users[4];
+ assert.equal(user.role,'employee');
+ for(const trial of [1,2,3]){
+  const context=await signedInContext(user);
+  try{
+   const page=await context.newPage();
+   const row={role:user.role,trial,status:'incomplete'};
+   report.walkthroughStartup.push(row);
+   const journey={};
+   const retain=()=>{
+    row.steps=journey.walkthroughSteps??[];
+    row.document=journey.walkthroughDocument??null;
+    save();
+   };
+   try{
+    await measureWalkthrough({page,user,report:journey,save:retain,recordDocument:true});
+    assert(row.document.bytes>0);
+    row.status='observed';
+   }finally{retain();}
+  }finally{await context.close();}
+ }
+ assert.equal(report.walkthroughStartup.length,3);
 }
 
 async function measureRosterExceptions({page,user,fixture,report,save}){
@@ -2034,6 +2070,7 @@ try{
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='walkthrough')await measureFocusedWalkthrough(fixture);
   else if(surfaceProbe==='leave-inbox'){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
