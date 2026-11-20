@@ -1192,7 +1192,7 @@ try{
  if(!fixtureOnly){
   await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true'});
   await waitForApp();
   await proxy();
   await measureRoutes(fixture);
@@ -1237,6 +1237,22 @@ try{
      if(approvals.length===64)break;
     }
     if(approvals.length)report.approvalsPreparation=approvals;
+    const assistantPhases=new Set(['session','translations','access','scope','retention','importAvailability',
+     'legacyList','legacySelected','storedList','storedSelected','title']);
+    const assistantOpens=[];
+    for(const [,record] of log.matchAll(/^PERF_ASSISTANT_OPEN (.{1,1500})$/gm)){
+     let entry;
+     try{entry=JSON.parse(record);}catch{continue;}
+     if(!entry||!['group-admin','company-admin','employee'].includes(entry.role)
+       ||!['new','legacy','stored'].includes(entry.view)
+       ||!Number.isSafeInteger(entry.elapsedMs)||entry.elapsedMs<0||entry.elapsedMs>120000)continue;
+     const timings=Object.entries(entry.timings??{}).filter(([phase,interval])=>assistantPhases.has(phase)
+      &&Array.isArray(interval)&&interval.length===2&&interval.every(Number.isSafeInteger)
+      &&0<=interval[0]&&interval[0]<=interval[1]&&interval[1]<=entry.elapsedMs);
+     assistantOpens.push({role:entry.role,view:entry.view,elapsedMs:entry.elapsedMs,timings:Object.fromEntries(timings)});
+     if(assistantOpens.length===128)break;
+    }
+    if(assistantOpens.length)report.assistantOpens=assistantOpens;
    }
   }finally{
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
