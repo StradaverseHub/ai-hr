@@ -45,7 +45,9 @@ runs:
       if: ${{ inputs.mobile == 'true' }}
       shell: bash
       working-directory: ${{ inputs.path }}
-      run: npm ci --prefix mobile --no-audit --no-fund
+      run: |
+        npm_cache="$(mktemp -d "${RUNNER_TEMP:?}/aihr-native-npm.XXXXXXXX")"
+        npm ci --prefix mobile --no-audit --no-fund --cache "$npm_cache"
     - name: Prepare disposable environment
       shell: bash
       working-directory: ${{ inputs.path }}
