@@ -70,6 +70,16 @@ function fixtureFailure(error){
   for(let current=error,depth=0;depth<3&&current instanceof Error;depth++){
    const currentCode=Object.getOwnPropertyDescriptor(current,'code')?.value;
    if(code===null&&fixtureFailureCodes.has(currentCode))code=currentCode;
+   if(code===null&&current instanceof TypeError){
+    const message=Object.getOwnPropertyDescriptor(current,'message')?.value;
+    if(typeof message==='string'){
+     if(/\b(?:markRunsAffectedByEmploymentChangeTx|saveRewardPlanConfiguration|assertRewardPolicyGrids|sharedRewardPolicyProjection|normalizedRewardTargets) is not a function\b/.test(message)){
+      code='ERR_FIXTURE_MODULE_BINDING';
+     }else if(/Cannot read properties of undefined \(reading 'parse'\)/.test(message)){
+      code='ERR_FIXTURE_MISSING_SCHEMA';
+     }
+    }
+   }
    const frames=typeof current.stack==='string'?current.stack.split('\n').slice(1,16):[];
    for(const frame of frames){
     if(!/^\s+at /.test(frame))continue;
