@@ -1157,131 +1157,153 @@ function processedPayslipFilters(p: ProcessedPayslipFilters) {
 /** Resolve the latest visible period before reading payslip rows for the History landing page. */
 export async function latestProcessedPayslipPeriod(ctx: SessionContext, p: ProcessedPayslipFilters) {
   if (!p.companyIds.length) return null;
-  return withTenant(ctx, async (tx) => {
-    // Order the smaller run set first. Keep the correlated probe so PostgreSQL can use the
-    // batch/employment index and stop at the first visible payslip, without building a global
-    // join of all historical slips. The same row-secured joins establish presence.
-    const [live] = await tx.execute<{ payPeriod: string }>(sql`
-      select batches.pay_period as "payPeriod"
-      from (
-        select ${payrollBatch.id}, ${payrollBatch.payPeriod}
-        from ${payrollBatch}
-        inner join ${company} on ${company.id} = ${payrollBatch.companyId}
-        where ${processedBatchFilters(p)}
-        order by ${payrollBatch.payPeriod} desc
-        offset 0
-      ) batches
-      where exists (
-        select 1 from ${payslip}
-        inner join ${employment} on ${employment.id} = ${payslip.employmentId}
-        inner join ${person} on ${person.id} = ${employment.personId}
-        where ${payslip.batchId} = batches.id
-          ${p.employmentId ? sql`and ${payslip.employmentId} = ${p.employmentId}` : sql``}
-        offset 0
-      )
-      order by batches.pay_period desc
-      limit 1`);
-    const retained = await latestInformationPayslipPeriod(tx, {
-      ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle),
-    });
-    const periods = [live?.payPeriod, retained];
-    return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
-  });
+  return withTenant(ctx, tx => latestProcessedPayslipPeriodTx(tx, p));
 }
 
-export function listProcessedPayslipsAcross(
+async function latestProcessedPayslipPeriodTx(tx: Tx, p: ProcessedPayslipFilters) {
+  // Order the smaller run set first. Keep the correlated probe so PostgreSQL can use the
+  // batch/employment index and stop at the first visible payslip, without building a global
+  // join of all historical slips. The same row-secured joins establish presence.
+  const [live] = await tx.execute<{ payPeriod: string }>(sql`
+    select batches.pay_period as "payPeriod"
+    from (
+      select ${payrollBatch.id}, ${payrollBatch.payPeriod}
+      from ${payrollBatch}
+      inner join ${company} on ${company.id} = ${payrollBatch.companyId}
+      where ${processedBatchFilters(p)}
+      order by ${payrollBatch.payPeriod} desc
+      offset 0
+    ) batches
+    where exists (
+      select 1 from ${payslip}
+      inner join ${employment} on ${employment.id} = ${payslip.employmentId}
+      inner join ${person} on ${person.id} = ${employment.personId}
+      where ${payslip.batchId} = batches.id
+        ${p.employmentId ? sql`and ${payslip.employmentId} = ${p.employmentId}` : sql``}
+      offset 0
+    )
+    order by batches.pay_period desc
+    limit 1`);
+  const retained = await latestInformationPayslipPeriod(tx, {
+    ...p, cycle: p.payrollCycleId ? undefined : cleanRunType(p.cycle),
+  });
+  const periods = [live?.payPeriod, retained];
+  return periods.filter((period): period is string => !!period).sort().at(-1) ?? null;
+}
+
+type ProcessedPayslipPageFilters = ProcessedPayslipFilters & {
+  /**
+   * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
+   * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
+   * History was a tab you chose; it is not once History is the tab that OPENS, which is why the
+   * approved plan made "confirm it is paginated or bounded" a precondition of that change rather
+   * than an afterthought.
+   *
+   * A cap, not a page: the rows are already ordered newest-period-first, so the cap keeps exactly
+   * what someone opening the screen came to check. The caller asks for one more row than it means
+   * to show and says so on screen when the extra one comes back — a silent truncation would be
+   * worse than the unbounded read it replaces.
+   *
+   * Absent ⇒ genuinely unbounded, so existing callers (and the CSV export, which must not be
+   * clipped) are unchanged.
+   */
+  limit?: number;
+};
+
+export function listProcessedPayslipsAcross(ctx: SessionContext, p: ProcessedPayslipPageFilters): Promise<ProcessedPayslipViewRow[]> {
+  if (!p.companyIds.length) return Promise.resolve([]);
+  return withTenant(ctx, tx => listProcessedPayslipsAcrossTx(tx, p));
+}
+
+/** Resolve the selected or latest visible period and read its bounded rows in one Payroll snapshot. */
+export async function readProcessedPayslipHistory(
   ctx: SessionContext,
-  p: ProcessedPayslipFilters & {
-    /**
-     * 862ed0ad — a hard row cap. This read was UNBOUNDED: no limit, no pagination, every payslip in
-     * scope for all time, each carrying its whole `statutory` jsonb blob. That was survivable while
-     * History was a tab you chose; it is not once History is the tab that OPENS, which is why the
-     * approved plan made "confirm it is paginated or bounded" a precondition of that change rather
-     * than an afterthought.
-     *
-     * A cap, not a page: the rows are already ordered newest-period-first, so the cap keeps exactly
-     * what someone opening the screen came to check. The caller asks for one more row than it means
-     * to show and says so on screen when the extra one comes back — a silent truncation would be
-     * worse than the unbounded read it replaces.
-     *
-     * Absent ⇒ genuinely unbounded, so existing callers (and the CSV export, which must not be
-     * clipped) are unchanged.
-     */
-    limit?: number;
-  },
-): Promise<ProcessedPayslipViewRow[]> {
-  if (p.companyIds.length === 0) return Promise.resolve([]); // fail closed — no scope, no rows
+  p: ProcessedPayslipFilters & { limit: number },
+): Promise<{year: number | undefined; month: number | undefined; rows: ProcessedPayslipViewRow[]}> {
+  const selection = {year: p.year, month: p.month};
+  if (!p.companyIds.length) return {...selection, rows: []};
+  return withTenant(ctx, async tx => {
+    if (selection.year == null && selection.month == null) {
+      const latest = await latestProcessedPayslipPeriodTx(tx, p);
+      if (!latest) return {...selection, rows: []};
+      selection.year = Number(latest.slice(0, 4));
+      selection.month = Number(latest.slice(5, 7));
+    }
+    const rows = await listProcessedPayslipsAcrossTx(tx, {...p, ...selection});
+    return {...selection, rows};
+  }, {readOnlySnapshot: true});
+}
+
+async function listProcessedPayslipsAcrossTx(tx: Tx, p: ProcessedPayslipPageFilters): Promise<ProcessedPayslipViewRow[]> {
   const cycle = p.payrollCycleId ? undefined : cleanRunType(p.cycle);
   const limit = Number.isInteger(p.limit) && p.limit! > 0 ? p.limit! : undefined;
-  return withTenant(ctx, async (tx) => {
-    const batchFields = {
-      companyId: payrollBatch.companyId,
-      company: company.legalName,
-      currency: company.currency,
-      batchId: payrollBatch.id,
-      payrollCycleId: payrollBatch.payrollCycleId,
-      payPeriod: payrollBatch.payPeriod,
-      runType: payrollBatch.runType,
-      runSeq: payrollBatch.runSeq,
-      batchStatus: payrollBatch.status,
-      historyImportAttemptId: payrollBatch.historyImportAttemptId,
-      historyImportCycleName: payrollBatch.historyImportCycleName,
-      releasedAt: payrollBatch.releasedAt,
-    };
-    const slipFields = {
-      id: payslip.id,
-      employmentId: payslip.employmentId,
-      employeeName: person.fullName,
-      employeeCode: employment.employeeCode,
-      // The coverage window lets History retain both segments of a transfer in the same period.
-      coverageFrom: payslip.coverageFrom,
-      coverageTo: payslip.coverageTo,
-      version: payslip.version,
-      basic: payslip.basicSalary,
-      allowance: payslip.allowance,
-      overtime: payslip.overtimePay,
-      bonus: payslip.bonus,
-      gross: payslip.grossPay,
-      statutory: payslip.statutory,
-      otherDeductions: payslip.otherDeductions,
-      totalDeductions: payslip.totalDeductions,
-      net: payslip.netPay,
-    };
-    let rows: ProcessedPayslipViewRow[];
-    if (limit && p.year != null && p.month != null) {
-      // Seek by batch within the selected month. All joins still run under the reader's row policies.
-      // A row beyond the cap within its own batch cannot enter the globally capped ordered page.
-      const batches = tx.select(batchFields).from(payrollBatch)
-        .innerJoin(company, eq(company.id, payrollBatch.companyId))
-        .where(processedBatchFilters(p)).offset(0).as('visible_payroll_batches');
-      const slips = tx.select(slipFields).from(payslip)
-        .innerJoin(employment, eq(employment.id, payslip.employmentId))
-        .innerJoin(person, eq(person.id, employment.personId))
-        .where(and(eq(payslip.batchId, batches.batchId), p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined))
-        .orderBy(asc(person.fullName)).limit(limit).as('visible_payroll_slips');
-      const page = await tx.select().from(batches).innerJoinLateral(slips, sql`true`)
-        .orderBy(desc(batches.payPeriod), asc(batches.runSeq), asc(slips.employeeName)).limit(limit);
-      rows = page.map(row => ({ ...row.visible_payroll_batches, ...row.visible_payroll_slips }));
-    } else {
-      const query = tx.select({ ...batchFields, ...slipFields }).from(payslip)
-        .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-        .innerJoin(company, eq(company.id, payrollBatch.companyId))
-        .innerJoin(employment, eq(employment.id, payslip.employmentId))
-        .innerJoin(person, eq(person.id, employment.personId))
-        .where(processedPayslipFilters(p))
-        .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
-        .$dynamic();
-      rows = await (limit ? query.limit(limit) : query);
-    }
-    // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
-    const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
-    const seen=new Set(rows.map(row=>row.id));
-    for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
-      rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
-    }
-    if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
-    return limit?rows.slice(0,limit):rows;
-  });
+  const batchFields = {
+    companyId: payrollBatch.companyId,
+    company: company.legalName,
+    currency: company.currency,
+    batchId: payrollBatch.id,
+    payrollCycleId: payrollBatch.payrollCycleId,
+    payPeriod: payrollBatch.payPeriod,
+    runType: payrollBatch.runType,
+    runSeq: payrollBatch.runSeq,
+    batchStatus: payrollBatch.status,
+    historyImportAttemptId: payrollBatch.historyImportAttemptId,
+    historyImportCycleName: payrollBatch.historyImportCycleName,
+    releasedAt: payrollBatch.releasedAt,
+  };
+  const slipFields = {
+    id: payslip.id,
+    employmentId: payslip.employmentId,
+    employeeName: person.fullName,
+    employeeCode: employment.employeeCode,
+    // The coverage window lets History retain both segments of a transfer in the same period.
+    coverageFrom: payslip.coverageFrom,
+    coverageTo: payslip.coverageTo,
+    version: payslip.version,
+    basic: payslip.basicSalary,
+    allowance: payslip.allowance,
+    overtime: payslip.overtimePay,
+    bonus: payslip.bonus,
+    gross: payslip.grossPay,
+    statutory: payslip.statutory,
+    otherDeductions: payslip.otherDeductions,
+    totalDeductions: payslip.totalDeductions,
+    net: payslip.netPay,
+  };
+  let rows: ProcessedPayslipViewRow[];
+  if (limit && p.year != null && p.month != null) {
+    // Seek by batch within the selected month. All joins still run under the reader's row policies.
+    // A row beyond the cap within its own batch cannot enter the globally capped ordered page.
+    const batches = tx.select(batchFields).from(payrollBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(processedBatchFilters(p)).offset(0).as('visible_payroll_batches');
+    const slips = tx.select(slipFields).from(payslip)
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(and(eq(payslip.batchId, batches.batchId), p.employmentId ? eq(payslip.employmentId, p.employmentId) : undefined))
+      .orderBy(asc(person.fullName)).limit(limit).as('visible_payroll_slips');
+    const page = await tx.select().from(batches).innerJoinLateral(slips, sql`true`)
+      .orderBy(desc(batches.payPeriod), asc(batches.runSeq), asc(slips.employeeName)).limit(limit);
+    rows = page.map(row => ({ ...row.visible_payroll_batches, ...row.visible_payroll_slips }));
+  } else {
+    const query = tx.select({ ...batchFields, ...slipFields }).from(payslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(person, eq(person.id, employment.personId))
+      .where(processedPayslipFilters(p))
+      .orderBy(desc(payrollBatch.payPeriod), asc(payrollBatch.runSeq), asc(person.fullName))
+      .$dynamic();
+    rows = await (limit ? query.limit(limit) : query);
+  }
+  // Same cap as the live rows: the landing tab must not read (or fail on) every retained document ever kept.
+  const retained=await informationPayslipDocuments(tx,{...p,cycle,intendedCycle:true,limit});
+  const seen=new Set(rows.map(row=>row.id));
+  for(const document of retained){const r=informationDocumentRow(document);if(seen.has(r.id))continue;
+    rows.push({id:r.id,employmentId:r.employmentId,employeeName:r.employeeName,employeeCode:r.employeeCode,companyId:r.companyId,company:r.company,currency:r.currency,batchId:r.batchId!,payrollCycleId:r.payrollCycleId,payPeriod:r.payPeriod,runType:r.runType,runSeq:r.runSeq,batchStatus:r.batchStatus,historyImportAttemptId:r.historyImportAttemptId??null,historyImportCycleName:r.historyImportCycleName??null,coverageFrom:r.coverageFrom??null,coverageTo:r.coverageTo??null,releasedAt:r.releasedAt,version:r.version,basic:r.basic,allowance:r.allowance,overtime:r.overtime,bonus:r.bonus,gross:r.gross,statutory:r.statutory,otherDeductions:r.otherDeductions,totalDeductions:r.totalDeductions,net:r.net});
+  }
+  if(retained.length)rows.sort((a,b)=>b.payPeriod.localeCompare(a.payPeriod)||a.runSeq-b.runSeq||a.employeeName.localeCompare(b.employeeName));
+  return limit?rows.slice(0,limit):rows;
 }
 
 /**

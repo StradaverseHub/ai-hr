@@ -31,6 +31,7 @@ import {
   listPayrollRegisterAcross,
   listProcessedPayslipsAcross,
   latestProcessedPayslipPeriod,
+  readProcessedPayslipHistory,
 } from '../core/payroll-view';
 // 080de5cf — the History grid's fold. Exercised HERE against real kernel output as well as in
 // test/history-pivot.test.ts against fixtures: the fixtures catch a wrong fold, this catches a wrong
@@ -312,10 +313,15 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
     expect(await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] })).toEqual([]);
     expect(await latestProcessedPayslipPeriod(a, { companyIds: [base.companyId] })).toBeNull();
 
+    const historyFilters={companyIds:[base.companyId],employmentId:e.employmentId,limit:201};
+    expect(await readProcessedPayslipHistory(a,historyFilters)).toEqual({year:undefined,month:undefined,rows:[]});
+
     await generatePayslips(a, { batchId: bMay.batchId });
     expect(await latestProcessedPayslipPeriod(a, { companyIds: [base.companyId], employmentId: e.employmentId })).toBe('2026-05');
     const rows = await listProcessedPayslipsAcross(a, { companyIds: [base.companyId] });
     expect(rows).toHaveLength(1); // May processed, June still draft ⇒ excluded by construction
+    expect(await readProcessedPayslipHistory(a,historyFilters)).toEqual({year:2026,month:5,rows});
+    expect(await readProcessedPayslipHistory(a,{...historyFilters,year:2026,month:6})).toEqual({year:2026,month:6,rows:[]});
     const r = rows[0];
     expect(r).toMatchObject({
       employmentId: e.employmentId,

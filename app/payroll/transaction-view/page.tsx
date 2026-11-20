@@ -16,7 +16,7 @@ import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
   listFixedTransactionsPage,
-  latestProcessedPayslipPeriod,
+  readProcessedPayslipHistory,
   listIndividualTxnCreators,
   listIndividualTxnsPage,
   parseIndividualInquirySort,
@@ -176,14 +176,11 @@ export default async function TransactionViewPage({
     from?: string;
   }>;
 }) {
-  const { s, scopeIds } = await scopedAdmin();
-  const t = await getTranslations('payroll.transactions');
-  const tList = await getTranslations('payroll.list');
-  // 6b4ca488 — the Statutory Explanation tab's own namespace, SHARED with /payroll/statutory-detail and
-  // its export route. One catalogue block for one display, so the tab and the standalone route cannot
-  // caption the same figure differently.
-  const tStat = await getTranslations('payroll.statutoryDetail');
-  const sp = await searchParams;
+  // The statutory tab and standalone route share their translation catalogue.
+  const [{s, scopeIds}, t, tList, tStat, sp] = await Promise.all([
+    scopedAdmin(), getTranslations('payroll.transactions'), getTranslations('payroll.list'),
+    getTranslations('payroll.statutoryDetail'), searchParams,
+  ]);
 
   // 862ed0ad — History is the tab that OPENS. The reporter's point is that Transaction View is where you
   // check a payroll after it has been calculated, so landing on the recurring-items list meant the first
@@ -191,7 +188,11 @@ export default async function TransactionViewPage({
   // saved links keep working; only the no-tab default moves.
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
-  const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
+  // A URL can narrow the authorised company scope.
+  const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
+  const companyIds = companyId ? [companyId] : scopeIds;
+  const showCycles = tab === 'history' || tab === 'grid' || tab === 'statutory';
+  const [employeeChoices, companies, components, creators, gridComponents, cycles] = await Promise.all([
     readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId}),
     listCompanies(s),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
@@ -206,25 +207,20 @@ export default async function TransactionViewPage({
     // record lines needs the catalogue's descriptions on both tabs. It was `tab === 'grid'` only, which
     // is why the repair would have been silently inert on the tab the reporter actually opened.
     tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true }) : Promise.resolve([]),
+    showCycles ? listPayrollCyclesForCompanies(s, companyIds) : Promise.resolve([]),
   ]);
   // Full-scope department options and selected identity are independent of the rail's current page.
   const departmentOptions=employeeChoices.allDepartmentOptions;
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
-  // SCOPE-GUARD every ?param (mirror fixed/page.tsx): an out-of-scope companyId/employmentId is
-  // treated as "no selection", so URL tampering cannot cross the company fence.
-  const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
-  const companyIds = companyId ? [companyId] : scopeIds;
+  // The scoped picker resolves an authorised employee or leaves the filter unset.
   const employmentId=employeeChoices.selected?.employmentId;
   const componentId =
     sp.componentId && components.some((c) => c.id === sp.componentId) ? sp.componentId : undefined;
   const status = sp.status === 'active' || sp.status === 'ended' ? sp.status : undefined;
   const year = intParam(sp.year, 2000, 2100);
   const month = intParam(sp.month, 1, 12);
-  const cycles = tab === 'history' || tab === 'grid' || tab === 'statutory'
-    ? await listPayrollCyclesForCompanies(s, companyIds)
-    : [];
   const payrollCycleId = cycles.find((cycle) => cycle.id === sp.payrollCycleId)?.id;
   const legacyCycle = CYCLES.includes(sp.cycle as (typeof CYCLES)[number]) ? sp.cycle : undefined;
   const cycle = payrollCycleId ? undefined : legacyCycle;
@@ -242,14 +238,6 @@ export default async function TransactionViewPage({
       ? [option.name, companyNames.get(option.companyId)].filter(Boolean).join(' · ')
       : option.name,
   }));
-  const needsDefaultHistoryPeriod = tab === 'history' && year == null && month == null;
-  const historyPeriod = needsDefaultHistoryPeriod
-    ? await latestProcessedPayslipPeriod(s, { companyIds, employmentId, ...cycleFilter })
-    : null;
-  const historyYear = historyPeriod ? Number(historyPeriod.slice(0, 4)) : year;
-  const historyMonth = historyPeriod ? Number(historyPeriod.slice(5, 7)) : month;
-
-
   // 080de5cf (Grid tab) — the grid is twelve columns of ONE calendar year, so unlike the other tabs its
   // year is never "all": an absent/tampered ?year= falls back to this year rather than to an unbounded
   // read across every year the employee has ever been paid.
@@ -311,18 +299,17 @@ export default async function TransactionViewPage({
   // Only the active tab's query runs — the others stay empty (single round-trip per view).
   const inquiryQuery=parsePageQuery(sp),inquirySort=parseIndividualInquirySort(sp.txnSort,sp.txnDir);
   const inquiryParams={...sp,tab,months:Array.isArray(sp.months)?sp.months.join(','):sp.months};
-  const [fixedPage, individualPage, historyRows, statutoryRuns, gridPayslips, outstandingRows] = await Promise.all([
+  const [fixedPage, individualPage, history, statutoryRuns, gridPayslips, outstandingRows] = await Promise.all([
     tab === 'fixed'
       ? listFixedTransactionsPage(s, fixedFilters, inquiryQuery, today)
       : Promise.resolve({rows:[],total:0}),
     tab === 'individual'
       ? listIndividualTxnsPage(s, individualFilters, inquiryQuery, inquirySort)
       : Promise.resolve({rows:[],total:0}),
-    // 862ed0ad — bounded, because History is now the landing tab. One row more than we mean to show, so
-    // truncation can be STATED rather than silently applied. See HISTORY_ROW_CAP.
-    tab === 'history' && (!needsDefaultHistoryPeriod || historyPeriod)
-      ? listProcessedPayslipsAcross(s, { companyIds, year: historyYear, month: historyMonth, employmentId, ...cycleFilter, limit: HISTORY_ROW_CAP + 1 })
-      : Promise.resolve([]),
+    // Fetch one extra row so the page can visibly report the history cap.
+    tab === 'history'
+      ? readProcessedPayslipHistory(s, {companyIds, year, month, employmentId, ...cycleFilter, limit: HISTORY_ROW_CAP + 1})
+      : Promise.resolve({year, month, rows: []}),
     // The selector reads only the run index. The chosen payslip and its workbook share an exact ID.
     tab === 'statutory' && employmentId
       ? listPayslipRunsFor(s, { companyIds, employmentId })
@@ -340,6 +327,7 @@ export default async function TransactionViewPage({
       : Promise.resolve([]),
   ]);
   const fixedRows=fixedPage.rows,individualRows=individualPage.rows;
+  const {year: historyYear, month: historyMonth, rows: historyRows}=history;
 
   // Feedback efece4ce — which companies are actually registered for the HRD Corp levy. The breakdown used
   // to drop its HRDF line whenever the amount was 0, so a company that legitimately pays nothing (no HRDF

@@ -12,7 +12,7 @@ import {eq,sql} from 'drizzle-orm';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {hireEmployee} from '../core/org';
 import * as schema from '../db/schema';
-import {listProcessedPayslipsAcross} from '../core/payroll-view';
+import {listProcessedPayslipsAcross,readProcessedPayslipHistory} from '../core/payroll-view';
 import {RETAINED_DOCUMENT_CEILING} from '../core/information-correction-history';
 
 let b:Base;
@@ -47,7 +47,8 @@ describe('Transaction View landing read with more than 5,000 retained documents'
  it('the capped History read returns the newest rows instead of failing', {timeout:120_000}, async()=>{
   await retainedHistory();
   // The landing tab asks for HISTORY_ROW_CAP + 1 = 201 rows.
-  const rows=await listProcessedPayslipsAcross(adminCtx(b),{companyIds:[b.companyId],limit:201});
+  const {year,month,rows}=await readProcessedPayslipHistory(adminCtx(b),{companyIds:[b.companyId],limit:201});
+  expect({year,month}).toEqual({year:2025,month:3});
   expect(rows).toHaveLength(201);
   // Independent expectation: newest period first, then run sequence ascending.
   expect(rows.map(r=>`${r.payPeriod}#${r.runSeq}`)).toEqual(Array.from({length:201},(_,i)=>`2025-03#${i+1}`));
