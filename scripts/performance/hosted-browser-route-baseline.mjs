@@ -589,26 +589,34 @@ async function measureRoutes(fixture){
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
 }
 
+const censusPanelTitles={
+ '/assistant/rewards/cancel':'Cancel a Rewards review',
+ '/assistant/rewards/return':'Return annual Rewards review',
+};
+
 async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
  const row={path:label,pass,role,outcome:'browser-failure'};
  const path=url.pathname;
  const start=performance.now(),remaining=()=>Math.max(1,Math.floor(start+15000-performance.now()));
+ const redirected=()=>{
+  const finalUrl=new URL(page.url());
+  if(finalUrl.origin!==origin){row.outcome='external-destination';return true;}
+  if(finalUrl.pathname===path)return false;
+  row.outcome='redirect';
+  row.destination=compiledPaths.has(finalUrl.pathname)?finalUrl.pathname:'non-static-destination';
+  return true;
+ };
  try{
   const response=await page.goto(url.href,{waitUntil:'commit',timeout:remaining()});
   row.responseCommittedMs=Math.round(performance.now()-start);
   row.httpStatus=response?.status()??null;
-  const redirected=()=>{
-   const finalUrl=new URL(page.url());
-   if(finalUrl.origin!==origin){row.outcome='external-destination';return true;}
-   if(finalUrl.pathname===path)return false;
-   row.outcome='redirect';
-   row.destination=compiledPaths.has(finalUrl.pathname)?finalUrl.pathname:'non-static-destination';
-   return true;
-  };
   if(!redirected()){
    if(row.httpStatus!==200)row.outcome='http-error';
    else{
-    const heading=page.locator('main:visible h1:visible').first();
+    const title=censusPanelTitles[path];
+    const heading=title
+     ?page.locator('main:visible').getByRole('heading',{name:title,exact:true,level:2}).first()
+     :page.locator('main:visible h1:visible').first();
     const fault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/}).first();
     await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
     if(!redirected()){
@@ -618,9 +626,19 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
     }
    }
   }
- }catch(error){row.outcome=error?.name==='TimeoutError'?'timeout':'browser-failure';}
+ }catch(error){
+  if(error?.name==='TimeoutError'){
+   if(row.responseCommittedMs===undefined){
+    row.outcome='timeout';row.timeoutStage='response';
+   }else if(!redirected()){
+    row.outcome='timeout';row.timeoutStage='render';
+   }
+  }else row.outcome='browser-failure';
+ }
  row.elapsedMs=Math.round(performance.now()-start);
- if(row.outcome==='heading-visible')row.documentTiming=await documentTiming(page);
+ if(row.responseCommittedMs!==undefined&&['heading-visible','timeout','render-error','read-unavailable'].includes(row.outcome)){
+  row.documentTiming=await documentTiming(page);
+ }
  return row;
 }
 
