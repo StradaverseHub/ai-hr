@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','rewards-bonus','intent-tabs'].includes(surfaceProbe),'Unknown browser surface');
 const rewardsFixture=surfaceProbe==='rewards'||surfaceProbe==='rewards-bonus';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
@@ -525,6 +525,68 @@ async function visit(page,actor,route,pass,fixture) {
 }
 async function assertContentAvailable(page){
  assert.equal(await page.locator('main [data-personnel-busy],main [data-page-busy],main [data-read-unavailable]').count(),0);
+}
+
+async function measureIntentTabTraffic(fixture) {
+ const require = createRequire(join(process.cwd(), 'package.json'));
+ browser = await require('playwright').chromium.launch();
+ const scenarios = [
+  {
+   actor: fixture.users[4], role: 'employee', source: '/attendance', destination: '/attendance/daily',
+   sibling: '/attendance/individual', witness: 'main [data-tour="attendance-day"] input[name="date"]',
+  },
+  {
+   actor: fixture.users[1], role: 'companyHR', source: '/admin/claims', destination: '/admin/claims/limits',
+   sibling: '/admin/claims/mileage', witness: 'main nav a[href="/admin/claims/limits"]',
+  },
+ ];
+ const idleWindowMs = 1200, focusedWindowMs = 800;
+ report.intentTabTraffic = { idleWindowMs, focusedWindowMs, visits: [] };
+ for (const { actor, role, source, destination, sibling, witness } of scenarios) {
+  assert.equal(actor.role, role);
+  for (let attempt = 1; attempt <= 3; attempt++) {
+   const context = await signedInContext(actor);
+   try {
+    const page = await context.newPage();
+    const row = { role, source, destination, attempt, status: 'started',
+     idle: { destination: 0, sibling: 0 }, focused: { destination: 0, sibling: 0 }, documentsAfterClick: 0 };
+    report.intentTabTraffic.visits.push(row);
+    let phase = 'idle';
+    page.on('request', request => {
+     const url = new URL(request.url());
+     if (url.origin !== origin) return;
+     if (phase === 'clicked') {
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) row.documentsAfterClick++;
+      return;
+     }
+     const headers = request.headers();
+     if (headers.rsc !== '1' && !headers['next-router-prefetch'] && !headers['next-router-segment-prefetch']) return;
+     if (url.pathname === destination) row[phase].destination++;
+     if (url.pathname === sibling) row[phase].sibling++;
+    });
+    const response = await page.goto(origin + source, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    assert.equal(response?.status(), 200, 'Intent test source did not load');
+    const tab = page.locator('main a[data-navigation-destination][href="' + destination + '"]');
+    await tab.waitFor({ state: 'visible', timeout: 15000 });
+    assert.equal(await tab.count(), 1, 'Intent test tab was missing or ambiguous');
+    await pause(idleWindowMs);
+    phase = 'focused';
+    await tab.focus({ timeout: 5000 });
+    await pause(focusedWindowMs);
+    phase = 'clicked';
+    const clicked = performance.now();
+    await tab.click({ timeout: 5000 });
+    await page.waitForURL(origin + destination, { timeout: 15000 });
+    await page.locator(witness).first().waitFor({ state: 'visible', timeout: 15000 });
+    row.clickToUsableMs = Math.round(performance.now() - clicked);
+    assert.equal(row.documentsAfterClick, 0, 'Tab reloaded the document');
+    row.status = 'observed';
+   } finally {
+    await context.close();
+    save();
+   }
+  }
+ }
 }
 
 async function measureShellLinks(fixture){
@@ -1975,6 +2037,7 @@ try{
   await proxy();
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='intent-tabs')await measureIntentTabTraffic(fixture);
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
     :surfaceProbe==='rewards'?['rewards-salary','rewards-bonus','rewards-uploaded']:[surfaceProbe];
