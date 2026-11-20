@@ -56,13 +56,17 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
+let verifiedBuildArtifact;
+if(env.AIHR_BROWSER_COMBINED_SURFACE_BUILD==='true'){
+ const runId=Number(env.AIHR_BROWSER_BUILD_RUN_ID);
+ const artifactId=Number(env.AIHR_BROWSER_BUILD_ARTIFACT_ID);
+ assert(Number.isSafeInteger(runId)&&runId>0&&Number.isSafeInteger(artifactId)&&artifactId>0,
+  'Reused browser build is missing its verified artifact identity');
+ verifiedBuildArtifact={runId,artifactId,sourceSha:sha};
+}
 const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_COMBINED_SURFACE_BUILD==='true'&&{
-  verifiedBuildArtifact:sha==='111852a4b932fbf49a7bd7df6056f390f5f11409'
-   ?{runId:44763397635,artifactId:14644151151,sourceSha:sha}
-   :{runId:44780216803,artifactId:14652078434,sourceSha:sha},
- }),
+ ...(verifiedBuildArtifact&&{verifiedBuildArtifact}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});

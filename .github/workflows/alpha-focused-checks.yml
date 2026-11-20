@@ -285,6 +285,7 @@ jobs:
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
+          printf 'AIHR_BROWSER_BUILD_RUN_ID=%s\nAIHR_BROWSER_BUILD_ARTIFACT_ID=%s\n' "$run" "$artifact" >> "$GITHUB_ENV"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
