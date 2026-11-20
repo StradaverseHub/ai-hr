@@ -19,11 +19,13 @@ import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
+import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
+const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1055,6 +1057,7 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...(groupShape?[{name:'group-company-scope',actorIndex:0,run:measureBrowserGroupScope,timings:result=>result.groupScopeSteps}]:[]),
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
@@ -1154,7 +1157,7 @@ async function measureActions(fixture){
     report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
-    const step=result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
+    const step=result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
    finally{retain();await context.close();}
@@ -1184,6 +1187,16 @@ try{
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
+ if(groupShape){
+  const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+  try{
+   const {counts,company}=await seedBrowserGroupShape(owner,fixture);
+   fixture.scaleCompany=company;
+   report.fixture.groupShape=counts;
+   save();
+  }finally{await owner.end({timeout:5});}
+ }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
