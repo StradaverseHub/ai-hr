@@ -970,23 +970,35 @@ async function measureActions(fixture){
   },timings:result=>Object.entries(result.browserMovementJourneys?.[0]?.steps??{})
    .map(([step,row])=>({step,status:row.status,elapsedMs:row.elapsedMs}))},
   {name:'new-joiners-search',actorIndex:1,run:async ({page,user,fixture,report,save})=>{
-   const deadline=performance.now()+15000,timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
-   const response=await page.goto(origin+'/lifecycle/v9',{waitUntil:'domcontentloaded',timeout:timeout()});
+   const opened=performance.now(),deadline=opened+15000;
+   const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+   report.joinerSteps=[];
+   const measure=(step,started)=>{
+    report.joinerSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+    save();
+   };
+   report.joinerStage='document-commit';
+   const response=await page.goto(origin+'/lifecycle/v9',{waitUntil:'commit',timeout:timeout()});
    assert.equal(response?.status(),200);
    assert.equal(page.url(),origin+'/lifecycle/v9');
+   measure('document-commit',opened);
+   report.joinerStage='register-visible';
    await readyContent(page,user,'/lifecycle/v9',timeout,undefined,fixture);
+   measure('register-visible',opened);
    const search=page.getByRole('textbox',{name:'Search by name',exact:true});
    const results=page.getByRole('table',{name:'New joiners',exact:true});
    const owned=results.getByRole('link',{name:fixture.joiners[0],exact:true});
-   report.joinerSteps=[];
+   report.joinerStage='filters-interactive';
+   await search.and(page.locator('input:enabled')).waitFor({state:'visible',timeout:timeout()});
+   measure('filters-interactive',opened);
    for(const [step,query,state] of [['search-no-matches','Fictional unmatched joiner','hidden'],['clear-search','','visible']]){
+    report.joinerStage=step;
     const started=performance.now();
     await search.fill(query,{timeout:timeout()});
     await owned.waitFor({state,timeout:timeout()});
     if(state==='hidden')await results.getByText('No new joiners match your search or filters.',{exact:true})
      .waitFor({state:'visible',timeout:timeout()});
-    report.joinerSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
-    save();
+    measure(step,started);
    }
   },timings:result=>result.joinerSteps},
  ];
@@ -1017,7 +1029,7 @@ async function measureActions(fixture){
     report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
-    const step=result.orgExplorerJourneys?.[0]?.failure?.stage;
+    const step=result.joinerStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
    finally{retain();await context.close();}
