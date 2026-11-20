@@ -2,7 +2,7 @@
 import {afterAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import {PgDialect} from 'drizzle-orm/pg-core';
-import type {SQL} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
 import {owner,resetDb,seedBase,setModule,entitledCtx,closeAll} from './harness';
 import {createBatch} from '../core/payroll';
 import {createTaxBasisPreviewReadTx} from '../core/payroll-tax-basis-read';
@@ -36,6 +36,20 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  expect(preview.employees.map(employee=>employee.employeeNo)).toEqual(expected);expect(preview.eligibleCount).toBe(930);expect(preview.blockedCount).toBe(0);expect(preview.recordCount).toBe(930);expect(preview.totals).toMatchObject({beforeTaxable:4650000,taxable:5115000,difference:465000});
  expect(preview.employees.every(employee=>employee.months.length===1&&employee.months[0].taxable===5500&&employee.months[0].items.find(item=>item.code==='TRV')?.taxable===500)).toBe(true);
  const options=await taxBasisOptions(ctx);expect(options.companies).toHaveLength(70);expect(options.employees.map(employee=>employee.employeeNo)).toEqual(expected);
+ // Compare the picker to the scalar visibility rule on a nonempty second page. The all-company
+ // options above already assert the complete sequence, which also catches paging overlap or gaps.
+ const [scopedPage,scalarPage]=await database.withTenant(ctx,async tx=>{
+  const actual=await tx.execute(sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid,${b.companyId}::uuid],500,500)`);
+  const expected=await tx.execute(sql`select distinct e.id,b.company_id as "companyId",coalesce(e.employee_code,'') as "employeeNo",p.full_name as name
+   from employment e join person p on p.id=e.person_id join payslip s on s.employment_id=e.id join payroll_batch b on b.id=s.batch_id
+   where b.company_id=${b.companyId}::uuid and b.status in ('processed','closed')
+    and app.payroll_history_row_visible('payslip',s.id) and app.payroll_history_row_visible('payroll_batch',b.id)
+    and app.payroll_tax_basis_permission(b.company_id,'payroll.tax-basis.view') and app.payroll_history_effective(s.id)
+   order by b.company_id,coalesce(e.employee_code,''),e.id limit 500 offset 500`);
+  return [actual,expected];
+ });
+ expect(scopedPage).toHaveLength(430);
+ expect(scopedPage).toEqual(scalarPage);
  const selected=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:preview.employees.slice(490,510).map(employee=>employee.id)});
  expect(selected.employees.map(employee=>employee.employeeNo)).toEqual(expected.slice(490,510));expect(selected.totals.taxable).toBe(110000);
  await expect(database.withTenant(ctx,tx=>createTaxBasisPreviewReadTx(tx,ctx,['00000000-0000-4000-8000-000000000000']))).rejects.toThrow(/Original payroll source is unavailable/);

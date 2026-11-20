@@ -39,9 +39,10 @@ type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:stri
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
 const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
-const PREFIX=924,TAIL=145,BOARD_TAIL=50,GUIDANCE_TAIL=1,SIX_ITEM_TAIL=4,HOTFIX_TAIL=1,OWNER='ai_hr_owner';
+const PREFIX=924,TAIL=145,BOARD_TAIL=50,GUIDANCE_TAIL=1,SIX_ITEM_TAIL=4,HOTFIX_TAIL=2,OWNER='ai_hr_owner';
 const GUIDANCE:Entry={idx:10360,version:'7',when:1795028006960,tag:'6960_board_public_guidance_function_kinds',breakpoints:true};
 const PAYROLL_HISTORY_HOTFIX:Entry={idx:10410,version:'7',when:1795028007010,tag:'7010_payroll_history_point_read_plan',breakpoints:true};
+const PAYROLL_TAX_PICKER:Entry={idx:10411,version:'7',when:1795028007011,tag:'7011_payroll_tax_basis_picker_set',breakpoints:true};
 const GUIDANCE_SHA256='c1b4926b4d1860e6a4a79019685c39ba0988af3a97f30dbdebf2365565c0972b';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
 const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
@@ -124,7 +125,7 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   const sixItemTail=currentJournal.entries.slice(sixItemStart,sixItemStart+SIX_ITEM_TAIL);
   expect(sixItemTail).toHaveLength(SIX_ITEM_TAIL);
   const hotfixTail=currentJournal.entries.slice(sixItemStart+SIX_ITEM_TAIL);
-  expect(hotfixTail).toEqual([PAYROLL_HISTORY_HOTFIX]);
+  expect(hotfixTail).toEqual([PAYROLL_HISTORY_HOTFIX,PAYROLL_TAX_PICKER]);
   expect(sha(readFileSync(join(root,'db/migrations',GUIDANCE.tag+'.sql')))).toBe(GUIDANCE_SHA256);
   expect({...currentJournal,entries:currentJournal.entries.slice(0,PREFIX+TAIL)}).toEqual(candidate);
   // This existing independent owner pins the exact current journal and literal SHA256 of each

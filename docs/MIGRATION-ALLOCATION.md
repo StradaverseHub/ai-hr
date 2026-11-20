@@ -1,3 +1,14 @@
+# Payroll income-tax recalculation loading repair, 20 November 2026
+
+Reserve `7011_payroll_tax_basis_picker_set`, journal index `10411`, timestamp
+`1795028007011`. SQL SHA-256
+`55dc3af4efef833fc6d1208557b48219d0e0c534144a868ec72450ce7ed48d08`.
+
+This follows the Transaction View repair in 7010 and precedes the separate
+7020 reservation. The picker resolves permissions per company and evaluates
+effective payslips as a set. The original function owner, ACL, company scope,
+visibility rules, ordering and pagination bounds are retained.
+
 # Payroll Transaction View loading repair, 20 November 2026
 
 Reserve `7010_payroll_history_point_read_plan`, journal index `10410`, timestamp
