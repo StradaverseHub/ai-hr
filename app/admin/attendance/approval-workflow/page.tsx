@@ -2,7 +2,7 @@ import Link from 'next/link';
 import {notFound} from 'next/navigation';
 import {getTranslations} from 'next-intl/server';
 import {scopedAdmin} from '@/lib/scope';
-import {listAttendanceWorkflows,listRetiredAttendanceWorkflows,attendanceApplicationFilterOptions} from '@/packs/attendance/service';
+import {listAttendanceWorkflows,listRetiredAttendanceWorkflows,attendanceWorkflowCompanyOptions} from '@/packs/attendance/service';
 import {PageHeader,pageWideCls,tableWrapCls,tbodyCls,thCls} from '@/components/ui';
 import {ATTENDANCE_APPLICATION_TYPES} from '@/lib/attendance-workflow';
 import {WorkflowRetirementControls} from './retirement-controls';
@@ -13,8 +13,9 @@ export default async function AttendanceWorkflowPage({searchParams}:{searchParam
  if(applicationType!=='irregularity'&&applicationType!=='self_overtime')notFound();
  if(query.companyId!==undefined&&(typeof query.companyId!=='string'||!(allowedCompanyIds??scopeIds).includes(query.companyId)))notFound();
  const ids=typeof query.companyId==='string'?[query.companyId]:scopeIds;
- const [rows,options,retired]=await Promise.all([listAttendanceWorkflows(s,ids),attendanceApplicationFilterOptions(s,allowedCompanyIds??scopeIds),listRetiredAttendanceWorkflows(s,ids)]);
- const names=(ids:string[])=>ids.map(id=>options.companies.find(c=>c.id===id)?.name??t('unavailable',{value:id})).join(', ');
+ const [rows,companies,retired]=await Promise.all([listAttendanceWorkflows(s,ids),attendanceWorkflowCompanyOptions(s,allowedCompanyIds??scopeIds),listRetiredAttendanceWorkflows(s,ids)]);
+ const companyNames=new Map(companies.map(company=>[company.id,company.name]));
+ const names=(ids:string[])=>ids.map(id=>companyNames.get(id)??t('unavailable',{value:id})).join(', ');
  const workflows=rows.filter(row=>row.applicationType===applicationType&&(!query.companyId||row.companyIds.includes(String(query.companyId))));
  return <div className={pageWideCls+' space-y-5'}>
   <PageHeader title={t('title')} description={t('sharedCompanyHelp')} back={{href:'/admin/attendance/settings',label:t('backSettings')}}/>

@@ -8,7 +8,7 @@ import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
 import { saveAttendanceWorkflow, suggestAttendanceWorkflowPriority, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
-import { attendanceApplicationDetail, attendanceApplicationFilterOptions, attendanceNewWorkflowOptions } from '../core/attendance-application-history';
+import { attendanceApplicationDetail, attendanceApplicationFilterOptions, attendanceNewWorkflowOptions, attendanceWorkflowCompanyOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
 import { createBatch } from '../packs/payroll/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -58,6 +58,7 @@ describe('Attendance v3 participant owner and exact request capability', () => {
         const { approverEmployees: _employees, approverAvailability: _availability, ...editorOptions } = single;
         expect(createOptions).toEqual(editorOptions);
         const both = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId, company.id]);
+        expect(await attendanceWorkflowCompanyOptions(adminCtx(b), [b.companyId, company.id])).toEqual(both.companies);
         expect(both.companies.map(row => row.id).sort()).toEqual([b.companyId, company.id].sort());
         expect(both.approverEmployees?.map(row => row.id)).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
     });
