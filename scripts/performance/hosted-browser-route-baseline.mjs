@@ -614,6 +614,9 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  let started=performance.now();
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
  assert.equal(response?.status(),200);
+ const openStarted=started;
+ const pickerReady=main.getByRole('searchbox',{name:'Search employee',exact:true})
+  .waitFor({state:'visible',timeout:15000}).then(()=>{mark('employee-picker-ready',openStarted);return true;},()=>false);
  await main.getByRole('heading',{name:'Application History',exact:true}).waitFor({state:'visible',timeout:15000});
  await table.getByRole('columnheader',{name:'Employee',exact:true}).waitFor({state:'visible',timeout:15000});
  await status.getByRole('link',{name:/^Pending [0-9]+$/}).and(status.locator('[aria-current="page"]'))
@@ -624,6 +627,7 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  started=performance.now();
  await main.getByRole('button',{name:'Show filters',exact:true}).click({timeout:15000});
  const company=main.getByRole('combobox',{name:'Company',exact:true});
+ if(groupShape)assert.equal(await company.locator('option').count(),user.role==='groupHR'?71:2);
  await company.locator('option[value="'+own.companyId+'"]').waitFor({state:'attached',timeout:15000});
  assert.equal(await company.locator('option[value="'+foreign.companyId+'"]').count(),0);
  await company.selectOption(own.companyId,{timeout:15000});
@@ -652,6 +656,7 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
  await empty.waitFor({state:'visible',timeout:15000});
  assert.equal(await table.locator('tbody tr').count(),0,'The status tab must retain the filtered result set');
  mark('approved-with-filters-ready',started);
+ assert(await pickerReady,'The separate employee picker did not become usable');
 }
 
 async function measureAttendanceRejection({fixture,db,report,save}){
@@ -716,9 +721,12 @@ async function measureAttendanceJourneys(fixture){
    report.attendanceJourneys.rejection.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
    save();
   }
-  for(const actorIndex of [0,1]){
+  for(const actorIndex of [0,1])for(const pass of (groupShape?['first','repeat-1','repeat-2']:['first'])){
    const user=fixture.users[actorIndex],context=await signedInContext(user);
-   const row={role:user.role,status:'incomplete',timings:[]},evidence={};
+   if(groupShape&&actorIndex===1){
+    await context.addCookies([{name:'company_scope',value:user.companyId,url:origin,secure:true}]);
+   }
+   const row={role:user.role,pass,status:'incomplete',timings:[]},evidence={};
    report.attendanceJourneys.filters.push(row);
    const retain=()=>{row.timings=evidence.attendanceHistorySteps??[];save();};
    try{
