@@ -139,7 +139,7 @@ async function fixtureRoutes(db, fixture) {
   assert.equal(record.leaving_date, fixture.today);
   assert.match(record.pay_period, /^\d{4}-\d{2}$/);
   const [run] = await db`
-    select pay_period from payroll_batch where tenant_id = ${leaver.tenantId}::uuid
+    select pay_period, status from payroll_batch where tenant_id = ${leaver.tenantId}::uuid
       and company_id = ${leaver.companyId}::uuid and id = ${unit.batchId}::uuid
   `;
   assert.match(run?.pay_period ?? '', /^\d{4}-\d{2}$/, 'Expected the same-company Payroll run');
@@ -157,6 +157,17 @@ async function fixtureRoutes(db, fixture) {
   const group = fixture.users[0];
   assert.equal(group.role, 'groupHR');
   assert.equal(group.tenantId, citizenshipSubject.tenantId);
+  const cp21 = '/payroll/cp21/' + citizenshipSubject.employmentId;
+  const cp22 = '/payroll/cp22/' + citizenshipSubject.employmentId;
+  const [currentYear, currentMonth] = fixture.today.split('-').map(Number);
+  const tp1 = '/payroll/transactions/tp1/' + currentYear;
+  const tp1Query = '?employmentId=' + citizenshipSubject.employmentId;
+  const tp1Month = `${tp1}/${currentMonth}${tp1Query}`;
+  const tp1Form = {
+    exactHeading: 'Add TP1 relief', content: citizenshipSubject.name,
+    witness: `form:has(input[name="employmentId"][value="${citizenshipSubject.employmentId}"]) button[type="submit"]`,
+  };
+  assert.equal(run.status, 'draft', 'Expected a draft Payroll run for the close guard');
   return [
     {
       actor: leaver, template: '/me/payslip/[payslipId]', path: payslip,
@@ -190,6 +201,27 @@ async function fixtureRoutes(db, fixture) {
         `:has(input[name="payrollBatchId"][value="${unit.batchId}"])` +
         `:has(input[name="expectedCompanyId"][value="${leaver.companyId}"])` +
         `:has(input[name="expectedPayPeriod"][value="${run.pay_period}"])`,
+    },
+    {
+      actor: group, template: '/payroll/[batchId]/close', path: `/payroll/${unit.batchId}/close`,
+      exactHeading: 'Close batch', content: 'Only a processed payroll process can be closed.',
+    },
+    ...[group, company].flatMap(actor => [
+      {
+        actor, template: '/payroll/cp21/[employmentId]/preview', path: cp21 + '/preview',
+        exactHeading: 'CP21 — notice of an employee leaving Malaysia', content: citizenshipSubject.name,
+        witness: `form[data-cp21-typed][action="${cp21}/preview"]`, inlinePdf: cp21 + '/pdf',
+      },
+      {
+        actor, template: '/payroll/cp22/[employmentId]/preview', path: cp22 + '/preview',
+        exactHeading: 'Review the CP22 before you produce it', content: citizenshipSubject.name,
+        witness: `form[action="${cp22}/preview"]`,
+      },
+      { actor, template: '/payroll/transactions/tp1/[year]/[month]', path: tp1Month, ...tp1Form },
+    ]),
+    {
+      actor: company, template: '/payroll/transactions/tp1/[year]', path: tp1 + tp1Query,
+      redirectTo: tp1Month, ...tp1Form,
     },
   ];
 }
