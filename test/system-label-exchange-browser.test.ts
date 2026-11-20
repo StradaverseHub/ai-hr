@@ -380,6 +380,9 @@ describe('System Labels authenticated Excel browser journey',()=>{
     await page.screenshot({path:join(evidence,`system-label-exchange-${locale}-${name}.png`),fullPage:true});sampleCapacity?.('locale-'+locale+'-'+name+'-complete');
    }
   }
+  // Release the rendered group-admin pages before opening the independent restricted session.
+  await context.close();
+  sampleCapacity?.('group-context-closed');
   const restrictedContext=await browser.newContext({viewport:{width:1440,height:1050}});
   await restrictedContext.addCookies([{name:'dev_user',value:restricted.id,url:origin},{name:LOCALE_COOKIE,value:'en',url:origin}]);
   const restrictedPage=await restrictedContext.newPage();restrictedPage.setDefaultTimeout(90000);
@@ -403,7 +406,7 @@ describe('System Labels authenticated Excel browser journey',()=>{
   const allowedExport=await restrictedContext.request.get(origin+'/admin/settings/system-labels/current-data?kind=division&inactive=1');
   expect(allowedExport.status()).toBe(200);expect(readSystemLabelWorkbook(await allowedExport.body()).some(row=>row.values.Code==='BROWSER_COMPANY_LABEL')).toBe(false);
   await restrictedPage.screenshot({path:join(evidence,'system-label-restricted-global-refusal.png'),fullPage:true});
-  await restrictedContext.close();await context.close();
+  await restrictedContext.close();
   signal.throwIfAborted();
   sampleCapacity?.('functional-checks-complete');
   publishResult=()=>{
