@@ -18,6 +18,7 @@ import { hireEmployee } from '../core/org';
 import { lockLeaveDependenciesTx } from '../packs/leave/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { applyModuleChange, assertActivatable, ModuleChangeRefused } from '../scripts/module-change-runner';
+import { backfillAttendanceStandard } from '../scripts/backfill-attendance-standard';
 import { inArray } from 'drizzle-orm';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -162,6 +163,24 @@ describe('what the runner refuses, and why refusing beats warning', () => {
 });
 
 describe('install, reactivate, disable', () => {
+  it('previews and fills a missing legacy Standard rule through the same audited installer', async () => {
+    const grant = { tenantId: b.tenantId, moduleCode: 'attendance', companyId: b.companyId } as const;
+    await owner.db.insert(schema.tenantModule).values({ ...grant, status: 'trial', expiresAt: new Date(0) });
+    const reconcile = (apply: boolean) => owner.db.transaction(tx => backfillAttendanceStandard(tx, b.tenantId, apply));
+    const rules = () => owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.tenantId, b.tenantId));
+    expect(await reconcile(true)).toBe('not-entitled');
+    expect(await rules()).toEqual([]);
+
+    await owner.db.update(schema.tenantModule).set({ expiresAt: null }).where(and(
+      eq(schema.tenantModule.tenantId, b.tenantId), eq(schema.tenantModule.moduleCode, 'attendance'),
+    ));
+    expect(await reconcile(false)).toBe('missing');
+    expect(await rules()).toEqual([]);
+    expect(await reconcile(true)).toBe('installed');
+    expect(await reconcile(true)).toBe('ready');
+    expect(await rules()).toEqual([expect.objectContaining({ name: 'Standard', isDefault: true })]);
+  });
+
   it('installs Standard once at tenant scope and preserves it on Attendance reactivation', async () => {
     await owner.db.insert(schema.subscriptionLine).values({ tenantId: b.tenantId, moduleCode: 'attendance' });
     await owner.db.insert(schema.attendancePolicy).values({
