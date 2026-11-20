@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { beforeAll, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { WorkflowEditor } from '../app/lifecycle/v9/workflow-editor';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
+import { useV9Configuration } from '../app/lifecycle/v9/use-v9-configuration';
 import type { Config } from '../lib/lifecycle-v9-model';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
 import { NextIntlClientProvider } from 'next-intl';
@@ -14,10 +15,44 @@ beforeAll(() => {
   HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); };
 });
 const messages = JSON.parse(readFileSync('messages/en.json', 'utf8'));
-function Harness({ editable = true }: { editable?: boolean }) {
-  const [config, setConfig] = useState(() => { const config = v9Defaults(); config.groups.push({ id: 'fixture-reviewers', name: 'Fictional review group', members: ['11111111-1111-4111-8111-111111111111'], limit: 0 }); return config; }), [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
-  return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={change => setConfig(value => { const next = structuredClone(value); change(next); return next; })} cases={[]} users={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Fictional reviewer' }]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(config)}</output></NextIntlClientProvider>;
+const saveDefaults: Parameters<typeof useV9Configuration>[1] = async (revision, config) =>
+  ({ ok: true, result: { revision: revision + 1, groupsRevision: config.groupsRevision ?? 0 } });
+function Harness({ editable = true, persist = saveDefaults, liveId }: { editable?: boolean; persist?: Parameters<typeof useV9Configuration>[1]; liveId?: string }) {
+  const [initial] = useState(() => {
+    const config = v9Defaults();
+    const live = config.workflows.find(workflow => workflow.id === liveId);
+    if (live) live.status = 'published';
+    config.groups.push({ id: 'fixture-reviewers', name: 'Fictional review group', members: ['11111111-1111-4111-8111-111111111111'], limit: 0 });
+    return config;
+  });
+  const [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
+  const save = useV9Configuration(initial, persist, () => {}, 60_000);
+  return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor config={save.draft!} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={save.edit} save={save} cases={[]} users={[{ id: '11111111-1111-4111-8111-111111111111', name: 'Fictional reviewer' }]} actor={{ id: 'hr', name: 'HR' }} labels={{ caseType: { Resignation: 'Resignation' } }}/><output data-testid="definition">{JSON.stringify(save.draft)}</output></NextIntlClientProvider>;
 }
+it('saves a pause immediately, shows a rejection inside the dialog and retries the same change', async () => {
+  type Result = Awaited<ReturnType<typeof saveDefaults>>;
+  let finish!: (result: Result) => void;
+  const persist = vi.fn<typeof saveDefaults>()
+    .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }))
+    .mockImplementationOnce(saveDefaults);
+  const live = v9Defaults().workflows.find(workflow => workflow.steps.some(step => step.type === 'email'))!;
+  render(<Harness persist={persist} liveId={live.id}/>);
+  fireEvent.click(screen.getByRole('button', { name: live.name }));
+  const drawer = within(screen.getByRole('dialog', { name: 'Edit workflow' }));
+  fireEvent.click(drawer.getByRole('button', { name: 'Pause' }));
+  expect(persist).toHaveBeenCalledOnce();
+  expect(persist.mock.calls[0][1].workflows.find(workflow => workflow.id === live.id)?.status).toBe('draft');
+  expect(drawer.getByRole('status')).toHaveTextContent('Saving');
+  fireEvent.click(drawer.getByRole('button', { name: 'Close workflow' }));
+  expect(screen.getByRole('dialog', { name: 'Edit workflow' })).toBeVisible();
+  await act(async () => { finish({ ok: false, error: 'The pause could not be saved.' }); });
+  expect(drawer.getByRole('status')).toHaveTextContent('Changes not saved');
+  expect(drawer.getByText('The pause could not be saved.')).toBeVisible();
+  await act(async () => { fireEvent.click(drawer.getByRole('button', { name: 'Try saving again' })); });
+  expect(persist).toHaveBeenCalledTimes(2);
+  expect(persist.mock.calls[1][1]).toEqual(persist.mock.calls[0][1]);
+  expect(drawer.getByRole('status')).toHaveTextContent('Saved');
+});
 it('edits ordered steps and conditions into a definition accepted by the service validator', () => {
   render(<Harness/>);
   fireEvent.click(screen.getByRole('button', { name: 'New workflow' }));

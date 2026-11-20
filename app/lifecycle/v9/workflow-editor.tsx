@@ -7,11 +7,14 @@ import { RemoveWorkflowDialog, RestoreWorkflowDialog, type WorkflowRemovalAction
 import { WorkflowSection, WorkflowField as Field, WorkflowButton as Button } from '../workflow-editor-shell';
 import { RecipientPicker } from './recipient-picker';
 import { previewV9WorkflowPlan } from './actions';
+import { ConfigurationSaveError } from './configuration-save-error';
+import type { useV9Configuration } from './use-v9-configuration';
 import * as M from '@/lib/lifecycle-v9-model';
 
 type Props = {
   config: M.Config; selected: string; select: (id: string) => void;
   module: M.Module; setModule: (value: M.Module) => void;
+  save: Pick<ReturnType<typeof useV9Configuration>, 'state' | 'error' | 'flush' | 'retry'>;
   edit: (change: (next: M.Config) => void) => void; editable: boolean;
   cases: M.Case[]; users: { id: string; name: string }[];
   actor: M.Actor; labels: Partial<Record<M.RuleField, Record<string, string>>>;
@@ -30,7 +33,7 @@ function newStep(type: M.Step['type'], config: M.Config, module: M.Module, id: s
   if (type === 'email') return { id, type, template: '', to: ['employeeWork'], cc: [] };
   return { id, type, subject: '', body: '', to: ['supervisor'], cc: [] };
 }
-export function WorkflowEditor({ config, selected, select, module, setModule, edit, editable: canEdit, cases, users, actor, labels, removal, initialFilter = 'all', showModuleFilter = true, allowedModules = ['onb','off'], historyAvailable = true, previewCases = [] }: Props) {
+export function WorkflowEditor({ config, selected, select, module, setModule, edit, save, editable: canEdit, cases, users, actor, labels, removal, initialFilter = 'all', showModuleFilter = true, allowedModules = ['onb','off'], historyAvailable = true, previewCases = [] }: Props) {
   const t = useTranslations('lifecycle.workflowRemoval');
   const [tab, setTab] = useState<'steps' | 'runs'>('steps'), [filter, setFilter] = useState<M.Module | 'all'>(initialFilter);
   const [list, setList] = useState<'active' | 'retired'>('active'), [removing, setRemoving] = useState<string | null>(null), [restoring, setRestoring] = useState<string | null>(null);
@@ -42,6 +45,10 @@ export function WorkflowEditor({ config, selected, select, module, setModule, ed
   const dialog = useRef<HTMLDialogElement>(null), currentId = current?.id;
   useEffect(() => { if (currentId) dialog.current?.showModal(); else dialog.current?.close(); }, [currentId]);
   const update = (change: (workflow: M.Workflow) => void) => { if (current) edit(next => { const workflow = next.workflows.find(w => w.id === current.id); if (workflow) change(workflow); }); };
+  const saving = save.state === 'saving' || save.state === 'pending';
+  async function close() {
+    if (!saving || await save.flush()) select('');
+  }
   const runs = current ? cases.flatMap(c => c.runs.filter(run => run.workflowId === current.id).map(run => ({ c, run }))) : [];
   function add(target: M.Module) {
     if (!allowedModules.includes(target)) return;
@@ -60,7 +67,9 @@ export function WorkflowEditor({ config, selected, select, module, setModule, ed
     })}</ul></section>}
     {removingWorkflow && removal && <RemoveWorkflowDialog key={removingWorkflow.id} workflow={removingWorkflow} actions={{ ...removal, changed: message => { if (selected === removingWorkflow.id) select(''); removal.changed(message); } }} close={() => setRemoving(null)}/>}
     {restoringWorkflow && removal && <RestoreWorkflowDialog key={restoringWorkflow.id} workflow={restoringWorkflow} workflows={config.workflows} revision={config.revision} actions={removal} close={() => setRestoring(null)}/>}
-    {current && <dialog ref={dialog} className="v9-dialog v9-drawer" aria-label="Edit workflow" onCancel={() => select('')}><header><div className="v9-stack" style={{ flex: 1 }}><span className="v9-muted">{currentModule === 'onb' ? 'Onboarding' : 'Offboarding'} · {retiredCurrent ? t('retiredBadge') : current.status === 'published' ? 'Live' : 'Draft'}</span><Field label="Workflow name"><input className="v9-input" value={current.name} disabled={!editable} onChange={e => update(w => { w.name = e.target.value; })}/></Field></div><button type="button" className="v9-button" aria-label="Close workflow" onClick={() => select('')}><X size={18}/></button></header>
+    {current && <dialog ref={dialog} className="v9-dialog v9-drawer" aria-label="Edit workflow" onCancel={event => { event.preventDefault(); void close(); }}><header><div className="v9-stack" style={{ flex: 1 }}><span className="v9-muted">{currentModule === 'onb' ? 'Onboarding' : 'Offboarding'} · {retiredCurrent ? t('retiredBadge') : current.status === 'published' ? 'Live' : 'Draft'}</span><Field label="Workflow name"><input className="v9-input" value={current.name} disabled={!editable} onChange={e => update(w => { w.name = e.target.value; })}/></Field></div><button type="button" className="v9-button" aria-label="Close workflow" onClick={() => void close()}><X size={18}/></button></header>
+      {editable && <p className="v9-muted" role="status">{saving ? 'Saving…' : save.state === 'error' ? 'Changes not saved' : 'Saved'}</p>}
+      {editable && save.error && <ConfigurationSaveError error={save.error} retry={save.retry} reload={() => window.location.reload()}/>}
       <div className="v9-tabs" role="tablist" aria-label="Workflow">{(['steps', 'runs'] as const).map(value => <button type="button" role="tab" key={value} aria-selected={tab === value} onClick={() => setTab(value)}>{value === 'steps' ? 'Steps' : historyAvailable ? `Run history (${runs.length})` : 'Run history'}</button>)}</div>
       {tab === 'steps' ? <div className="v9-stack">{retiredCurrent && <p className="v9-notice v9-warning">{t('retiredDrawer')}</p>}<Field label="What it does (for your team)"><input className="v9-input" value={current.description} disabled={!editable} onChange={e => update(w => { w.description = e.target.value; })}/></Field>
         <WorkflowSection title="When"><div className="v9-fields"><Field label="What starts it"><select value={current.trigger.event} disabled={!editable} onChange={e => update(w => { w.trigger.event = e.target.value as M.Trigger['event']; if (!M.dateTrigger(w.trigger.event) || M.afterTrigger(w.trigger.event)) w.trigger.repeat = false; })}>{M.workflowEvents(currentModule).map(event=><option key={event.id} value={event.id}>{event.label}</option>)}</select></Field>{M.dateTrigger(current.trigger.event) && <><Field label="Days"><input className="v9-input" type="number" min={0} max={3660} value={current.trigger.days} disabled={!editable} onChange={e => update(w => { w.trigger.days = Number(e.target.value); })}/></Field><label><input type="checkbox" checked={current.trigger.workdays} disabled={!editable} onChange={e => update(w => { w.trigger.workdays = e.target.checked; })}/>Count working days (Mon–Fri)</label>{!M.afterTrigger(current.trigger.event) && <label><input type="checkbox" checked={current.trigger.repeat} disabled={!editable} onChange={e => update(w => { w.trigger.repeat = e.target.checked; })}/>Repeat every morning until the anchor date</label>}</>}</div>
@@ -69,7 +78,10 @@ export function WorkflowEditor({ config, selected, select, module, setModule, ed
         <WorkflowSection title="Then"><ol className="v9-list">{current.steps.map((step, index) => <li key={step.id}><StepEditor users={users} step={step} index={index} config={config} module={currentModule} disabled={!editable} change={value => update(w => { w.steps[index] = value; })}/><div className="v9-actions"><Button disabled={!editable || !index} onClick={() => update(w => { [w.steps[index - 1], w.steps[index]] = [w.steps[index], w.steps[index - 1]]; })}>Move step {index + 1} up</Button><Button disabled={!editable || index === current.steps.length - 1} onClick={() => update(w => { [w.steps[index + 1], w.steps[index]] = [w.steps[index], w.steps[index + 1]]; })}>Move step {index + 1} down</Button><Button disabled={!editable} onClick={() => update(w => { w.steps.splice(index, 1); })}>Remove step {index + 1}</Button></div></li>)}</ol>{editable ? <details className="v9-recipient-picker"><summary role="button" aria-label="Add a step">Add a step</summary><div className="v9-menu">{Object.entries(stepLabels).map(([type, label]) => <button className="v9-button" type="button" key={type} onClick={e => { e.currentTarget.closest('details')?.removeAttribute('open'); update(w => { w.steps.push(newStep(type as M.Step['type'], config, currentModule)); }); }}>{label}</button>)}</div></details> : <Button disabled onClick={() => {}}>Add a step</Button>}</WorkflowSection>
         {!retiredCurrent && <WorkflowTest key={current.id} config={config} workflow={current} cases={cases} users={users} previewCases={previewCases}/>}
         {current.status === 'draft' && M.workflowProblems(current, config).length > 0 && <section className="v9-notice v9-warning" aria-label="Before this can go live"><strong>Before this can go live</strong><ul>{M.workflowProblems(current, config).map(problem => <li key={problem}>{problem}</li>)}</ul></section>}
-        {!retiredCurrent && <><div className="v9-actions"><Button disabled={!editable || current.status === 'draft' && M.workflowProblems(current, config).length > 0} primary={current.status === 'draft'} onClick={() => update(w => { w.status = w.status === 'published' ? 'draft' : 'published'; })}>{current.status === 'published' ? 'Pause' : 'Make it live'}</Button></div><p className="v9-muted">Changes save automatically. Runs already waiting retain the definition they started with.</p></>}
+        {!retiredCurrent && <><div className="v9-actions"><Button disabled={!editable || save.state === 'saving' || current.status === 'draft' && M.workflowProblems(current, config).length > 0} primary={current.status === 'draft'} onClick={() => {
+          update(w => { w.status = w.status === 'published' ? 'draft' : 'published'; });
+          void save.flush();
+        }}>{current.status === 'published' ? 'Pause' : 'Make it live'}</Button></div><p className="v9-muted">Changes save automatically. Runs already waiting retain the definition they started with.</p></>}
       </div> : <section className="v9-stack"><p className="v9-muted">{historyAvailable?'Every record this workflow has run on.':'Open the case to view its run history.'}</p>{historyAvailable && !runs.length && <p>No runs yet.</p>}<ul className="v9-list">{runs.map(({ c, run }) => <li key={`${c.id}:${run.id}`}><strong>{c.facts.name}</strong><p className="v9-muted">{c.number} · {run.at.slice(0, 10)} · {run.actor?.name ?? 'Not recorded'}</p><span className="v9-badge">{run.status === 'done' ? 'Completed' : run.status === 'waiting' ? run.hold ? 'Email held' : 'Waiting' : run.status}</span>{run.reason && <p>{run.reason}</p>}{c.log.filter(entry => ['workflow.emailHeld', 'workflow.emailReleased', 'workflow.recipientsChanged'].includes(entry.action) && entry.detail.startsWith(current!.name + ':') || entry.action === 'workflow.recipientsChanged' && entry.detail.startsWith(current!.name + ' ·')).map(entry => <p key={entry.id} className="v9-muted" data-run-hold-history>{entry.at.slice(0, 10)} · {entry.action === 'workflow.emailHeld' ? 'Email held' : entry.action === 'workflow.emailReleased' ? 'Email released' : 'Recipients changed for this case'} · {entry.detail}</p>)}</li>)}</ul></section>}
     </dialog>}
   </div>;

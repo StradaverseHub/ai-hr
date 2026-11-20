@@ -16,7 +16,7 @@ import {internalSelected} from '@/lib/internal-auth/config';
 import Link from 'next/link';
 import {btnPrimary,btnGhost,Badge} from '@/components/ui';
 import {emailDisplayClock,formatEmailTimestamp} from '@/lib/email-display-clock';
-import { saveEmailDraft, testEmailDraft, activateEmailDraft, saveLifecycleSenderName } from './actions';
+import { saveEmailDraft, testEmailDraft, activateEmailDraft, deactivateEmailConnection, saveLifecycleSenderName } from './actions';
 import {readAccountEmailRetention,type AccountEmailRetention} from '@/core/account-email-retention';
 import {EmailRetentionForm} from './retention-form';
 
@@ -40,7 +40,7 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
   return <div className="space-y-6"><PageHeader title={t('title')} description={t('description')}/><ErrorBanner message={t(`errors.${e instanceof EmailSettingsError?e.code:'unavailable'}`)}/><AccountEmailDeliveries items={deliveries} returnTo="/admin/settings/email"/></div>;
   }
  }
- const named=Boolean(view?.connections),editing=!named||Boolean(query.connection),clock=emailDisplayClock();
+ const named=Boolean(view?.connections),editing=!named||(!view?.staleConnection&&Boolean(query.connection)),clock=emailDisplayClock();
  const activeConnection=view?.active?view.connections?.find(connection=>connection.active):undefined;
  const config=named&&query.connection==='new'?defaultEmailConfig:view?.draft?.config??view?.active??defaultEmailConfig;
  const demoTest=!view&&demoSwitcherEnabled();
@@ -55,8 +55,8 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
    <Field label={t('password')}><input name="password" type="password" autoComplete="new-password" maxLength={4096} className={inputCls}/></Field>
    <Field label={t('replyTo')} className="sm:col-span-2"><input name="replyTo" type="email" defaultValue={config.replyTo} maxLength={320} className={inputCls}/></Field>
  </>;
- const error=view&&emailFailureCodes.find(c=>c===query.error);
- const success=view&&['save','test','apply','sender','senderName'].find(c=>c===query.success);
+ const error=view&&(view.staleConnection?'conflict':emailFailureCodes.find(c=>c===query.error));
+ const success=view&&['save','test','apply','sender','senderName','deactivate'].find(c=>c===query.success);
  return <div className={`${editing?'max-w-4xl':'max-w-7xl'} space-y-6`}>
   <PageHeader title={t('title')} description={t('description')}/>
   {view?<p className="text-sm text-muted-foreground">{t('scope')}</p>:<div role="status" className="space-y-2 rounded-xl border border-border bg-card p-5"><h2 className="font-medium">{t(demoTest?'demoTestTitle':'previewTitle')}</h2><p className="max-w-prose text-sm text-muted-foreground">{t(demoTest?'demoSetup':'restrictedSetup')}</p></div>}
@@ -96,7 +96,17 @@ export default async function IdentityEmailPage({searchParams}:{searchParams:Pro
     {!(view.supportsLifecycleSenders&&view.selectedConnectionId)&&<p className="text-sm text-muted-foreground">{t('activateHelp')}</p>}
     <EmailSubmit type="submit">{t('activate')}</EmailSubmit>
    </form>}
-  </div></Card>}</>}
+  </div></Card>}
+  {activeConnection && view?.selectedConnectionId===activeConnection.id && <Card>
+   <SectionHeader title={t('deactivate')}/>
+   <form action={deactivateEmailConnection} className="space-y-4 p-5 text-sm">
+    <input type="hidden" name="connectionId" value={activeConnection.id}/>
+    <input type="hidden" name="revision" value={view.revision}/>
+    <p>{t('deactivateHelp')}</p>
+    <label className="flex items-start gap-2"><input type="checkbox" name="confirmed" value="true" required className="mt-1"/>{t('deactivateConfirm')}</label>
+    <EmailSubmit type="submit">{t('deactivate')}</EmailSubmit>
+   </form>
+  </Card>}</>}
   {historyError&&<ErrorBanner message={accountT('historyUnavailable')}/>}
   {mayConfigure&&<section aria-labelledby="email-retention-title" className="space-y-4 rounded-xl border border-border p-5">
    <h2 id="email-retention-title" className="text-lg font-semibold">{accountT('retentionTitle')}</h2>
