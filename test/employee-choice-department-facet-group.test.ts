@@ -79,7 +79,7 @@ it('compares first-witness and represented department reads across a 70-company 
     {name:'group-single-company',context:group,ids:[base.companyId],expected:companies.slice(0,1)},
     {name:'company-hr',context:scoped,ids:allIds,expected:companies.slice(0,1)},
   ];
-  const report=[];
+  const report:{scenario:string;rows:number;firstWitnessMs:number[];representedMs:number[]}[]=[];
   const terminatedAfter=todayInKualaLumpur();
   for(const scenario of scenarios){
     const population={companyIds:scenario.ids,terminatedAfter};
