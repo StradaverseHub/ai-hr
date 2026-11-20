@@ -6,7 +6,7 @@ import { attendanceForEmploymentRange, ownClockToday } from '@/packs/attendance/
 import { myTeamLeaveProjection } from '@/packs/leave/service';
 import { listClaimsForEmployment } from '@/packs/claims/service';
 import { resolveMyTeamScope } from '@/core/my-team-scope';
-import { listPendingTasks } from '@/core/approvals-inbox';
+import { pendingTaskSummary } from '@/core/approvals-inbox';
 import { listNotifications } from '@/core/notifications';
 import { isModuleEnabled } from '@/core/entitlements';
 import { hasTeamAccess, isAdmin } from '@/lib/authz';
@@ -36,13 +36,20 @@ export async function streamMobilePreview(s: SessionContext, scopeIds: string[],
     catch { console.error(`[mobile-preview] ${name} unavailable`); return { status: 'unavailable' }; }
   }
   const own = (code: string) => me ? moduleState(code) : 'disabled';
-  const tasks = read('tasks', moduleState('leave'), async () => (await listPendingTasks(s, scopeIds, {
-    attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
-    // The preview mirrors the mobile v1 task vocabulary, which has no Performance or Rewards kinds.
-    performance: false, rewards: false, probation: false,
-  }, { noticeAcknowledgements: false })).map(task => ({
-    id: task.id, kind: task.kind, subject: task.subjectName, href: task.linkPath,
-  })));
+  const tasks = read('tasks', moduleState('leave'), async () => {
+    const summary = await pendingTaskSummary(s, scopeIds, {
+      attendance: moduleState('attendance') === 'ready', claims: moduleState('claims') === 'ready',
+      // Match the mobile task vocabulary. The shared reader's first 25 Claims rows are
+      // enough to determine the first 20 tasks overall, with an exact count for overflow.
+      performance: false, rewards: false, probation: false,
+    }, { noticeAcknowledgements: false });
+    return {
+      total: summary.total,
+      items: summary.items.slice(0, 20).map(task => ({
+        id: task.id, kind: task.kind, subject: task.subjectName, href: task.linkPath,
+      })),
+    };
+  });
   const [clock, leave, requests, claims, team, inbox, payslips] = await Promise.all([
     read('clock', own('attendance'), async () => {
       const c = await ownClockToday(s);
