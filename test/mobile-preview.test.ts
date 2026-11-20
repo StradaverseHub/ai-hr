@@ -44,6 +44,6 @@ describe('mobile-preview module (ca2f2fef)', () => {
     expect(src).not.toContain('Aisyah Rahman');
     expect(src).toContain('MobilePreviewData');
     const page = read('app/mobile-preview/page.tsx');
-    expect(page).toContain('loadMobilePreview(s, scopeIds, locale)');
+    expect(page).toContain('streamMobilePreview(s, scopeIds, locale)');
   });
 });
