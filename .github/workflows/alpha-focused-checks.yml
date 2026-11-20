@@ -57,7 +57,7 @@ on:
         default: false
         type: boolean
       browser_mixed_load:
-        description: With browser_route_baseline, run the 500-user development workload against the disposable installation
+        description: Use the 500-user mixed-workflow fixture and run it unless browser_fixture_only is selected
         default: false
         type: boolean
       model_eval:
@@ -116,7 +116,7 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ "$BROWSER_MIXED_LOAD" == true && ( "$BROWSER_ROUTE_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ) ]]; then
+          if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
             exit 2
           fi
           node .github/ci/focused-checks.mjs selection
@@ -124,7 +124,6 @@ jobs:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
           BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
-          BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs

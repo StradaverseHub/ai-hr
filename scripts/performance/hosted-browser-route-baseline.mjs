@@ -25,7 +25,6 @@ const appPort=3174;
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
-assert(!(fixtureOnly&&mixedLoad),'Mixed load needs the built disposable installation');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -42,7 +41,8 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
+  mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -1110,6 +1110,9 @@ try{
  if(!mixedLoad){
   assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
   report.fixture.joinersSeeded=true;
+ }else{
+  assert(fixture.tenants[0].rewardDraft?.planVersionId,'Mixed fixture must contain an approved Rewards plan');
+  report.fixture.rewardsDraftSeeded=true;
  }
  report.fixtureVerified=true;
  if(!fixtureOnly){
@@ -1119,7 +1122,7 @@ try{
   await waitForApp();
   await proxy();
  }
- if(mixedLoad)await measureMixedLoad();
+ if(mixedLoad&&!fixtureOnly)await measureMixedLoad();
  else if(!fixtureOnly){
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
