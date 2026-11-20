@@ -46,7 +46,8 @@ it('resolves the same feature permissions on one authenticated snapshot at group
       const shared = await readShellFeatureNavigation(session, ids);
       const baseline = await withIndependentTransactions(() => readShellFeatureNavigation(session, ids));
       expect(shared).toEqual(baseline);
-      expect(shared.letters.includes('/letters/register')).toBe(showsLetters);
+      const letterDestinations: readonly string[] = shared.letters;
+      expect(letterDestinations.includes('/letters/register')).toBe(showsLetters);
       expect(reports).toHaveLength(1);
       expect(reports[0]).toMatchObject({ carriers: 1, fallbacks: 0 });
       expect(reports[0].joins).toBeGreaterThanOrEqual(5);
