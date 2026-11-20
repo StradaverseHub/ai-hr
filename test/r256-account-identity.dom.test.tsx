@@ -22,7 +22,9 @@
  * test/topbar-identity-width.browser.test.tsx; this file and that one are not substitutes.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
+import { hydrateRoot, type Root } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -58,6 +60,30 @@ const wrap = (ui: ReactNode, locale = 'en', messages: Record<string, unknown> = 
 /** The account corner's trigger — the control that is on screen before anything is clicked. */
 const trigger = (container: HTMLElement): HTMLElement =>
   container.querySelector<HTMLElement>('button[aria-haspopup="menu"]')!;
+
+it('does not promise an account-menu click until the localized shell has hydrated', async () => {
+  const tree = <NextIntlClientProvider locale="ms" messages={ms}>
+    <UserMenu name="Fictional employee" employeeCode="PERF0004" employed />
+  </NextIntlClientProvider>;
+  const host = document.createElement('div');
+  host.innerHTML = renderToString(tree);
+  document.body.append(host);
+  let root: Root | undefined;
+  const onRecoverableError = vi.fn();
+  try {
+    expect(trigger(host)).toBeDisabled();
+    expect(trigger(host)).toHaveAccessibleName(ms.topbar.accountMenu);
+    await act(async () => { root = hydrateRoot(host, tree, { onRecoverableError }); });
+    expect(trigger(host)).toBeEnabled();
+    await userEvent.setup().click(trigger(host));
+    expect(within(host).getByRole('menu', { name: ms.topbar.accountMenu })).toBeInTheDocument();
+    expect(onRecoverableError).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root?.unmount());
+    host.remove();
+  }
+});
+
 
 /**
  * The LEAF span carrying exactly this text. `find(s => s.textContent === text)` is not enough: when a
