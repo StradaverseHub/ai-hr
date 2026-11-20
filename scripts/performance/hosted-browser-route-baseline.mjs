@@ -29,6 +29,8 @@ const healthPath='/health';
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
+const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -53,7 +55,8 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44722987389,artifactId:14623770794,
   sourceSha:'0142e6d8aaeb6bbf96caaf58e1d9c99387ce9100'}}),
- fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
+ fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
+  ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
@@ -1474,6 +1477,11 @@ try{
  }else{
   assert(fixture.tenants[0].rewardDraft?.planVersionId,'Mixed fixture must contain an approved Rewards plan');
   report.fixture.rewardsDraftSeeded=true;
+  if(establishedAttendance){
+   const defaults=report.seedPhases.filter(row=>row.phase==='attendance-established-standard');
+   assert.deepEqual(defaults.map(row=>row.tenant).sort(),[0,1]);
+   assert(defaults.every(row=>row.status==='passed'),'Both fictional default Attendance rules must exist before traffic');
+  }
  }
  if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
  report.fixtureVerified=true;

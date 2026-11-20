@@ -60,6 +60,10 @@ on:
         description: Use the 500-user mixed-workflow fixture and run it unless browser_fixture_only is selected
         default: false
         type: boolean
+      browser_established_attendance:
+        description: Provision the default Attendance rule before mixed traffic for the existing-tenant comparison
+        default: false
+        type: boolean
       reuse_register_diagnostic_build:
         description: Use the verified Payroll Anomalies browser build with the pinned diagnostic driver
         default: false
@@ -125,6 +129,9 @@ jobs:
           if [[ "$BROWSER_MIXED_LOAD" == true && "$BROWSER_ROUTE_BASELINE" != true ]]; then
             exit 2
           fi
+          if [[ "$ESTABLISHED_ATTENDANCE" == true && "$BROWSER_MIXED_LOAD" != true ]]; then
+            exit 2
+          fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
             [[ "$EXPECTED_SHA" != 51a393b5a86fdf97f78423818e6c2ae132d728a3 ]];
@@ -135,6 +142,7 @@ jobs:
           BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           REUSE_BUILD: ${{ inputs.reuse_register_diagnostic_build }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
@@ -260,6 +268,7 @@ jobs:
         env:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
+          AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_register_diagnostic_build }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
