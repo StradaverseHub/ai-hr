@@ -16,15 +16,29 @@ export async function ShellNotificationCenter({ session, scope, catchUp, lifecyc
   claimPreviewRevision?: string;
   canApprove: boolean;
 }) {
+  const measure = process.env.AIHR_SHELL_OPEN_PROFILE === 'true';
+  const started = measure ? performance.now() : 0;
+  const timings: Partial<Record<'onboardingNotices' | 'projection' | 'bellRead' | 'lifecycle', number>> = {};
+  const profile = async <T,>(phase: keyof typeof timings, work: () => T | Promise<T>): Promise<T> => {
+    if (!measure) return work();
+    const phaseStart = performance.now();
+    try { return await work(); }
+    finally { timings[phase] = Math.round(performance.now() - phaseStart); }
+  };
   const [notices, bell, lifecycle] = await Promise.all([
-    lifecycleEnabled ? onboardingNoticeSummary(session) : { unread: [], read: [], unreadCount: 0 },
+    profile('onboardingNotices', () => lifecycleEnabled ? onboardingNoticeSummary(session) : { unread: [], read: [], unreadCount: 0 }),
     (async () => {
-      if (catchUp) await dispatchNotifications(session, { skipIfBusy: true }).catch(() => {});
-      return scope ? notificationBellSummary(session, scope)
-        : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] };
+      if (catchUp) await profile('projection', () => dispatchNotifications(session, { skipIfBusy: true }).catch(() => {}));
+      return profile('bellRead', () => scope ? notificationBellSummary(session, scope)
+        : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] });
     })(),
-    lifecycleWork.catch(() => null),
+    profile('lifecycle', () => lifecycleWork.catch(() => null)),
   ]);
+  if (measure) {
+    console.info('PERF_NOTIFICATION_SHELL ' + JSON.stringify({
+      catchUp, elapsedMs: Math.round(performance.now() - started), timings,
+    }));
+  }
   return <NotificationCenter
     unread={bell.unread + notices.unreadCount}
     items={[...bell.items, ...notices.unread]}
