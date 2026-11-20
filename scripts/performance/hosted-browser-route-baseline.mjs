@@ -31,6 +31,8 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static census configuration');
 const staticShard=shardInput===''?null:Number(shardInput);
+const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
+assert(!payrollReadTrace||(!fixtureOnly&&staticShard===null),'Invalid Payroll tracing configuration');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -47,7 +49,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -587,6 +589,27 @@ async function measureRoutes(fixture){
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
  save();
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+}
+
+async function measurePayrollReadTrace(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ // Keep application traffic to one document at a time so the receipt identifies the page's own work.
+ for(const actorIndex of [0,1]){
+  const actor=fixture.users[actorIndex],context=await signedInContext(actor);
+  try{
+   assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   const route={role:actor.role,requested:payrollHistoryPath,final:payrollHistoryPath};
+   for(const pass of ['first','repeat-1','repeat-2']){
+    await visit(page,actor,route,pass,fixture);
+   }
+  }finally{await context.close();}
+ }
+ assert.equal(report.observations.length,6);
+ assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
+  'Payroll Transaction View did not show a History row on every measured visit');
 }
 
 const censusPanelTitles={
@@ -1506,12 +1529,14 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null)await seedNotificationReads(fixture);
+  if(staticShard===null&&!payrollReadTrace)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true',
+    AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
   await waitForApp();
   await proxy();
-  if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
+  if(payrollReadTrace)await measurePayrollReadTrace(fixture);
+  else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
    await measureRoutes(fixture);
    await measureShellLinks(fixture);
@@ -1541,6 +1566,25 @@ try{
      counts[code]=(counts[code]??0)+1;
     }
     report.serverFailureCounts=counts;
+    if(payrollReadTrace){
+     const phases=new Set(['scope','employee-options','company-options','catalogue','cycle-options',
+      'default-period','history-page','statutory-settings','reprocess-outcomes','recorded-sources','render-ready']);
+     const transactions=[];
+     for(const [,line] of log.matchAll(/^PERF_PAYROLL_TRANSACTION_READ (.{1,200})$/gm)){
+      let row;
+      try{row=JSON.parse(line);}catch{continue;}
+      if(!row||!Number.isSafeInteger(row.trace)||row.trace<1||!phases.has(row.phase)||
+       ![row.startedMs,row.elapsedMs].every(value=>Number.isSafeInteger(value)&&value>=0&&value<=120000))continue;
+      transactions.push({trace:row.trace,phase:row.phase,startedMs:row.startedMs,elapsedMs:row.elapsedMs});
+      if(transactions.length===160)break;
+     }
+     report.payrollReadPhases=transactions;
+     save();
+     const traces=new Set(transactions.filter(row=>row.phase==='render-ready').map(row=>row.trace));
+     if(report.observations.length===6&&report.observations.every(row=>row.status==='observed')){
+      assert(traces.size>=6,'Expected anonymous Payroll phases for each document render');
+     }
+    }
     const mobilePhases=new Set(['preview','own-employment','own-person-name','clock','leave','requests',
      'claims','team','tasks','inbox','payslips']);
     const mobile=[];
