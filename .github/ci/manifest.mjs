@@ -7,7 +7,7 @@ export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
 /** Database files that start their own web server and browser run alone: two full gates on 17-18 Nov 2026 lost the runner of the 24-file unit holding this file (44011466586, 44065545160). Every file stays mandatory. */
-export const ISOLATED_DB_FILES=Object.freeze(['test/system-label-exchange-browser.test.ts']);
+export const ISOLATED_DB_FILES=Object.freeze(['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts']);
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];
 export const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 function inventory(files,pattern){
