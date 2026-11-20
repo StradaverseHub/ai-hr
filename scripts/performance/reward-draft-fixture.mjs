@@ -4,7 +4,6 @@ import {randomUUID} from 'node:crypto';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
-import {setCompensation} from '../../core/comp.ts';
 import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
 
 export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,includeOrgExplorerMember,expectedCompanyEmploymentIds,phase=(_name,run)=>run()}){
@@ -32,7 +31,21 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
   tenantId:tenant.tenantId,companyId:company.companyId,businessUnitId:unit.id,departmentId:company.departmentId,year,
   ...(includeOrgExplorerMember?{hiredOn:today}:{}),
  }));
- await phase('compensation',()=>setCompensation(ctx,{employmentId:person.employmentId,basicSalary:5000,effectiveFrom:today}));
+ // The base load fixture inserts starting salaries as data. This additional hire
+ // also has no prior salary or payslip. Keep the salary mutation separate from setup.
+ await phase('compensation-seed',async()=>{
+  const salaries=await owner.client`
+   insert into public.compensation (tenant_id,employment_id,basic_salary,valid_from)
+   select e.tenant_id,e.id,5000,${today}::date
+   from public.employment e
+   where e.tenant_id=${tenant.tenantId}::uuid and e.company_id=${company.companyId}::uuid
+    and e.id=${person.employmentId}::uuid and e.hired_on<=${today}::date and e.terminated_on is null
+    and not exists(select 1 from public.compensation c where c.tenant_id=e.tenant_id and c.employment_id=e.id)
+    and not exists(select 1 from public.payslip p where p.tenant_id=e.tenant_id and p.employment_id=e.id)
+   returning id
+  `;
+  assert.equal(salaries.length,1,'The Rewards fixture requires a new, unpaid employment');
+ });
  const maker={...ctx,userId:actor.userId,personId:actor.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
  const fixtures=approvedRewardFixtures(owner);
  const checker=await phase('checker',()=>fixtures.setupChecker(maker));
