@@ -2,6 +2,7 @@
 
 import { publicErrorMessage } from '@/lib/public-error';
 import {requestSelectiveReprocess} from '@/core/payroll-reprocess-job';
+import {reviewReprocessTaxReadiness} from '@/packs/payroll/service';
 import { revalidatePath } from 'next/cache';
 import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
@@ -505,6 +506,16 @@ export async function resetAction(formData: FormData) {
  * result screen. With none in the address bar the whole chain fell back to a bare, unfiltered list.
  * Whitelisted by shape here as well as on the page, because a FormData value is untrusted input.
  */
+export async function reviewReprocessTaxAction(batchId: string, employmentIds: string[]) {
+  const session = await getSession();
+  try {
+    return {ok:true as const, review:await reviewReprocessTaxReadiness(session,batchId,employmentIds)};
+  } catch (error) {
+    console.error('[payroll reprocess readiness]',error);
+    return {ok:false as const};
+  }
+}
+
 export async function reprocessSelectedAction(formData: FormData) {
   const s = await getSession();
   const batchId = String(formData.get('batchId'));
@@ -521,16 +532,24 @@ export async function reprocessSelectedAction(formData: FormData) {
   if (employmentIds.length === 0) {
     redirect(withQueryParam(back, 'error', t('reprocessNoneSelected')));
   }
+  const heldEmploymentIds = formData.getAll('heldEmploymentIds').map(String).filter(Boolean);
   let jobId = '';
+  let readinessChanged = false;
   try {
+    const reviewed = await reviewReprocessTaxReadiness(s,batchId,[...employmentIds,...heldEmploymentIds]);
+    const readyIds = new Set(reviewed.employees.filter(row=>row.status==='ready').map(row=>row.employmentId));
+    readinessChanged = employmentIds.some(id=>!readyIds.has(id));
     // The recompute runs in the background (core/payroll-reprocess-job.ts); this screen follows the job it returns.
-    const r = await requestSelectiveReprocess(s, {
-      batchId,
-      employmentIds,
-      reason: reason || undefined,
-      idempotencyKey: idempotencyKey || undefined,
-    });
-    jobId = r.jobId;
+    if (!readinessChanged) {
+      const r = await requestSelectiveReprocess(s, {
+        batchId,
+        employmentIds,
+        reason: reason || undefined,
+        idempotencyKey: idempotencyKey || undefined,
+        heldEmploymentIds,
+      });
+      jobId = r.jobId;
+    }
   } catch (e) {
     if (e instanceof PayrollReprocessStoppedError) {
       revalidatePath('/payroll');
@@ -552,6 +571,12 @@ export async function reprocessSelectedAction(formData: FormData) {
               ? t('reprocessStopped_PERIOD_CLOSED')
               : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
     redirect(withQueryParam(back, 'error', msg));
+  }
+  if (readinessChanged) {
+    const priorJob = formData.get('previousReprocessJob');
+    const returnTo = typeof priorJob==='string' && /^[a-f0-9-]{36}$/i.test(priorJob)
+      ? withQueryParam(back,'job',priorJob) : back;
+    redirect(withQueryParam(returnTo,'error',t('reprocessTaxReadinessChanged')));
   }
   revalidatePath('/payroll');
   revalidatePath(`/payroll/${batchId}`);

@@ -24,6 +24,7 @@ export function TaxBasisResults({employees}:{employees:TaxBasisEmployee[]}){
         <span className={'rounded-full px-2.5 py-1 text-xs font-medium '+(employee.status==='blocked'||employee.status==='failed'?'bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300':'bg-muted text-foreground')}>{t(`employeeStates.${employee.status}`)}</span><span className="text-xs font-medium text-primary">{t('viewDetails')} <span aria-hidden="true">⌄</span></span>
       </summary>
       <div className="space-y-4 border-t border-border p-4">
+        {employee.openingExemptionSource==='no_tp3_default_zero'&&<p className="text-sm text-muted-foreground">{t('noTp3Opening')}</p>}
         {employee.reason&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-200">{employee.reason}</p>}
         {!!employee.missingEvidence?.length&&<section className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20" aria-label={t('missingEvidenceTitle')}>
           <h3 className="font-medium">{t('missingEvidenceTitle')}</h3><p>{t('missingEvidenceHelp')}</p>

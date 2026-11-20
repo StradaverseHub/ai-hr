@@ -34,10 +34,10 @@ import {
 // The server action, stubbed. It is a 'use server' module that reaches Postgres on import; what this file
 // is about is the screen in front of it, and the action's own behaviour is proved against a real database
 // in test/payroll-reprocess-route-e440991b.test.ts.
-vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
+vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn(), reviewReprocessTaxAction: vi.fn() }));
 // Imported so the Enter cases below can assert the recalculation was never enqueued — the same mock the
 // form is rendered against, not a second one.
-import { reprocessSelectedAction } from '../app/payroll/actions';
+import { reprocessSelectedAction, reviewReprocessTaxAction } from '../app/payroll/actions';
 
 // Navigation is tested separately; these tests retain the real selection/review/form state.
 vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
@@ -70,7 +70,16 @@ const form = (over: Partial<Parameters<typeof ReprocessForm>[0]> = {}) =>
   wrap(<ReprocessForm batchId="b1" employees={PEOPLE} currency="MYR" {...over} />);
 
 const boxes = () => screen.getAllByRole('checkbox') as HTMLInputElement[];
-const submit = () => screen.getByRole('button', { name: /Reprocess \d+ employee/ });
+const submit = () => screen.getByRole('button', { name: /Reprocess \d+ (ready )?employee/ });
+
+async function checkReady(user:ReturnType<typeof userEvent.setup>){
+  vi.mocked(reviewReprocessTaxAction).mockImplementationOnce(async (_batch,ids)=>({ok:true,review:{
+    employees:ids.map(employmentId=>({employmentId,employeeCode:null,name:employmentId,status:'ready'})),
+    taxReviewHref:null,
+  }}));
+  await user.click(screen.getByRole('button',{name:/Check tax readiness/}));
+  await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
+}
 
 describe('e440991b — the selection screen renders', () => {
   it('lists every payslip on the run with its gross, net and prior-reprocess count', () => {
@@ -121,6 +130,8 @@ describe('e440991b — the review step restates what will and will not happen', 
     // selection, the operator would be reading a reassurance the run is not honouring.
     expect(within(review).queryByText('Alice Lim')).not.toBeInTheDocument();
     expect(review.textContent).toContain('The other 1 payslip(s) are not touched');
+    expect(submit()).toBeDisabled();
+    await checkReady(user);
     expect(submit()).toBeEnabled();
     expect(submit().textContent).toContain('2');
   });
@@ -481,12 +492,13 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     return spy;
   };
 
-  it('the premise: the search box is inside the reprocess form, whose button is already live', () => {
+  it('the search box is inside the reprocess form and the submit becomes live after review', async () => {
     // Both halves matter. Outside the form, Enter would be harmless; with an empty selection the button
     // would be disabled and the click would do nothing. Neither is true here — `preselectedIds` are the
     // employments the run itself marked stale, and they arrive ticked.
     const { container } = form({ preselectedIds: ['e1', 'e3'] });
     expect(screen.getByRole('searchbox').closest('form')).toBe(container.querySelector('form'));
+    await checkReady(userEvent.setup());
     expect(submit()).toBeEnabled();
   });
 
@@ -495,6 +507,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     vi.mocked(reprocessSelectedAction).mockClear();
     const { container } = form({ preselectedIds: ['e1', 'e3'], newCandidates: [add({ employmentId: 'n1' })] });
     const spy = submitSpy(container);
+    await checkReady(user);
 
     await user.type(screen.getByRole('searchbox'), 'Alice{Enter}');
 
@@ -511,6 +524,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     const user = userEvent.setup();
     const { container } = form({ preselectedIds: ['e1'] });
     const spy = submitSpy(container);
+    await checkReady(user);
     const box = boxes()[0]!;
     box.focus();
     await user.keyboard('{Enter}');
@@ -521,6 +535,7 @@ describe('65e2d5de — Enter cannot submit this form', () => {
     const user = userEvent.setup();
     const { container } = form({ preselectedIds: ['e1'] });
     const spy = submitSpy(container);
+    await checkReady(user);
     await user.click(submit());
     expect(spy, 'the harness cannot see a submit at all — the guard cases prove nothing').toHaveBeenCalledTimes(1);
   });
@@ -588,10 +603,11 @@ describe('c3258a72 — the Skipped group', () => {
     const user = userEvent.setup();
     const { container } = form({ newCandidates: [skipRow] });
     await user.click(boxes().find((b) => b.value === 's1')!);
-    expect(submit()).toBeEnabled();
     const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
     expect(review.textContent).toContain('Dato Lim');
     expect(review.textContent).toContain('1 of them are being added to this run for the first time');
+    await checkReady(user);
+    expect(submit()).toBeEnabled();
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds')).toEqual(['s1']);
   });
@@ -655,5 +671,49 @@ describe('server-paged Reprocess defaults and selection', () => {
     expect(key()).toBe(initialKey);
     await user.click(screen.getByRole('button',{name:'Clear'}));
     expect(posted(container)).toEqual([]);
+  });
+});
+
+describe('tax readiness review',()=>{
+  it('posts only ready employees and keeps the others pending with their specific reasons',async ()=>{
+    const user=userEvent.setup();
+    const {container}=form({preselectedIds:['e1','e2','e3']});
+    vi.mocked(reviewReprocessTaxAction).mockResolvedValueOnce({ok:true,review:{
+      taxReviewHref:'/payroll/income-tax-recalculation',
+      employees:[
+        {employmentId:'e1',employeeCode:'T100001',name:'John Tan',status:'ready'},
+        {employmentId:'e2',employeeCode:'T100002',name:'Alice Lim',status:'recalculating'},
+        {employmentId:'e3',employeeCode:'T100003',name:'Raj Kumar',status:'blocked',
+          reason:'Imported wage inputs require review for 2026-01.',previousReviewReason:'Prior-employer exemption evidence is missing.'},
+      ],
+    }});
+    expect(submit()).toBeDisabled();
+    await user.click(screen.getByRole('button',{name:'Check tax readiness (3)'}));
+    const review=await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
+    expect(within(review).getByText('1 ready · 1 recalculating · 1 blocked')).toBeInTheDocument();
+    expect(within(review).getByText(/Prior-employer exemption evidence is missing/)).toBeInTheDocument();
+    const data=new FormData(container.querySelector('form')!);
+    expect(data.getAll('employmentIds')).toEqual(['e1']);
+    expect(data.getAll('heldEmploymentIds')).toEqual(['e2','e3']);
+    expect(submit()).toBeEnabled();
+    await user.click(boxes()[0]!);
+    expect(submit()).toBeDisabled();
+  });
+
+  it('rechecks the exact pending set even when the employees are off the current page',async ()=>{
+    const user=userEvent.setup();
+    const {container}=form({pendingIds:['later'],previousJobId:'previous'});
+    await checkPending();
+    expect(reviewReprocessTaxAction).toHaveBeenLastCalledWith('b1',['later']);
+    const data=new FormData(container.querySelector('form')!);
+    expect(data.getAll('employmentIds')).toEqual(['later']);
+    expect(data.get('previousReprocessJob')).toBe('previous');
+
+    async function checkPending(){
+      vi.mocked(reviewReprocessTaxAction).mockResolvedValueOnce({ok:true,review:{taxReviewHref:null,
+        employees:[{employmentId:'later',employeeCode:null,name:'Off-page employee',status:'ready'}]}});
+      await user.click(screen.getByRole('button',{name:'Review 1 pending employees'}));
+      await screen.findByRole('region',{name:'Tax readiness for this reprocess'});
+    }
   });
 });

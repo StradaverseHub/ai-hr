@@ -37,7 +37,7 @@ const runOf=(job:BulkJobRow):SelectiveReprocessRun=>{const p=planOf(job)!;return
 
 /** Web side: the same validation, permission and idempotent enqueue as before, then the background job. A job that
  * already completed returns its stored result; one another worker is running is reported as running. */
-export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:string;employmentIds:string[];reason?:string;idempotencyKey?:string})
+export async function requestSelectiveReprocess(ctx:SessionContext,p:{batchId:string;employmentIds:string[];reason?:string;idempotencyKey?:string;heldEmploymentIds?:string[]})
  :Promise<{jobId:string;status:'queued'|'running'|'completed'}&Record<string,unknown>>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const enq=await enqueueSelectiveReprocess(ctx,p);

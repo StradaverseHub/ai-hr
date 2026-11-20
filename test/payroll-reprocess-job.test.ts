@@ -80,6 +80,22 @@ describe('selective reprocess as a background job',()=>{
   expect(await requestSelectiveReprocess(job.a,{batchId:job.batchId,employmentIds:pick(job),reason:'salary change'})).toMatchObject({jobId:requested.jobId,status:'completed'});
  },240000);
 
+ it('keeps the reviewed remainder available after the ready group commits',async()=>{
+  const t=await tenant(['Aisyah','Bala']);
+  const ready=t.employees.Aisyah,held=t.employees.Bala;
+  const request={batchId:t.batchId,employmentIds:[ready],heldEmploymentIds:[held],idempotencyKey:'reviewed-remainder'};
+  const queued=await requestSelectiveReprocess(t.a,request);
+  await drain();
+  const result=await getReprocessJob(t.a,queued.jobId);
+  expect(result).toMatchObject({status:'completed',employmentIds:[ready],result:{
+    outcomes:[{employmentId:ready,status:'reprocessed'}],heldEmploymentIds:[held],
+  }});
+  expect(await requestSelectiveReprocess(t.a,request)).toMatchObject({jobId:queued.jobId,status:'completed'});
+  const [heldPayslip]=await owner.db.select().from(schema.payslip).where(
+    and(eq(schema.payslip.batchId,t.batchId),eq(schema.payslip.employmentId,held)));
+  expect(heldPayslip.version).toBe(1);
+ },240000);
+
  it('stops on a run-level refusal as the request path did, keeping the employees already committed',async()=>{
   const t=await tenant(['Aisyah','Bala','Chen']);
   const requested=await requestSelectiveReprocess(t.a,{batchId:t.batchId,employmentIds:Object.values(t.employees)});

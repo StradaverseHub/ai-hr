@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState, type KeyboardEvent } from 'react';
+import { useMemo, useState, useTransition, type KeyboardEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
@@ -12,7 +12,8 @@ import type { NothingPayableSkipKind } from '@/core/payroll-view';
 import {ClientPager} from '@/components/client-pager';
 import type {PageState} from '@/lib/pagination';
 import {PayrollSelectionSearch} from '../../selection-search';
-import { reprocessSelectedAction } from '../../actions';
+import { reprocessSelectedAction, reviewReprocessTaxAction } from '../../actions';
+import type { ReprocessTaxReadiness } from '@/lib/payroll-reprocess-readiness';
 
 export type ReprocessCandidate = {
   employmentId: string;
@@ -97,6 +98,9 @@ export function ReprocessForm({
   employees,
   newCandidates,
   preselectedIds,
+  pendingIds = [],
+  previousJobId,
+  jobRunning = false,
   currency,
   from,
   paging,
@@ -124,6 +128,9 @@ export function ReprocessForm({
    * reprocessed. Plain data, resolved on the server; the ticks stay editable.
    */
   preselectedIds?: string[];
+  pendingIds?: string[];
+  previousJobId?: string;
+  jobRunning?: boolean;
   currency: string | null;
   /**
    * b372e923 — the Payroll Process list's filter query, already whitelisted by shape on the server, or
@@ -167,6 +174,30 @@ export function ReprocessForm({
   const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
   const picked = [...pickedNew, ...pickedExisting];
 
+  const [checking,startCheck] = useTransition();
+  const [reviewPending,setReviewPending] = useState(false);
+  const [checked,setChecked] = useState<{key:string;result:ReprocessTaxReadiness|null}|null>(null);
+  const selectedIds = picked.map(row=>row.employmentId);
+  const reviewIds = reviewPending ? pendingIds : selectedIds;
+  const selectionKey = (ids:string[]) => [...ids].sort().join(',');
+  const reviewKey = selectionKey(reviewIds);
+  const review = !checking && checked?.key===reviewKey ? checked.result : null;
+  const ready = review?.employees.filter(row=>row.status==='ready') ?? [];
+  const held = review?.employees.filter(row=>row.status!=='ready') ?? [];
+
+  function checkTax(ids:string[],pending:boolean){
+    setReviewPending(pending);
+    setChecked(null);
+    startCheck(async ()=>{
+      try {
+        const result=await reviewReprocessTaxAction(batchId,ids);
+        setChecked({key:selectionKey(ids),result:result.ok ? result.review : null});
+      } catch {
+        setChecked({key:selectionKey(ids),result:null});
+      }
+    });
+  }
+
   /**
    * 65e2d5de — SEARCH BY EMPLOYEE ID OR NAME, through the ONE SHARED RULE in `lib/employee-search.ts`.
    *
@@ -198,13 +229,15 @@ export function ReprocessForm({
   const visibleSkipped = visibleAdditions.filter((c) => !!c.skip);
   // One hidden input per reviewed row, independent of paging, filtering or a now-disabled checkbox.
 
-  const toggle = (id: string) =>
+  const toggle = (id: string) => {
+    setReviewPending(false);
     setSelected((prev) => {
       const next = new Map(prev);
       if (next.has(id)) next.delete(id);
       else {const row=currentById.get(id);if(row)next.set(id,row);}
       return next;
     });
+  };
 
   /**
    * ENTER MUST NOT RUN THE PAYROLL. This is the reason the form carries a keydown handler at all.
@@ -300,7 +333,7 @@ export function ReprocessForm({
   };
 
   return (
-    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} className="space-y-4">
+    <form action={reprocessSelectedAction} onKeyDown={blockImplicitSubmit} onSubmit={event=>{if(!ready.length || jobRunning)event.preventDefault();}} className="space-y-4">
       <input type="hidden" name="batchId" value={batchId} />
       <input type="hidden" name="idempotencyKey" value={idempotencyKey} />
       {/* See the `from` prop: the submit is the ordinary way off this screen, and it used to strip the
@@ -319,10 +352,9 @@ export function ReprocessForm({
       </>}
 
 
-      {/* The complete reviewed selection is submitted exactly once. */}
-      {picked.map((e) => (
-        <input key={e.employmentId} type="hidden" name="employmentIds" value={e.employmentId} />
-      ))}
+      {previousJobId && <input type="hidden" name="previousReprocessJob" value={previousJobId} />}
+      {(review ? ready : picked).map(row=><input key={row.employmentId} type="hidden" name="employmentIds" value={row.employmentId} />)}
+      {held.map(row=><input key={row.employmentId} type="hidden" name="heldEmploymentIds" value={row.employmentId} />)}
 
       {/* fbcf706d — THE NEW / PENDING GROUP, above the people already paid. Rendered only when there is
           somebody in it, so a run with nobody waiting looks exactly as it did. */}
@@ -378,14 +410,14 @@ export function ReprocessForm({
                       still submitted (the complete hidden selection below). With no search it is exactly what it was. */}
                   <button
                     type="button"
-                    onClick={() => setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])))}
+                    onClick={() => {setReviewPending(false);setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])));}}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessSelectAll')}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setSelected(new Map())}
+                    onClick={() => {setReviewPending(false);setSelected(new Map());}}
                     className="font-medium normal-case tracking-normal text-primary hover:underline"
                   >
                     {t('reprocessClear')}
@@ -452,7 +484,7 @@ export function ReprocessForm({
       {/* THE REVIEW STEP. Reprocessing is not destructive, but it does move somebody's pay, so what is
           about to happen is restated in names — and, just as importantly, what is NOT about to happen.
           Rendered from the same state as the ticks above, in the same form: see `idempotencyKey`. */}
-      {picked.length > 0 && (
+      {picked.length > 0 && !reviewPending && !review && (
         <div className="rounded-xl border border-dashed border-primary/45 bg-primary/5 px-4 py-3">
           <p className="text-sm font-medium">{t('reprocessReviewTitle', { n: picked.length, total })}</p>
           <p className="mt-1 text-sm">
@@ -476,6 +508,53 @@ export function ReprocessForm({
         </div>
       )}
 
+      {(pendingIds.length>0 || selectedIds.length>0) && (
+        <div className="flex flex-wrap gap-2">
+          {selectedIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
+            onClick={()=>checkTax(selectedIds,false)}>
+            {t('reprocessCheckTax', {n:selectedIds.length})}
+          </Button>}
+          {pendingIds.length>0 && <Button type="button" variant="outline" disabled={checking || jobRunning}
+            onClick={()=>checkTax(pendingIds,true)}>
+            {t('reprocessCheckPending', {n:pendingIds.length})}
+          </Button>}
+        </div>
+      )}
+      {checking && <p role="status" className="text-sm text-muted-foreground">{t('reprocessCheckingTax')}</p>}
+      {!checking && checked?.key===reviewKey && !checked.result &&
+        <p role="alert" className="text-sm text-destructive">{t('reprocessCheckTaxError')}</p>}
+      {review && (
+        <section aria-label={t('reprocessTaxReadiness')} className="space-y-3 rounded-xl border border-border p-4 text-sm">
+          <h3 className="font-semibold">{t('reprocessTaxReadiness')}</h3>
+          <p role="status">
+            {t('reprocessTaxReadinessSummary', {ready:ready.length,recalculating:held.filter(row=>row.status==='recalculating').length,
+              blocked:held.filter(row=>row.status==='blocked').length})}
+          </p>
+          {ready.length>0 && <details>
+            <summary className="cursor-pointer font-medium">{t('reprocessTaxReadyList')}</summary>
+            <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              {ready.map(row=><li key={row.employmentId} className="flex items-baseline gap-1.5">
+                <EmployeeCode code={row.employeeCode}/>{row.name}
+              </li>)}
+            </ul>
+          </details>}
+          {held.length>0 && <ul className="divide-y divide-border">
+            {held.map(row=><li key={row.employmentId} className="py-2">
+              <p className="flex items-baseline gap-1.5 font-medium"><EmployeeCode code={row.employeeCode}/>{row.name}</p>
+              <p className="text-muted-foreground">
+                {row.status==='blocked' ? row.reason : t('reprocessTaxRecalculating')}
+              </p>
+              {row.status==='blocked' && row.previousReviewReason && row.previousReviewReason!==row.reason &&
+                <p className="text-muted-foreground">{t('reprocessPreviousTaxReason',{reason:row.previousReviewReason})}</p>}
+            </li>)}
+          </ul>}
+          {review.taxReviewHref && held.some(row=>row.status==='blocked') &&
+            <Link href={review.taxReviewHref} target="_blank" rel="noopener noreferrer" className="inline-block font-medium text-primary underline">
+              {t('reprocessOpenTaxReview')}
+            </Link>}
+        </section>
+      )}
+
       <label className="block">
         <span className="mb-1 block text-xs font-medium text-foreground">{t('reprocessReasonLabel')}</span>
         <textarea
@@ -496,8 +575,8 @@ export function ReprocessForm({
           {t('reprocessCancel')}
         </Link>
         <SubmitButton
-          count={picked.length}
-          label={t('reprocessSubmitN', { n: picked.length })}
+          count={jobRunning ? 0 : ready.length}
+          label={review ? t('reprocessSubmitTaxReady', { n: ready.length }) : t('reprocessSubmitN', { n: picked.length })}
           pendingLabel={t('reprocessRunning')}
         />
       </div>
