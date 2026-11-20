@@ -35,6 +35,7 @@ it('renders affected operational routes at desktop and mobile widths without pag
  const routes=['/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily','/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records','/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/'];
  const checks:unknown[]=[],overflowFailures:unknown[]=[];
  for(let index=0;index<routes.length;index+=2){
+  const pairStarted=Date.now();
   signal.throwIfAborted();await preview.start();
   for(const route of routes.slice(index,index+2)){
    const page=await context.newPage();page.setDefaultTimeout(60000);
@@ -72,10 +73,11 @@ it('renders affected operational routes at desktop and mobile widths without pag
    await page.close();
   }
   await preview.stop();
+  console.info('Operational visual routes completed', routes.slice(index,index+2), Date.now()-pairStarted, 'ms');
  }
  await context.close();expect(checks).toHaveLength(routes.length*2);
  writeFileSync(join(evidence,'operational-overflow-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,overflowFailures},null,2));
  expect(overflowFailures,'Every route must fit the document and main scroller; screenshots are retained for all failures').toEqual([]);
  writeFileSync(join(evidence,'operational-authenticated-visual-results.json'),JSON.stringify({source:process.env.AIHR_CI_HEAD,fixture:'fictional isolated authenticated HR administrator with own employment',complete:true,checks},null,2));
- // Nine bounded pairs, measured from the 15-minute combined timeout in 44577652028; Excel/languages run separately.
-},900000);
+ // Allow cold startup for nine preview pairs while retaining each navigation and assertion deadline.
+},1_200_000);

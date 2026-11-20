@@ -120,9 +120,12 @@ describe('aac17dd0 · entry on a Calculated by Formula Pay Item', () => {
     expect(await rowById(id)).toMatchObject({ amount: '500.00', quantity: null, unit: 'amount', calculationMethod: 'amount', pricingSource: null, pricingRef: null, pricedAt: null });
     const [created] = (await events('payroll.individual-txn.created')).filter(ev => ev.aggregateId === id);
     expect(created).toMatchObject({ actorType: 'user', actorId: base.adminUserId });
-    expect(created.payload).toMatchObject({ componentId: otId, calculationMethod: 'amount' });
-    // ADR-0030 Layer 0: the event carries references, never the amount.
-    expect(JSON.stringify(created.payload)).not.toMatch(/500/);
+    // ADR-0030 Layer 0: verify the whole payload so reference IDs cannot be mistaken for an amount.
+    expect(created.payload).toEqual({
+      batchId: null, companyId: base.companyId, employmentId: e, payPeriod: PERIOD,
+      kind: 'earning', txnDate: DATE, componentId: otId, intendedCycleId: cycleId,
+      calculationMethod: 'amount',
+    });
   });
 
   it('payroll pays the typed 500 with the Pay Item’s own statutory flags, exactly like a calculated 500', async () => {
