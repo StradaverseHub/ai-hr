@@ -112,20 +112,41 @@ export function serverActionRegistry(appPathRoutes,referenceManifest){
  return registrations;
 }
 
-export function serverActionCoverage(registrations,passed){
+/** Label the POST destination using the compiled router, never its concrete record identifier. */
+export function serverActionPageMatcher(appPathRoutes,routesManifest){
+ const staticPages=new Set(appPagePaths(appPathRoutes).filter(path=>!path.includes('[')));
+ const dynamic=dynamicPageCensusMatcher(appPathRoutes,routesManifest);
+ return pathname=>{
+  const path=pathname.length>1?pathname.replace(/\/$/,''):pathname;
+  return staticPages.has(path)?path:dynamic.match(path)??null;
+ };
+}
+
+export function serverActionCoverage(registrations,acceptedByAction){
  const byPage=new Map();
- let withoutPage=0,successful=0;
+ let withoutPage=0,acceptedInPassedJourneys=0,withMatchingPageEvidence=0;
+ let withoutMatchingPageEvidence=0,matchedPageRegistrations=0;
  for(const [id,paths] of registrations){
-  if(passed.has(id))successful++;
+  const destinations=acceptedByAction.get(id);
+  if(destinations?.size){
+   acceptedInPassedJourneys++;
+   if([...destinations].some(path=>paths.has(path)))withMatchingPageEvidence++;
+   else withoutMatchingPageEvidence++;
+  }
   if(!paths.size)withoutPage++;
   for(const path of paths){
-   const row=byPage.get(path)??{path,registrations:0,seenInPassedJourneys:0};
+   const row=byPage.get(path)??{path,registrations:0,acceptedInPassedJourneys:0};
    row.registrations++;
-   if(passed.has(id))row.seenInPassedJourneys++;
+   if(destinations?.has(path)){
+    row.acceptedInPassedJourneys++;
+    matchedPageRegistrations++;
+   }
    byPage.set(path,row);
   }
  }
- return {registered:registrations.size,seenInPassedJourneys:successful,withoutPage,
+ return {registered:registrations.size,acceptedInPassedJourneys,withoutPage,withMatchingPageEvidence,
+  withoutMatchingPageEvidence,matchedPageRegistrations,
+  pagesWithMatchingEvidence:[...byPage.values()].filter(row=>row.acceptedInPassedJourneys>0).length,
   byPageWorker:[...byPage.values()].sort((a,b)=>a.path.localeCompare(b.path))};
 }
 

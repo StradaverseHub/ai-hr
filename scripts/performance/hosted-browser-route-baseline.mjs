@@ -9,7 +9,7 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage,serverActionPageMatcher} from './system-route-manifest.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -1317,8 +1317,10 @@ async function measureActions(fixture){
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
  const registrations=serverActionRegistry(appPathRoutes,referenceManifest);
  assert(registrations.size>0,'The measured build must have registered Server Actions');
- const exercisedActions=new Set();
- report.serverActionInventory=serverActionCoverage(registrations,exercisedActions);
+ const routesManifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
+ const actionPageFor=serverActionPageMatcher(appPathRoutes,routesManifest);
+ const acceptedByAction=new Map();
+ report.serverActionInventory=serverActionCoverage(registrations,acceptedByAction);
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
@@ -1418,9 +1420,14 @@ async function measureActions(fixture){
    };
    const actionRequests=new Map();
    const observeRequest=request=>{
-    if(request.method()!=='POST'||new URL(request.url()).origin!==origin)return;
+    if(request.method()!=='POST')return;
+    const url=new URL(request.url());
+    if(url.origin!==origin)return;
     const id=request.headers()['next-action'];
-    if(registrations.has(id))actionRequests.set(request,{id,started:performance.now()});
+    if(registrations.has(id)){
+     const page=actionPageFor(url.pathname);
+     actionRequests.set(request,{id,page,matchedWorker:registrations.get(id).has(page),started:performance.now()});
+    }
    };
    const observeResponse=response=>{
     const activity=actionRequests.get(response.request());
@@ -1437,19 +1444,23 @@ async function measureActions(fixture){
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
     const successful=new Set();
-    for(const activity of actionRequests.values()){
-     if(activity.status>=200&&activity.status<400)successful.add(activity.id);
+    for(const {id,page,status} of actionRequests.values()){
+     if(!(status>=200&&status<400))continue;
+     successful.add(id);
+     const destinations=acceptedByAction.get(id)??new Set();
+     destinations.add(page);
+     acceptedByAction.set(id,destinations);
     }
-    row.serverActionsSeen=successful.size;
-    for(const id of successful)exercisedActions.add(id);
+    row.serverActionsAccepted=successful.size;
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
     const step=result.actionStage??result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
    finally{
-    row.serverActionResponses=[...actionRequests.values()].map(({status,elapsedMs})=>({status:status??null,elapsedMs:elapsedMs??null}));
-    report.serverActionInventory=serverActionCoverage(registrations,exercisedActions);
+    row.serverActionResponses=[...actionRequests.values()].map(({page,matchedWorker,status,elapsedMs})=>
+     ({page,matchedWorker,status:status??null,elapsedMs:elapsedMs??null}));
+    report.serverActionInventory=serverActionCoverage(registrations,acceptedByAction);
     retain();
     await context.close();
    }
