@@ -33,9 +33,9 @@ function runnerSwapBytes(){
 }
 function addHostedSwap(){
  if(process.platform!=='linux'||process.env.GITHUB_ACTIONS!=='true'||process.env.RUNNER_ENVIRONMENT!=='github-hosted')return;
- // A passing isolated run nearly exhausted the runner's 3 GiB of swap. The
- // full-gate runner had no swap and shut down during the same Next compile.
- const required=4*GiB;
+ // The full-gate runner shut down with no swap. A retry with 4 GiB reached
+ // all locales but exhausted the reserve while compiling the import job routes.
+ const required=8*GiB;
  const current=runnerSwapBytes();
  if(current>=required)return;
  const root=process.env.RUNNER_TEMP;
@@ -56,7 +56,9 @@ function stopHostedSwap(){
  if(!swapDirectory)return;
  const file=join(swapDirectory,'swapfile');
  const isActive=()=>readFileSync('/proc/swaps','utf8').split('\n').some(row=>row.split(/\s+/)[0]===file);
- if(isActive())execFileSync('sudo',['swapoff','--',file],{timeout:10000});
+ // After Next exits, the kernel can still need to page in data belonging to
+ // the runner and test driver. The hosted retry exhausted a 10s cleanup budget.
+ if(isActive())execFileSync('sudo',['swapoff','--',file],{timeout:60000});
  if(isActive())throw new Error('System Labels test swap is still active');
  rmSync(swapDirectory,{recursive:true});
  swapDirectory=undefined;
@@ -161,7 +163,7 @@ async function stop(){
  sampleCapacity?.('cleanup-complete');
  publishResult?.();
 }
-afterAll(stop,40000);
+afterAll(stop,120000);
 afterEach(async ({task})=>{
  if(task.result?.state!=='fail')return;
  // A failed navigation may leave the browser protocol unable to answer diagnostics.
