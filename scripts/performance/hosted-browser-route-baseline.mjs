@@ -19,6 +19,7 @@ import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-r
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
+import {prepareAttendanceRejection} from './attendance-rejection-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
@@ -34,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -64,6 +65,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
  AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ PERF_ATTENDANCE_REJECTION_BROWSER:surfaceProbe==='attendance'?'1':'0',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -594,6 +596,140 @@ async function measureRoutes(fixture){
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,report.observations);
  save();
  assert(lanes.every(lane=>lane.status==='fulfilled'),'An owned browser lane failed');
+}
+
+async function measureAttendanceHistory({page,user,fixture,report,save}){
+ const path='/attendance/application-history';
+ const own=fixture.tenants[user.tenant].companies[user.company];
+ const foreign=fixture.tenants.find((_,index)=>index!==user.tenant)?.companies[0];
+ assert(own?.companyId&&foreign?.companyId,'Attendance History needs two fictional company boundaries');
+ const main=page.locator('main:visible');
+ const table=main.getByRole('table');
+ const status=main.getByRole('navigation',{name:'Application status',exact:true});
+ report.attendanceHistorySteps=[];
+ const mark=(step,started)=>{
+  report.attendanceHistorySteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ };
+ let started=performance.now();
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+ assert.equal(response?.status(),200);
+ await main.getByRole('heading',{name:'Application History',exact:true}).waitFor({state:'visible',timeout:15000});
+ await table.getByRole('columnheader',{name:'Employee',exact:true}).waitFor({state:'visible',timeout:15000});
+ await status.getByRole('link',{name:/^Pending [0-9]+$/}).and(status.locator('[aria-current="page"]'))
+  .waitFor({state:'visible',timeout:15000});
+ mark('initial-results-ready',started);
+
+ const query='PERF-NO-ATTENDANCE-HISTORY-MATCH';
+ started=performance.now();
+ await main.getByRole('button',{name:'Show filters',exact:true}).click({timeout:15000});
+ const company=main.getByRole('combobox',{name:'Company',exact:true});
+ await company.locator('option[value="'+own.companyId+'"]').waitFor({state:'attached',timeout:15000});
+ assert.equal(await company.locator('option[value="'+foreign.companyId+'"]').count(),0);
+ await company.selectOption(own.companyId,{timeout:15000});
+ await main.getByRole('textbox',{name:'Employee or application reference',exact:true}).fill(query,{timeout:15000});
+ mark('company-and-search-controls-ready',started);
+
+ const matches=(url,next)=>url.origin===origin&&url.pathname===path&&url.searchParams.get('companyId')===own.companyId
+  &&url.searchParams.get('query')===query&&url.searchParams.get('status')===next;
+ const empty=table.getByText('No applications match these filters.',{exact:true});
+ started=performance.now();
+ await Promise.all([
+  page.waitForURL(url=>matches(url,'pending'),{waitUntil:'commit',timeout:15000}),
+  main.getByRole('button',{name:'Apply filters',exact:true}).click({timeout:15000}),
+ ]);
+ await empty.waitFor({state:'visible',timeout:15000});
+ mark('query-results-ready',started);
+
+ const approved=status.getByRole('link',{name:/^Approved [0-9]+$/});
+ started=performance.now();
+ await Promise.all([
+  page.waitForURL(url=>matches(url,'approved'),{waitUntil:'commit',timeout:15000}),
+  approved.click({timeout:15000}),
+ ]);
+ await approved.and(status.locator('[aria-current="page"]')).waitFor({state:'visible',timeout:15000});
+ await empty.waitFor({state:'visible',timeout:15000});
+ mark('approved-with-filters-ready',started);
+}
+
+async function measureAttendanceRejection({fixture,db,report,save}){
+ const opened=new Set();
+ const closeContext=async context=>{
+  if(opened.delete(context))await context.close();
+ };
+ try{
+  const probe=await prepareAttendanceRejection({
+   context:async actor=>{
+    const context=await signedInContext(actor);
+    opened.add(context);
+    return context;
+   },
+   withContext:async(_context,work)=>work(),
+   closeContext,notePrimary:()=>{},noteEvidence:work=>work(),
+   visit:async(page,_actor,path)=>{
+    const response=await page.goto(origin+path,{waitUntil:'domcontentloaded',timeout:15000});
+    assert.equal(response?.status(),200);
+    assert.equal(new URL(page.url()).pathname,path);
+   },
+   fixture,db,report,save,phase:'baseline',
+  });
+  await probe.run();
+  const proof=report.attendanceRejectionBrowser?.[0];
+  assert.equal(proof?.persisted,true);
+  assert.equal(proof.workflowDecisionVerified,true);
+  assert.equal(proof.unchangedPunches,2);
+  assert.equal(proof.linkedAuditEvents,2);
+ }finally{
+  await Promise.all([...opened].map(closeContext));
+ }
+}
+
+async function measureAttendanceJourneys(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const postgres=require('postgres');
+ const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ report.attendanceJourneys={rejection:{status:'incomplete'},filters:[]};
+ const rejection={};
+ const retainRejection=()=>{
+  const event=rejection.attendanceRejectionBrowser?.[0];
+  if(!event)return;
+  const row=report.attendanceJourneys.rejection;
+  Object.assign(row,{
+   status:event.status==='passed'?'observed':event.status==='failed'?'failed':'incomplete',
+   persisted:event.persisted===true,workflowVerified:event.workflowDecisionVerified===true,
+   ...(Number.isSafeInteger(event.linkedAuditEvents)&&{linkedAuditEvents:event.linkedAuditEvents}),
+   ...(Number.isSafeInteger(event.unchangedPunches)&&{unchangedPunches:event.unchangedPunches}),
+   ...(Number.isFinite(event.usableMs)&&{usableMs:Math.round(event.usableMs)}),
+   ...(Number.isFinite(event.responseMs)&&{responseMs:Math.round(event.responseMs)}),
+   ...(Number.isSafeInteger(event.creationStatus)&&{creationStatus:event.creationStatus}),
+  });
+  save();
+ };
+ try{
+  try{
+   await measureAttendanceRejection({fixture,db,report:rejection,save:retainRejection});
+  }catch(error){
+   report.attendanceJourneys.rejection.status='failed';
+   report.attendanceJourneys.rejection.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+   save();
+  }
+  for(const actorIndex of [0,1]){
+   const user=fixture.users[actorIndex],context=await signedInContext(user);
+   const row={role:user.role,status:'incomplete',timings:[]},evidence={};
+   report.attendanceJourneys.filters.push(row);
+   const retain=()=>{row.timings=evidence.attendanceHistorySteps??[];save();};
+   try{
+    await measureAttendanceHistory({page:await context.newPage(),user,fixture,report:evidence,save:retain});
+    row.status='observed';
+   }catch(error){
+    row.status='failed';
+    row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+   }finally{retain();await context.close();}
+  }
+ }finally{await db.end({timeout:5});}
+ assert.equal(report.attendanceJourneys.rejection.status,'observed','Attendance rejection did not complete its persisted check');
+ assert(report.attendanceJourneys.filters.every(row=>row.status==='observed'),'Attendance filters did not complete in both HR scopes');
 }
 
 const focusedSurfaces={
@@ -1701,7 +1837,8 @@ try{
     AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
   await waitForApp();
   await proxy();
-  if(surfaceProbe){
+  if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
+  else if(surfaceProbe){
    const requested=surfaceProbe==='both'?Object.keys(focusedSurfaces):[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);
   }
