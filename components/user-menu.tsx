@@ -205,7 +205,8 @@ export function UserMenu({
               </div>
             </div>
             <div className="my-1 h-px bg-border" />
-            <Link
+            {/* Opening the account menu should only render its own controls. */}
+            <Link prefetch={false}
               href={PROFILE_HREF}
               role="menuitem"
               onClick={() => setOpen(false)}
@@ -213,12 +214,12 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
-            <Link href="/me/home" role="menuitem" onClick={()=>setOpen(false)} className="flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+            <Link prefetch={false} href="/me/home" role="menuitem" onClick={()=>setOpen(false)} className="flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
               {t('homePreferences')}
             </Link>
-            {canViewWorkforce&&<Link href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
+            {canViewWorkforce&&<Link prefetch={false} href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
               className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{navT('personnelAdmin')}</Link>}
-            {canConfigureAccess&&<Link href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
+            {canConfigureAccess&&<Link prefetch={false} href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
               className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{accessT('title')}</Link>}
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />
