@@ -31,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','company-scope'].includes(surfaceProbe),'Unknown browser surface');
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -43,7 +43,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!['leave-inbox','roster','company-scope'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1729,6 +1729,31 @@ async function measureFocusedRoster(fixture){
  assert.equal(report.rosterStartup.length,6);
 }
 
+async function measureFocusedCompanyScope(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const user=fixture.users[0];
+ const context=await signedInContext(user);
+ report.companyScopeComparison=[];
+ try{
+  const page=await context.newPage();
+  for(const pass of ['first','repeat-1','repeat-2']){
+   const row={pass,status:'incomplete'};
+   report.companyScopeComparison.push(row);
+   const journey={};
+   const retain=()=>{
+    row.steps=journey.groupScopeSteps??[];
+    row.stage=journey.groupScopeStage??null;
+    save();
+   };
+   try{
+    await measureBrowserGroupScope({base:origin,page,user,fixture,report:journey,save:retain});
+    row.status='observed';
+   }finally{retain();}
+  }
+ }finally{await context.close();}
+}
+
 async function measureCalendarMonth({page,user,fixture,report,save}){
  const path='/me/calendar';
  const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
@@ -2034,6 +2059,7 @@ try{
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='company-scope')await measureFocusedCompanyScope(fixture);
   else if(surfaceProbe==='leave-inbox'){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
