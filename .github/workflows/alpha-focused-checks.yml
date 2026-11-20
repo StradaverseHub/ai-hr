@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       browser_login_only:
-        description: Measure only the localized public sign-in page on the isolated browser build
+        description: Measure localized startup in fresh public sign-in and signed-in browser contexts
         default: false
         type: boolean
       model_eval:

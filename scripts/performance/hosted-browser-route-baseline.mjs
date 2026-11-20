@@ -49,7 +49,7 @@ const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
-  mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':loginOnly?'FICTIONAL_PUBLIC_LOGIN_STARTUP':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+  mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':loginOnly?'FICTIONAL_LOCALIZED_SHELL_STARTUP':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -1123,6 +1123,15 @@ async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
  save();
 }
 
+function trackBrowserErrors(page){
+ const errors=[];
+ page.on('pageerror',()=>{errors.push(true);});
+ page.on('console',message=>{
+  if(message.type()==='error'&&message.text().includes('MISSING_MESSAGE'))errors.push(true);
+ });
+ return errors;
+}
+
 async function measurePublicLogin(){
  report.publicLogin=[];
  const locales=['en','ms'];
@@ -1136,11 +1145,7 @@ async function measurePublicLogin(){
    await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:origin}]);
    const page=await context.newPage();
    await page.addInitScript(observeStartup);
-   const errors=[];
-   page.on('pageerror',()=>{errors.push(true);});
-   page.on('console',message=>{
-    if(message.type()==='error'&&message.text().includes('MISSING_MESSAGE'))errors.push(true);
-   });
+   const errors=trackBrowserErrors(page);
    const started=performance.now();
    const response=await page.goto(origin+'/login',{waitUntil:'commit',timeout:15000});
    assert.equal(response?.status(),200);
@@ -1158,6 +1163,51 @@ async function measurePublicLogin(){
     documentTiming:await documentTiming(page)});
    save();
   }finally{await context.close();}
+ }
+}
+
+async function measureLocalizedSignedInShell(fixture){
+ const actor=fixture.users[4];
+ assert.equal(actor.role,'employee');
+ report.signedInStartup=[];
+ for(const trial of [1,2,3]){
+  for(const locale of ['en','ms']){
+   const row={trial,locale,status:'incomplete'};
+   report.signedInStartup.push(row);
+   const context=await signedInContext(actor);
+   try{
+    const copy=JSON.parse(readFileSync('messages/'+locale+'.json','utf8'));
+    assert(typeof copy.topbar?.viewProfile==='string'&&copy.topbar.viewProfile.length>0);
+    await context.addCookies([{name:'NEXT_LOCALE',value:locale,url:origin}]);
+    const page=await context.newPage();
+    await page.addInitScript(observeStartup);
+    const errors=trackBrowserErrors(page);
+    const started=performance.now();
+    row.stage='document';
+    const response=await page.goto(origin+'/me/cases',{waitUntil:'domcontentloaded',timeout:15000});
+    assert.equal(response?.status(),200);
+    assert.equal(page.url(),origin+'/me/cases');
+    assert.equal(await page.locator('html').getAttribute('lang'),locale);
+    row.stage='content';
+    await page.locator('main h1').first().waitFor({state:'visible',timeout:15000});
+    await assertContentAvailable(page);
+    const account=page.locator('button[data-tour="account"]');
+    await account.waitFor({state:'visible',timeout:15000});
+    row.contentMs=Math.round(performance.now()-started);
+    row.beforeClick=await documentTiming(page);
+    row.stage='account-menu';
+    const clicked=performance.now();
+    await account.click({timeout:5000});
+    await page.getByRole('menuitem',{name:copy.topbar.viewProfile,exact:true}).waitFor({state:'visible',timeout:5000});
+    row.accountMenuMs=Math.round(performance.now()-clicked);
+    row.usableMs=Math.round(performance.now()-started);
+    row.documentTiming=await documentTiming(page);
+    assert.equal(errors.length,0,'Localized signed-in shell produced a browser or translation error');
+    assert(row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false,
+     'Signed-in startup assets were not fully measured');
+    row.status='observed';
+   }finally{save();await context.close();}
+  }
  }
 }
 
@@ -1342,6 +1392,7 @@ try{
   assert.equal(report.publicLogin.length,6);
   assert(report.publicLogin.every(row=>row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false),
    'Startup assets were not fully measured in every fresh login context');
+  await measureLocalizedSignedInShell(fixture);
   report.complete=true;
  }else if(!fixtureOnly){
   await measureRoutes(fixture);
