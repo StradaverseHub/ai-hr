@@ -1036,6 +1036,60 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
  }
 }
 
+async function measureAttendanceHistory({page,user,fixture,report,save}){
+ const path='/attendance/application-history';
+ const own=fixture.tenants[user.tenant].companies[user.company];
+ const foreign=fixture.tenants.find((_,index)=>index!==user.tenant)?.companies[0];
+ assert(own?.companyId&&foreign?.companyId,'Attendance History needs two fictional company boundaries');
+ const main=page.locator('main:visible');
+ const table=main.getByRole('table');
+ const status=main.getByRole('navigation',{name:'Application status',exact:true});
+ report.attendanceHistorySteps=[];
+ const mark=(step,started)=>{
+  report.attendanceHistorySteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ };
+ let started=performance.now();
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
+ assert.equal(response?.status(),200);
+ await main.getByRole('heading',{name:'Application History',exact:true}).waitFor({state:'visible',timeout:15000});
+ await table.getByRole('columnheader',{name:'Employee',exact:true}).waitFor({state:'visible',timeout:15000});
+ await status.getByRole('link',{name:/^Pending [0-9]+$/}).and(status.locator('[aria-current="page"]'))
+  .waitFor({state:'visible',timeout:15000});
+ mark('initial-results-ready',started);
+
+ const query='PERF-NO-ATTENDANCE-HISTORY-MATCH';
+ started=performance.now();
+ await main.getByRole('button',{name:'Show filters',exact:true}).click({timeout:15000});
+ const company=main.getByRole('combobox',{name:'Company',exact:true});
+ await company.locator('option[value="'+own.companyId+'"]').waitFor({state:'attached',timeout:15000});
+ assert.equal(await company.locator('option[value="'+foreign.companyId+'"]').count(),0);
+ await company.selectOption(own.companyId,{timeout:15000});
+ await main.getByRole('textbox',{name:'Employee or application reference',exact:true}).fill(query,{timeout:15000});
+ mark('company-and-search-controls-ready',started);
+
+ const matches=(url,next)=>url.origin===origin&&url.pathname===path&&url.searchParams.get('companyId')===own.companyId
+  &&url.searchParams.get('query')===query&&url.searchParams.get('status')===next;
+ const empty=table.getByText('No applications match these filters.',{exact:true});
+ started=performance.now();
+ await Promise.all([
+  page.waitForURL(url=>matches(url,'pending'),{waitUntil:'commit',timeout:15000}),
+  main.getByRole('button',{name:'Apply filters',exact:true}).click({timeout:15000}),
+ ]);
+ await empty.waitFor({state:'visible',timeout:15000});
+ mark('query-results-ready',started);
+
+ const approved=status.getByRole('link',{name:/^Approved [0-9]+$/});
+ started=performance.now();
+ await Promise.all([
+  page.waitForURL(url=>matches(url,'approved'),{waitUntil:'commit',timeout:15000}),
+  approved.click({timeout:15000}),
+ ]);
+ await approved.and(status.locator('[aria-current="page"]')).waitFor({state:'visible',timeout:15000});
+ await empty.waitFor({state:'visible',timeout:15000});
+ mark('approved-with-filters-ready',started);
+}
+
 async function measurePayrollHistoryDisclosure({page,user,fixture,report,save}){
  report.actionStage='payroll-history-open';
  const response=await page.goto(origin+payrollHistoryPath,{waitUntil:'domcontentloaded',timeout:20000});
@@ -1359,6 +1413,8 @@ async function measureActions(fixture){
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
+  ...[0,1].map(actorIndex=>({name:'attendance-history-filters',actorIndex,run:measureAttendanceHistory,
+   timings:result=>result.attendanceHistorySteps})),
   ...[0,1].map(actorIndex=>({name:'payroll-history-breakdown',actorIndex,run:measurePayrollHistoryDisclosure,
    timings:result=>result.payrollDisclosureSteps})),
   ...[0,1].map(actorIndex=>({name:'job-description-editor-open',actorIndex,run:measureJobDescriptionEditor,
