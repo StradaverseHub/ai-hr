@@ -13,8 +13,8 @@ function fixture(){
    staticPageCensus:{shard,shards:STATIC_CENSUS_SHARDS,...plan,
     outcomes:plan.paths.flatMap(path=>['first','repeat'].map(pass=>({path,pass,role:'groupHR',
      outcome:path==='/payroll'?'timeout':'heading-visible',elapsedMs:path==='/payroll'?15001:350}))),
-    dynamic:{templates:['/people/[id]'],outcomes:plan.paths.includes('/')?[{
-     path:'/people/[id]',sourcePath:'/',pass:'first',role:'groupHR',outcome:'heading-visible',elapsedMs:385,
+    dynamic:{templates:['/people/[id]'],maxLinkDepth:2,outcomes:plan.paths.includes('/')?[{
+     path:'/people/[id]',sourcePath:'/',pass:'first',role:'groupHR',outcome:'heading-visible',elapsedMs:385,linkDepth:2,
     }]:[]},
    }};
  });
@@ -27,6 +27,7 @@ test('reconciles a single build while retaining failed openings and template-lev
  assert.equal(report.staticPagesWithTwoHeadings,1);
  assert.equal(report.byOutcome.timeout,2);
  assert.equal(report.dynamicTemplatesWithHeading,1);
+ assert.equal(report.dynamicObservations[0].linkDepth,2);
  assert.deepEqual(report.dynamicTemplatesWithoutHeading,[]);
  assert.equal(report.releaseEligible,false);
 });
