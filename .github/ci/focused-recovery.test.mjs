@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {recoverySourceDigest} from './focused-recovery.mjs';
@@ -38,6 +38,38 @@ test('Exact-source DB recovery retains the original failed process and validates
  assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(f.plan.sha,f.focused[0].report.sha);
  assert.equal(c.pendingDatabaseOrdering,true);assert.throws(()=>validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run));
 });
+function orderingFixture(){
+ const controller='7f7b7a9e686a1bd63b004a802248f064d1978da0', candidate='a'.repeat(40), start=time(3);
+ const producer={id:301,run_id:200,name:'selected-tests',head_sha:controller,steps:[{name:'Classify and execute only selected files',status:'completed',conclusion:'success',started_at:start}]};
+ const report={sha:candidate,controller,runId:'200',files:['test/contract-shared-decision-db.test.ts']};
+ const log=[
+  '##[group]Run node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"',
+  'shell: /usr/bin/bash -e {0}', 'env:', '  AIHR_CI_HEAD: '+candidate, '  AIHR_CI_CONTROL_HEAD: '+controller,
+  '  AIHR_TEST_DURATION_ORDER: true', '  AIHR_FOCUSED_TESTS: '+JSON.stringify(report.files), '##[endgroup]',
+ ].map(value=>start+' '+value).join('\n')+'\n';
+ return {producer,report,log:Buffer.from(log)};
+}
+test('Duration ordering is bound to the authenticated producing job, step and selected files',()=>{
+ const fixture=orderingFixture(), proof=validateFocusedDbOrdering(fixture);
+ assert.deepEqual(proof,{kind:'GITHUB_FOCUSED_DURATION_ORDER',jobId:301,runId:200,logSha256:recoverySourceDigest(fixture.log)});
+ const f=input(true);
+ f.focused[0].databaseOrdering=proof;
+ const c=certificate(f);
+ assert.equal(c.pendingDatabaseOrdering,false);
+ assert.deepEqual(c.focusedSources[0].databaseOrdering,proof);
+ assert.equal(validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run),true);
+ delete c.focusedSources[0].databaseOrdering;
+ assert.throws(()=>validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run),/ordering evidence/);
+});
+for(const [name,mutate] of [
+ ['disabled ordering',f=>f.log=Buffer.from(f.log.toString().replace('ORDER: true','ORDER: false'))],
+ ['wrong source',f=>f.report.sha='b'.repeat(40)],
+ ['unknown producer controller',f=>f.producer.head_sha=f.report.controller='f'.repeat(40)],
+ ['wrong selected files',f=>f.report.files=['test/other.test.ts']],
+ ['wrong step time',f=>f.producer.steps[0].started_at=time(50)],
+ ['extra spoofed command group',f=>f.log=Buffer.concat([f.log,f.log])],
+ ['duplicate ordering field',f=>f.log=Buffer.from(f.log.toString().replace('ORDER: true','ORDER: false\n'+time(3)+'   AIHR_TEST_DURATION_ORDER: true'))],
+])test('Duration ordering refuses '+name,()=>{const f=orderingFixture();mutate(f);assert.throws(()=>validateFocusedDbOrdering(f));});
 test('Classifier and prerequisite digests hash raw bytes, never JSON-serialized Buffer objects',()=>{
  const expected='ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
  assert.equal(recoverySourceDigest(Buffer.from('abc')),expected);assert.equal(recoverySourceDigest('abc'),expected);

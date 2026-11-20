@@ -1,5 +1,6 @@
 /** Versioned exact-source recovery. Never rewrites an original run, unit report or gate receipt. */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
@@ -77,6 +78,47 @@ export function validateFocusedMetadata({run,jobs,artifacts,expected,now=Date.no
  assert(Date.parse(j.started_at)>=created&&Date.parse(j.completed_at)>=Date.parse(j.started_at)&&Date.parse(j.completed_at)<=finished&&Date.parse(a.created_at)>=Date.parse(j.started_at)&&Date.parse(a.created_at)<=Date.parse(j.completed_at)&&Date.parse(a.expires_at)>now,'Focused artifact is outside its producing job');
  return j;
 }
+// The published producer at this commit forwards the Actions step environment to
+// Vitest unchanged for duration ordering. Other producers need equivalent review.
+const ORDER_LOG_CONTROLLER='7f7b7a9e686a1bd63b004a802248f064d1978da0';
+const ORDER_STEP='Classify and execute only selected files';
+const ORDER_COMMAND='##[group]Run node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"';
+export function validateFocusedDbOrdering({log,producer,report}){
+ assert(Buffer.isBuffer(log)&&log.length>0&&log.length<=32*1024**2,'Bounded GitHub job log required');
+ assert(positive(producer.id)&&positive(producer.run_id)&&producer.name==='selected-tests'
+   &&producer.head_sha===ORDER_LOG_CONTROLLER&&report.controller===producer.head_sha
+   &&report.runId===String(producer.run_id)&&sha(report.sha),'Exact reviewed duration-order producer required');
+ const steps=producer.steps?.filter(step=>step.name===ORDER_STEP)??[];
+ assert(steps.length===1&&steps[0].status==='completed'&&steps[0].conclusion==='success','Successful focused execution step required');
+ const start=Date.parse(steps[0].started_at);
+ const lines=log.toString('utf8').split(/\r?\n/);
+ const split=line=>line.match(/^(\S+) (.*)$/);
+ const groups=lines.flatMap((line,index)=>split(line)?.[2]===ORDER_COMMAND?[index]:[]);
+ assert(groups.length===1,'Unique GitHub focused execution command required');
+ const index=groups[0], headerTime=Date.parse(split(lines[index])[1]);
+ // GitHub's step API uses seconds and the runner's console timestamps use finer resolution.
+ assert(Number.isFinite(start)&&Math.abs(headerTime-start)<=2000,'Command group is outside the authenticated step start');
+ const end=lines.findIndex((line,i)=>i>index&&split(line)?.[2]==='##[endgroup]');
+ assert(end>index&&end-index<=80,'Bounded GitHub step environment group required');
+ const group=lines.slice(index+1,end).map(line=>split(line)?.[2]);
+ const envAt=group.indexOf('env:');
+ assert(envAt>=0&&envAt===group.lastIndexOf('env:'),'Unique runner environment declaration required');
+ const environment=group.slice(envAt+1);
+ const requireValue=(key,value)=>{
+  const prefix='  '+key+': ';
+  same(environment.filter(line=>line?.startsWith(prefix)),[prefix+value],'Focused runner environment differs: '+key);
+ };
+ requireValue('AIHR_CI_HEAD',report.sha);
+ requireValue('AIHR_CI_CONTROL_HEAD',report.controller);
+ requireValue('AIHR_TEST_DURATION_ORDER','true');
+ requireValue('AIHR_FOCUSED_TESTS',JSON.stringify(report.files));
+ return {kind:'GITHUB_FOCUSED_DURATION_ORDER',jobId:producer.id,runId:producer.run_id,logSha256:createHash('sha256').update(log).digest('hex')};
+}
+function hasFocusedDbOrdering(ordering,jobId,runId){
+ return ordering?.kind==='GITHUB_FOCUSED_DURATION_ORDER'&&ordering.jobId===jobId&&ordering.runId===runId
+  &&/^[a-f0-9]{64}$/.test(ordering.logSha256??'');
+}
+
 function cases(result,files,cwd){
  assert(result?.success===true&&result.numFailedTests===0&&result.numFailedTestSuites===0&&[result.numPendingTests??0,result.numPendingTestSuites??0,result.numTodoTests??0].every(n=>n===0),'Focused result contains errors/skips');
  assert(Array.isArray(result.testResults)&&result.testResults.length===files.length,'Focused result file count differs');
@@ -106,6 +148,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  }
  assert(Array.isArray(reports)&&reports.length===plan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original report inventory required');
  const replacements=new Map(),focusedSources=[];
+ let pendingDatabaseOrdering=false;
  for(const f of focused){
   const r=f.report;
   assert(r.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.sha===plan.sha&&r.controller===plan.controller&&r.runId===String(f.run.id)&&r.attempt==='1'&&r.exitCode===0,'Focused report identity/result differs');
@@ -124,6 +167,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   if(database){
    const unit=plan.units.find(u=>u.kind==='db'&&isDeepStrictEqual(u.files.slice().sort(),r.files));
    assert(unit&&failed.has(unit.id),'DB recovery must execute one entire failed unit in its own fresh database');
+   if(!hasFocusedDbOrdering(f.databaseOrdering,f.producer.id,f.run.id))pendingDatabaseOrdering=true;
    validatePostgresEvidence(r.databaseTerminalEvidence,plan.execution);
    const e=r.databaseTerminalEvidence,original=reports.find(x=>x.id===unit.id)?.databaseTerminalEvidence;
    assert(e.name===`aihr-ci-${f.run.id}-1-db-1`&&Date.parse(e.capturedAt)>=Date.parse(r.batches[0].startedAt)&&Date.parse(e.capturedAt)<=Date.parse(f.producer.completed_at)&&e.settings.serverVersionNum===original?.settings?.serverVersionNum,'Database ownership, capture interval or actual version differs');
@@ -136,7 +180,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
    assert(unit&&unit.kind===(database?'db':'nodb')&&failed.has(unit.id)&&!replacements.has(path),'Focused recovery repeats, misclassifies or includes an unaffected file');
    replacements.set(path,{...value,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});
   }
-  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result),...(f.roleReceipts?{roleReceipts:f.roleReceipts}:{})});
+  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result),...(f.roleReceipts?{roleReceipts:f.roleReceipts}:{}),...(database&&f.databaseOrdering?{databaseOrdering:f.databaseOrdering}:{})});
  }
  const units=[];let tests=0;
  for(const unit of plan.units){
@@ -159,15 +203,18 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
   tests+=count;units.push({id:unit.id,kind:'focused-recovery',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>failed.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Recovery coverage is incomplete');
- // Current focused producer does not bind its DB duration-order flag into the packet.
- // Preserve diagnostic accounting, but never grant DB installation before that gap is qualified.
- const pendingDatabaseOrdering=plan.units.some(u=>u.kind==='db'&&failed.has(u.id));
  return {kind:'AUTHENTICATED_FOCUSED_RECOVERY',recoveryPolicy:RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,reviewedController,pendingReview:reviewedController!==verificationController,pendingDatabaseOrdering,baseline:plan.migrationBase,runId:run.id,sourceFingerprint:plan.fingerprint,originalConclusion:run.conclusion,originalFailureObservations:assessment.observations,focusedSources:focusedSources.sort((a,b)=>a.runId-b.runId),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 /** Installation grant keeps the original failed run and build tuple; its fingerprint binds this distinct certificate. */
 export function validateRecoveryGrantEvidence(evidence,run){
  const c=evidence.recovery;
  assert(c?.pendingDatabaseOrdering===false,'Database ordering qualification is missing; diagnostic only');
+ for(const unit of c.units.filter(u=>u.kind==='focused-recovery'&&u.id.startsWith('db-'))){
+  const runs=new Set(unit.files.map(file=>file.runId));
+  assert(runs.size===1,'Recovered database unit must bind one producing run');
+  const source=c.focusedSources.find(f=>runs.has(f.runId));
+  assert(source&&hasFocusedDbOrdering(source.databaseOrdering,source.jobId,source.runId),'Exact database ordering evidence is required for grant');
+ }
  assert(c?.pendingReview===false&&c.reviewedController===c.verificationController,'Exact reviewed focused verifier required for grant');
  assert(c.history?.kind==='AUTHENTICATED_UNCHANGED_SOURCE_HISTORY'&&c.history.sourceRunId===c.runId,'Complete recovery history required for grant');
  same(c.history.runIds,c.focusedSources.map(s=>s.runId).sort((a,b)=>a-b),'Recovery history differs from producing runs');

@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory,validateFocusedRoleReceipts} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -71,7 +71,13 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
    const sourceDigests=Object.fromEntries([['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']].map(([key,path])=>[key,recoverySourceDigest(readFileSync(join(candidatePath,path)))]));
    roleReceipts=validateFocusedRoleReceipts({premigration:packet.get(roleName),runtime:packet.get(runtimeRoleName),candidate,controller,runId:id,sourceDigests});
   }
-  focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts});
+  let databaseOrdering=null;
+  if(database){
+   const log=execFileSync('gh',['api',`repos/${REPOSITORY}/actions/jobs/${producer.id}/logs`],{timeout:60000,maxBuffer:32*1024**2});
+   databaseOrdering=validateFocusedDbOrdering({log,producer,report});
+   if(!reuse)writeFileSync(join(sub,'authenticated-order-job.log'),log,{flag:'wx',mode:0o600});
+  }
+  focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts,databaseOrdering});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const reviewedController=process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER??null;
