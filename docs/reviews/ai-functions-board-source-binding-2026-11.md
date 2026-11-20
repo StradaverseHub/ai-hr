@@ -1585,3 +1585,9 @@ The repository owner explicitly approved carrying the same 28 active provider ap
 Exactly 28 digest literals change from `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte, including pending and retired records. The separate module-agent manifest is regenerated after the registry update. Existing evaluations and promotions retain their recorded source identities.
 
 The original release run 44685513441 stopped during build and plan manifest validation. Its independently successful checks retain their original evidence identities. That run contains no release plan, application or browser results, or build packet.
+
+### Combined Payroll and Direct Superior staging follow-up, 20 November 2026 MYT
+
+The repository owner explicitly approved carrying forward the same 28 existing provider approvals to fingerprint `5a3f56621225400761307d739fd8d99391c106c6c885ee51350fd881dc8a3f46` for staging. The reviewed source is `1144d63b6e59cd983397392c78a81710e6772e3b`, covering 1,832 files. It combines Payroll reprocessing and TP3 handling, the Direct Superior workflow, Payroll layout improvements, and payroll read authorization. The reprocessing review is a native session and presentation action. The changes preserve the existing provider fields, purposes, transports and model-executable actions.
+
+Exactly 28 approved source digests move from `b7443d0c379f60b7a95397a58ed200d115c73eb7666a34609fb7768a1088d6d6`. Reversing those substitutions restores the prior registry byte for byte, preserving pending and retired records and all review metadata. The regenerated module-agent fingerprint is `f75d0ca49f5419ac5112933213f143010c5d358bfa88563274e7118eed45c713` across 497 files. Existing evaluation and promotion records retain their source identities. Deployment follows Payroll History staging handback and passing verification on the combined candidate.
