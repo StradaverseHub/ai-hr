@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 import {spawn,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,writeFileSync} from 'node:fs';
-import {createServer} from 'node:https';
+import {createServer,request as httpsRequest} from 'node:https';
 import {request} from 'node:http';
 import {once} from 'node:events';
 import {createRequire} from 'node:module';
@@ -119,7 +119,8 @@ async function proxy(){
  const key=join(privateDir,'key.pem'),cert=join(privateDir,'cert.pem');
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',key,'-out',cert,
   '-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost'],env);
- server=createServer({key:readFileSync(key),cert:readFileSync(cert)},(incoming,outgoing)=>{
+ const certificate=readFileSync(cert);
+ server=createServer({key:readFileSync(key),cert:certificate},(incoming,outgoing)=>{
   const upstream=request({hostname:'127.0.0.1',port:appPort,path:incoming.url,method:incoming.method,
    headers:{...incoming.headers,host:'localhost:3443','x-forwarded-proto':'https'}},response=>{
     outgoing.writeHead(response.statusCode,response.headers);
@@ -129,8 +130,45 @@ async function proxy(){
   outgoing.on('close',()=>upstream.destroy());
   incoming.pipe(upstream);
  });
- server.listen(3443,'localhost');
+ // The mixed driver already resolves localhost to IPv4. Bind that exact loopback.
+ server.listen(3443,mixedLoad?'127.0.0.1':'localhost');
  await once(server,'listening',{signal:AbortSignal.timeout(5000)});
+ if(mixedLoad)await verifyMixedProxy(certificate);
+}
+
+async function verifyMixedProxy(certificate){
+ report.mixedProxy={bindingVerified:server.address().address==='127.0.0.1',checks:[]};
+ save();
+ assert(report.mixedProxy.bindingVerified,'Wrong loopback for the mixed-load HTTPS ingress');
+ const codes=new Set(['ECONNREFUSED','ECONNRESET','ETIMEDOUT','EPIPE','ABORT_ERR','CERT_HAS_EXPIRED',
+  'DEPTH_ZERO_SELF_SIGNED_CERT','ERR_TLS_CERT_ALTNAME_INVALID','UNABLE_TO_VERIFY_LEAF_SIGNATURE']);
+ const checks=[{name:'health',path:'/api/health',expected:200},{name:'anonymous-claims',path:'/claims',expected:307}];
+ for(const {name,path,expected} of checks){
+  const started=performance.now(),row={name,httpStatus:null,elapsedMs:null,errorCode:null,redirectVerified:false};
+  report.mixedProxy.checks.push(row);
+  try{
+   const {httpStatus,location}=await new Promise((resolve,reject)=>{
+    const probe=httpsRequest({hostname:'127.0.0.1',servername:'localhost',port:3443,path,
+     ca:certificate,headers:{host:'localhost:3443'},agent:false,signal:AbortSignal.timeout(10000)},response=>{
+     response.resume();
+     response.once('error',reject);
+     response.once('end',()=>resolve({httpStatus:response.statusCode,location:response.headers.location}));
+    });
+    probe.once('error',reject);
+    probe.end();
+   });
+   row.httpStatus=httpStatus;
+   if(name==='anonymous-claims')row.redirectVerified=Boolean(location&&new URL(location,origin).pathname==='/login');
+   assert.equal(row.httpStatus,expected,'Mixed-load HTTPS ingress returned an unexpected status');
+   if(name==='anonymous-claims')assert(row.redirectVerified,'The guest Claims redirect did not reach the login route');
+  }catch(error){
+   row.errorCode=codes.has(error?.code)?error.code:null;
+   throw error;
+  }finally{
+   row.elapsedMs=Math.round(performance.now()-started);
+   save();
+  }
+ }
 }
 function applicationStatus(path,method,deadlineMs){
  return new Promise(resolve=>{
@@ -308,6 +346,18 @@ async function measureMixedLoad(command){
     const code=typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|E[A-Z_]{2,40})$/.test(fact.code)?fact.code:null;
     return {kind:fact.kind,code};
    };
+   const primaryRequest=data.workerRequestFailure;
+   if(primaryRequest){
+    const status=primaryRequest.httpStatus;
+    report.mixedPrimaryRequest={
+     stage:mixedDriverStages.has(primaryRequest.stage)?primaryRequest.stage:null,
+     role:roles.includes(primaryRequest.role)?primaryRequest.role:null,
+     route:knownRoutes.has(primaryRequest.route)||['/api/personnel/search','/claims'].includes(primaryRequest.route)?primaryRequest.route:null,
+     method:['GET','POST'].includes(primaryRequest.method)?primaryRequest.method:null,
+     httpStatus:Number.isInteger(status)&&status>=100&&status<=599?status:null,
+     ...counts(primaryRequest,['deadlineMs','elapsedMs','ttfbMs']),
+    };
+   }
    report.mixedLoad={
     expectedUsers:500,steadyHoldMs:300000,applicationWorkers:1,fixtureVerified:report.fixtureVerified,
     latencyTargetMet:data.latencyTargetMet===true,trafficSettled:data.trafficSettled===true,
