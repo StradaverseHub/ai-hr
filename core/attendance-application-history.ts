@@ -196,6 +196,18 @@ type AttendanceApplicationOptions = {
     approverAvailability?: AttendanceApproverAvailability;
 };
 
+function attendanceAdminCompaniesTx(tx: Tx, companyIds: readonly string[]) {
+    if (!companyIds.length) return Promise.resolve([]);
+    return tx.select({ id: company.id, name: company.legalName }).from(company)
+        .where(and(inArray(company.id, companyIds), sql`app.is_admin_for(${company.id})`))
+        .orderBy(asc(company.legalName));
+}
+
+export function attendanceWorkflowCompanyOptions(ctx: SessionContext, companyIds: readonly string[]) {
+    admin(ctx);
+    return withTenant(ctx, tx => attendanceAdminCompaniesTx(tx, companyIds));
+}
+
 export function attendanceHistoryFilterOptions(ctx: SessionContext, companyIds: readonly string[]) {
     return readAttendanceApplicationOptions(ctx, companyIds, []);
 }
@@ -210,9 +222,7 @@ async function readAttendanceApplicationOptions(
     if(selectedApproverIds.length>100||selectedApproverIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))throw new Error('Invalid selected employee identities.');
     admin(ctx);
     return withTenant(ctx, async (tx) => {
-        if (!companyIds.length)
-            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
-        const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds), sql `app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName));
+        const companies = await attendanceAdminCompaniesTx(tx, companyIds);
         if (!companies.length)
             return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
         const departments = await tx.select({ id: department.id, name: department.name }).from(department).where(and(isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', companies.map(c => c.id)))).orderBy(asc(department.name));

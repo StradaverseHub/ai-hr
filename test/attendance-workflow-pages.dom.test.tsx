@@ -4,7 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const companyId = '00000000-0000-0000-0000-000000000001', other = '00000000-0000-0000-0000-000000000002', lineageId = '00000000-0000-0000-0000-000000000003', departmentId = '00000000-0000-0000-0000-000000000004';
-const { service, scope, form } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), attendanceApplicationFilterOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn(),attendanceWorkflowWarningPage:vi.fn(), getAttendanceWorkflowPreview: vi.fn(), listAttendanceWorkflowPreviews: vi.fn() }, scope: vi.fn(), form: vi.fn() }));
+const { service, scope, form } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), attendanceApplicationFilterOptions: vi.fn(), attendanceWorkflowCompanyOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn(),attendanceWorkflowWarningPage:vi.fn(), getAttendanceWorkflowPreview: vi.fn(), listAttendanceWorkflowPreviews: vi.fn() }, scope: vi.fn(), form: vi.fn() }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'attendanceWorkflow' }), getFormatter:async()=>createFormatter({locale:'en'}) }));
@@ -19,7 +19,7 @@ import PreviewsPage from '../app/admin/attendance/approval-workflow/[lineageId]/
 const options = { companies: [{ id: companyId, name: 'Company A' }, { id: other, name: 'Company B' }], departments: [{ id: departmentId, name: 'Finance' }], businessUnits: [], grades: [], divisions: [] };
 const row = { companyIds:[companyId], id: 'version', lineageId, companyId, version: 2, code: 'CLOCK', name: 'Clock review', description: '', applicationType: 'irregularity', criteria: { departmentIds: [departmentId] }, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [{ kind: 'hr_admin', employmentId: null }] } }], active: true, priority: 100 };
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
-beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); service.attendanceWorkflowWarningPage.mockResolvedValue({rows:[],total:0,offset:0,hasMore:false}); service.getAttendanceWorkflowPreview.mockResolvedValue(null); service.listAttendanceWorkflowPreviews.mockResolvedValue([]); });
+beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.attendanceWorkflowCompanyOptions.mockImplementation(async (_,ids:string[])=>options.companies.filter(company=>ids.includes(company.id))); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); service.attendanceWorkflowWarningPage.mockResolvedValue({rows:[],total:0,offset:0,hasMore:false}); service.getAttendanceWorkflowPreview.mockResolvedValue(null); service.listAttendanceWorkflowPreviews.mockResolvedValue([]); });
 afterEach(cleanup);
 describe('workflow company navigation and scope', () => {
   it('describes a saved named-person route with per-level guidance rather than legacy manager-only guidance', async () => {
@@ -43,7 +43,8 @@ describe('workflow company navigation and scope', () => {
   it('keeps bookmarks scoped while loading all permitted choices for shared configuration',async()=>{
     show(await Page({searchParams:Promise.resolve({companyId,applicationType:'irregularity'})}));
     expect(service.listAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId]);
-    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
+    expect(service.attendanceWorkflowCompanyOptions).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
     expect(screen.getByText('CLOCK')).toBeVisible();expect(screen.queryByText('OT')).toBeNull();
     expect(screen.queryByText(en.attendanceWorkflow.disableRouting)).toBeNull();
   });
@@ -56,7 +57,9 @@ describe('workflow company navigation and scope', () => {
   it.each([{ companyId: 'bad' }, { companyId: ['one', 'two'] }, { companyId: '00000000-0000-0000-0000-000000000099' }, { companyId, applicationType: 'leave' }, { companyId, applicationType: ['irregularity'] }])('refuses invalid or foreign company context before service reads: %j', async query => {
     await expect(Page({ searchParams: Promise.resolve(query) })).rejects.toThrow('NOT_FOUND');
     await expect(NewPage({ searchParams: Promise.resolve(query) })).rejects.toThrow('NOT_FOUND');
-    expect(service.listAttendanceWorkflows).not.toHaveBeenCalled(); expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
+    expect(service.listAttendanceWorkflows).not.toHaveBeenCalled();
+    expect(service.attendanceWorkflowCompanyOptions).not.toHaveBeenCalled();
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
   });
   it('opens creation directly and offers all permitted company assignments',async()=>{
     show(await NewPage({searchParams:Promise.resolve({applicationType:'self_overtime'})}));
