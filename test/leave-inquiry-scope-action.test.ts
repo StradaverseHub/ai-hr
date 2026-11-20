@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-const { set, revalidatePath, redirect } = vi.hoisted(() => ({ set: vi.fn(), revalidatePath: vi.fn(), redirect: vi.fn() }));
-vi.mock('next/headers', () => ({ cookies: async () => ({ set }) }));
+const { set, clearScope, revalidatePath, redirect } = vi.hoisted(() => ({ set: vi.fn(), clearScope: vi.fn(), revalidatePath: vi.fn(), redirect: vi.fn() }));
+vi.mock('next/headers', () => ({ cookies: async () => ({ set, delete: clearScope }) }));
 vi.mock('next/cache', () => ({ revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect }));
 import { setCompanyScope } from '../app/scope-actions';
@@ -14,6 +14,20 @@ describe('23e87eef: company-switch inquiry navigation', () => {
       expect(set.mock.invocationCallOrder[0]).toBeLessThan(redirect.mock.invocationCallOrder[0]);
     }
   });
+  it('restores all authorized companies without storing the posted company list', async () => {
+    vi.clearAllMocks();
+    const form = new FormData();
+    form.set('scopeMode', 'all');
+    form.set('returnPath', '/leave/employee-balances');
+    for (let company = 1; company <= 150; company++) form.append('companyId', `company-${company}`);
+    await setCompanyScope(form);
+    expect(clearScope).toHaveBeenCalledWith('company_scope');
+    expect(set).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith('/', 'layout');
+    expect(redirect).toHaveBeenCalledWith('/leave/employee-balances');
+    expect(clearScope.mock.invocationCallOrder[0]).toBeLessThan(redirect.mock.invocationCallOrder[0]);
+  });
+
   it('preserves the default other-route behavior and refuses forged redirect destinations', async () => {
     for (const path of [undefined, 'https://evil.test', '//evil.test', '/leave/employee-balances?emp=other&page=8', '/personnel']) {
       vi.clearAllMocks(); const form = new FormData(); form.append('companyId', 'company-a'); if (path) form.append('returnPath', path);
