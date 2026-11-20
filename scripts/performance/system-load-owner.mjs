@@ -1429,8 +1429,14 @@ async function main(){
   return request(user,'/claims',fields,template.status,false,template.headers,template.fieldOrder,undefined,attempt);
  }
  async function browserClaimJourney(page,user,description,phase){
-  await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
-  const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
+  await visit(page,user,'/claims',phase);
+  const timings=[],form=claimDraftForm(page).and(page.locator('[data-claim-form-ready="true"]'));
+  await form.waitFor({state:'visible',timeout:90000});
+  const browserAction=stage=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000})
+   .catch(reason=>{
+    if(process.env.PERF_DRIVER_STAGE_RECEIPT==='1')noteEvidence(()=>{report.mixedClaimBrowserFailure??={stage,phase,role:user.role};});
+    throw reason;
+   });
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
   let started,draft,deleteTemplate;
@@ -1441,7 +1447,7 @@ async function main(){
    requireRestore();
    custody?.begin('delete');
    if(custody)requireRestore();
-   const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+   const [deleteResponse]=await Promise.all([browserAction('delete-response'),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
    deleteTemplate=await capturedAction(deleteResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
    assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
@@ -1452,7 +1458,7 @@ async function main(){
    requireNativeBusiness();
    custody?.begin('create');
    if(custody)requireNativeBusiness();
-   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   const [createResponse]=await Promise.all([browserAction('create-response'),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
    const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
    [draft]=drafts;assert(draft,'browser create did not persist');
