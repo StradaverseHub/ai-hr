@@ -70,7 +70,8 @@ import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
+import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
+import { tourSteps } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
@@ -172,7 +173,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
-          <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
+          <OnboardingTour/>
           <Toaster/>
         </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
       </body>
@@ -203,7 +204,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       rewardNavigation(session),
     ).catch(() => [])
     : [];
-  const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
   const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
@@ -531,7 +531,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </AiAskAvailability>
           </NavIndexProvider>
-          <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
+          <OnboardingTour initialSteps={onboarded || (pathname==='/'&&!isAdmin(session)) ? undefined : tourSteps(WELCOME_TOUR_ID, session.roles)} />
           </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most

@@ -229,14 +229,15 @@ describe('personal Home opens without automatic overlays',()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
   m.pathname='/';m.onboarded=false;
   const tree=await Layout({children:<main>Personal Home</main>});
-  expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBeNull();expect(propsOf(tree,NoticePopupSlot)).toBeUndefined();
+  expect(propsOf(tree,OnboardingTour)?.initialSteps).toBeUndefined();expect(propsOf(tree,NoticePopupSlot)).toBeUndefined();
  });
  it('retains existing overlays on other routes and on the administrator workbench',async()=>{
   for(const [pathname,roles] of [['/me',['employee']],['/',['hr_admin']]] as const){
    m.session.mockResolvedValue({tenantId:'tenant',userId:'login',roles:[...roles],grants:[]});m.operator.mockResolvedValue(false);
    m.pathname=pathname;m.onboarded=false;
    const tree=await Layout({children:null});
-   expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
+   const initialSteps=propsOf(tree,OnboardingTour)?.initialSteps as {id:string}[]|undefined;
+   expect(initialSteps?.[0]?.id).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
   }
  });
 });
