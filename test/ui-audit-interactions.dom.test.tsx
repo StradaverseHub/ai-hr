@@ -96,6 +96,27 @@ describe('audit picker recovery',()=>{
 });
 
 describe('leave submission retains correction context',()=>{
+ it('opens the Leave Request dialog on the first click after hydration',async()=>{
+  const tree=<NextIntlClientProvider locale="en" messages={en}>
+   <RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09"
+    ownEmploymentId="own" previewAction={async()=>null} submitAction={async()=>null} summaryAction={async()=>null}/>
+  </NextIntlClientProvider>;
+  const host=document.createElement('div');
+  host.innerHTML=renderToString(tree);
+  document.body.append(host);
+  const trigger=()=>within(host).getByRole('button',{name:en.leave.requestLeave});
+  let root:ReturnType<typeof hydrateRoot>|undefined;
+  try{
+   expect(trigger()).toBeDisabled();
+   await act(async()=>{root=hydrateRoot(host,tree);});
+   expect(trigger()).toBeEnabled();
+   await userEvent.click(trigger());
+   expect(screen.getByRole('dialog')).toBeVisible();
+  }finally{
+   await act(async()=>root?.unmount());
+   host.remove();
+  }
+ });
  it('keeps the reason and file on a server rejection, then closes on confirmed success',async()=>{
   const submit=vi.fn().mockResolvedValueOnce({error:'No entitlement is configured.'}).mockResolvedValueOnce({redirectTo:'/leave?toast=Saved'});
   mount(<RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09" ownEmploymentId="own" previewAction={async()=>null} submitAction={submit} summaryAction={async()=>null}/>);
