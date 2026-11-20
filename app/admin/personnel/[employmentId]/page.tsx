@@ -3439,7 +3439,10 @@ export default async function EmployeePage({
         { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
         { key: 'grade', label: t('movement.field.grade'), before: movementDetailData.before?.grade, after: movementDetailData.after.grade },
         { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
-        { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
+        ...(movementDetailData.superiorChange ? [] : [{
+          key: 'manager', label: t('movement.field.manager'),
+          before: movementDetailData.before?.manager, after: movementDetailData.after.manager,
+        }]),
         {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
         // The Contract counter is shown only when this event recorded its own before/after.
@@ -3597,7 +3600,9 @@ export default async function EmployeePage({
           <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
           <p className="px-4 py-2 text-sm text-muted-foreground">{t('movement.detail.scheduledValuesNote')}</p>
           <dl className="divide-y divide-border">
-            {movementDetailData.pendingIntent.values.map(({field, value}) => {
+            {movementDetailData.pendingIntent.values
+              .filter(({ field }) => field !== 'manager' || !movementDetailData.superiorChange)
+              .map(({field, value}) => {
               const display = field === 'employmentType' ? movementEmpTypeLabel(value)
                 : field === 'payMode' && value !== null && PERSONNEL_PAY_MODES.some(option => option === value)
                   ? t(`payMode_${value}` as 'payMode_monthly')
