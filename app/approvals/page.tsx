@@ -21,7 +21,8 @@ import {isCurrentAssignedApproval} from '@/core/assigned-approval-focus';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
+import { listLeaveRequests, listPendingLeaveCancellations } from '@/core/read';
+import { approvalLeaveDateBreakdowns } from '@/core/approval-leave-date-breakdown';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
@@ -320,15 +321,6 @@ export default async function ApprovalsPage({
   ]);
 
   const pendingLeave = leave.filter((r) => r.status === 'pending');
-  // ADR-0068 §6: eagerly fetch the per-date breakdown for each visible PENDING leave row. A non-empty result
-  // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
-  // whole-request approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown
-  // to the viewer.
-  const breakdowns = new Map(
-    await Promise.all(
-      pendingLeave.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
-    ),
-  );
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
   const locale = await getLocale();
   const dateBreakdownLabels = {
@@ -411,6 +403,8 @@ export default async function ApprovalsPage({
   const passing = passingIds(recommendations);
   const leaveFilterPassing = !focus && leaveFilter === 'passing' && passing.size > 0;
   const sortedLeave = leaveFilterPassing ? allSortedLeave.filter((r) => passing.has(r.id)) : allSortedLeave;
+  // ADR-0068. The same dates drive the per-date dialog and exclude requests from bulk approval.
+  const breakdowns = await approvalLeaveDateBreakdowns(s, visible('leave') ? sortedLeave.map(r => r.id) : []);
   const recommendationRecordId = (id: string) => {
     const view = recommendations.views.get(id);
     return view?.kind === 'recommendation' ? view.recordId ?? undefined : undefined;
