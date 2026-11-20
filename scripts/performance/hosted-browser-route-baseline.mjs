@@ -31,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster'].includes(surfaceProbe),'Unknown browser surface');
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -43,7 +43,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(surfaceProbe!=='leave-inbox'||groupShape,'The Leave inbox comparison requires group scale');
+assert(!['leave-inbox','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1681,9 +1681,9 @@ async function measureRosterExceptions({page,user,fixture,report,save}){
  report.rosterExceptionSteps=[{step:'schedule-visible',elapsedMs:Math.round(performance.now()-started)}];
  save();
  const link=page.locator('main a[href^="/roster/exceptions?"]');
- const count=link.locator('[data-roster-exception-count="ready"]');
- await count.waitFor({state:'visible',timeout:timeout()});
- const expected=(await count.textContent()).match(/^Exceptions \(([0-9]+)\)$/)?.[1];
+ const numericLabel=/^Exceptions \(([0-9]+)\)$/;
+ await link.filter({hasText:numericLabel}).waitFor({state:'visible',timeout:timeout()});
+ const expected=(await link.textContent()).trim().match(numericLabel)?.[1];
  assert(expected!==undefined,'Roster exception count has no numeric label');
  report.rosterExceptionSteps.push({step:'exception-count-visible',elapsedMs:Math.round(performance.now()-started)});
  save();
@@ -1701,6 +1701,32 @@ async function measureRosterExceptions({page,user,fixture,report,save}){
  await assertContentAvailable(page);
  report.rosterExceptionSteps.push({step:'open-matching-exceptions',elapsedMs:Math.round(performance.now()-clicked)});
  save();
+}
+
+async function measureFocusedRoster(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ report.rosterStartup=[];
+ for(const user of fixture.users.slice(0,2)){
+  const context=await signedInContext(user);
+  try{
+   const page=await context.newPage();
+   for(const pass of ['first','repeat-1','repeat-2']){
+    const row={role:user.role,pass,status:'incomplete'};
+    report.rosterStartup.push(row);
+    const journey={};
+    const retain=()=>{
+     row.steps=journey.rosterExceptionSteps??[];
+     save();
+    };
+    try{
+     await measureRosterExceptions({page,user,fixture,report:journey,save:retain});
+     row.status='observed';
+    }finally{retain();}
+   }
+  }finally{await context.close();}
+ }
+ assert.equal(report.rosterStartup.length,6);
 }
 
 async function measureCalendarMonth({page,user,fixture,report,save}){
@@ -2007,6 +2033,7 @@ try{
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
   else if(surfaceProbe==='leave-inbox'){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
