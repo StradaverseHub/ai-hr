@@ -180,6 +180,30 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+it('searches configured Pay Items by code or description and saves the selected non-payable identity', async () => {
+  const user=userEvent.setup();
+  const benefit:TxnPayItem={id:'travel-benefit',code:'TRAVEL-BIK',name:'Travel benefit',description:'Company car',
+    kind:'non_payable',nonPayable:true,derives:false,inputUnit:null,variesByDay:false};
+  const otherCompany={...benefit,id:'other-benefit',code:'OTHER',appliedCompanyIds:['c2']};
+  renderWorkspace(EMPTY_PANEL,{payItems:[OT,benefit,otherCompany]});
+  await openAddForm(user);
+  await user.click(screen.getByRole('button',{name:'Payroll item'}));
+  expect(screen.queryByRole('option',{name:/^Overtime$/})).toBeNull();
+  expect(screen.queryByRole('option',{name:/^OTHER/})).toBeNull();
+  const search=screen.getByPlaceholderText('Search by code or description');
+  await user.type(search,'TRAVEL-BIK');
+  expect(screen.getByRole('option',{name:/TRAVEL-BIK.*Non-Payable/})).toBeVisible();
+  expect(screen.queryByRole('option',{name:/^OT1_5/})).toBeNull();
+  await user.clear(search);
+  expect(screen.getByRole('option',{name:/^OT1_5/})).toBeVisible();
+  await user.type(search,'company car');
+  await user.click(screen.getByRole('option',{name:/TRAVEL-BIK/}));
+  await user.type(screen.getByLabelText('Effective date'),'2026-08-15');
+  await user.type(screen.getByLabelText('Amount'),'125');
+  await user.click(screen.getByRole('button',{name:'Save'}));
+  expect(createMock).toHaveBeenCalledWith(expect.objectContaining({componentId:'travel-benefit',kind:'earning',amount:125}));
+});
+
 describe('39c7 · exact field labels and separate Effective Date guidance', () => {
   it('keeps the single Effective date label exact and connects visible guidance as a stable description', async () => {
     const user = userEvent.setup();

@@ -217,6 +217,25 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  const skippedCount=results.filter(r=>r.status==='skipped').length;
  return {companyId:selection.companyId,companyName:company.name,year:selection.year,upToMonth:selection.upToMonth,selection:selection.employmentIds===null?'all':'selected',settingsHash,totals:{beforeTaxable,taxable,difference:beforeTaxable===null||taxable===null?null:round(taxable-beforeTaxable),beforeExempt:sum('beforeExempt'),exempt:sum('exempt')},eligibleCount:ready.length,unchangedCount:results.filter(r=>r.status==='unchanged').length,blockedCount:results.filter(r=>r.status==='blocked').length,...(skippedCount?{skippedCount}:{}),recordCount:ready.reduce((n,r)=>n+r.recordCount,0),employees:results};
 }
+/** Current employees may have no saved payroll yet. The historical picker remains the authority
+ * for original-employer records after a transfer. This bounded search adds current matches only. */
+export async function searchCurrentTaxBasisEmployees(ctx:SessionContext,companyIds:string[],query:string){
+ const term=query.trim().slice(0,120).toLowerCase();
+ if(term.length<2||!Array.isArray(companyIds)||!companyIds.length||companyIds.length>500||companyIds.some(id=>!uuid.test(id)))return [];
+ assertModuleGate(ctx,'payroll');
+ return withTenant(ctx,async tx=>[...await tx.execute<{id:string;companyId:string;employeeNo:string;name:string}>(sql`
+  with permitted as materialized (
+   select id from company where id=any(${uuidArray(companyIds)}) and archived_at is null
+    and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view')
+    and app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate')
+  )
+  select e.id,e.company_id as "companyId",coalesce(e.employee_code,'') as "employeeNo",p.full_name as name
+   from permitted c join employment e on e.company_id=c.id
+   join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+   where e.tenant_id=${ctx.tenantId}::uuid
+    and (position(${term} in lower(coalesce(e.employee_code,'')))>0 or position(${term} in lower(p.full_name))>0)
+   order by e.company_id,e.employee_code,e.id limit 30`)]);
+}
 export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
  assertModuleGate(ctx,'payroll');

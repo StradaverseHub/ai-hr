@@ -4,13 +4,14 @@ import {assertModuleGate} from './module-gate';
 import {bulkJobProgress,bulkJobTx,enqueueBulkJobTx} from './bulk-job';
 import type {BulkJobHandler} from './bulk-job-worker';
 import {confirmTaxBasisRecalculation,continueTaxBasisBatch,previewTaxBasisRecalculation} from './payroll-tax-basis';
-import {PayrollTaxBasisError,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,type TaxBasisEmployee,type TaxBasisPreview,type TaxBasisSelection} from '../lib/payroll-tax-basis';
 
 const KIND='payroll_tax_basis_group';
 const validId=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value);
 const ids=(values:readonly string[])=>sql`array[${sql.join(values.map(value=>sql`${value}::uuid`),sql`,`)}]::uuid[]`;
 const unavailable=()=>new PayrollTaxBasisError('The selected companies or recalculation preview are unavailable.');
 type PreviewRef={companyId:string;previewId:string;previewHash:string};
+export const TAX_BASIS_GROUP_PAGE_SIZE=30;
 type BatchRef={companyId:string;id:string|null};
 type Input={selections:TaxBasisSelection[]}|{previewJobId:string};
 type Step=TaxBasisSelection|PreviewRef;
@@ -41,12 +42,12 @@ async function reviewedTx(tx:Tx,ctx:SessionContext,id:string){
  const job=await bulkJobTx(tx,id,{kind:KIND});
  await checkCompanies(tx,ctx,job.company_ids);
  if(job.state!=='completed'||job.result!=='preview'||job.counters.failed)throw unavailable();
- const rows=await tx.execute<{preview:TaxBasisPreview;expired:boolean}>(sql`
-  select p.preview,p.expires_at<now() as expired from bulk_job_step s
+ const rows=await tx.execute<{preview:Omit<TaxBasisPreview,'employees'>;count:number;expired:boolean}>(sql`
+  select p.preview-'employees' as preview,jsonb_array_length(p.preview->'employees') as count,p.expires_at<now() as expired from bulk_job_step s
    join payroll_tax_basis_preview p on p.id=(s.result->>'previewId')::uuid
      and p.preview_hash=s.result->>'previewHash' and p.company_id=(s.result->>'companyId')::uuid
    where s.job_id=${job.id}::uuid and s.kind='preview' and s.state='applied'
-     and p.tenant_id=${ctx.tenantId}::uuid and p.created_by=${ctx.userId}::uuid
+     and p.tenant_id=${ctx.tenantId}::uuid and p.created_by=${ctx.userId??null}::uuid
    order by s.seq`);
  if(rows.length!==job.company_ids.length)throw unavailable();
  return {job,rows};
@@ -67,7 +68,7 @@ export async function requestTaxBasisGroupConfirmation(ctx:SessionContext,id:str
  return withTenant(ctx,async tx=>{
   const existing=await tx.execute<{id:string;companyIds:string[]}>(sql`
    select id,company_ids as "companyIds" from bulk_job where kind=${KIND} and operation_key=${id}::uuid
-    and created_by=${ctx.userId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+    and created_by=${ctx.userId??null}::uuid and tenant_id=${ctx.tenantId}::uuid`);
   if(existing[0]){await checkCompanies(tx,ctx,existing[0].companyIds);return existing[0].id;}
   const {job,rows}=await reviewedTx(tx,ctx,id);
   if(rows.some(row=>row.expired)||!rows.some(row=>row.preview.eligibleCount))throw unavailable();
@@ -76,8 +77,8 @@ export async function requestTaxBasisGroupConfirmation(ctx:SessionContext,id:str
  });
 }
 
-export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string){
- if(!validId(id))throw unavailable();
+export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string,offset=0){
+ if(!validId(id)||!Number.isSafeInteger(offset)||offset<0||offset>=500_000)throw unavailable();
  return withTenant(ctx,async tx=>{
   const job=await bulkJobTx(tx,id,{kind:KIND});
   await checkCompanies(tx,ctx,job.company_ids);
@@ -86,7 +87,24 @@ export async function readTaxBasisGroupProgress(ctx:SessionContext,id:string){
   if(job.result==='preview'){
    if(job.counters.failed)return {progress};
    const {rows}=await reviewedTx(tx,ctx,id);
-   return {progress,previews:rows.map(row=>row.preview)};
+   const totalEmployees=rows.reduce((total,row)=>total+row.count,0);
+   const end=offset+TAX_BASIS_GROUP_PAGE_SIZE;
+   let from=0;
+   const ranges:{previewId:string;companyId:string;companyName:string;ord:number;first:number;last:number}[]=[];
+   for(const {preview,count} of rows){
+    const to=from+count;
+    if(to>offset&&from<end)ranges.push({previewId:preview.previewId,companyId:preview.companyId,companyName:preview.companyName,
+     ord:from,first:Math.max(0,offset-from),last:Math.min(count,end-from)-1});
+    from=to;
+   }
+   const page=ranges.length?await tx.execute<{employee:TaxBasisEmployee;companyId:string;companyName:string}>(sql`
+    select p.preview->'employees'->n.index as employee,r."companyId",r."companyName"
+     from jsonb_to_recordset(${JSON.stringify(ranges)}::jsonb)
+       as r("previewId" uuid,"companyId" uuid,"companyName" text,ord int,first int,last int)
+     join payroll_tax_basis_preview p on p.id=r."previewId" and p.company_id=r."companyId"
+     cross join lateral generate_series(r.first,r.last) n(index) order by r.ord,n.index`):[];
+   return {progress,previews:rows.map(row=>row.preview),totalEmployees,
+    employees:page.map(row=>({...row.employee,companyId:row.companyId,companyName:row.companyName}))};
   }
   const batches=await tx.execute<{companyId:string;companyName:string;id:string|null;error:string|null}>(sql`
    select c.id as "companyId",c.legal_name as "companyName",s.result->>'id' as id,s.error

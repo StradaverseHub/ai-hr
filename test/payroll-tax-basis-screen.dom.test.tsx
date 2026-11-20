@@ -63,6 +63,43 @@ describe('historical income tax basis review and confirmation',()=>{
     expect(screen.getByRole('checkbox',{name:'X001 · Outside company'})).toBeVisible();
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
+  it('preserves selected employees across companies and confirms the combined preview once',async()=>{
+    const user=userEvent.setup();
+    const companyOptions={...options,companies:[...options.companies,{id:'read-only',name:'View-only company',canRecalculate:false}],
+      employees:[...options.employees,{...options.employees[0],companyId:'company-b',name:'Other Aina'}]};
+    const first=preview(),second={...first,companyId:'company-b',companyName:'Other Company'};
+    mocks.groupPreview.mockResolvedValue('preview-job');
+    mocks.groupConfirm.mockResolvedValue('confirm-job');
+    mocks.groupProgress.mockImplementation(async(id:string)=>id==='preview-job'
+      ?{progress:{state:'completed',stepsDone:2,stepsTotal:2},previews:[first,second],totalEmployees:2,employees:[
+        {...employee(),companyId:'company-a',companyName:'Example Company'},
+        {...employee({name:'Other Aina'}),companyId:'company-b',companyName:'Other Company'},
+      ]}
+      :{progress:{state:'completed',stepsDone:2,stepsTotal:2},batches:[
+        {companyId:'company-a',companyName:'Example Company',id:batchId,error:null},
+        {companyId:'company-b',companyName:'Other Company',id:null,error:'Changed'},
+      ]});
+    show('en',{options:companyOptions});
+    await user.click(screen.getByRole('radio',{name:'Selected employees'}));
+    await user.click(screen.getByRole('checkbox',{name:'E001 · Aina'}));
+    await user.click(screen.getByRole('button',{name:/^Company/}));
+    await user.click(screen.getByRole('button',{name:en.payrollTaxBasis.selectAllCompanies}));
+    expect(screen.getByRole('checkbox',{name:'View-only company'})).not.toBeChecked();
+    expect(screen.getByRole('checkbox',{name:/E001 · Aina · Example Company/})).toBeChecked();
+    await user.click(screen.getByRole('checkbox',{name:/E001 · Other Aina · Other Company/}));
+    await user.click(screen.getByRole('button',{name:en.payrollTaxBasis.previewAction}));
+    expect(mocks.groupPreview).toHaveBeenCalledWith([
+      {companyId:'company-a',year:2026,upToMonth:12,employmentIds:['employee-a']},
+      {companyId:'company-b',year:2026,upToMonth:12,employmentIds:['employee-a']},
+    ],expect.any(String));
+    expect(await screen.findByText('E001 · Other Aina')).toBeVisible();
+    await user.click(screen.getByRole('button',{name:'Recalculate 2 eligible employees'}));
+    const dialog=screen.getByRole('alertdialog');
+    await user.click(within(dialog).getByRole('checkbox',{name:en.payrollTaxBasis.acknowledge}));
+    await user.click(within(dialog).getByRole('button',{name:en.payrollTaxBasis.confirmAction}));
+    expect(mocks.groupConfirm).toHaveBeenCalledExactlyOnceWith('preview-job');
+    expect(await screen.findByText(en.payrollTaxBasis.companyFailed)).toBeVisible();
+  });
   it('does not allow a view-only user to request a preview or a write',async()=>{
     const user=userEvent.setup();show('en',{options:{...options,canRecalculate:false}});
     expect(screen.getByText(en.payrollTaxBasis.readOnly)).toBeVisible();

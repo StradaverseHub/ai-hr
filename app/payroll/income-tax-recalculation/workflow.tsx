@@ -7,8 +7,8 @@ import {useRouter} from 'next/navigation';
 import {useFormatter,useTranslations} from 'next-intl';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import {formatMoney} from '@/lib/money';
-import type {TaxBasisPreview,TaxBasisSelection} from '@/lib/payroll-tax-basis';
-import {previewTaxBasisAction,confirmTaxBasisAction,queueTaxBasisGroupPreviewAction,queueTaxBasisGroupConfirmationAction,taxBasisGroupProgressAction} from './actions';
+import type {TaxBasisEmployee,TaxBasisPreview,TaxBasisSelection} from '@/lib/payroll-tax-basis';
+import {previewTaxBasisAction,confirmTaxBasisAction,queueTaxBasisGroupPreviewAction,queueTaxBasisGroupConfirmationAction,taxBasisGroupProgressAction,searchCurrentTaxBasisEmployeesAction} from './actions';
 import {TaxBasisResults} from './results';
 
 export type TaxBasisOptions={companies:{id:string;name:string;canRecalculate?:boolean}[];employees:{id:string;companyId:string;employeeNo:string;name:string}[];years:number[];canRecalculate:boolean};
@@ -16,7 +16,9 @@ const input='mt-1 block w-full rounded-lg border border-input bg-background px-3
 const button='inline-flex items-center justify-center rounded-lg border border-border px-4 py-2 text-sm font-medium disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 const primary=button+' border-primary bg-primary text-primary-foreground hover:bg-primary/90';
 
-function combinePreviews(previews:TaxBasisPreview[]):TaxBasisPreview{
+type CompanyPreview=Omit<TaxBasisPreview,'employees'>;
+const PAGE_SIZE=30;
+function combinePreviews(previews:CompanyPreview[],employees:TaxBasisEmployee[]):TaxBasisPreview{
   const sum=(key:keyof TaxBasisPreview['totals'])=>previews.some(preview=>preview.totals[key]===null)
     ?null:Math.round(previews.reduce((value,preview)=>value+preview.totals[key]!,0)*100)/100;
   return {
@@ -28,17 +30,30 @@ function combinePreviews(previews:TaxBasisPreview[]):TaxBasisPreview{
     blockedCount:previews.reduce((n,preview)=>n+preview.blockedCount,0),
     recordCount:previews.reduce((n,preview)=>n+preview.recordCount,0),
     totals:{beforeTaxable:sum('beforeTaxable'),taxable:sum('taxable'),difference:sum('difference'),beforeExempt:sum('beforeExempt'),exempt:sum('exempt')},
-    employees:previews.flatMap(preview=>preview.employees.map(employee=>({...employee,companyId:preview.companyId,companyName:preview.companyName}))),
+    employees,
   };
 }
 const employeeKey=(employee:{id:string;companyId?:string})=>`${employee.companyId??''}:${employee.id}`;
 
-export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOptions;initialSelection?:TaxBasisSelection}){
+export type TaxBasisGroupProgressLink={id:string;phase:'preview'|'confirm'};
+function updateGroupProgressLink(job:TaxBasisGroupProgressLink|null){
+  const url=new URL(window.location.href);
+  if(job){url.searchParams.set('group',job.id);url.searchParams.set('phase',job.phase);}
+  else {url.searchParams.delete('group');url.searchParams.delete('phase');}
+  window.history.replaceState(null,'',url);
+}
+
+export function TaxBasisWorkflow({options,initialSelection,initialGroup}:{options:TaxBasisOptions;initialSelection?:TaxBasisSelection;initialGroup?:TaxBasisGroupProgressLink}){
   const t=useTranslations('payrollTaxBasis'),format=useFormatter(),router=useRouter();
+  const refresh=router.refresh;
   const [companyIds,setCompanyIds]=useState(()=>[initialSelection?.companyId??options.companies[0]?.id].filter((id):id is string=>!!id));
   const [companiesOpen,setCompaniesOpen]=useState(false);
   const [previewJobId,setPreviewJobId]=useState<string|null>(null);
-  const [job,setJob]=useState<{id:string;phase:'preview'|'confirm'}|null>(null);
+  const [previewCompanies,setPreviewCompanies]=useState<CompanyPreview[]>([]);
+  const [resultOffset,setResultOffset]=useState(0);
+  const [totalResultEmployees,setTotalResultEmployees]=useState(0);
+  const [loadingResultPage,setLoadingResultPage]=useState(false);
+  const [job,setJob]=useState<TaxBasisGroupProgressLink|null>(initialGroup??null);
   const [jobProgress,setJobProgress]=useState<{done:number;total:number}|null>(null);
   const [companyOutcomes,setCompanyOutcomes]=useState<{companyId:string;companyName:string;id:string|null;error:string|null}[]>([]);
   const [year,setYear]=useState(initialSelection?.year??options.years[0]??0);
@@ -46,8 +61,10 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
   const [all,setAll]=useState(initialSelection?.employmentIds==null);
   const [selected,setSelected]=useState(()=>initialSelection?.employmentIds?.map(id=>employeeKey({id,companyId:initialSelection.companyId}))??[]);
   const [search,setSearch]=useState('');
+  const [currentMatches,setCurrentMatches]=useState<TaxBasisOptions['employees']>([]);
+  const [selectedCurrent,setSelectedCurrent]=useState<TaxBasisOptions['employees']>([]);
   const [preview,setPreview]=useState<TaxBasisPreview|null>(null);
-  const [busy,setBusy]=useState<'preview'|'confirm'|null>(null);
+  const [busy,setBusy]=useState<'preview'|'confirm'|null>(initialGroup?.phase??null);
   const [error,setError]=useState<string|null>(null);
   const [confirmOpen,setConfirmOpen]=useState(false);
   const [acknowledged,setAcknowledged]=useState(false);
@@ -56,14 +73,28 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
   const namedCompanies=new Map(options.companies.map(company=>[company.id,company.name]));
   const companySet=new Set(companyIds);
   const canRecalculate=companyIds.length>0&&companyIds.every(id=>permittedCompanies.some(company=>company.id===id));
-  const employees=options.employees.filter(employee=>companySet.has(employee.companyId));
+  const employees=[...new Map([...options.employees,...selectedCurrent,...currentMatches]
+    .filter(employee=>companySet.has(employee.companyId)).map(employee=>[employeeKey(employee),employee])).values()];
   const selectedKeys=new Set(selected);
   const includedEmployees=employees.filter(employee=>selectedKeys.has(employeeKey(employee)));
   const matching=employees.filter(employee=>(employee.employeeNo+' '+employee.name+' '+namedCompanies.get(employee.companyId)).toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   const pages=Math.max(1,Math.ceil(matching.length/30));
   const eligible=preview?.employees.filter(employee=>employee.status==='ready')??[];
-  function invalidate(){setPreview(null);setPreviewJobId(null);setCompanyOutcomes([]);setError(null);setConfirmOpen(false);setAcknowledged(false);}
-  function changeCompanies(ids:string[]){invalidate();setCompanyIds(ids);setEmployeePage(0);}
+  function invalidate(){updateGroupProgressLink(null);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);setCompanyOutcomes([]);setError(null);setConfirmOpen(false);setAcknowledged(false);}
+  function changeCompanies(ids:string[]){invalidate();setCurrentMatches([]);setCompanyIds(ids);setEmployeePage(0);}
+  useEffect(()=>{
+    if(all||search.trim().length<2||!companyIds.length)return;
+    let cancelled=false;
+    const timer=setTimeout(async()=>{
+      try{
+        const found=await searchCurrentTaxBasisEmployeesAction(companyIds,search);
+        if(!cancelled)setCurrentMatches(found);
+      }catch{
+        if(!cancelled)setCurrentMatches([]);
+      }
+    },250);
+    return ()=>{cancelled=true;clearTimeout(timer);};
+  },[all,companyIds,search]);
   useEffect(()=>{
     if(!job)return;
     let cancelled=false;
@@ -78,9 +109,14 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
         setJobProgress({done:progress.stepsDone,total:progress.stepsTotal});
         if(progress.state==='completed'){
           if(job.phase==='preview'&&result.previews?.length){
-            setPreview(combinePreviews(result.previews));setPreviewJobId(job.id);
+            setPreview(combinePreviews(result.previews,result.employees));
+            setPreviewCompanies(result.previews);
+            setCompanyIds(result.previews.map(company=>company.companyId));
+            setPreviewJobId(job.id);
+            setResultOffset(0);
+            setTotalResultEmployees(result.totalEmployees);
           }else if(job.phase==='confirm'&&result.batches){
-            setCompanyOutcomes(result.batches);router.refresh();
+            setCompanyOutcomes(result.batches);refresh();
           }else setError(t('unexpectedError'));
         }else if(progress.state==='failed'||progress.state==='cancelled')setError(t('unexpectedError'));
         else {timer=setTimeout(poll,1500);return;}
@@ -93,17 +129,40 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
     };
     void poll();
     return ()=>{cancelled=true;clearTimeout(timer);};
-  },[job,router,t]);
-  function toggleEmployee(id:string){invalidate();setSelected(values=>values.includes(id)?values.filter(value=>value!==id):[...values,id]);}
+  },[job,refresh,t]);
+  async function pageResults(offset:number){
+    if(!previewJobId||loadingResultPage)return;
+    setLoadingResultPage(true);setError(null);
+    try{
+      const result=await taxBasisGroupProgressAction(previewJobId,offset);
+      if(!result.previews?.length)throw new Error();
+      setPreview(combinePreviews(result.previews,result.employees));
+      setResultOffset(offset);
+    }catch{setError(t('unexpectedError'));}
+    finally{setLoadingResultPage(false);}
+  }
+  function toggleEmployee(id:string){
+    invalidate();
+    if(selectedKeys.has(id)){
+      setSelected(values=>values.filter(value=>value!==id));
+      setSelectedCurrent(values=>values.filter(value=>employeeKey(value)!==id));
+    }else{
+      setSelected(values=>[...values,id]);
+      const current=currentMatches.find(employee=>employeeKey(employee)===id);
+      if(current)setSelectedCurrent(values=>[...values,current]);
+    }
+  }
   async function generatePreview(){
-    setPreview(null);setError(null);setBusy('preview');
+    updateGroupProgressLink(null);setPreview(null);setPreviewJobId(null);setPreviewCompanies([]);
+    setCompanyOutcomes([]);setError(null);setBusy('preview');
     try{
       const selections=companyIds.map(companyId=>({companyId,year,upToMonth,
         employmentIds:all?null:includedEmployees.filter(employee=>employee.companyId===companyId).map(employee=>employee.id),
       }));
       if(selections.length>1){
         const id=await queueTaxBasisGroupPreviewAction(selections,crypto.randomUUID());
-        setJob({id,phase:'preview'});
+        const queued={id,phase:'preview' as const};
+        updateGroupProgressLink(queued);setJob(queued);
         return;
       }
       const result=await previewTaxBasisAction(selections[0]);
@@ -117,7 +176,8 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
     try{
       if(previewJobId){
         const id=await queueTaxBasisGroupConfirmationAction(previewJobId);
-        setJob({id,phase:'confirm'});setConfirmOpen(false);setPreview(null);setAcknowledged(false);
+        const queued={id,phase:'confirm' as const};
+        updateGroupProgressLink(queued);setJob(queued);setConfirmOpen(false);setPreview(null);setAcknowledged(false);
         return;
       }
       const result=await confirmTaxBasisAction({previewId:preview.previewId,previewHash:preview.previewHash});
@@ -132,7 +192,7 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
     {!canRecalculate&&<p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">{t('readOnly')}</p>}
     {initialSelection&&<p role="status" className="rounded-lg border border-border bg-muted/30 p-4 text-sm">{t('retryHint')}</p>}
     <section className="space-y-5 rounded-xl border border-border p-5" aria-labelledby="tax-basis-period-title">
-      <fieldset disabled={busy!==null} className="space-y-5 disabled:opacity-70">
+      <fieldset disabled={busy!==null||loadingResultPage} className="space-y-5 disabled:opacity-70">
         <legend id="tax-basis-period-title" className="font-semibold">{t('recalculationPeriod')}</legend>
         <div className="grid gap-4 md:grid-cols-3">
           <div className="relative text-sm">
@@ -166,8 +226,8 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
           <div className="flex flex-wrap gap-6 text-sm"><label className="flex items-center gap-2"><input type="radio" name="tax-selection" checked={all} onChange={()=>{invalidate();setAll(true);}}/>{t('allEmployees')}</label><label className="flex items-center gap-2"><input type="radio" name="tax-selection" checked={!all} onChange={()=>{invalidate();setAll(false);}}/>{t('selectedEmployees')}</label></div>
           <p className="text-xs text-muted-foreground">{t('employeeHint')}</p>
           {!all&&<div className="space-y-3">
-            <label htmlFor="tax-search" className="block text-sm font-medium">{t('searchEmployees')}<input id="tax-search" type="search" className={input} value={search} placeholder={t('searchPlaceholder')} onChange={event=>{setSearch(event.target.value);setEmployeePage(0);}}/></label>
-            {includedEmployees.length>0&&<ul aria-label={t('selectedEmployees')} className="flex flex-wrap gap-2">{includedEmployees.map(employee=> <li key={employeeKey(employee)}><button type="button" className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={()=>toggleEmployee(employeeKey(employee))} aria-label={t('removeEmployee',{employee:employee.employeeNo+' · '+employee.name})}>{employee.employeeNo} · {employee.name} <span aria-hidden="true" className="ml-2">×</span></button></li>)}</ul>}
+            <label htmlFor="tax-search" className="block text-sm font-medium">{t('searchEmployees')}<input id="tax-search" type="search" className={input} value={search} placeholder={t('searchPlaceholder')} onChange={event=>{setSearch(event.target.value);setCurrentMatches([]);setEmployeePage(0);}}/></label>
+            {includedEmployees.length>0&&<ul aria-label={t('selectedEmployees')} className="flex flex-wrap gap-2">{includedEmployees.map(employee=> <li key={employeeKey(employee)}><button type="button" className="rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={()=>toggleEmployee(employeeKey(employee))} aria-label={t('removeEmployee',{employee:employee.employeeNo+' · '+employee.name})}>{employee.employeeNo} · {employee.name}{companyIds.length>1&&' · '+namedCompanies.get(employee.companyId)} <span aria-hidden="true" className="ml-2">×</span></button></li>)}</ul>}
             <div className="max-h-64 overflow-y-auto rounded-lg border border-border p-2">{matching.length===0?<p className="p-3 text-sm text-muted-foreground">{t('noSearchResults')}</p>:matching.slice(employeePage*30,(employeePage+1)*30).map(employee=><label key={employeeKey(employee)} className="flex cursor-pointer items-center gap-3 rounded px-3 py-2 text-sm hover:bg-muted/50"><input type="checkbox" checked={selectedKeys.has(employeeKey(employee))} onChange={()=>toggleEmployee(employeeKey(employee))}/><span>{employee.employeeNo} · {employee.name}{companyIds.length>1&&' · '+namedCompanies.get(employee.companyId)}</span></label>)}</div>
             {pages>1&&<nav aria-label={t('employeePagination')} className="flex items-center justify-end gap-3 text-xs"><button type="button" className={button} disabled={employeePage===0} onClick={()=>setEmployeePage(page=>page-1)}>{t('previous')}</button><span>{t('page',{current:employeePage+1,total:pages})}</span><button type="button" className={button} disabled={employeePage+1===pages} onClick={()=>setEmployeePage(page=>page+1)}>{t('next')}</button></nav>}
           </div>}
@@ -191,13 +251,18 @@ export function TaxBasisWorkflow({options,initialSelection}:{options:TaxBasisOpt
       <p className="text-sm">{t('previewCounts',{eligible:preview.eligibleCount,unchanged:preview.unchangedCount,blocked:preview.blockedCount,skipped:preview.skippedCount??0,records:preview.recordCount})}</p>
       <p className="text-xs text-muted-foreground">{t('totalsHint')}</p>
       <TaxBasisResults employees={preview.employees}/>
+      {previewJobId&&totalResultEmployees>PAGE_SIZE&&<nav aria-label={t('employeePagination')} className="flex items-center justify-end gap-3 text-xs">
+        <button type="button" className={button} disabled={!resultOffset||loadingResultPage} onClick={()=>pageResults(resultOffset-PAGE_SIZE)}>{t('previous')}</button>
+        <span>{t('page',{current:resultOffset/PAGE_SIZE+1,total:Math.ceil(totalResultEmployees/PAGE_SIZE)})}</span>
+        <button type="button" className={button} disabled={resultOffset+PAGE_SIZE>=totalResultEmployees||loadingResultPage} onClick={()=>pageResults(resultOffset+PAGE_SIZE)}>{t('next')}</button>
+      </nav>}
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4"><p className="max-w-3xl text-xs text-muted-foreground">{t('preserved')}</p>
         <AlertDialog.Root open={confirmOpen} onOpenChange={open=>{if(!busy){setConfirmOpen(open);setAcknowledged(false);}}}>
-          <AlertDialog.Trigger asChild><ActionButton aria-busy={busy==='confirm'} type="button" className={primary} disabled={busy!==null||preview.eligibleCount===0||!canRecalculate}>{t('recalculateAction',{count:preview.eligibleCount})}</ActionButton></AlertDialog.Trigger>
+          <AlertDialog.Trigger asChild><ActionButton aria-busy={busy==='confirm'} type="button" className={primary} disabled={busy!==null||loadingResultPage||preview.eligibleCount===0||!canRecalculate}>{t('recalculateAction',{count:preview.eligibleCount})}</ActionButton></AlertDialog.Trigger>
           <AlertDialog.Portal><AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45"/><AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-popover p-6 text-popover-foreground shadow-xl">
             <AlertDialog.Title className="text-lg font-semibold">{t('confirmTitle')}</AlertDialog.Title>
             <AlertDialog.Description className="mt-3 text-sm text-muted-foreground">{t('confirmDescription',{company:preview.companyName,year:preview.year,month:t(`months.${preview.upToMonth}`),count:preview.eligibleCount,records:preview.recordCount})}</AlertDialog.Description>
-            <ul className="my-4 max-h-44 overflow-y-auto rounded-lg border border-border p-3 text-sm">{eligible.map(employee=><li key={employeeKey(employee)} className="py-1">{employee.employeeNo} · {employee.name}{employee.companyName&&' · '+employee.companyName}</li>)}</ul>
+            <ul className="my-4 max-h-44 overflow-y-auto rounded-lg border border-border p-3 text-sm">{previewJobId?previewCompanies.map(company=><li key={company.companyId} className="py-1">{company.companyName} · {t('previewCounts',{eligible:company.eligibleCount,unchanged:company.unchangedCount,skipped:company.skippedCount??0,blocked:company.blockedCount,records:company.recordCount})}</li>):eligible.map(employee=><li key={employeeKey(employee)} className="py-1">{employee.employeeNo} · {employee.name}{employee.companyName&&' · '+employee.companyName}</li>)}</ul>
             <p className="text-xs text-muted-foreground">{t('excludedHint',{blocked:preview.blockedCount,skipped:preview.skippedCount??0,unchanged:preview.unchangedCount})}</p><p className="mt-3 text-xs text-muted-foreground">{t('preserved')}</p>
             <label className="mt-4 flex items-start gap-3 text-sm"><input className="mt-1" type="checkbox" checked={acknowledged} disabled={busy!==null} onChange={event=>setAcknowledged(event.target.checked)}/><span>{t('acknowledge')}</span></label>
             <div className="mt-6 flex flex-wrap justify-end gap-3"><AlertDialog.Cancel asChild><ActionButton aria-busy={busy==='confirm'} type="button" className={button} disabled={busy!==null}>{t('cancel')}</ActionButton></AlertDialog.Cancel><ActionButton guardNavigation aria-busy={busy==='confirm'} type="button" className={primary} onClick={confirm} disabled={busy!==null||!acknowledged}>{t(busy==='confirm'?'processing':'confirmAction')}</ActionButton></div>

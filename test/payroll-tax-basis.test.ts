@@ -14,6 +14,7 @@ import {createBatch,generatePayslips} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,taxBasisOptions,getTaxBasisBatch,listTaxBasisBatches,continueTaxBasisBatch,recoverTaxBasisBatch} from '../core/payroll-tax-basis';
+import {requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress,taxBasisGroupJobHandler} from '../core/payroll-tax-basis-group';
 import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
 import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
@@ -68,6 +69,45 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(preview.eligibleCount).toBe(1);expect(preview.recordCount).toBe(3);
   // The saved preview is the one a confirmation recomputes and checks under the write locks.
   const batch=await confirm(preview);expect((await getTaxBasisBatch(ctx,batch.id))?.completedCount).toBe(1);
+ });
+ it('allows a selected employee without saved history alongside exact outcomes',async()=>{
+  const missing=await hireEmployee(ctx,{person:{fullName:'Fictional No History',primaryEmail:'tax-no-history@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0008',hiredOn:'2025-01-01'});
+  const original=await owner.db.select().from(schema.payslip);
+  const p=await previewTaxBasisRecalculation(ctx,{...selection(),employmentIds:[employee,missing.employmentId]});
+  expect(p.eligibleCount).toBe(1);
+  expect(p.skippedCount).toBe(1);
+  expect(p.employees.find(row=>row.id===missing.employmentId)).toMatchObject({status:'skipped',recordCount:0,months:[]});
+  const result=await confirm(p);
+  expect((await getTaxBasisBatch(ctx,result.id))?.employees.find(row=>row.id===missing.employmentId)?.status).toBe('skipped');
+  expect(await owner.db.select().from(schema.payslip)).toEqual(original);
+ });
+
+ it('queues one combined confirmation, retains company outcomes and retries idempotently',async()=>{
+  const other=await createCompany(ctx,{legalName:'Fictional second employer',country:'MY',currency:'MYR'});
+  const selections=[selection(),{...selection(),companyId:other.id,employmentIds:[]}];
+  const singleCompany={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  await expect(requestTaxBasisGroupPreview(singleCompany,selections,randomUUID())).rejects.toThrow(/unavailable/);
+  const previewId=await requestTaxBasisGroupPreview(ctx,selections,randomUUID());
+  async function finish(id:string){
+   for(let n=0;n<14;n++){
+    await runBulkJobTick(owner.client,{handlers:[taxBasisGroupJobHandler]});
+    const result=await readTaxBasisGroupProgress(ctx,id);
+    if(result.progress.state==='completed')return result;
+    expect(result.progress.state,JSON.stringify(result.progress)).not.toBe('failed');
+   }
+   throw Error('Grouped recalculation did not finish.');
+  }
+  const p=await finish(previewId);
+  expect(p.previews?.map(company=>[company.companyId,company.eligibleCount])).toEqual([[b.companyId,1],[other.id,0]]);
+  expect(p.employees?.map(row=>[row.companyId,row.id])).toEqual([[b.companyId,employee]]);
+  await expect(requestTaxBasisGroupConfirmation(singleCompany,previewId)).rejects.toThrow(/unavailable|access/);
+  const job=await requestTaxBasisGroupConfirmation(ctx,previewId);
+  expect(await requestTaxBasisGroupConfirmation(ctx,previewId)).toBe(job);
+  const after=await finish(job);
+  expect(after.batches).toEqual([expect.objectContaining({companyId:b.companyId,id:expect.any(String),error:null}),
+    expect.objectContaining({companyId:other.id,id:null,error:null})]);
+  expect(await requestTaxBasisGroupConfirmation(ctx,previewId)).toBe(job);
+  expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
  });
  it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
   const original=await owner.db.select().from(schema.payslip),p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);

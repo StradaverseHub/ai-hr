@@ -34,7 +34,8 @@ type Shared = { input: number; reportedAt: number; serverDeadline: number | null
 function readShared(key: string): Shared | null {
   try {
     const value = JSON.parse(window.localStorage.getItem(key) ?? 'null') as Shared | null;
-    return value && Number.isFinite(value.input) && Number.isFinite(value.reportedAt) ? value : null;
+    return value && Number.isFinite(value.input) && Number.isFinite(value.reportedAt) &&
+      (value.serverDeadline === null || Number.isFinite(value.serverDeadline)) ? value : null;
   } catch { return null; }
 }
 function writeShared(key: string, value: Shared) {
@@ -118,10 +119,14 @@ function IdleSignOut({ idleTimeoutSeconds, sessionChannel, reload, now, report, 
         const body = await response.json() as { step?: unknown; remainingSeconds?: unknown; sessionChannel?: unknown };
         if (ended.current) return false;
         if (body.step === 'not-enforced') { setRemaining(null); setEnforced(false); return true; }
-        if (body.step !== 'active' || (sessionChannel && body.sessionChannel !== sessionChannel) ||
-          typeof body.remainingSeconds !== 'number' || !Number.isFinite(body.remainingSeconds) || body.remainingSeconds <= 0) return false;
+        if (body.step === 'active' && sessionChannel && body.sessionChannel !== sessionChannel) {
+          ended.current = true;
+          reload(window.location.href);
+          return false;
+        }
+        if (body.step !== 'active' || typeof body.remainingSeconds !== 'number' || !Number.isFinite(body.remainingSeconds) || body.remainingSeconds <= 0) return false;
         const shared = readShared(activityKey);
-        if (!shared || shared.reportedAt <= sentAt) {
+        if (!shared || shared.reportedAt < sentAt) {
           state.current = {
             input: Math.max(shared?.input ?? 0, state.current.input, extending.current ? sentAt : 0),
             reportedAt: sentAt,
@@ -137,7 +142,7 @@ function IdleSignOut({ idleTimeoutSeconds, sessionChannel, reload, now, report, 
     reporting.current = pending;
     void pending.finally(() => { reporting.current = null; });
     return pending;
-  }, [activityKey, leave, now, report, sessionChannel]);
+  }, [activityKey, leave, now, reload, report, sessionChannel]);
 
   useEffect(() => {
     if (!enforced) return;
@@ -172,8 +177,8 @@ function IdleSignOut({ idleTimeoutSeconds, sessionChannel, reload, now, report, 
       // The server's own deadline wins when it is earlier: its clock is the one that actually ends the session.
       const deadline = current.serverDeadline === null ? local : Math.min(local, current.serverDeadline);
       const left = Math.ceil((deadline - at) / 1000);
-      if (left <= 0 && !extending.current) return leave(true);
-      setRemaining(left <= IDLE_WARNING_SECONDS ? Math.max(0, left) : null);
+      if (left <= 0 && !extending.current && !reporting.current) return leave(true);
+      if (left <= IDLE_WARNING_SECONDS || !extending.current) setRemaining(left <= IDLE_WARNING_SECONDS ? Math.max(0, left) : null);
       if (left > IDLE_WARNING_SECONDS && !extending.current) setExtension(null);
     }, 1_000);
     return () => {

@@ -141,7 +141,9 @@ describe('13369a07: bonus placement', () => {
   const bonusSlip = (itemized: boolean): ProcessedPayslipViewRow => ({
     ...payroll('0.00', false), bonus: itemized ? '0.00' : '150.00',
     gross: '3150.00', totalDeductions: '347.00', net: '2803.00',
-    statutory: { epfEmployee: 347, ...(itemized ? { componentLines: [
+    statutory: { epfEmployee: 347, ...(itemized ? {
+      displayEarnings: {basic:3000,allowance:0,overtime:0,bonus:150,claim:0},
+      componentLines: [
       {code:'B0001',name:'Angpow',amount:100,displayCategory:'bonus',buckets:[{bucket:'wage',amount:100}]},
       {code:'B0002',name:'Service bonus',amount:50,displayCategory:'bonus',buckets:[{bucket:'wage',amount:50}]},
     ] } : {}) },

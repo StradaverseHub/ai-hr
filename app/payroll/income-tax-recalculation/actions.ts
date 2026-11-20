@@ -2,7 +2,7 @@
 
 import {revalidatePath} from 'next/cache';
 import {requirePayrollAccess} from '@/lib/authz';
-import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,recoverTaxBasisBatch,continueTaxBasisBatch,requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress} from '@/packs/payroll/service';
+import {previewTaxBasisRecalculation,confirmTaxBasisRecalculation,recoverTaxBasisBatch,continueTaxBasisBatch,requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress,searchCurrentTaxBasisEmployees} from '@/packs/payroll/service';
 import {PayrollTaxBasisError,type TaxBasisSelection} from '@/lib/payroll-tax-basis';
 
 export async function previewTaxBasisAction(selection:TaxBasisSelection){
@@ -63,7 +63,12 @@ export async function queueTaxBasisGroupConfirmationAction(previewJobId:string){
   return requestTaxBasisGroupConfirmation(ctx,previewJobId);
 }
 
-export async function taxBasisGroupProgressAction(jobId:string){
+export async function taxBasisGroupProgressAction(jobId:string,offset=0){
   const ctx=await requirePayrollAccess();
-  return readTaxBasisGroupProgress(ctx,jobId);
+  return readTaxBasisGroupProgress(ctx,jobId,offset);
+}
+
+export async function searchCurrentTaxBasisEmployeesAction(companyIds:string[],query:string){
+  const ctx=await requirePayrollAccess();
+  return searchCurrentTaxBasisEmployees(ctx,companyIds,query);
 }
