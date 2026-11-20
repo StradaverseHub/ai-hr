@@ -1358,8 +1358,9 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
  measure('authorized-lifecycle-flyout',clicked);
 }
 
-async function measurePayrollRegisterDenials(fixture){
- const {chromium}=createRequire(join(process.cwd(),'package.json'))('playwright');
+async function measurePayrollRegisterAdmission(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const {chromium}=require('playwright');
  browser=await chromium.launch();
  const owner=fixture.users[0];
  const visits=report.payrollRegisterDenials=[];
@@ -1389,6 +1390,21 @@ async function measurePayrollRegisterDenials(fixture){
    }
   }finally{await context.close();}
  }
+ const allowed=report.payrollRegisterAuthorized=[];
+ const context=await signedInContext(owner);
+ const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+ try{
+  for(const pass of ['first','repeat']){
+   const visit={role:owner.role,pass,observations:[]};
+   allowed.push(visit);
+   const page=await context.newPage();
+   try{
+    await exercisePayrollRegister({base:origin,page,user:owner,fixture,db,
+     report:{browserPayrollRegister:visit.observations},save});
+    assert.deepEqual(visit.observations.map(row=>row.kind),['initial-browser','page-two-browser-click']);
+   }finally{await page.close();save();}
+  }
+ }finally{await Promise.all([context.close(),db.end({timeout:5})]);}
  assert(visits.length===4&&visits.every(visit=>visit.denied&&!visit.browserErrors.length),
   'An out-of-scope Payroll Register must show a denial without browser runtime errors');
 }
@@ -1585,7 +1601,7 @@ try{
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
   await proxy();
-  if(payrollRegisterDenial)await measurePayrollRegisterDenials(fixture);
+  if(payrollRegisterDenial)await measurePayrollRegisterAdmission(fixture);
   else if(payrollCorrections){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser=await require('playwright').chromium.launch();
