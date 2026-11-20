@@ -31,7 +31,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','roster-import','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','roster-import','payroll-template','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -46,7 +46,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','roster','roster-import'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!['leave-inbox','roster','roster-import','payroll-template'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1853,6 +1853,86 @@ function countRosterRequests(request,counts){
  else if(headers.rsc==='1'||url.searchParams.has('_rsc'))counts.otherFlight++;
 }
 
+async function measurePayrollTemplates(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ const xlsx=require('xlsx');
+ const actor=fixture.users[1];
+ assert.equal(actor.role,'companyHR');
+ const fixtureCompany=fixture.users.filter(user=>user.companyId===actor.companyId);
+ const names=new Set(fixtureCompany.map(user=>user.name));
+ report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
+ report.payrollTemplates=[];
+ save();
+ const context=await signedInContext(actor),timeout=15000;
+ try{
+  const page=await context.newPage();
+  const main=page.locator('main:visible').first();
+  let requests=0;
+  const route='/payroll/transactions/import-excel/template';
+  const isReference=url=>url.origin===origin&&url.pathname===route;
+  page.on('request',request=>{if(isReference(new URL(request.url())))requests++;});
+  for(const kind of ['fixed','individual']){
+   const beforeOpen=requests;
+   const row={role:actor.role,kind,downloads:[]};
+   report.payrollTemplates.push(row);
+   const started=performance.now(),url=origin+'/payroll/transactions/'+kind;
+   const response=await page.goto(url,{waitUntil:'commit',timeout});
+   assert.equal(response?.status(),200);
+   assert.equal(page.url(),url);
+   const importButton=main.getByRole('button',{name:'Import Excel',exact:true});
+   await importButton.waitFor({state:'visible',timeout});
+   assert(await importButton.isEnabled({timeout}));
+   await assertContentAvailable(page);
+   row.pageReadyMs=Math.round(performance.now()-started);
+   await page.waitForLoadState('load',{timeout});
+   assert.equal(requests,beforeOpen,'Page opening must not read workbook catalogues');
+   if(kind==='individual'){
+    const dialogStarted=performance.now();
+    await importButton.click({timeout});
+    await page.getByRole('dialog').getByRole('button',{name:'Download monthly template',exact:true})
+     .waitFor({state:'visible',timeout});
+    row.dialogReadyMs=Math.round(performance.now()-dialogStarted);
+    assert.equal(requests,beforeOpen,'Opening the import dialog must not read workbook catalogues');
+   }
+   save();
+   const downloads=kind==='fixed'?[['Download template','Fixed Transactions']]:[
+    ['Download monthly template','Monthly Transactions'],['Download day-by-day template','Daily Transactions'],
+   ];
+   for(const [label,sheet] of downloads){
+    const beforeClick=requests,downloadStarted=performance.now();
+    const [download,reference]=await Promise.all([
+     page.waitForEvent('download',{timeout}),
+     page.waitForResponse(response=>{
+      const url=new URL(response.url());
+      return isReference(url)&&url.searchParams.get('kind')===kind;
+     },{timeout}),
+     page.getByRole('button',{name:label,exact:true}).click({timeout}),
+    ]);
+    const elapsedMs=Math.round(performance.now()-downloadStarted);
+    assert.equal(reference.status(),200);
+    assert.equal(reference.headers()['cache-control'],'private, no-store');
+    assert.equal(requests,beforeClick+1);
+    const data=await reference.json();
+    assert.equal(data.employees.length,fixtureCompany.length);
+    assert.deepEqual(new Set(data.employees.map(employee=>employee.name)),names);
+    assert.equal(new Set(data.employees.map(employee=>employee.company)).size,1);
+    const path=await download.path();
+    assert(path);
+    const workbook=xlsx.readFile(path);
+    assert.equal(workbook.SheetNames[0],sheet);
+    assert(workbook.Sheets.Employees&&workbook.Sheets['Pay Items']);
+    const rows=xlsx.utils.sheet_to_json(workbook.Sheets.Employees,{header:1,raw:false,blankrows:false});
+    const people=rows.filter(values=>names.has(values[1]));
+    assert.deepEqual(people.map(values=>values.slice(0,3)),
+     data.employees.map(employee=>[employee.code,employee.name,employee.company]));
+    row.downloads.push({sheet,elapsedMs,employeeRows:people.length});
+    save();
+   }
+  }
+ }finally{await context.close();}
+}
+
 async function measureRosterImport(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser=await require('playwright').chromium.launch();
@@ -2302,6 +2382,7 @@ try{
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
   else if(surfaceProbe==='roster-import')await measureRosterImport(fixture);
+  else if(surfaceProbe==='payroll-template')await measurePayrollTemplates(fixture);
   else if(surfaceProbe==='content-readiness'){
    await measureRoutes(fixture,readinessRoutes);
    assert.equal(report.observations.length,2*report.plannedRoleRoutes);

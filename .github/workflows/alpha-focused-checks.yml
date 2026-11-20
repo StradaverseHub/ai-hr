@@ -143,10 +143,13 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|roster-import|content-readiness)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|roster-import|payroll-template|content-readiness)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
+            exit 2
+          fi
+          if [[ "$BROWSER_SURFACE_PROBE" == payroll-template && "$EXPECTED_SHA" != d3d650a2ed0cee44f04c66702f58035e965a5a8f ]]; then
             exit 2
           fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
@@ -165,6 +168,7 @@ jobs:
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -178,7 +182,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.browser_surface_probe == 'payroll-template' || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -240,10 +244,27 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && inputs.browser_surface_probe != 'payroll-template' }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
+      - name: Retrieve the pinned Payroll workbook build
+        if: ${{ inputs.browser_surface_probe == 'payroll-template' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$AIHR_CI_HEAD" = d3d650a2ed0cee44f04c66702f58035e965a5a8f
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136333906580 --jq '
+            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+            .run_id == 44749573012 and .head_sha == "91a3a68f4998907ff4f084aea555404384419349"' | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/payroll-template-build.XXXXXX")"
+          trap 'rm -f "$archive"' EXIT
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14634664620/zip > "$archive"
+          printf '%s  %s\n' 'f6b38a540af9513ffb012f99d2c30697a7c62573f5b315598a599a77daa697a1' "$archive" | sha256sum -c -
+          test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
+          install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
+          unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
       - name: Verify the build for the exact browser source
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
         run: |
@@ -321,7 +342,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only) }}
+    if: ${{ inputs.browser_surface_probe != 'payroll-template' && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
