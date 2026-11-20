@@ -1,9 +1,9 @@
-/** Start and inspect an exact production build with a job-owned fictional database. */
+/** Start the frozen candidate and verify it against a job-owned fictional database. */
 import assert from 'node:assert/strict';
 import {execFileSync, spawn} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {appendFileSync, readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {fileURLToPath} from 'node:url';
@@ -22,16 +22,22 @@ assert.match(runner.GITHUB_RUN_ATTEMPT, /^\d+$/);
 assert.equal(runner.AIHR_CI_UNIT, 'db-1');
 
 const evidence = join(runner.RUNNER_TEMP, 'preview-evidence');
-const memory = JSON.parse(readFileSync(join(evidence, 'memory/build-memory.json'), 'utf8'));
-assert.equal(memory.source, source);
-assert.equal(memory.exitCode, 0);
-assert.equal(memory.availableMemoryVerdict, 'within');
-assert.ok(['within', 'warn'].includes(memory.verdict));
+mkdirSync(evidence, {recursive: true, mode: 0o700});
+assert.ok(['production', 'development'].includes(runner.AIHR_PREVIEW_MODE));
+const production = runner.AIHR_PREVIEW_MODE === 'production';
+if (production) {
+  const memory = JSON.parse(readFileSync(join(evidence, 'memory/build-memory.json'), 'utf8'));
+  assert.equal(memory.source, source);
+  assert.equal(memory.exitCode, 0);
+  assert.equal(memory.availableMemoryVerdict, 'within');
+  assert.ok(['within', 'warn'].includes(memory.verdict));
+}
 const report = {
   kind: 'DISPOSABLE_SYNTHETIC_PREVIEW',
   source,
   controller: runner.AIHR_CI_CONTROL_HEAD,
-  buildId: readFileSync('.next/BUILD_ID', 'utf8').trim(),
+  mode: runner.AIHR_PREVIEW_MODE,
+  buildId: production ? readFileSync('.next/BUILD_ID', 'utf8').trim() : null,
   sourceCommittedAt: git('show', '-s', '--format=%cI'),
   releaseAuthorized: false,
   phases: {},
@@ -85,15 +91,16 @@ try {
   });
   const healthHeaders = {authorization: 'Basic ' + Buffer.from('preview:' + password).toString('base64')};
   await phase('startServer', async () => {
-    server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'start', '--hostname', '127.0.0.1', '--port', '3175'],
-      {env: {...env, NODE_ENV: 'production'}, stdio: 'inherit'});
+    server = spawn(process.execPath, [require.resolve('next/dist/bin/next'), production ? 'start' : 'dev', '--hostname', '127.0.0.1', '--port', '3175'],
+      {env: {...env, NODE_ENV: runner.AIHR_PREVIEW_MODE}, stdio: 'inherit'});
     let startError;
     server.on('error', error => { startError = error; });
-    for (let attempt = 0; attempt < 60; attempt++) {
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
       if (startError) throw startError;
       assert(server.exitCode === null && server.signalCode === null, 'Preview process exited');
       try {
-        const response = await fetch(base + '/login', {headers: healthHeaders, signal: AbortSignal.timeout(2000)});
+        const response = await fetch(base + '/login', {headers: healthHeaders, signal: AbortSignal.timeout(15000)});
         if (response.ok) {
           await response.arrayBuffer();
           report.serverReadyAt = new Date().toISOString();
@@ -111,6 +118,8 @@ try {
       viewport: {width: 393, height: 852},
       httpCredentials: {username: 'preview', password, origin: base},
     });
+    page.setDefaultTimeout(90000);
+    page.setDefaultNavigationTimeout(120000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base + '/login');
