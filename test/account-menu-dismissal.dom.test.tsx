@@ -1,6 +1,7 @@
 import {describe,expect,it,vi} from 'vitest';
 import {render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {renderToString} from 'react-dom/server';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {UserMenu} from '../components/user-menu';
@@ -18,6 +19,21 @@ function setup(){
 }
 
 describe('account menu dismissal across header stacking contexts',()=>{
+ it('exposes the identity before hydration and enables the account control when it can respond',async()=>{
+  const html=renderToString(<NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">
+   <UserMenu name="Fictional reviewer" employeeCode="MENU-01" employed/>
+  </NextIntlClientProvider>);
+  const serverDocument=new DOMParser().parseFromString(html,'text/html');
+  const serverTrigger=serverDocument.querySelector<HTMLButtonElement>('button[data-tour="account"]');
+  expect(serverTrigger?.disabled).toBe(true);
+  expect(serverTrigger?.textContent).toContain('MENU-01');
+
+  const view=setup();
+  expect(view.trigger).toBeEnabled();
+  await userEvent.setup().click(view.trigger);
+  expect(screen.getByRole('menu')).toBeVisible();
+ });
+
  it('closes on an outside click while allowing that destination to work',async()=>{
   const v=setup(),user=userEvent.setup();await user.click(v.trigger);
   expect(screen.getByRole('menu')).toBeVisible();
