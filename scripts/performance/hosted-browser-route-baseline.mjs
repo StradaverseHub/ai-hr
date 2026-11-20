@@ -1737,6 +1737,26 @@ async function measureFocusedCompanyScope(fixture){
  report.companyScopeComparison=[];
  try{
   const page=await context.newPage();
+  const verifyRosterAndBack=async(expectedPrefix)=>{
+   let documentRequests=0;
+   const observe=request=>{if(request.resourceType()==='document')documentRequests++;};
+   page.on('request',observe);
+   try{
+    const timeout=15000;
+    const deadline=performance.now()+timeout;
+    const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+    await clickNativeShellDestination(page,'/roster',remaining);
+    await page.waitForURL(url=>url.origin===origin&&url.pathname==='/roster',{timeout:remaining()});
+    const rows=page.locator('main [data-roster-grid] tbody tr[data-roster-employment-id]:visible');
+    await rows.getByText(new RegExp('^'+expectedPrefix)).first().waitFor({state:'visible',timeout:remaining()});
+    if(expectedPrefix!=='PERF Person ')assert.equal(await rows.getByText(/^PERF Person /).count(),0,'Narrowed Roster rendered rows from another company');
+    await Promise.all([
+     page.waitForURL(url=>url.origin===origin&&url.pathname==='/admin/personnel',{timeout}),
+     page.goBack({waitUntil:'commit',timeout}),
+    ]);
+    assert.equal(documentRequests,0,'Company scope history check must use in-app navigation');
+   }finally{page.off('request',observe);}
+  };
   for(const pass of ['first','repeat-1','repeat-2']){
    const row={pass,status:'incomplete'};
    report.companyScopeComparison.push(row);
@@ -1747,7 +1767,8 @@ async function measureFocusedCompanyScope(fixture){
     save();
    };
    try{
-    await measureBrowserGroupScope({base:origin,page,user,fixture,report:journey,save:retain});
+    await measureBrowserGroupScope({base:origin,page,user,fixture,report:journey,save:retain,
+     ...(pass==='first'&&{visitRoster:verifyRosterAndBack})});
     row.status='observed';
    }finally{retain();}
   }

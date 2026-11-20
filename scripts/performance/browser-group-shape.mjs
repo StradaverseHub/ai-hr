@@ -69,7 +69,7 @@ export async function seedBrowserGroupShape(owner,fixture){
  return {counts,company:companies[0]};
 }
 
-export async function measureBrowserGroupScope({base,page,user,fixture,report,save}){
+export async function measureBrowserGroupScope({base,page,user,fixture,report,save,visitRoster}){
  assert.equal(user.role,'groupHR');
  assert(fixture.scaleCompany);
  report.groupScopeSteps=[];
@@ -84,6 +84,19 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
   const cookies=await page.context().cookies(base);
   return decodeURIComponent(cookies.find(cookie=>cookie.name==='company_scope')?.value??'');
  };
+ const checkRoster=async(scope)=>{
+  if(!visitRoster)return;
+  report.groupScopeStage='roster-'+scope;
+  if(await switcher.getAttribute('aria-expanded')==='true')await switcher.click({timeout});
+  const started=performance.now();
+  await visitRoster(scope==='single-company'?workerPrefix:'PERF Person ');
+  // This revisits the Personnel history entry after the company cookie changed.
+  const expected=scope==='single-company'?scaleRows:groupRows;
+  await expected.first().waitFor({state:'visible',timeout});
+  if(scope==='single-company')assert.equal(await groupRows.count(),0);
+  report.groupScopeSteps.push({step:report.groupScopeStage,elapsedMs:Math.round(performance.now()-started),usable:true});
+  save();
+ };
 
  report.groupScopeStage='group-open';
  const opened=performance.now();
@@ -92,6 +105,7 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  await groupRows.first().waitFor({state:'visible',timeout});
  report.groupScopeSteps.push({step:'all-companies-open',elapsedMs:Math.round(performance.now()-opened),usable:true});
  save();
+ await checkRoster('all-companies');
 
  report.groupScopeStage='group-company-popover';
  const openingMenu=performance.now();
@@ -124,6 +138,7 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  assert.equal(await selectedScope(),fixture.scaleCompany.id);
  report.groupScopeSteps.push({step:'select-one-company',elapsedMs:Math.round(performance.now()-selected),usable:true});
  save();
+ await checkRoster('single-company');
 
  report.groupScopeStage='group-scope-restored';
  if(await switcher.getAttribute('aria-expanded')!=='true')await switcher.click({timeout});
@@ -138,4 +153,5 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  assert.equal(await companies.count(),70);
  report.groupScopeSteps.push({step:'restore-all-companies',elapsedMs:Math.round(performance.now()-restored),usable:true});
  save();
+ await checkRoster('restored-companies');
 }
