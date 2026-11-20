@@ -143,13 +143,13 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|roster-import|content-readiness)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|attendance-setup|content-readiness)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
             exit 2
           fi
-          if [[ "$BROWSER_SURFACE_PROBE" == roster-import && "$EXPECTED_SHA" != 1ace2be545a1add264a83cf56f4081cea99adfb0 ]]; then
+          if [[ "$BROWSER_SURFACE_PROBE" == attendance-setup && "$EXPECTED_SHA" != 94b95e8ed736ba4a6b0b17c012f98ebde9a9189e ]]; then
             exit 2
           fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
@@ -182,7 +182,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.browser_surface_probe == 'roster-import' || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.browser_surface_probe == 'attendance-setup' || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -244,24 +244,24 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && inputs.browser_surface_probe != 'roster-import' }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && inputs.browser_surface_probe != 'attendance-setup' }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned Roster Import build
-        if: ${{ inputs.browser_surface_probe == 'roster-import' }}
+      - name: Retrieve the pinned first-use Schedule build
+        if: ${{ inputs.browser_surface_probe == 'attendance-setup' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 1ace2be545a1add264a83cf56f4081cea99adfb0
+          test "$AIHR_CI_HEAD" = 94b95e8ed736ba4a6b0b17c012f98ebde9a9189e
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136335543555 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136369684555 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44747308258 and .head_sha == "9f73df2fe6451b105a7006ef51b07257023930a8"' | grep -qx true
-          archive="$(mktemp "$RUNNER_TEMP/roster-import-build.XXXXXX")"
+            .run_id == 44759931493 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          archive="$(mktemp "$RUNNER_TEMP/attendance-setup-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14635472353/zip > "$archive"
-          printf '%s  %s\n' '1f4b247f85dc63808f3f917b0a57155d60214a7330a7458dc1002e2b1235c8b9' "$archive" | sha256sum -c -
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14639958877/zip > "$archive"
+          printf '%s  %s\n' '8eded7ee12854d9b64a784da6246fc49fae824fe2e755c18f7ad545a79824b89' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -342,7 +342,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.browser_surface_probe != 'roster-import' && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
+    if: ${{ inputs.browser_surface_probe != 'attendance-setup' && (inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only)) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
