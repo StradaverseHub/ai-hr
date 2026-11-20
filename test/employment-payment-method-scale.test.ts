@@ -2,8 +2,9 @@ import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {asc,desc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {employment,compensation} from '../db/schema';
-import {compensationAmendmentHistory} from '../core/comp';
-import {employmentPaymentMethodOnSql} from '../core/employment-payment-method';
+import {compensationAmendmentHistory,compensationHistoryDetailed} from '../core/comp';
+import {employmentPaymentMethodHistory,employmentPaymentMethodOnSql} from '../core/employment-payment-method';
+import {readPersonnelPayHistories} from '../app/admin/personnel/[employmentId]/pay-histories';
 import {closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {observeStatements} from './helpers/statement-observer';
@@ -60,6 +61,24 @@ describe('dated payment-method reader at group scale',()=>{
    const observed=await observeStatements(()=>compensationAmendmentHistory(ctx,subject.employmentId));
    expect(observed.result).toMatchObject({page:1,hasMore:false,rows:expected.map(row=>({...row,effectiveFrom:'2026-01-15',payrollFrom:'2026-02-01'}))});
    expect(observed.statements.filter(statement=>statement.sql.includes('inner join "compensation"')&&statement.sql.includes('limit'))).toHaveLength(1);
+  }
+ },120_000);
+ it('opens the Personnel profile pay histories while another transaction holds the shared Access lock',async()=>{
+  for(const [name,ctx] of Object.entries(fixture.personas)){
+   const [subject]=await withTenant(ctx,tx=>tx.select({employmentId:employment.id})
+    .from(employment).innerJoin(compensation,eq(compensation.employmentId,employment.id))
+    .where(eq(employment.companyId,fixture.singleCompanyId)).orderBy(asc(employment.id)).limit(1));
+   expect(subject,name).toBeDefined();
+   const {employmentId}=subject;
+   const payment=await employmentPaymentMethodHistory(ctx,employmentId);
+   const salary=await compensationHistoryDetailed(ctx,employmentId);
+   const amendments=await compensationAmendmentHistory(ctx,employmentId);
+   expect([payment.length,salary.length,amendments.rows.length].every(count=>count>0),name).toBe(true);
+   await owner.client.begin(async tx=>{
+    const [lock]=await tx<{held:boolean}[]>`select pg_try_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+ctx.tenantId},0)) as held`;
+    expect(lock.held,name).toBe(true);
+    await expect(readPersonnelPayHistories(ctx,employmentId,1)).resolves.toEqual([payment,salary,amendments]);
+   });
   }
  },120_000);
  it('does not substitute the current master for a known pre-history date',async()=>{
