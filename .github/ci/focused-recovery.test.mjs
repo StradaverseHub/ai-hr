@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,validateRecoveryProducer,requireReviewedFocusedController,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering,validateOperationalVisualOutput} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {recoverySourceDigest} from './focused-recovery.mjs';
@@ -167,4 +167,27 @@ test('The verification controller must have actual successful controller-only in
  const jobs=names.map((name,i)=>({name,id:100+i,run_id:500,head_sha:run.head_sha,run_attempt:1,status:'completed',conclusion:['resolve','deployment-hold'].includes(name)?'success':'skipped',steps:[{name:'CI integrity regression checks',conclusion:'success'}]}));
  const x={run,jobs,controller:f.verificationController,now};assert.equal(validateRecoveryControllerDiagnostic(x).runId,500);
  for(const change of [x=>x.run.head_sha='f'.repeat(40),x=>x.run.display_title='Alpha CI · all',x=>x.jobs[0].steps=[],x=>x.jobs[1].conclusion='success',x=>x.run.run_attempt=2]){const bad=structuredClone(x);change(bad);assert.throws(()=>validateRecoveryControllerDiagnostic(bad));}
+});
+
+
+test('Operational visual proof requires every authenticated route, both widths and no overflow',()=>{
+ const source='a'.repeat(40);
+ const routes=[
+  '/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily',
+  '/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records',
+  '/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/',
+ ];
+ const checks=routes.flatMap(route=>[['desktop',1440],['mobile',390]].map(([device,width])=>(
+  {route,device,width,documentWidth:width,mainWidth:350,mainClientWidth:350,mainScrollWidth:350}
+ )));
+ const results={source,fixture:'fictional isolated authenticated HR administrator with own employment',complete:true,checks};
+ const overflow={source,overflowFailures:[]};
+ const proof=validateOperationalVisualOutput({source,results,overflow});
+ assert.equal(proof.checks,36);
+ assert.equal(proof.resultsHash,hash(results));
+ assert.throws(()=>validateOperationalVisualOutput({source,results:{...results,checks:checks.slice(1)},overflow}),/Missing/);
+ assert.throws(()=>validateOperationalVisualOutput({source,results:{...results,source:'b'.repeat(40)},overflow}),/source-bound/);
+ assert.throws(()=>validateOperationalVisualOutput({source,results,overflow:{...overflow,overflowFailures:['/analytics']}}),/overflow/);
+ checks[1].documentWidth=401;
+ assert.throws(()=>validateOperationalVisualOutput({source,results,overflow}),/overflowing/);
 });

@@ -9,6 +9,41 @@ import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
 export const RECOVERY_POLICY='aihr-focused-recovery/v2';
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
+export const OPERATIONAL_VISUAL_FILE='test/operational-visual-browser.test.ts';
+export const OPERATIONAL_VISUAL_RESULTS='operational-authenticated-visual-results.json';
+export const OPERATIONAL_OVERFLOW_RESULTS='operational-overflow-results.json';
+export const VISUAL_PREVIEW_REPAIR=Object.freeze({
+ original:'f27f355c89530c994a084bfddaa38823425fcd4d',
+ focused:'5338beba2b6ddead103be6046bcd21f0527e18ae',
+ helper:'test/helpers/owned-visual-preview.ts',
+ originalDigest:'2531680fa312365b8002b2ec6c99f50a5564e92fe9f70ea704fdfeea0461e8e2',
+ focusedDigest:'21277609aa51c05286ec8b46940322de81cd1cdd8cb56b5d88524b7d82a054da',
+});
+const visualRoutes=[
+ '/admin/settings/system-labels','/roster','/rewards','/admin/personnel','/attendance/daily',
+ '/payroll','/me','/claims','/approvals','/leave','/leave/employee-balances','/leave/employee-records',
+ '/reports','/reports/employee-master/new','/recruitment','/analytics','/admin/settings/people','/',
+];
+const visualWidths={desktop:1440,mobile:390};
+export function validateOperationalVisualOutput({source,results,overflow}){
+ assert(results?.source===source&&results.complete===true&&
+  results.fixture==='fictional isolated authenticated HR administrator with own employment',
+  'Complete source-bound operational visual output required');
+ assert(overflow?.source===source&&Array.isArray(overflow.overflowFailures)&&overflow.overflowFailures.length===0,
+  'Operational visual overflow must pass');
+ const expected=visualRoutes.flatMap(route=>Object.entries(visualWidths).map(([device,width])=>({route,device,width})));
+ assert(Array.isArray(results.checks)&&results.checks.length===expected.length,'Missing operational route/viewport');
+ for(const [index,item] of expected.entries()){
+  const result=results.checks[index];
+  assert(result?.route===item.route&&result.device===item.device&&result.width===item.width,
+   'Unexpected operational route/viewport');
+  assert([result.documentWidth,result.mainWidth,result.mainClientWidth,result.mainScrollWidth].every(Number.isFinite)
+   && result.documentWidth>0&&result.documentWidth<=item.width+1&&result.mainWidth>250
+   && result.mainClientWidth>0&&result.mainScrollWidth>0&&result.mainScrollWidth<=result.mainClientWidth+1,
+   'Invalid or overflowing operational viewport evidence');
+ }
+ return {checks:expected.length,resultsHash:hash(results),overflowHash:hash(overflow)};
+}
 const positive=x=>Number.isSafeInteger(x)&&x>0;
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const jobName=u=>u.kind==='browser'?`browser (${u.engine})`:`test (${u.id})`;
@@ -154,7 +189,16 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
  let pendingDatabaseOrdering=false;
  for(const f of focused){
   const r=f.report;
-  assert(r.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.sha===plan.sha&&r.controller===plan.controller&&r.runId===String(f.run.id)&&r.attempt==='1'&&r.exitCode===0,'Focused report identity/result differs');
+  const visualUnit=isDeepStrictEqual(r.files,[OPERATIONAL_VISUAL_FILE]);
+  if(visualUnit){
+   assert(f.visual?.checks===36&&[f.visual.resultsHash,f.visual.overflowHash].every(value=>/^[a-f0-9]{64}$/.test(value)),
+    'Operational visual coverage required');
+  }
+  if(r.sha!==plan.sha){
+   assert(visualUnit&&plan.sha===VISUAL_PREVIEW_REPAIR.original&&r.sha===VISUAL_PREVIEW_REPAIR.focused
+    &&isDeepStrictEqual(f.visualRepair,VISUAL_PREVIEW_REPAIR),'Unreviewed focused source difference');
+  }
+  assert(r.kind==='FOCUSED_ONLY'&&r.releaseEligible===false&&r.schemaVersion===1&&r.controller===plan.controller&&r.runId===String(f.run.id)&&r.attempt==='1'&&r.exitCode===0,'Focused report identity/result differs');
   same(r.runtime,plan.runtime,'Focused runtime differs');
   assert(r.healthBefore?.ok===true&&r.healthAfter?.ok===true,'Focused runner health did not pass');
   assert(r.classifierHash===classifierHash&&r.manifestHash===hash(JSON.stringify(r.files)),'Focused selection/classifier hash differs');
@@ -183,7 +227,7 @@ export function verifyFocusedRecovery({plan,assessment,run,jobs,reports,focused,
    assert(unit&&unit.kind===(database?'db':'nodb')&&failed.has(unit.id)&&!replacements.has(path),'Focused recovery repeats, misclassifies or includes an unaffected file');
    replacements.set(path,{...value,runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest});
   }
-  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result),...(f.roleReceipts?{roleReceipts:f.roleReceipts}:{}),...(database&&f.databaseOrdering?{databaseOrdering:f.databaseOrdering}:{})});
+  focusedSources.push({runId:f.run.id,jobId:f.producer.id,artifactId:f.artifact.id,digest:f.artifact.digest,reportHash:hash(r),resultHash:hash(f.result),...(f.roleReceipts?{roleReceipts:f.roleReceipts}:{}),...(visualUnit?{visual:f.visual,focusedSha:r.sha}:{}),...(f.visualRepair?{visualRepair:f.visualRepair}:{}),...(database&&f.databaseOrdering?{databaseOrdering:f.databaseOrdering}:{})});
  }
  const units=[];let tests=0;
  for(const unit of plan.units){

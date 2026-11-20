@@ -13,7 +13,7 @@ import {REPOSITORY,verifyArtifactBytes} from './release-policy.mjs';
 import {BUILD_ARTIFACT} from './build-artifact.mjs';
 import {downloadCiArchives,readCiArchive} from './archive-downloads.mjs';
 import {assessResumeSource} from './resume-source.mjs';
-import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering} from './focused-recovery-policy.mjs';
+import {validateFocusedMetadata,verifyFocusedRecovery,validateRecoveryControllerDiagnostic,validateRecoveryProducer,validateFocusedHistory,validateFocusedRoleReceipts,validateFocusedDbOrdering,validateOperationalVisualOutput,OPERATIONAL_VISUAL_FILE,OPERATIONAL_VISUAL_RESULTS,OPERATIONAL_OVERFLOW_RESULTS,VISUAL_PREVIEW_REPAIR} from './focused-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const data=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(data[key]),'Missing API inventory');rows.push(...data[key]);if(data[key].length<100)return rows;}throw Error('Recovery API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2}).trim();
@@ -35,6 +35,19 @@ async function collect(runId,dir,{reuse=false,prefetchDirectory,includeRaw=false
 // Reuse the bounded byte transport, not v1 admission semantics, for separately versioned recovery.
 export {collect as collectRecoveryEvidence};
 export const recoverySourceDigest=bytes=>createHash('sha256').update(bytes).digest('hex');
+function verifyVisualPreviewRepair(candidatePath,candidate,report,visualUnit){
+ if(report.sha===candidate)return null;
+ const repair=VISUAL_PREVIEW_REPAIR;
+ assert(visualUnit&&candidate===repair.original&&report.sha===repair.focused,'Foreign focused source');
+ assert(git(candidatePath,'rev-parse',repair.focused+'^')===candidate,'Visual helper repair must descend directly from source');
+ assert(git(candidatePath,'diff','--name-status','--no-renames',candidate,repair.focused)==='M\t'+repair.helper,
+  'Operational visual recovery changed outside its test helper');
+ for(const [ref,digest] of [[candidate,repair.originalDigest],[repair.focused,repair.focusedDigest]]){
+  const blob=execFileSync('git',['show',ref+':'+repair.helper],{cwd:candidatePath,maxBuffer:64*1024});
+  assert(recoverySourceDigest(blob)===digest,'Operational visual test helper differs from reviewed bytes');
+ }
+ return repair;
+}
 export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);
  assert(Number.isSafeInteger(runId)&&runId>0&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact recovery source required');
@@ -63,13 +76,15 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   const report=packet.get('focused.json'),database=report?.groups?.DB?.length>0,resultName=database?'db.vitest.json':'nodb.vitest.json';
+  const visualUnit=database&&isDeepStrictEqual(report.files,[OPERATIONAL_VISUAL_FILE]);
+  const visualRepair=verifyVisualPreviewRepair(candidatePath,candidate,report,visualUnit);
   const roleName='personnel-draft-discard-premigration-role-prerequisites.json',runtimeRoleName='personnel-draft-discard-role-prerequisites.json';
   const requiresRole=database&&readFileSync(join(candidatePath,'package.json'),'utf8').includes('scripts/migrate-with-focused-prerequisites.ts');
-  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(requiresRole?[roleName,runtimeRoleName]:[])].sort()),'Exact homogeneous focused packet members required');
+  assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json',resultName,...(visualUnit?[OPERATIONAL_VISUAL_RESULTS,OPERATIONAL_OVERFLOW_RESULTS]:[]),...(requiresRole?[roleName,runtimeRoleName]:[])].sort()),'Exact homogeneous focused packet members required');
   let roleReceipts=null;
   if(requiresRole){
    const sourceDigests=Object.fromEntries([['helperSha256','test/helpers/personnel-draft-discard-ci-role-fixture.ts'],['wrapperSha256','scripts/migrate-with-focused-prerequisites.ts'],['orchestrationSha256','scripts/lib/discard-premigration.ts']].map(([key,path])=>[key,recoverySourceDigest(readFileSync(join(candidatePath,path)))]));
-   roleReceipts=validateFocusedRoleReceipts({premigration:packet.get(roleName),runtime:packet.get(runtimeRoleName),candidate,controller,runId:id,sourceDigests});
+   roleReceipts=validateFocusedRoleReceipts({premigration:packet.get(roleName),runtime:packet.get(runtimeRoleName),candidate:report.sha,controller,runId:id,sourceDigests});
   }
   let databaseOrdering=null;
   if(database){
@@ -77,7 +92,10 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
    databaseOrdering=validateFocusedDbOrdering({log,producer,report});
    if(!reuse)writeFileSync(join(sub,'authenticated-order-job.log'),log,{flag:'wx',mode:0o600});
   }
-  focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts,databaseOrdering});
+  const visual=visualUnit?validateOperationalVisualOutput({
+   source:report.sha,results:packet.get(OPERATIONAL_VISUAL_RESULTS),overflow:packet.get(OPERATIONAL_OVERFLOW_RESULTS),
+  }):null;
+  focused.push({...f,producer,artifact,report,result:packet.get(resultName),roleReceipts,databaseOrdering,visual,visualRepair});
  }
  const reports=plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const reviewedController=process.env.AIHR_FOCUSED_REVIEWED_CONTROLLER??null;

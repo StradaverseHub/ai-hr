@@ -1,12 +1,14 @@
 import json,pathlib,subprocess,sys,tempfile,unittest,zipfile,stat
 SCRIPT=pathlib.Path(__file__).with_name('focused-recovery-extract.py')
 class FocusedExtraction(unittest.TestCase):
-    def invoke(self,extra=(),missing=None,database=False):
+    def invoke(self,extra=(),missing=None,database=False,visual=False):
         with tempfile.TemporaryDirectory() as root:
             root=pathlib.Path(root);archive=root/'in.zip';destination=root/'out'
             with zipfile.ZipFile(archive,'w') as z:
                 result='db.vitest.json' if database else 'nodb.vitest.json'
-                report=json.dumps({'groups':{'DB':['test/db.test.ts'] if database else [],'NODB':[] if database else ['test/plain.test.ts']}})
+                db_file='test/operational-visual-browser.test.ts' if visual else 'test/db.test.ts'
+                files=[db_file] if database else ['test/plain.test.ts']
+                report=json.dumps({'files':files,'groups':{'DB':files if database else [],'NODB':[] if database else files}})
                 for name in ['focused.json',result]:
                     if name!=missing:z.writestr(name,report if name=='focused.json' else '{}')
                 if database:
@@ -40,4 +42,19 @@ class FocusedExtraction(unittest.TestCase):
         self.assertEqual(self.invoke(screens),(0,['focused.json','nodb.vitest.json']))
     def test_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(385)])[0],0)
     def test_database_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(129)],database=True)[0],0)
+    def test_visual_requires_every_screenshot_and_keeps_images_in_archive(self):
+        routes=('admin-settings-system-labels','roster','rewards','admin-personnel','attendance-daily',
+                'payroll','me','claims','approvals','leave','leave-employee-balances','leave-employee-records',
+                'reports','reports-employee-master-new','recruitment','analytics','admin-settings-people','today',
+                'label-guidance')
+        header=b'\x89PNG\r\n\x1a\n'
+        screens=[(f'operational-{route}-{device}.png',header) for route in routes for device in ('desktop','mobile')]
+        proofs=[('operational-authenticated-visual-results.json','{}'),('operational-overflow-results.json','{}'),
+                ('operational-visual-progress.json','{}')]
+        self.assertEqual(self.invoke(screens+proofs,database=True,visual=True),(0,[
+            'db.vitest.json','focused.json','operational-authenticated-visual-results.json','operational-overflow-results.json']))
+        self.assertNotEqual(self.invoke(screens[1:]+proofs,database=True,visual=True)[0],0)
+        invalid=[(screens[0][0],b'not a PNG')]+screens[1:]+proofs
+        self.assertNotEqual(self.invoke(invalid,database=True,visual=True)[0],0)
+        self.assertNotEqual(self.invoke(screens+proofs,database=True)[0],0)
 if __name__=='__main__':unittest.main()

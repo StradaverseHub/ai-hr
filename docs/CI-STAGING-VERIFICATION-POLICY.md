@@ -12,6 +12,17 @@ Manual main/alpha witnesses may have separate candidate and producer commits. Th
 
 The operator verifier itself must pass its exact hosted controller-only integrity diagnostic. Read-only verification without review returns `DIAGNOSTIC_NONINSTALLABLE`; installation and grant creation require `AIHR_FOCUSED_REVIEWED_CONTROLLER` to identify the explicitly approved verifier commit. This extension needs independent review and actual authenticated original/replacement evidence before use. It neither changes the frozen application's full-gate witness nor asks for a duplicate application gate after failed-area-only recovery. Staging queue/lease, actual arrival and rendered acceptance remain separate requirements; production authority is unchanged.
 
+For the 20 November combined release only, the operational visual unit can use the exact
+test-helper revision `5338beba2b6ddead103be6046bcd21f0527e18ae` for frozen release source
+`f27f355c89530c994a084bfddaa38823425fcd4d`. The verifier checks that the revision's only
+change is how the disposable browser test waits for its own Next.js preview to listen.
+Both committed helper digests, the exact isolated test and its original named assertion,
+all 18 routes and both viewports, complete screenshots, zero overflow, PostgreSQL evidence
+and authenticated producer identity are required. The original release source, build and
+failure record keep their own identities. Other source differences remain unsupported.
+This case requires review of the exact verification controller and passing hosted evidence
+before any installation.
+
 The owner reaffirmed failed-area-only recovery in the Board chat: after the complete frozen run finishes, rerun failed areas and repair-invalidated checks, retaining valid successful evidence. Do not dispatch a new whole gate as the default response to one failure. This decision supersedes the older blanket fresh-whole-run language below for recovery after that completed gate. A broader run must be justified by actual invalidation or a new owner instruction.
 
 Preserve original failing runs and raw errors. Every retained/replacement result must bind authenticated producing jobs/artifacts, exact candidate/controller/baseline, runtime and complete non-overlapping coverage. A failed run stays failed; replacement evidence must retain its own identity. A focused pass alone is not a release receipt.
