@@ -1483,7 +1483,7 @@ try{
  if(!fixtureOnly){
   if(staticShard===null)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true'});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
   await proxy();
   if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
@@ -1516,6 +1516,19 @@ try{
      counts[code]=(counts[code]??0)+1;
     }
     report.serverFailureCounts=counts;
+    const mobilePhases=new Set(['preview','own-employment','own-person-name','clock','leave','requests',
+     'claims','team','tasks','inbox','payslips']);
+    const mobile=[];
+    for(const [,line] of log.matchAll(/^PERF_MOBILE_PREVIEW_READ (.{1,220})$/gm)){
+     let row;
+     try{row=JSON.parse(line);}catch{continue;}
+     if(!Number.isSafeInteger(row.trace)||row.trace<1||!mobilePhases.has(row.phase)||
+      !['started','settled'].includes(row.state)||!Number.isSafeInteger(row.elapsedMs)||row.elapsedMs<0)continue;
+     mobile.push({trace:row.trace,phase:row.phase,state:row.state,elapsedMs:row.elapsedMs});
+     if(mobile.length>=120)break;
+    }
+    report.mobilePreviewReadPhases=mobile;
+
     const phases=new Set(['scope','focus','eligibility','labels','queues','overtime','reviews','leaveDates','decided',
      'recommendations','prepared','readReward','readProbation','readAttendanceAssignment','readResignationInbox',
      'readContracts','readLeave','readCancellation','readReplacement','readAttendance','readClaims','readResignationLegacy']);
