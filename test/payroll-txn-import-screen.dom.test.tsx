@@ -37,6 +37,10 @@ vi.mock('next/navigation', () => ({
 
 const validateMock = vi.fn();
 const commitMock = vi.fn();
+const templateMock = vi.fn();
+vi.mock('../app/payroll/transactions/import-excel/template-source', () => ({
+  loadTxnTemplateReference: (...args: unknown[]) => templateMock(...args),
+}));
 vi.mock('../app/payroll/transactions/import-excel/actions', () => ({
   validateTxnImportAction: (...a: unknown[]) => validateMock(...a),
   commitTxnImportAction: (...a: unknown[]) => commitMock(...a),
@@ -134,7 +138,7 @@ function renderButtons(kind: 'fixed' | 'individual' = 'fixed', queueFixedAction?
 }) => Promise<string>) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <TxnImportButtons kind={kind} reference={REFERENCE} queueFixedAction={queueFixedAction} />
+      <TxnImportButtons kind={kind} queueFixedAction={queueFixedAction} />
     </NextIntlClientProvider>,
   );
 }
@@ -146,6 +150,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   validateMock.mockResolvedValue(PREVIEW);
   commitMock.mockResolvedValue(RESULT);
+  templateMock.mockResolvedValue(REFERENCE);
 });
 
 describe('5c65367d · the toolbar', () => {
@@ -153,6 +158,16 @@ describe('5c65367d · the toolbar', () => {
     renderButtons('fixed');
     expect(screen.getByRole('button', { name: 'Import Excel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Download template' })).toBeInTheDocument();
+  });
+
+  it('requests catalogue data only after an explicit workbook download', async () => {
+    const user = userEvent.setup();
+    templateMock.mockRejectedValueOnce(new Error('Unavailable'));
+    renderButtons('fixed');
+    expect(templateMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Download template' }));
+    expect(templateMock).toHaveBeenCalledExactlyOnceWith('fixed', undefined);
+    expect(await screen.findByRole('alert')).toHaveTextContent('The operation could not be completed.');
   });
 
   it('names the screen it is importing for', async () => {

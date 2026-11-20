@@ -9,13 +9,8 @@ import type { SessionContext } from '@/db/client';
 import type { TxnTemplateReference } from '@/lib/import-template-xlsx';
 
 /**
- * 5c65367d — the reference sheets' CONTENT, read on the server by whichever screen is mounting the
- * import buttons.
- *
- * WHY IT IS BUILT HERE AND NOT INSIDE THE TEMPLATE BUILDER. `lib/import-template-xlsx.ts` is
- * client-safe and must stay that way — it runs in the browser when Download Template is pressed, and a
- * `db/` import in it would drag the whole data layer into the bundle (and fail the RSC boundary). So the
- * screen reads the catalogues and passes plain data down, exactly as d8471481's employee template does.
+ * Read workbook catalogues after a download request. The workbook formatter stays client-safe
+ * and receives only the reference data for the current signed-in scope.
  *
  * EVERY LIST COMES FROM THE SAME PLACE THE VALIDATOR RESOLVES AGAINST — `listEmployees` under the same
  * company scope, `listPayComponents` minus the archived ones, and the two code-level vocabularies. That
