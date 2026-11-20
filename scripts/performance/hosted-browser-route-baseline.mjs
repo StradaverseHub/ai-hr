@@ -53,8 +53,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44748780993,artifactId:14636030056,
-  sourceSha:'488a47476c4c7c8a0f40b982ec712e40ea7abc74'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44759931493,artifactId:14639958877,
+  sourceSha:'94b95e8ed736ba4a6b0b17c012f98ebde9a9189e'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -473,6 +473,28 @@ async function measureMixedLoad(command){
    const kinds=['navigation','read','write'];
    const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
     '/attendance/my-records/[date]','/attendance/application-history/[id]','/api/personnel/search']);
+   const preflightFailure=data.preflightBrowserStageFailure;
+   const navigationStages=['sign-in-root','legacy-navigation-capture','hidden-shell-capture',
+    'primary-route-observer','primary-route-navigation','primary-route-retirement'];
+   if(navigationStages.includes(preflightFailure?.stage)){
+    const harnessFiles=['system-load-owner.mjs','navigation-browser-capture.ts','navigation-protocol.ts',
+     'navigation-entry.ts','navigation-shell-browser.ts'];
+    const sourceFile=preflightFailure.sourceFile;
+    const label=value=>typeof value==='string'&&/^[a-z][a-z0-9-]{0,79}$/.test(value)?value:null;
+    const legacy=preflightFailure.legacyNavigation;
+    report.mixedNavigationPreflightFailure={
+     stage:preflightFailure.stage,
+     role:roles.includes(preflightFailure.role)?preflightFailure.role:null,
+     route:knownRoutes.has(preflightFailure.path)||preflightFailure.path==='/'?preflightFailure.path:null,
+     error:['AssertionError','TimeoutError','Error','TypeError','AbortError'].includes(preflightFailure.errorType)
+      ?preflightFailure.errorType:null,
+     location:harnessFiles.includes(sourceFile)&&Number.isSafeInteger(preflightFailure.sourceLine)
+      &&preflightFailure.sourceLine>0&&preflightFailure.sourceLine<10000
+      ?{file:sourceFile,line:preflightFailure.sourceLine}:null,
+     scenario:label(legacy?.scenarioId),
+     check:label(legacy?.checkId),
+    };
+   }
    const failureCode=value=>typeof value==='string'&&/^(?:[0-9A-Z]{5}|[A-Za-z][A-Za-z_0-9]{1,50})$/.test(value)?value:null;
    const summarizeFailures=(rows,key)=>{
     const groups=new Map();
