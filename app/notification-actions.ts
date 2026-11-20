@@ -3,13 +3,21 @@
 import { onboardingReadNotice } from '@/packs/lifecycle/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { revalidatePath } from 'next/cache';
-import {scopedSession} from '@/lib/scope';
+import { companyContextForPage } from '@/lib/scope';
+import { getSession } from '@/lib/session';
 import type { SessionContext } from '@/db/client';
 import { notificationBellScope, readNotificationBellView, type NotificationBellScope } from './notification-bell-view';
 import { markAllNotificationsRead, markNotificationRead } from '@/core/notifications';
 
-async function bellAfterWrite(session: SessionContext, scope: NotificationBellScope, lifecycleEnabled: boolean) {
+async function actionBellScope(session: SessionContext): Promise<NotificationBellScope> {
+  if (isModuleEnabledOrFalse(session, 'notifications')) return {};
+  const { scopeIds } = await companyContextForPage(session);
+  return notificationBellScope(session, scopeIds);
+}
+
+async function bellAfterWrite(session: SessionContext, lifecycleEnabled: boolean, writeScope?: NotificationBellScope) {
   try {
+    const scope=writeScope===undefined?await actionBellScope(session):writeScope;
     return await readNotificationBellView(session, scope, lifecycleEnabled);
   } catch {
     // A committed write still gets a fresh shell if its narrow reply is temporarily unavailable.
@@ -20,18 +28,18 @@ async function bellAfterWrite(session: SessionContext, scope: NotificationBellSc
 
 /** Mark one notification read (RLS confines it to the caller's own). */
 export async function markNotificationReadAction(id: string) {
-  const {s,scopeIds}=await scopedSession();
+  const s=await getSession();
   if(id.startsWith('onb:'))await onboardingReadNotice(s,id.slice(4));
   else await markNotificationRead(s,id);
-  return bellAfterWrite(s,notificationBellScope(s,scopeIds),isModuleEnabledOrFalse(s,'lifecycle'));
+  return bellAfterWrite(s,isModuleEnabledOrFalse(s,'lifecycle'));
 }
 
 export async function markAllNotificationsReadAction() {
-  const {s,scopeIds}=await scopedSession();
-  const scope=notificationBellScope(s,scopeIds);
+  const s=await getSession();
+  const scope=await actionBellScope(s);
   const lifecycleEnabled=isModuleEnabledOrFalse(s,'lifecycle');
   if(scope?.letterCompanyIds)await markAllNotificationsRead(s,undefined,{letterCompanyIds:scope.letterCompanyIds});
   else if(scope)await markAllNotificationsRead(s);
   if(lifecycleEnabled)await onboardingReadNotice(s);
-  return bellAfterWrite(s,scope,lifecycleEnabled);
+  return bellAfterWrite(s,lifecycleEnabled,scope);
 }
