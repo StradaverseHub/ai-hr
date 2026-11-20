@@ -72,18 +72,19 @@ it('uses compiled template precedence and only observes concrete app pages',()=>
  expect(census.missingMatchers).toEqual(['/profile/[id]']);
 });
 
-it('counts each successful action registration once and exposes gaps by compiled page worker',()=>{
+it('credits accepted actions to their actual compiled page worker',()=>{
  const pages={'/(secure)/reports/page':'/reports','/personnel/[id]/page':'/personnel/[id]'};
  const registry=serverActionRegistry(pages,{
   node:{shared:{workers:{'app/(secure)/reports/page':{},'app/personnel/[id]/page':{}}},
    missing:{workers:{'private/unbound.js':{}}}},
   edge:{shared:{workers:{'app/(secure)/reports/page':{}}},personnel:{workers:{'app/personnel/[id]/page':{}}}},
  });
- expect(serverActionCoverage(registry,new Set(['shared','unknown']))).toEqual({
-  registered:3,seenInPassedJourneys:1,withoutPage:1,
+ expect(serverActionCoverage(registry,new Map([['shared',new Set(['/reports'])],['unknown',new Set(['/reports'])]]))).toEqual({
+  registered:3,acceptedInPassedJourneys:1,withoutPage:1,withMatchingPageEvidence:1,
+  withoutMatchingPageEvidence:0,matchedPageRegistrations:1,pagesWithMatchingEvidence:1,
   byPageWorker:[
-   {path:'/personnel/[id]',registrations:2,seenInPassedJourneys:1},
-   {path:'/reports',registrations:1,seenInPassedJourneys:1},
+   {path:'/personnel/[id]',registrations:2,acceptedInPassedJourneys:0},
+   {path:'/reports',registrations:1,acceptedInPassedJourneys:1},
   ],
  });
 });
