@@ -61,7 +61,6 @@ import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
-import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
@@ -231,25 +230,34 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
+  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
     lifecycleModuleNavigation(session),
     lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
-  const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
-  const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
-  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
+  const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
+    const [onboardingQueue, inbox] = await Promise.all([
+      lifecycleEnabled ? onboardingTasks(session) : [],
+      lifecycleModuleInbox(session, scopedLifecycleNavigation),
+    ]);
+    return {
+      items: [...onboardingQueue.map(onboardingNotificationTask), ...inbox.items],
+      count: onboardingQueue.length + inbox.count,
+      myTasksCount: onboardingQueue.length + inbox.myTasksCount,
+      approvalCount: inbox.approvalCount,
+      queueLinks: inbox.queueLinks,
+    };
+  });
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
+  const approvalSummaryWork = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
@@ -259,15 +267,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,requestReadScope()));
+  const approvalFacts: Promise<ShellApprovalResult> = Promise.all([approvalSummaryWork, lifecyclePreview]).then(([approvalSummary, lifecycle]): ShellApprovalResult => ({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
+    lifecycleMyTasksCount:lifecycle.myTasksCount,
+    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
@@ -323,7 +333,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleMyTasksCount}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
@@ -477,10 +486,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       scope={notificationScope}
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
-                      tasks={lifecycleTasks}
-                      taskQueueLinks={lifecycleInbox.queueLinks}
+                      lifecyclePreview={lifecyclePreview}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                      taskCount={lifecycleTaskCount}
                       canApprove={canApprove}
                     />
                   </Suspense>
