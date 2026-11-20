@@ -272,6 +272,9 @@ async function verifyMixedFixtureBinding(command){
 const mixedDriverStages=new Set([
  'driver-initialization','pilot-http','browser-launch','browser-baseline','sign-in-and-navigation',
  'navigation-seal','ai-baseline','workflow-baseline','preflight-checks','preflight-lock-gate',
+ 'baseline-org-explorer','baseline-personnel-switcher','baseline-payroll-group','baseline-movement',
+ 'baseline-payroll-register','baseline-saved-reports','baseline-register-authority','baseline-ai-authority',
+ 'baseline-payroll-company','baseline-claims-language','baseline-client-navigation','baseline-language-switch',
  'steady-plan','loaded-setup','loaded-workload','loaded-acceptance','driver-settlement',
 ]);
 
