@@ -269,7 +269,7 @@ jobs:
           archive="$(mktemp "$RUNNER_TEMP/register-control-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/artifacts/14652085114/zip > "$archive"
-          printf '%s  %s\n' '5fc5554378e55da7e2bb654af092ad786d5f73a249bdc004a620a1bd31d74768' "$archive" | sha256sum -c -
+          printf '%s  %s\n' 'f636556ceb381d551a03a725db93ac821c140c05739cf4a3b10080d4b3bdf059' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
