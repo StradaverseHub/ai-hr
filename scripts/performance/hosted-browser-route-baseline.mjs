@@ -180,7 +180,7 @@ async function verifyMixedDriver(command){
  const label='import-mixed-workload-driver';
  try{
   await run(label,command,['--import','tsx','--input-type=module','--eval',
-   "import assert from 'node:assert/strict'; const driver=await import('./scripts/performance/system-load-owner.mjs'); const source=await import('./scripts/performance/navigation-source.ts'); assert.equal(typeof driver.runDevelopmentSystemLoad,'function'); assert.equal(source.navigationCleanHead(process.cwd()),process.env.AIHR_CI_HEAD);"],
+   "import assert from 'node:assert/strict'; const driver=await import('./scripts/performance/system-load-owner.mjs'); const source=await import('./scripts/performance/navigation-source.ts'); assert.equal(typeof driver.runDevelopmentSystemLoad,'function'); const cleanHead=source.navigationCleanHead??source.default?.navigationCleanHead; assert.equal(typeof cleanHead,'function'); assert.equal(cleanHead(process.cwd()),process.env.AIHR_CI_HEAD);"],
    {...dbEnv,GITHUB_ACTIONS:'false'},30000);
  }catch(error){
   retainMixedStartupFailure(label);
@@ -192,7 +192,7 @@ async function verifyMixedFixtureBinding(command){
  const label='verify-mixed-fixture-binding';
  try{
   await run(label,command,['--import','tsx','--input-type=module','--eval',
-   "import assert from 'node:assert/strict'; const owner=await import('./scripts/performance/navigation-fixture-bindings.ts'); assert.equal(owner.readNavigationFixtureBindings().size,500);"],
+   "import assert from 'node:assert/strict'; const owner=await import('./scripts/performance/navigation-fixture-bindings.ts'); const read=owner.readNavigationFixtureBindings??owner.default?.readNavigationFixtureBindings; assert.equal(typeof read,'function'); assert.equal(read().size,500);"],
    dbEnv,30000);
  }catch(error){
   retainMixedStartupFailure(label);
