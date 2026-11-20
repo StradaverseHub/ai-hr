@@ -612,6 +612,62 @@ async function measurePayrollReadTrace(fixture){
  assert.equal(report.observations.length,6);
  assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
   'Payroll Transaction View did not show a History row on every measured visit');
+ await measureClosedPayrollPicker(fixture);
+}
+
+async function measureClosedPayrollPicker(fixture){
+ const actor=fixture.users[0], subject=fixture.users[4];
+ assert.equal(actor.role,'groupHR');
+ assert.equal(subject.role,'employee');
+ const context=await signedInContext(actor);
+ const row={status:'incomplete',choiceRequestsBeforeOpen:0};
+ report.payrollClosedPicker=row;
+ try{
+  await context.addCookies([{name:'txnview_history_panel',value:'0',url:origin,secure:true,sameSite:'Lax'}]);
+  const page=await context.newPage();
+  const isChoices=request=>{
+   const url=new URL(request.url());
+   return request.method()==='POST'&&url.origin===origin&&url.pathname==='/api/employee-choices';
+  };
+  const observe=request=>{if(isChoices(request))row.choiceRequestsBeforeOpen++;};
+  page.on('request',observe);
+  const started=performance.now();
+  const response=await page.goto(origin+payrollHistoryPath,{waitUntil:'commit',timeout:15000});
+  assert.equal(response?.status(),200);
+  assert.equal(page.url(),origin+payrollHistoryPath);
+  await readyContent(page,actor,payrollHistoryPath,()=>15000,undefined,fixture);
+  row.historyContentMs=Math.round(performance.now()-started);
+  const search=page.getByRole('searchbox',{name:'Search employee',exact:true});
+  assert.equal(await search.count(),0,'A collapsed picker mounted the search controls');
+  assert.equal(row.choiceRequestsBeforeOpen,0,'A collapsed picker started employee requests');
+  page.off('request',observe);
+  save();
+  const toggle=page.getByRole('button',{name:'Select employee',exact:true}).and(page.locator('button:visible')).first();
+  const opened=performance.now();
+  const [firstPage]=await Promise.all([
+   page.waitForResponse(response=>isChoices(response.request()),{timeout:15000}),
+   toggle.click({timeout:15000}),
+  ]);
+  assert.equal(firstPage.status(),200);
+  await firstPage.finished();
+  await search.waitFor({state:'visible',timeout:5000});
+  row.firstChoicesMs=Math.round(performance.now()-opened);
+  save();
+  const matching=performance.now();
+  await search.fill(subject.name);
+  const select=page.getByRole('button').filter({hasText:subject.name}).and(page.locator('button:visible')).first();
+  await select.waitFor({state:'visible',timeout:15000});
+  row.searchedChoiceMs=Math.round(performance.now()-matching);
+  const selected=performance.now();
+  await Promise.all([
+   page.waitForURL(url=>url.pathname===payrollHistoryPath&&url.searchParams.get('employmentId')===subject.employmentId,
+    {timeout:15000}),
+   select.click({timeout:15000}),
+  ]);
+  await readyContent(page,actor,payrollHistoryPath,()=>15000,undefined,fixture);
+  row.selectedHistoryMs=Math.round(performance.now()-selected);
+  row.status='observed';
+ }finally{save();await context.close();}
 }
 
 async function measureMobileTaskTrace(fixture){
@@ -1627,7 +1683,7 @@ try{
     }
     report.serverFailureCounts=counts;
     if(payrollReadTrace){
-     const phases=new Set(['scope','employee-options','company-options','catalogue','cycle-options',
+     const phases=new Set(['scope','employee-options','employee-selection','company-options','catalogue','cycle-options',
       'default-period','history-page','statutory-settings','reprocess-outcomes','recorded-sources','render-ready']);
      const transactions=[];
      for(const [,line] of log.matchAll(/^PERF_PAYROLL_TRANSACTION_READ (.{1,200})$/gm)){
