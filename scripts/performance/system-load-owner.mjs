@@ -8,7 +8,7 @@ import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
- installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts} from './navigation-browser-capture.ts';
+ installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts,legacyNavigationLinkFailureCounts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
 import {NATIVE_HIDDEN_SHELL_CASES} from './navigation-protocol.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -1265,6 +1265,12 @@ async function main(){
     }
    }catch(reason){
     notePrimary(reason);
+    if(process.env.PERF_DRIVER_STAGE_RECEIPT==='1'&&stage==='legacy-navigation-capture'&&failures.primary().reason===reason){
+     noteEvidence(()=>{
+      const scenario=legacyNavigationFailureFacts(reason);
+      if(scenario)report.mixedNavigationPreflightFailure={role:user.role,scenario:scenario.scenarioId,linkMatches:legacyNavigationLinkFailureCounts(reason)};
+     });
+    }
     noteWorkerStageFailure(reason,stage,user,null);
     notePreflightStageFailure(reason,stage,user,page);
     throw reason;
