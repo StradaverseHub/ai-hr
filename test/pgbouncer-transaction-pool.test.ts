@@ -6,15 +6,21 @@
  * server connections, so that server connections really are shared between tenants.
  */
 import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import postgres from 'postgres';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {DatabaseAdmissionError} from '../db/admission';
 import {createDb, type SessionContext} from '../db/client';
 import {actorOf, appendEvent} from '../db/events';
-import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
+import {adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base} from './harness';
 import {isDatabaseCapacityFailure} from '../db/read-retry';
 import {poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
+import {ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections} from '../core/account-task-bundle';
+import {createClaimType} from '../packs/claims/service';
+import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return {promise, resolve}; };
 const appPool = (target: PoolerTarget, max: number, admissionWaitMs?: number) => {
@@ -112,6 +118,90 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       expect(backends.size).toBeLessThanOrEqual(target!.serverConnections);
     } finally { await pool.client.end({timeout: 5}); }
   });
+
+  it('reuses the named task plan across pooled web clients without reusing their data scope', async () => {
+    const tenant = await seedBase();
+    const otherTenant = await seedBase();
+    for (const base of [tenant, otherTenant]) {
+      for (const module of ['attendance', 'claims', 'performance', 'rewards']) {
+        await setModule(base.tenantId, module, 'active');
+      }
+    }
+    const fixture = await buildScaleFixture(tenant, {employments: 1000, events: 0});
+    expect(fixture.companyIds).toHaveLength(71);
+    expect(fixture.employmentIds).toHaveLength(1000);
+    const claimType = await createClaimType(fixture.personas.group, {
+      code: 'POOLEDPLAN', name: 'Fictional pooled task comparison', defaultTaxable: false, requiresReceipt: false,
+    });
+    await owner.client`
+      insert into claim_request (tenant_id, employment_id, claim_type_id, amount, incurred_on, description, status)
+      select e.tenant_id, e.id, ${claimType.id}::uuid, '12.50', '2026-02-02', 'Fictional pending claim', 'pending'
+      from employment e cross join generate_series(1, 10)
+      where e.tenant_id = ${tenant.tenantId}::uuid and e.terminated_on is null
+    `;
+    await owner.client`analyze claim_request`;
+
+    const modules = {attendance: true, claims: true, performance: true, rewards: true, lifecycle: false};
+    const read = {companyIds: fixture.companyIds, personal: false, notices: true};
+    const dialect = new PgDialect();
+    type TaskRow = {principal: boolean; claims: {snapshot: boolean; total: number}};
+    const sessions = [fixture.personas.group, fixture.personas.single, await entitledCtx(otherTenant), fixture.personas.group];
+    const clients = sessions.map(() => appPool(shortWait ?? target!, 1));
+    const samples = [];
+    try {
+      for (const [index, session] of sessions.entries()) {
+        const sample = await clients[index].withTenant(session, async tx => {
+          const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, read), session);
+          const query = dialect.sqlToQuery(statement);
+          const [backend] = await tx.execute<{pid: number; mode: string}>(sql`
+            select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode
+          `);
+          expect(backend.mode).toBe('auto');
+          const unpreparedStart = performance.now();
+          const expected = await tx.execute<TaskRow>(statement);
+          const unpreparedMs = performance.now() - unpreparedStart;
+          expect(expected[0]?.principal).toBe(true);
+          expect(expected[0]?.claims.snapshot).toBe(true);
+          const planUses = async () => {
+            const [counts] = await tx.execute<{uses: number}>(sql`
+              select coalesce(sum(generic_plans), 0)::int as uses
+              from pg_prepared_statements where statement = ${query.sql}
+            `);
+            return counts.uses;
+          };
+          const previousUses = await planUses();
+          await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+          // Measure the pinned driver protocol on the same authorized transaction as the normal query.
+          const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+          const params = query.params as postgres.ParameterOrJSON<never>[];
+          const preparedStart = performance.now();
+          const actual = await connection.unsafe<TaskRow[]>(query.sql, params, {prepare: true});
+          const preparedMs = performance.now() - preparedStart;
+          expect([...actual]).toEqual([...expected]);
+          expect(await planUses()).toBe(previousUses + 1);
+          return {pid: backend.pid, previousUses, claimTotal: actual[0].claims.total, unpreparedMs, preparedMs};
+        }, {readOnlySnapshot: true});
+        samples.push(sample);
+      }
+    } finally {
+      await Promise.all(clients.map(client => client.client.end({timeout: 5})));
+    }
+    expect(new Set(samples.map(sample => sample.pid)).size).toBe(1);
+    expect(samples[0].claimTotal).toBeGreaterThan(samples[1].claimTotal);
+    expect(samples[1].claimTotal).toBeGreaterThan(ACCOUNT_TASK_CLAIM_PREVIEW);
+    expect(samples[1].previousUses).toBe(1);
+    expect(samples[2].claimTotal).toBe(0);
+    expect(samples[3].claimTotal).toBe(samples[0].claimTotal);
+    expect(samples[3].previousUses).toBeGreaterThanOrEqual(2);
+
+    const evidence = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+    if (evidence) writeFileSync(join(evidence, 'account-task-pooler-plan.json'), JSON.stringify({
+      source: process.env.AIHR_CI_HEAD,
+      companies: fixture.companyIds.length,
+      employments: fixture.employmentIds.length,
+      samples: samples.map(({pid: _pid, ...sample}) => sample),
+    }));
+  }, 120_000);
 
   it('holds a transaction advisory lock across clients and releases it at commit', async () => {
     const pool = appPool(target!, 4);
