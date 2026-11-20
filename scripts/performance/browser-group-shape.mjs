@@ -122,7 +122,11 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  await page.getByRole('button',{name:'Select all',exact:true}).click({timeout});
  await switcher.getByText('All companies',{exact:true}).waitFor({state:'visible',timeout});
  await groupRows.first().waitFor({state:'visible',timeout});
- assert.equal(new Set((await selectedScope()).split(',')).size,70);
+ assert.equal(await selectedScope(),'');
+ await page.waitForFunction(()=>
+  document.querySelectorAll('input[type="checkbox"][name="companyId"]:checked').length===70,
+  undefined,{timeout});
+ assert.equal(await companies.count(),70);
  report.groupScopeSteps.push({step:'restore-all-companies',elapsedMs:Math.round(performance.now()-restored),usable:true});
  save();
 }
