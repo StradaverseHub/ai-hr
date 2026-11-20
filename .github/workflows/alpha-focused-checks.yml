@@ -56,6 +56,10 @@ on:
         description: For browser_route_baseline, verify the disposable fixture without building or opening pages
         default: false
         type: boolean
+      browser_mixed_load:
+        description: With browser_route_baseline, run the 500-user development workload against the disposable installation
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -111,9 +115,16 @@ jobs:
         run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs .github/ci/build-heap.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/orchestrator-browser.test.mjs
       - name: Validate bounded manifest
         id: selection
-        run: node .github/ci/focused-checks.mjs selection
+        run: |
+          if [[ "$BROWSER_MIXED_LOAD" == true && ( "$BROWSER_ROUTE_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ) ]]; then
+            exit 2
+          fi
+          node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
+          BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
+          BROWSER_ROUTE_BASELINE: ${{ inputs.browser_route_baseline }}
+          BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
         id: candidate
         run: node .github/ci/resolve.mjs
@@ -201,6 +212,7 @@ jobs:
         run: node --import tsx ../automation/scripts/performance/hosted-browser-route-baseline.mjs
         env:
           AIHR_BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
+          AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs

@@ -9,7 +9,7 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {builtPageCoverage,nativePreflightRoutePlan} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
@@ -24,6 +24,8 @@ const origin='https://localhost:3443';
 const appPort=3174;
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
+const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
+assert(!(fixtureOnly&&mixedLoad),'Mixed load needs the built disposable installation');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -40,7 +42,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -49,7 +51,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
- AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:mixedLoad?'whole-system':'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -134,6 +136,62 @@ async function waitForApp(){
   await pause(500);
  }
  throw Error('Application startup deadline exceeded');
+}
+
+async function measureMixedLoad(){
+ const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
+ assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
+ const dockerConfig=join(privateDir,'docker-config');
+ const driverEvidence=join(privateDir,'mixed-load');
+ mkdirSync(dockerConfig,{mode:0o700});
+ mkdirSync(driverEvidence,{mode:0o700});
+ const [containerId,owner]=execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
+  '--format','{{.Id}} {{index .Config.Labels "aihr-owner"}}',name,
+ ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim().split(' ');
+ assert(/^[0-9a-f]{64}$/.test(containerId)&&owner===name,'PostgreSQL container identity differs from the workload owner');
+ const clockTicks=execFileSync('/usr/bin/getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}).trim();
+ assert(/^[1-9][0-9]*$/.test(clockTicks));
+ const resultPath=join(driverEvidence,'http-browser.json');
+ try{
+  await run('measure-500-user-mixed-load',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{
+   ...dbEnv,AIHR_CI_UNIT:pgEnv.AIHR_CI_UNIT,PERF_EVIDENCE_DIR:driverEvidence,PERF_HTTP_THINK_MS:'1000',
+   PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:'1',PERF_APP_PID:String(app.pid),PERF_PROXY_PID:String(process.pid),
+   PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
+  },1800000);
+ }finally{
+  if(existsSync(resultPath)){
+   const data=JSON.parse(readFileSync(resultPath,'utf8'));
+   const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
+   const counts=(obj,keys)=>Object.fromEntries(keys.map(key=>[key,nonnegative(obj?.[key])]));
+   const sampleMetrics=['samples','p50Ms','p95Ms','p99Ms','maxMs'];
+   const steady=data.steady;
+   const roles=['employee','manager','companyHR','groupHR'];
+   const kinds=['navigation','read','write'];
+   const knownRoutes=new Set(Object.values(routePools).flat());
+   const routeRows=steady?.routeLatency?.rows??[];
+   const routes=routeRows.filter(row=>roles.includes(row.role)&&kinds.includes(row.kind)
+    &&typeof row.route==='string'&&(knownRoutes.has(row.route)||/^\/[a-z/-]{0,120}$/.test(row.route)))
+    .map(row=>({role:row.role,kind:row.kind,route:row.route,...counts(row,sampleMetrics),
+     ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
+     targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
+   report.mixedLoad={
+    expectedUsers:500,steadyHoldMs:300000,applicationWorkers:1,fixtureVerified:report.fixtureVerified,
+    latencyTargetMet:data.latencyTargetMet===true,trafficSettled:data.trafficSettled===true,
+    functionalAccountingComplete:data.functionalAccountingComplete===true,
+    functionalErrors:Array.isArray(data.functionalErrors)?data.functionalErrors.length:null,
+    browserErrors:Array.isArray(data.browserErrors)?data.browserErrors.length:null,
+    driverFailures:data.driverFailures?Number(data.driverFailures.primary!==null)+(data.driverFailures.secondary?.length??0):null,
+    load:counts(steady?.load,['holdMs','launched','peakActive','completed','failed','earlyLaneExits','iterations']),
+    progress:counts(data.progress,['launched','active','peakActive','completed','failed','iterations','elapsedMs']),
+    roles:Object.fromEntries(roles.map(role=>[
+     role,Object.fromEntries(kinds.map(kind=>[kind,counts(steady?.roles?.[role]?.[kind],sampleMetrics)])),
+    ])),
+    routes,omittedRouteRows:routeRows.length-routes.length,
+   };
+   save();
+  }
+ }
 }
 
 const payrollHistoryPath='/payroll/transaction-view';
@@ -1044,20 +1102,25 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
- await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+ if(!mixedLoad)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
- report.fixture.joinersSeeded=true;
+ if(!mixedLoad){
+  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
+  report.fixture.joinersSeeded=true;
+ }
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  await seedNotificationReads(fixture);
+  if(!mixedLoad)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8'});
   await waitForApp();
   await proxy();
+ }
+ if(mixedLoad)await measureMixedLoad();
+ else if(!fixtureOnly){
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
   await measureActions(fixture);
