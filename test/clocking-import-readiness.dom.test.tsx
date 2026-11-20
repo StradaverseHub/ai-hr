@@ -51,7 +51,7 @@ it('accepts the mapping and file on the first interaction after hydration', asyn
     Object.defineProperty(file, 'arrayBuffer', { value: async () => new TextEncoder().encode(text).buffer });
     await user.upload(fileInput, file);
     await screen.findByText(file.name);
-    await user.click(form.getByRole('button', { name: 'Validate', exact: true }));
+    await user.click(form.getByRole('button', { name: 'Validate' }));
     expect(validate).toHaveBeenCalledExactlyOnceWith('device', text);
   } finally {
     await act(async () => root?.unmount());
