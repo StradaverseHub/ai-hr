@@ -26,6 +26,8 @@ function assertClean(checkout, sha) {
 assert.equal(process.env.GITHUB_ACTIONS, 'true');
 assert.equal(process.env.GITHUB_EVENT_NAME, 'workflow_dispatch');
 assert.equal(process.env.GITHUB_REPOSITORY, 'StradaverseHub/ai-hr');
+assert.equal(process.env.GITHUB_JOB, 'payroll-four-grant-rendered');
+assert.ok(process.env.GITHUB_WORKFLOW_REF?.startsWith('StradaverseHub/ai-hr/.github/workflows/alpha-staging-browser-checks.yml@refs/heads/codex/'));
 assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted');
 assert.equal(process.platform, 'linux');
 assert.equal(source, join(realpathSync(process.env.GITHUB_WORKSPACE), 'source'));
@@ -35,6 +37,37 @@ assertClean(source, candidate);
 assertClean(automation, controller);
 
 const fromCandidate = file => import(pathToFileURL(join(source, file)).href);
+if (process.argv[2] === '--prepare-roles') {
+  // This dedicated diagnostic provisions only its fresh, labelled disposable container.
+  // The candidate's ordinary migration and its focused/full setup guards remain unchanged.
+  const name = `aihr-ci-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}-db-1`;
+  assert.equal(execFileSync('docker', ['inspect', '--format', '{{index .Config.Labels "aihr-owner"}}', name], {encoding: 'utf8'}).trim(), name);
+  const postgres = createRequire(join(source, 'package.json'))('postgres');
+  const {readDraftDiscardRoleCatalog, assertDraftDiscardRoleCatalog} = await fromCandidate('test/helpers/personnel-draft-discard-ci-role-fixture.ts');
+  const sql = postgres(ownerUrl, {max: 1});
+  try {
+    const before = await readDraftDiscardRoleCatalog(sql);
+    assertDraftDiscardRoleCatalog(before, true);
+    assert.equal(before.roles.length, 1, 'Require a fresh app-only disposable cluster');
+    await sql.begin(async tx => {
+      await tx.unsafe('CREATE ROLE ai_hr_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT');
+      await tx.unsafe('CREATE ROLE ai_hr_draft_discard_port NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT');
+      await tx.unsafe('GRANT ai_hr_app TO ai_hr_draft_discard_port WITH INHERIT TRUE');
+      await tx.unsafe('GRANT ai_hr_app TO ai_hr_draft_discard_port WITH SET FALSE');
+      await tx.unsafe('GRANT ai_hr_app TO ai_hr_draft_discard_port WITH ADMIN FALSE');
+      await tx.unsafe('GRANT ai_hr_draft_discard_port TO ai_hr_owner WITH INHERIT FALSE');
+      await tx.unsafe('GRANT ai_hr_draft_discard_port TO ai_hr_owner WITH SET TRUE');
+      await tx.unsafe('GRANT ai_hr_draft_discard_port TO ai_hr_owner WITH ADMIN FALSE');
+    });
+    const after = await readDraftDiscardRoleCatalog(sql);
+    assertDraftDiscardRoleCatalog(after);
+    writeFileSync(join(evidence, 'disposable-role-setup.json'), JSON.stringify({kind: 'DIAGNOSTIC_DISPOSABLE_ROLE_SETUP_NOT_RELEASE', candidate, controller, before, after, releaseAuthorized: false}, null, 2) + '\n');
+  } finally { await sql.end(); }
+  assertClean(source, candidate);
+  assertClean(automation, controller);
+  process.exit(0);
+}
+assert.equal(process.argv.length, 2);
 const {chromium} = createRequire(join(source, 'package.json'))('playwright');
 const {owner, seedBase, resetDb, entitledCtx, setModule, closeAll} = await fromCandidate('test/harness.ts');
 const {seedCatalogs} = await fromCandidate('scripts/seed-catalogs.ts');

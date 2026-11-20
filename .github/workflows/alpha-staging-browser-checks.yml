@@ -227,12 +227,20 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           test -z "$(git status --porcelain)"
+          mkdir -p "$RUNNER_TEMP/payroll-four-grant"
           bash ../automation/.github/ci/postgres.sh reset
-          pnpm db:migrate
+          node --import tsx ../automation/.github/ci/payroll-four-grant-rendered.mjs --prepare-roles
+          set -o pipefail
+          pnpm db:migrate 2>&1 | tee "$RUNNER_TEMP/payroll-four-grant/migration.log"
       - name: Render Payroll under four direct company grants
         run: |
           mkdir -p "$RUNNER_TEMP/payroll-four-grant/operational-preview-heap"
           node --conditions=react-server --import tsx ../automation/.github/ci/payroll-four-grant-rendered.mjs
+      - name: Retain disposable database failure diagnostics
+        if: failure()
+        run: |
+          mkdir -p "$RUNNER_TEMP/payroll-four-grant"
+          docker logs "aihr-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-db-1" > "$RUNNER_TEMP/payroll-four-grant/postgres.log" 2>&1 || true
       - name: Remove owned database
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop
