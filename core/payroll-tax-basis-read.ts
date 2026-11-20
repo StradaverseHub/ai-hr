@@ -113,6 +113,7 @@ export async function readTaxBasisFailuresTx(tx:Tx,ctx:SessionContext,payslipIds
  return failures;
 }
 export type ReprocessTaxBasisRead =
+ | {kind:'readiness'}
  | {kind:'current';recordCorrection:(correction:ReplacementCorrection)=>void}
  | {kind:'history';replay:(sources:readonly TaxBasisSource[],changed:readonly TaxBasisSource[],effective:ReadonlyMap<string,EffectiveTaxBasis>)=>Promise<ReadonlyMap<string,TaxBasisValue>>};
 type EffectiveReadOptions={includeImported?:boolean;sameMonth?:boolean;reprocess?:ReprocessTaxBasisRead};
@@ -169,6 +170,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
  const contextSources=await taxBasisSourceRowsTx(tx,[...new Set(corrections.map(row=>row.payslipId))].filter(id=>!known.has(id)));
  const byId=new Map([...sources,...contextSources].map(s=>[s.id,s])),visited=new Set<string>();
  const changed:TaxBasisSource[]=[];
+ const deferred=new Set<string>();
  for(const row of corrections){
   if(visited.has(row.payslipId))continue;visited.add(row.payslipId);
   if(superseded.has(row.id)||failures?.has(row.employmentId))continue;
@@ -193,6 +195,14 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
     continue;
    }
    if(sourceChanged){
+    if(mode?.kind==='readiness'){
+     if(!source.historyAttemptId&&!Array.isArray(original.componentLines))
+      throw new PayrollTaxBasisError(`${source.period}: original Pay Item detail was not saved.`);
+     // Reconstructing a changed prefix can require reading retained files. The background
+     // employee transaction owns that work and records any evidence it cannot recover.
+     deferred.add(source.id);
+     continue;
+    }
     if(mode?.kind==='history'){
      changed.push(source);
      continue;
@@ -230,7 +240,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
  const hasBasic=current.some(setting=>setting.code.toUpperCase()==='BASIC');
  const rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(imported.map(source=>source.period))]);
  for(const source of imported){
-  if(failures?.has(source.employmentId))continue;
+  if(deferred.has(source.id)||failures?.has(source.employmentId))continue;
   try{
    const statutory=(object(source.source.statutory)?source.source.statutory:{}) as Record<string,unknown>,stamp=(object(statutory.importedTaxBasis)?statutory.importedTaxBasis:{}) as Record<string,unknown>,reviewed=out.get(source.id);
    const receiptSettings=reviewed?reviewed.basis.appliedSettings:stamp.settings,receiptRules=reviewed?reviewed.basis.rulesState:stamp.rulesState;

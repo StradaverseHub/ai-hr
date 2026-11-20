@@ -5166,7 +5166,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       : [];
     // Correct only the tax-input read. The saved payroll row and actual deducted PCB remain original.
     const taxOpeningPrefix=await taxBasisSourceRowsTx(tx,priorSlips.map(slip=>slip.id));
-    const reprocessTaxRead = subset ? reprocessHistoryTaxBasisRead(tx,ctx,async()=>taxOpeningPrefix) : undefined;
+    const reprocessTaxRead = subset ? reprocessHistoryTaxBasisRead(tx,ctx,taxOpeningPrefix) : undefined;
     const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
     const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string;rulesHash:string;settingsHash?:string}[]>();
@@ -10721,16 +10721,14 @@ async function reprocessRunMembersTx(tx:Tx,ctx:SessionContext,batch:PayrollEligi
   return requested.filter(id=>allowed.has(id));
 }
 
-/** Readiness and the worker resolve changed history with the same payroll tax rules. */
+/** Rebuild a changed prefix inside the existing background employee transaction. */
 function reprocessHistoryTaxBasisRead(
-  tx:Tx,ctx:SessionContext,loadPrior:()=>Promise<readonly TaxBasisSource[]>=async()=>[],
+  tx:Tx,ctx:SessionContext,prior:readonly TaxBasisSource[],
 ):ReprocessTaxBasisRead {
-  let prior:Promise<readonly TaxBasisSource[]>|undefined;
   return {kind:'history',async replay(sources,changed,effective){
     const {replayChangedPayrollHistoryTx}=await import('./payroll-tax-basis');
     const employmentId=changed[0].employmentId;
-    prior??=loadPrior();
-    const earlier=(await prior).filter(source=>source.employmentId===employmentId);
+    const earlier=prior.filter(source=>source.employmentId===employmentId);
     const prefix=new Map([...earlier,...sources].map(source=>[source.id,source]));
     return replayChangedPayrollHistoryTx(tx,ctx,[...prefix.values()],changed,effective);
   }};
@@ -10761,14 +10759,14 @@ export async function reviewReprocessTaxReadiness(ctx:SessionContext,batchId:str
       .where(and(inArray(payslip.employmentId,members),eq(payrollBatch.companyId,batch.companyId),
         like(payrollBatch.payPeriod,`${year}-%`),lt(payrollBatch.payPeriod,batch.payPeriod)));
     const priorIds=prior.map(source=>source.id);
-    const failures=await readTaxBasisFailuresTx(tx,ctx,priorIds,{includeImported:true,reprocess:reprocessHistoryTaxBasisRead(tx,ctx)});
+    const failures=await readTaxBasisFailuresTx(tx,ctx,priorIds,{includeImported:true,reprocess:{kind:'readiness'}});
     const earlierMembers=batch.runType!=='regular'||batch.runSeq>1 ? members : identities.filter(e=>e.outstanding).map(e=>e.employmentId);
     if(earlierMembers.length){
       const earlier=await tx.select({id:payslip.id}).from(payslip).innerJoin(payrollBatch,eq(payrollBatch.id,payslip.batchId))
         .where(and(inArray(payslip.employmentId,earlierMembers),eq(payrollBatch.companyId,batch.companyId),
           eq(payrollBatch.payPeriodId,batch.payPeriodId),lt(payrollBatch.runSeq,batch.runSeq)));
       for(const [id,reason] of await readTaxBasisFailuresTx(tx,ctx,earlier.map(source=>source.id),{includeImported:true,sameMonth:true,
-        reprocess:reprocessHistoryTaxBasisRead(tx,ctx,()=>taxBasisSourceRowsTx(tx,priorIds))})){
+        reprocess:{kind:'readiness'}})){
         if(!failures.has(id))failures.set(id,reason);
       }
     }
