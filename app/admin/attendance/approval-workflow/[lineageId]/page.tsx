@@ -24,7 +24,7 @@ export default async function ViewAttendanceWorkflowPage({ params,searchParams }
         notFound();
     // Opening the page never recalculates routes: it shows the latest stored Preview Assignment.
     const [options, latest] = await Promise.all([attendanceApplicationFilterOptions(s, row.companyIds??[row.companyId],attendanceWorkflowSelectedEmployees(row.stages)), getAttendanceWorkflowPreview(s, lineageId, allowedCompanyIds??scopeIds)]);
-    const selectableEmployees = 'approverEmployees' in options ? (options.approverEmployees ?? options.employees) : options.employees;
+    const selectableEmployees = options.approverEmployees ?? options.employees;
     const p = await getTranslations('attendanceWorkflow.previewHistory'), g = await getTranslations('attendanceWorkflow.groups');
     const notice=(await searchParams)?.notice;
     const [employmentTypeLabel,format] = await Promise.all([getTranslations('people.wizard.employmentType'),getFormatter()]);
