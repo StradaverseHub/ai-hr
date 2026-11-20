@@ -785,6 +785,26 @@ async function measureAttendanceWorkflowEditor(fixture){
      stage='approver-selection';
      await eligible.click({timeout:5000});
      await editor.locator('button[role="checkbox"][aria-checked="true"]').first().waitFor({state:'visible',timeout:5000});
+     stage='assignment-options';
+     const department=editor.getByRole('button',{name:'Department',exact:true});
+     const panel=department.locator('..');
+     const option=panel.getByRole('checkbox').first();
+     let catalogueRequests=0;
+     const observeCatalogue=request=>{
+      if(request.method()==='POST'&&new URL(request.url()).pathname===path&&request.headers()['next-action'])catalogueRequests++;
+     };
+     page.on('request',observeCatalogue);
+     const assignmentStarted=performance.now();
+     try{
+      await department.click({timeout:5000});
+      await option.waitFor({state:'visible',timeout:Math.max(1,15000-(performance.now()-assignmentStarted))});
+      row.assignmentOptionsMs=Math.round(performance.now()-assignmentStarted);
+      row.assignmentRequests=catalogueRequests;
+      stage='assignment-selection';
+      await option.click({timeout:5000});
+      await panel.getByRole('checkbox',{checked:true}).first().waitFor({state:'visible',timeout:5000});
+      row.assignmentSelectionMs=Math.round(performance.now()-assignmentStarted);
+     }finally{page.off('request',observeCatalogue);}
      row.status='observed';
     }catch(error){
      row.status='failed';
@@ -794,7 +814,7 @@ async function measureAttendanceWorkflowEditor(fixture){
    }
   }finally{await context.close();}
  }
- assert(visits.length===6&&visits.every(row=>row.status==='observed'),'The workflow editor or approver interaction did not become usable on every visit');
+ assert(visits.length===6&&visits.every(row=>row.status==='observed'),'The workflow editor, approver or assignment interaction did not become usable on every visit');
 }
 
 const rewardsLibraryWitnesses={
