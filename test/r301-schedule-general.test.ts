@@ -106,6 +106,7 @@ vi.mock('next-intl/server', async () => {
   const { fileURLToPath } = await import('node:url');
   const messages = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
   return {
+    getLocale: async () => 'en',
     getTranslations: async (ns: string | { namespace?: string }) =>
       make({
         locale: 'en',
@@ -119,6 +120,8 @@ vi.mock('next-intl/server', async () => {
 });
 
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
+import { initializeStandardSchedule } from '../app/admin/attendance/schedule/initialize-standard';
 import { listAttendancePolicies, setAttendancePolicy } from '../core/attendance';
 import { getScheduleRotation } from '../core/attendance-rotation';
 import { attendanceClockPolicyGroupHistory, attendanceClockPolicyHistory } from '../core/attendance-clock-policy';
@@ -346,6 +349,43 @@ describe('A. the Schedule page is the LIST, and keeps every card that is not per
     expect(elementById(await renderCompany(),'company-policy-settings')).toContain(esc(SC.policyTitle));
     expect(elementById(await renderOvertime(),'work-schedule-overtime')).toContain(esc(SC.wsOtTitle));
     expect(await renderDevices()).toContain('id="registered-devices"');
+  });
+
+  it('renders the first-use Schedule under a held shared Access lock and creates Standard only on submission', async () => {
+    const fixture = await buildScaleFixture(b, { events: 0 });
+    expect(fixture.companyIds).toHaveLength(71);
+    expect(fixture.employmentIds.length).toBeGreaterThanOrEqual(1000);
+    ADMIN = fixture.personas.single;
+    expect((await listAttendanceRules(ADMIN)).some(rule => rule.isDefault)).toBe(false);
+    const lock = `access-configuration:${b.tenantId}`;
+
+    let firstOpen: Promise<string> | undefined;
+    try {
+      await owner.client.begin(async holder => {
+        await holder`select pg_advisory_xact_lock_shared(hashtextextended(${lock}, 0))`;
+        firstOpen = renderSchedule();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const deadline = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Schedule did not render while Access was held shared')), 5000);
+        });
+        try {
+          expect(await Promise.race([firstOpen, deadline])).toContain('Set up the Standard Schedule Group');
+        } finally {
+          clearTimeout(timer);
+        }
+        expect((await listAttendanceRules(ADMIN)).some(rule => rule.isDefault)).toBe(false);
+      });
+    } finally {
+      await firstOpen?.catch(() => {});
+    }
+
+    expect(queryOf(await redirectOf(initializeStandardSchedule)).get('toast')).toBe(SC.createdToast);
+    expect(await redirectOf(initializeStandardSchedule)).toBe(SCHEDULE);
+    const defaults = (await listAttendanceRules(ADMIN)).filter(rule => rule.isDefault);
+    expect(defaults).toEqual([expect.objectContaining({ name: 'Standard' })]);
+    const html = await renderSchedule();
+    expect(rowNaming(html, 'Standard')).toContain('>Edit<');
+    expect(html).not.toContain('Set up the Standard Schedule Group');
   });
 
   it('the two links away are gone', async () => {
