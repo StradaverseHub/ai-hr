@@ -12,12 +12,14 @@ export function departmentFacetBinds(tenant:string,input:Scope){
   ...(input.terminatedAfter===undefined?[]:[input.terminatedAfter]),...(input.employmentIds?.length?[uuidArray(input.employmentIds)]:[])];
 }
 
-export const isSparseDepartmentFacet=(text:string)=>text.startsWith('with authorized_members as materialized (')&&
- text.includes('), represented_department_pairs as materialized (')&&text.includes('join lateral (');
+export const isRepresentedDepartmentFacet=(text:string)=>text.startsWith('with authorized_members as materialized (')&&
+ text.includes('), represented_department_pairs as materialized (');
+export const isSparseDepartmentFacet=(text:string)=>isRepresentedDepartmentFacet(text)&&text.includes('join lateral (');
 
-export function sparseDepartmentFacetBinds(tenant:string,input:Scope){
+export function representedDepartmentFacetBinds(tenant:string,input:Scope){
  return [tenant,tenant,...departmentFacetBinds(tenant,input).slice(5),tenant,tenant,tenant];
 }
+export const sparseDepartmentFacetBinds=representedDepartmentFacetBinds;
 
 /** Exact a293 first-witness statement and captured server-scope layout. */
 export function firstWitnessDepartmentFacet(tenantId:string,input:Scope){
