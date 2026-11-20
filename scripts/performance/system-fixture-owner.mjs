@@ -223,6 +223,7 @@ try{
     const {prepareRewardDraftFixture}=await fixturePhase(t,'rewards-draft-import',()=>import('./reward-draft-fixture.mjs'));
     return prepareRewardDraftFixture({owner,schema:s,ctx,tenant:tenants[t],companies,company:companies[2],today,
      actor:cohort.find(u=>u.role==='groupHR'),includeOrgExplorerMember,
+     phase:(name,run)=>fixturePhase(t,'rewards-'+name,run),
      expectedCompanyEmploymentIds:cohort.filter(u=>u.companyId===companies[2].companyId).map(u=>u.employmentId)});
    });
    // Check the actual drafts used by the browser. Earlier periods retain legacy
