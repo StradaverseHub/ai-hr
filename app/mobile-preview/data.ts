@@ -14,20 +14,39 @@ import { ENTITLEMENT_STATUS_LABEL_KEY, entitlementStatusNeedsNotice } from '@/li
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import type { MobilePreviewData, PreviewRead } from '@/components/mobile-preview/types';
 
+let previewTraceSequence=0;
+function previewReadTrace(){
+  const active=process.env.AIHR_MOBILE_PREVIEW_READ_TRACE==='true';
+  const trace=active?++previewTraceSequence:0,startedAt=performance.now();
+  function mark(phase:string,state:'started'|'settled'){
+    if(active)console.info('PERF_MOBILE_PREVIEW_READ '+JSON.stringify({
+      trace,phase,state,elapsedMs:Math.round(performance.now()-startedAt),
+    }));
+  }
+  async function read<T>(phase:string,work:()=>Promise<T>){
+    mark(phase,'started');
+    try{return await work();}
+    finally{mark(phase,'settled');}
+  }
+  return {read,mark};
+}
+
 // The preview accepts no employee/user/tenant selector. Own employment comes from the web session;
 // team membership and company narrowing come from the same authority as My Team. No session is sent
 // to the browser, and no mobile bearer endpoint is weakened to admit web/demo cookies.
 export async function loadMobilePreview(s: SessionContext, scopeIds: string[], locale: string): Promise<MobilePreviewData> {
+  const trace=previewReadTrace();
+  trace.mark('preview','started');
   const today = todayInKualaLumpur();
-  const me = await myEmployment(s);
-  const name = me?.name ?? await myPersonName(s);
+  const me = await trace.read('own-employment',()=>myEmployment(s));
+  const name = me?.name ?? await trace.read('own-person-name',()=>myPersonName(s));
   const moduleState = (code: string): 'ready' | 'disabled' | 'unavailable' => {
     try { return isModuleEnabled(s, code) ? 'ready' : 'disabled'; }
     catch { return 'unavailable'; }
   };
   async function read<T>(name: string, enabled: 'ready' | 'disabled' | 'unavailable', fn: () => Promise<T>): Promise<PreviewRead<T>> {
     if (enabled !== 'ready') return { status: enabled };
-    try { return { status: 'ready', data: await fn() }; }
+    try { return { status: 'ready', data: await trace.read(name,fn) }; }
     catch { console.error(`[mobile-preview] ${name} unavailable`); return { status: 'unavailable' }; }
   }
   const own = (code: string) => me ? moduleState(code) : 'disabled';
@@ -85,6 +104,7 @@ export async function loadMobilePreview(s: SessionContext, scopeIds: string[], l
       .filter(p => p.status === 'closed' && p.released)
       .map(p => ({ id: p.id, company: p.company, period: p.payPeriod }))),
   ]);
+  trace.mark('preview','settled');
   return { today, leaveHistoryHref: isAdmin(s) && me ? `/leave/employee-records?emp=${me.employmentId}` : '/leave/history', loadedAt: new Date().toISOString(), person: { name, employeeCode: me?.employeeCode ?? null },
     employment: me ? { id: me.employmentId, company: me.company, department: me.department, position: me.position } : null,
     clock, leave, requests, claims, team, tasks, inbox, payslips };
