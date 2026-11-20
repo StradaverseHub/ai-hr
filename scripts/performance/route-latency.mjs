@@ -17,6 +17,17 @@ export function writeRouteTemplate(route,action){
  return path;
 }
 
+/**
+ * @param {{
+ *   samples: readonly {role: string, route: string, method: string, action?: string, durationMs: number, startedMs: number}[],
+ *   pageInteractions: readonly {role: string, route: string, durationMs: number, startedMs: number}[],
+ *   routePools: Record<string, readonly string[]>,
+ *   homeTemplates: readonly {role: string, requests: readonly {path: string}[]}[],
+ *   plannedWrites?: readonly {role: string, route: string, action: string}[],
+ *   steadyStart: number,
+ *   steadyUntil: number
+ * }} input
+ */
 export function routeLatency({samples,pageInteractions,routePools,homeTemplates,plannedWrites=[],steadyStart,steadyUntil}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
  const inside=row=>row.startedMs>=steadyStart&&row.startedMs<steadyUntil;
