@@ -28,6 +28,7 @@ import {
   listFixedTransactionsAcross,
   listIndividualTxnCreators,
   listIndividualTxnsAcross,
+  listPayslipSourceTxns,
   listPayrollRegisterAcross,
   listProcessedPayslipsAcross,
   latestProcessedPayslipPeriod,
@@ -200,6 +201,26 @@ describe('payroll transaction view (a4a05174) — centralized read-only inquiry'
   });
 
   // ───────────────────── 2. Individual Transaction View ─────────────────────
+
+  it('source inputs follow visible run and employee pairs without returning extra combinations', async () => {
+    const actor=adminCtx(base);
+    const first=await hire(actor,base.companyId,base.deptA,'Fictional pair first');
+    const second=await hire(actor,base.companyId,base.deptA,'Fictional pair second');
+    const may=await createBatch(actor,{companyId:base.companyId,payPeriod:'2026-05'});
+    const june=await createBatch(actor,{companyId:base.companyId,payPeriod:'2026-06'});
+    const pairs=[{batchId:may.batchId,employmentId:first.employmentId},{batchId:june.batchId,employmentId:second.employmentId}];
+    await createIndividualTxn(actor,{...pairs[0],kind:'earning',txnDate:'2026-05-10',amount:10});
+    await createIndividualTxn(actor,{batchId:may.batchId,employmentId:second.employmentId,kind:'earning',txnDate:'2026-05-11',amount:20});
+    await createIndividualTxn(actor,{batchId:june.batchId,employmentId:first.employmentId,kind:'earning',txnDate:'2026-06-10',amount:30});
+    await createIndividualTxn(actor,{...pairs[1],kind:'earning',txnDate:'2026-06-11',amount:40});
+    const companyIds=[base.companyId];
+    const rectangular=await listPayslipSourceTxns(actor,{companyIds,batchIds:[may.batchId,june.batchId],employmentIds:[first.employmentId,second.employmentId]});
+    expect(rectangular.map(row=>row.amount)).toEqual(['10.00','20.00','30.00','40.00']);
+    const exact=await listPayslipSourceTxns(actor,{companyIds,pairs:[...pairs,pairs[0]]});
+    expect(exact).toEqual([rectangular[0],rectangular[3]]);
+    expect(await listPayslipSourceTxns(actor,{companyIds:[companyB.companyId],pairs})).toEqual([]);
+    expect(await listPayslipSourceTxns(actor,{companyIds,pairs:[]})).toEqual([]);
+  });
 
   it('individual: aggregates across batches/companies with period+batch shape, and year/month narrows', async () => {
     const a = adminCtx(base);

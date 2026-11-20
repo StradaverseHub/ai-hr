@@ -1,4 +1,5 @@
 import {nativePayrollPayslip,nativePayrollPayslipWrite} from './payroll-history-native-baseline';
+import {personnelFormulaPermissionsTx} from './pay-formula-personnel-permissions';
 import { nonEpfStatutoryWage } from './statutory-wage-inclusion';
 import {movementPayrollInvalidationDeferredTx} from './workforce-payroll-invalidation';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
@@ -10872,11 +10873,10 @@ export async function listReprocessEmployeeOutcomes(
   return withTenant(ctx,async tx=>{
     const batches = await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId}).from(payrollBatch)
       .where(and(inArray(payrollBatch.id,requested),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-    const permittedCompanies = new Set<string>();
-    for(const companyId of new Set(batches.map(batch=>batch.companyId))) {
-      if(await resolvePayrollPermission(tx,ctx,'payroll.reprocess.selective',companyId)) permittedCompanies.add(companyId);
-    }
-    const batchIds = batches.filter(batch=>permittedCompanies.has(batch.companyId)).map(batch=>batch.id);
+    const companyIds=[...new Set(batches.map(batch=>batch.companyId))];
+    const permissions=await personnelFormulaPermissionsTx(tx,ctx,companyIds,['payroll.reprocess.selective']);
+    const permittedCompanies=permissions.get('payroll.reprocess.selective');
+    const batchIds=batches.filter(batch=>permittedCompanies?.has(batch.companyId)).map(batch=>batch.id);
     if(!batchIds.length) return [];
     const jobs = await tx.select({id:payrollReprocessJob.id,batchId:payrollReprocessJob.batchId,
       selection:payrollReprocessJob.employmentIds,result:payrollReprocessJob.result})
