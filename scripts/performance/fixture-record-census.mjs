@@ -211,6 +211,46 @@ async function payrollCorrectionState(db, fixture) {
   return state;
 }
 
+async function organisationLifecycleRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.tenantId, company.tenantId);
+  const [record] = await db`
+    select id, legal_name, country from company
+    where tenant_id = ${company.tenantId}::uuid and id = ${company.companyId}::uuid and archived_at is null
+  `;
+  assert(record?.legal_name && record.country === 'MY', 'Expected the fictional Malaysian company');
+  const [ownJoiner] = fixture.joiners;
+  const cases = await db`
+    select id from lc_onboarding_case
+    where tenant_id = ${company.tenantId}::uuid and company_id = ${company.companyId}::uuid
+      and coalesce(data->'source'->>'fullName', data->'local'->>'fullName') = ${ownJoiner}
+  `;
+  assert.equal(cases.length, 1, 'Expected the seeded company-scoped onboarding case');
+  const organisation = `/admin/organization/${record.id}`;
+  return [
+    {
+      actor: group, template: '/admin/organization/[companyId]', path: organisation,
+      exactHeading: record.legal_name,
+      witness: `form[data-save-section="company"]:has(input[name="id"][value="${record.id}"]) input[name="legalName"]`,
+    },
+    {
+      actor: group, template: '/admin/organization/[companyId]/view', path: organisation + '/view',
+      exactHeading: record.legal_name, witness: `a[data-company-edit-link][href^="${organisation}"]`,
+    },
+    {
+      actor: group, template: '/admin/organization/[companyId]/statutory', path: organisation + '/statutory',
+      exactHeading: 'Statutory Payment Setup', content: record.legal_name,
+      witness: `form[data-statutory-form]:has(input[name="companyId"][value="${record.id}"]) input[name="epfEmployerNo"]`,
+    },
+    ...[group, company].map(actor => ({
+      actor, template: '/lifecycle/onboarding/cases/[id]', path: `/lifecycle/onboarding/cases/${cases[0].id}`,
+      exactHeading: ownJoiner, witness: '.onb-workspace a[href="/lifecycle/onboarding"]',
+    })),
+  ];
+}
+
 function payrollCorrectionRoutes(fixture) {
   const actor = fixture.users[0];
   const subject = fixture.users[4];
@@ -230,7 +270,7 @@ function payrollCorrectionRoutes(fixture) {
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = payrollCorrections ? payrollCorrectionRoutes(fixture)
-    : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture)];
+    : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture), ...await organisationLifecycleRoutes(db, fixture)];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
   const rows = report.fixtureRecordCensus.observations;
