@@ -1,3 +1,4 @@
+import type { MovementHistoryRow } from '@/core/movement';
 import {isContractPostingMovementKind} from '@/core/movement-kinds';
 import { MovementComparisonTable } from './movement-comparison-table';
 import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
@@ -68,6 +69,7 @@ import { EpfRegistrationFields } from '@/components/epf-registration-fields';
 // Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
 // carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
 import { Combobox } from '@/components/ui/combobox';
+import { DirectSuperiorChangeForm } from './direct-superior-change-form';
 import { EpfElection } from '@/components/epf-election';
 import { BankInfoCard } from '@/components/bank-info-card';
 import { IdentityTaxCard } from '@/components/identity-tax-card';
@@ -3127,6 +3129,14 @@ export default async function EmployeePage({
   // the identical caption (476f23ed tenant override included), and two copies of a twenty-case map is how
   // a file and the screen it reproduces start calling the same event different things. This closure is all
   // that stays here: it binds the tenant catalogue and the page's translator.
+  const superiorFactLabel = (value: NonNullable<MovementHistoryRow['superiorChange']>['before']) => {
+    switch (value.kind) {
+      case 'named': return value.name;
+      case 'none': return t('directSuperiorNone');
+      case 'unrecorded': return t('directSuperiorUnrecorded');
+      case 'unavailable': return t('directSuperiorUnavailable');
+    }
+  };
   const movementKindLabel = (kind: string): string =>
     movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t);
   const movementEmpTypeLabel = (v: string | null): string | null =>
@@ -3259,6 +3269,10 @@ export default async function EmployeePage({
                 <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
                   {movementKindLabel(m.kind)}
                 </span>
+                {m.superiorChange && <dl className="mt-1 space-y-1 text-xs font-normal text-muted-foreground">
+                  <div><dt className="inline">{t('directSuperiorPrevious')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.before)}</dd></div>
+                  <div><dt className="inline">{t('directSuperiorNext')} </dt><dd className="inline">{superiorFactLabel(m.superiorChange.after)}</dd></div>
+                </dl>}
                 {m.history && (
                   <span className="ml-2 rounded border border-sky-500/50 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-sky-700 dark:text-sky-400">
                     {t('movement.historyBadge')}
@@ -3565,6 +3579,12 @@ export default async function EmployeePage({
           </ul>
         </section>
       )}
+      {movementDetailData.superiorChange && <dl className="grid gap-3 border-t border-border p-4 text-sm sm:grid-cols-2">
+        <div><dt className="text-muted-foreground">{t('directSuperiorPrevious')}</dt>
+          <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.before)}</dd></div>
+        <div><dt className="text-muted-foreground">{t('directSuperiorNext')}</dt>
+          <dd className="font-medium">{superiorFactLabel(movementDetailData.superiorChange.after)}</dd></div>
+      </dl>}
       {movementDetailData.pendingIntent ? (
         <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
           <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
@@ -4447,15 +4467,6 @@ export default async function EmployeePage({
      into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
      service (set AND clear), so nothing about the columns or events changed. */
 
-  /* Direct Superior (dce55aff) — replaces the Reporting Lines card. ONE searchable field (Employee ID
-     or name) answers the one question the system actually asks: who does this person report to. Saving
-     writes the administrative reporting line via setDirectSuperiorAction → setReportingLine (CLOSE +
-     INSERT supersede, validFrom = today, cycle + self-assignment refusal, DomainEvents) — the same
-     engine every approval/visibility consumer already follows, so the change takes effect everywhere
-     immediately. Manager / Line Type / Effective From / multi-line management are gone from the UI;
-     existing functional/project/dotted rows remain in the data (org chart still renders them — their
-     retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
-     the compact history disclosure below the field. */
   const directSuperiorCard = (
     <Card id="section-direct-superior">
       <SectionHeader title={t('directSuperiorTitle')} />
@@ -4471,11 +4482,11 @@ export default async function EmployeePage({
           )}
         </div>
         {!emp.terminatedOn && others.length > 0 && (
-          <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
-            <input type="hidden" name="employmentId" value={emp.employmentId} />
-            {/* The no-change guard + the "clear → end current line" path both need the current state. */}
-            <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
-            <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
+          <DirectSuperiorChangeForm key={currentSuperior?.id ?? 'unassigned'} action={setDirectSuperiorAction}
+            employmentId={emp.employmentId} currentLineId={currentSuperior?.id ?? null}
+            labels={{ title: t('directSuperiorChangeTitle'), amendment: t('directSuperiorAmend'),
+              movement: t('directSuperiorMovement'), effectiveDate: t('movement.columns.effectiveDate'),
+              reason: t('directSuperiorReason'), cancel: t('directSuperiorCancel'), save: t('directSuperiorSave') }}>
             <div className="sm:col-span-2">
               <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
                 <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
@@ -4489,10 +4500,7 @@ export default async function EmployeePage({
                 />
               </PersonnelField>
             </div>
-            <div>
-              <ActionButton actionKind="saving" className={btnPrimary}>{t('directSuperiorSave')}</ActionButton>
-            </div>
-          </form>
+          </DirectSuperiorChangeForm>
         )}
         {superiorHistory.length > 0 && (
           <details className="text-sm">

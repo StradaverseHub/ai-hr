@@ -6,10 +6,8 @@
  *
  *  - ONE searchable field (Employee ID or name via the shared Combobox — its option labels carry
  *    "EMP-0008 – John Tan" so type-ahead matches both), one superior per employee.
- *  - Saving goes through the existing service path: setReportingLine supersedes (CLOSE + INSERT) the
- *    prior active administrative line, refuses self-assignment and cycles, and appends the
- *    reporting-line.set / .superseded DomainEvents (the audit trail: previous superior, new superior,
- *    actor, timestamp). Effective-dating stays internal — the screen no longer asks for dates.
+ *  - HR chooses between recording a dated movement and amending the current administrative interval.
+ *    Both maintain reporting history and record the actor through their respective audit owner.
  *  - Manager / Line Type / Effective From and the functional/project/dotted management UI are GONE;
  *    existing non-administrative rows stay in the data (org chart keeps rendering them for now).
  *  - Prior superiors remain visible in a compact read-only history disclosure
@@ -21,7 +19,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { amendDirectSuperior, informationCorrectionHistory } from '../core/information-correction';
+import { applyDueMovementsTx, createMovementEvent, editMovementEvent, movementDetail, movementHistory, reverseMovementEvent } from '../core/movement';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -35,6 +36,10 @@ const PAGE = fs.readFileSync(
 );
 const ACTIONS = fs.readFileSync(
   path.resolve(__dirname, '../app/admin/personnel/[employmentId]/actions.ts'),
+  'utf8',
+);
+const FORM = fs.readFileSync(
+  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/direct-superior-change-form.tsx'),
   'utf8',
 );
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -72,7 +77,7 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
     expect(PAGE.includes('id="section-direct-superior"')).toBe(true);
   });
 
-  it('the field is the searchable Combobox posting superiorEmploymentId + the current-state hiddens', () => {
+  it('the field is the searchable Combobox posting superiorEmploymentId with the current line’s revision', () => {
     // Shared employee picker (search by Employee ID or name — the label carries "CODE – Name").
     expect(PAGE.match(/<Combobox\b/g) ?? []).toHaveLength(1);
     const from = PAGE.indexOf('<Combobox');
@@ -82,9 +87,9 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
     const picker = PAGE.slice(from, end + 2);
     expect(picker.length).toBeGreaterThan(100);
     expect(hasPersonnelPostedBinding(picker, 'employment.direct_superior_and_history.superioremploymentid', 'superiorEmploymentId')).toBe(true);
-    // The action's no-change guard + clear path need the current superior/line posted alongside.
-    expect(PAGE.includes('name="currentSuperiorEmploymentId"')).toBe(true);
-    expect(PAGE.includes('name="currentLineId"')).toBe(true);
+    expect(FORM).toContain('name="currentLineId"');
+    expect(FORM).toContain('name="superiorChangeMode"');
+    expect(FORM).toContain('name="superiorEffectiveDate"');
     expect(PAGE.includes('setDirectSuperiorAction')).toBe(true);
   });
 
@@ -96,13 +101,12 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
     expect(PAGE.includes('superiorLabel(currentSuperior.employeeCode, currentSuperior.name)')).toBe(true);
   });
 
-  it('the action writes ONLY the administrative line with validFrom = today (dates stay internal)', () => {
+  it('uses the correction and Movement commands for the two save choices', () => {
     const action = ACTIONS.slice(ACTIONS.indexOf('export async function setDirectSuperiorAction'));
     const body = action.slice(0, action.indexOf('\n}'));
-    expect(body.includes("lineType: 'administrative'")).toBe(true);
-    expect(body.includes('validFrom: today')).toBe(true);
-    // Clearing the field ends the current line (hierarchy top); delegation actions are untouched.
-    expect(body.includes('endReportingLine')).toBe(true);
+    expect(body).toContain('amendDirectSuperior(session');
+    expect(body).toContain('createMovementEvent(session');
+    expect(body).toContain("kind: 'reportingLineChange'");
     expect(ACTIONS.includes('export async function addDelegationAction')).toBe(true);
     expect(ACTIONS.includes('export async function endDelegationAction')).toBe(true);
   });
@@ -282,5 +286,77 @@ describe('Direct Superior — service path (dce55aff)', () => {
     expect(hist[1].validTo).toBe('2026-06-01');
     // The OPEN line (current superior M3) is not history.
     expect(hist.some((h) => h.managerEmploymentId === M3.employmentId)).toBe(false);
+  });
+});
+
+describe('Changed Direct Superior movement', () => {
+  it('presents older tagged history and an official dated change with independent before and after values', async () => {
+    const ctx = adminCtx(base);
+    const employee = (await hire(ctx, base, 'LegacyWorker')).employmentId;
+    const first = (await hire(ctx, base, 'LegacyFirst')).employmentId;
+    const second = (await hire(ctx, base, 'LegacySecond')).employmentId;
+    const third = (await hire(ctx, base, 'DatedThird')).employmentId;
+    const line = { subordinateEmploymentId: employee, lineType: 'administrative' } as const;
+    await setReportingLine(ctx, { ...line, managerEmploymentId: first, validFrom: '2026-02-01' });
+    await setReportingLine(ctx, { ...line, managerEmploymentId: second, validFrom: '2026-03-01',
+      movement: { type: 'reportingLineChange', groupId: '260fdd53-0863-4347-8313-aec786f326dd' } });
+    await createMovementEvent(ctx, { employmentId: employee, kind: 'reportingLineChange',
+      effectiveDate: '2026-04-01', managerEmploymentId: third });
+
+    const changes = (await movementHistory(ctx, employee)).filter(row => row.kind === 'reportingLineChange');
+    expect(changes.map(row => row.effectiveDate)).toEqual(['2026-03-01', '2026-04-01']);
+    expect(changes.map(row => row.superiorChange)).toEqual([
+      { before: { kind: 'named', name: 'LegacyFirst' }, after: { kind: 'named', name: 'LegacySecond' } },
+      { before: { kind: 'named', name: 'LegacySecond' }, after: { kind: 'named', name: 'DatedThird' } },
+    ]);
+    expect((await movementDetail(ctx, employee, changes[0].id))?.superiorChange).toEqual(changes[0].superiorChange);
+
+    await editMovementEvent(ctx, { employmentId: employee, movementId: changes[1].id,
+      kind: 'reportingLineChange', effectiveDate: '2026-04-03', managerEmploymentId: first,
+      reason: 'Correct the date and assignee' });
+    const edited = (await movementHistory(ctx, employee)).filter(row => row.kind === 'reportingLineChange' && !row.reversed);
+    expect(edited.map(row => row.effectiveDate)).toEqual(['2026-03-01', '2026-04-03']);
+    expect(edited[1].superiorChange?.after).toEqual({ kind: 'named', name: 'LegacyFirst' });
+  });
+
+  it('amends the current interval with audit evidence and rejects a stale line revision', async () => {
+    const ctx = adminCtx(base);
+    const employee = (await hire(ctx, base, 'AmendedWorker')).employmentId;
+    const first = (await hire(ctx, base, 'OriginalBoss')).employmentId;
+    const second = (await hire(ctx, base, 'CorrectedBoss')).employmentId;
+    const { reportingLineId } = await setReportingLine(ctx, { subordinateEmploymentId: employee,
+      lineType: 'administrative', managerEmploymentId: first, validFrom: '2026-02-01' });
+    const correction = { employmentId: employee, expectedLineId: reportingLineId,
+      managerEmploymentId: second, reason: 'Correct original assignment' };
+    await amendDirectSuperior(ctx, correction);
+    expect((await reportingLinesFor(ctx, employee)).managers[0]?.employmentId).toBe(second);
+    expect((await movementHistory(ctx, employee)).map(row => row.kind)).toEqual(['hired']);
+    const [audit] = await informationCorrectionHistory(ctx, employee);
+    expect(audit.payload).toMatchObject({ effectiveOn: '2026-02-01', before: { managerEmploymentId: first },
+      after: { managerEmploymentId: second }, reason: correction.reason });
+    await expect(amendDirectSuperior(ctx, { ...correction, managerEmploymentId: null })).rejects.toThrow(/changed after/);
+  });
+
+  it('schedules a clear without changing Employment early and restores the assignment on Delete', async () => {
+    const ctx = adminCtx(base);
+    const employee = (await hire(ctx, base, 'ScheduledWorker')).employmentId;
+    const manager = (await hire(ctx, base, 'CurrentBoss')).employmentId;
+    await setReportingLine(ctx, { subordinateEmploymentId: employee, lineType: 'administrative',
+      managerEmploymentId: manager, validFrom: '2026-02-01' });
+    const tomorrow = todayInKualaLumpur(new Date(Date.now() + 86_400_000));
+    await createMovementEvent(ctx, { employmentId: employee, kind: 'reportingLineChange',
+      effectiveDate: tomorrow, managerEmploymentId: null });
+    const pending = (await movementHistory(ctx, employee)).find(row => row.kind === 'reportingLineChange');
+    expect(pending).toMatchObject({ status: 'pending', effectiveDate: tomorrow,
+      superiorChange: { before: { kind: 'named', name: 'CurrentBoss' }, after: { kind: 'none' } } });
+    expect((await reportingLinesFor(ctx, employee)).managers[0]?.employmentId).toBe(manager);
+    await withTenant(ctx, tx => applyDueMovementsTx(tx, ctx, employee, tomorrow));
+    const [closed] = await withTenant(ctx, tx => tx.select().from(schema.reportingLine)
+      .where(and(eq(schema.reportingLine.subordinateEmploymentId, employee), eq(schema.reportingLine.managerEmploymentId, manager))));
+    expect(closed.validTo).toBe(tomorrow);
+    await reverseMovementEvent(ctx, { employmentId: employee, movementId: pending!.id, reason: 'Entered for the wrong employee' });
+    const [restored] = await withTenant(ctx, tx => tx.select().from(schema.reportingLine)
+      .where(eq(schema.reportingLine.id, closed.id)));
+    expect(restored.validTo).toBeNull();
   });
 });

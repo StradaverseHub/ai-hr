@@ -30,6 +30,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { and, eq, inArray } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee, setEmploymentAssignment, setEmploymentGrade, setEmploymentInfo, setReportingLine } from '../core/org';
@@ -248,7 +249,7 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     expect(await kinds(leaver.employmentId)).toContain('termination');
   });
 
-  it('Direct Superior — the one generic writer left outside Movement — is TAGGED at source and keeps its row', async () => {
+  it('the Employment Direct Superior action records one canonical dated Movement', async () => {
     const mgr = await hireOne();
     const other = await hireOne();
     const hire = await hireOne({ managerEmploymentId: mgr.employmentId });
@@ -258,7 +259,9 @@ describe('30325fc1 — an untagged edit is not a movement', () => {
     const fd = new FormData();
     fd.set('employmentId', hire.employmentId);
     fd.set('superiorEmploymentId', other.employmentId);
-    fd.set('currentSuperiorEmploymentId', mgr.employmentId);
+    fd.set('superiorChangeMode', 'movement');
+    fd.set('superiorEffectiveDate', todayInKualaLumpur());
+    fd.set('superiorChangeReason', 'Official reassignment');
     await expect(setDirectSuperiorAction(fd)).rejects.toThrow('NEXT_REDIRECT');
     expect(LAST_REDIRECT).toContain('toast=Saved');
 
