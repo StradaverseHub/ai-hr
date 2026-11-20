@@ -1,12 +1,14 @@
 import {afterAll,beforeEach,it,expect,vi} from 'vitest';
 import {randomUUID} from 'node:crypto';
-import {eq,sql} from 'drizzle-orm';
+import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
 import {withTenant,type SessionContext} from '../db/client';
 import {saveLetterPolicy,getLetterPolicy,listLetterPolicies,saveLetterPermission,readLetterPermissions,addLetterAsset,listLetterSignatories,letterCompanyAccess,listLetterEmployeeChoices,listLetterSettingAssets,readLetterAsset} from '../core/letters';
 import type {LetterPolicy} from '../lib/letter-workflow';
 import type {NotificationEmailTransport} from '../core/notification-email-delivery';
 import {letterNavigation} from '../core/letter-navigation';
+import {visibleLetterDestinations} from '../lib/letter-navigation';
+import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {companyDeleteStatus,listReadOnlyWorkforcePickPageTx} from '../core/read';
 import {hireEmployee} from '../core/org';
@@ -76,6 +78,49 @@ it('resolves real navigation permissions only in the selected company and immedi
  expect(await letterNavigation(ctx,[b.companyId])).toEqual(['/letters/templates','/letters/fields','/letters/generate','/letters/approval','/letters/register','/letters/reports','/letters/settings']);
  const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'Fictional scoped configuration user',primaryEmail:'nav-settings@fixture.test'}).returning(),userId=await createAppUser(b.tenantId,person.id,'employee'),[other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other company'}).returning();
  await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:true});const editor={...ctx,userId,personId:person.id,roles:['employee']};expect(visibleModuleCodes(editor)).toContain('employees');expect(await letterNavigation(editor,[b.companyId])).toEqual(['/letters/settings']);expect(await letterNavigation(editor,[other.id])).toEqual([]);await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'settings',allowed:false});expect(await letterNavigation(editor,[b.companyId])).toEqual([]);
+});
+
+it('preserves per-company menu decisions at group scale when checking only as much as needed',async()=>{
+ const scale=await buildScaleFixture(b,{events:0});
+ expect(scale.companyIds).toHaveLength(71);
+ expect(scale.employmentIds).toHaveLength(1000);
+ const legacy=(session:SessionContext,ids:string[])=>withTenant(session,async tx=>{
+  const access=(capability:string)=>sql<boolean>`app.letter_permission_for_user(app.current_user_id(),${s.company.id},${capability})`;
+  const rows=await tx.select({
+   read:access('read'),template:access('template'),generate:access('generate'),
+   approve:access('approve'),report:access('report'),settings:access('settings'),
+  }).from(s.company).where(and(inArray(s.company.id,ids),isNull(s.company.archivedAt),sql`app.principal_snapshot_current()`));
+  return visibleLetterDestinations(rows);
+ });
+ const [person]=await owner.db.insert(s.person).values({
+  tenantId:b.tenantId,fullName:'Fictional split Letter rights',primaryEmail:'split-letters@fixture.test',
+ }).returning();
+ const userId=await createAppUser(b.tenantId,person.id,'employee');
+ const employee={...ctx,userId,personId:person.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ const otherCompany=scale.operatingCompanyIds[0];
+ await saveLetterPermission(ctx,{companyId:b.companyId,role:'employee',capability:'read',allowed:true});
+ await saveLetterPermission(ctx,{companyId:otherCompany,role:'employee',capability:'generate',allowed:true});
+ const cases=[
+  {name:'group-wide',session:scale.personas.group,ids:[...scale.companyIds]},
+  {name:'one-company',session:scale.personas.single,ids:[scale.singleCompanyId]},
+  {name:'split employee rights',session:employee,ids:[...scale.companyIds]},
+  {name:'denied',session:employee,ids:[scale.singleCompanyId]},
+  {name:'revoked principal',session:{...employee,roles:['super_admin'],grants:[{role:'super_admin',companyId:null}]},ids:[...scale.companyIds]},
+ ];
+ for(const {name,session,ids} of cases){
+  const before=performance.now();
+  const expected=await legacy(session,ids);
+  const controlMs=performance.now()-before;
+  const after=performance.now();
+  const actual=await letterNavigation(session,ids);
+  expect(actual,name).toEqual(expected);
+  if(name==='split employee rights'){
+   expect(actual).toContain('/letters/register');
+   expect(actual).not.toContain('/letters/generate');
+  }
+  if(name==='denied'||name==='revoked principal')expect(actual).toEqual([]);
+  console.info('LETTER_NAVIGATION_SCALE',JSON.stringify({name,controlMs:Math.round(controlMs),candidateMs:Math.round(performance.now()-after)}));
+ }
 });
 
 it('refuses activation of a reference format whose company code is unavailable without allocating a counter',async()=>{
