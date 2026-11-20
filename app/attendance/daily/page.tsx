@@ -7,6 +7,7 @@ import { scopedSession } from '@/lib/scope';
 import { attendanceForDatePage, attendancePunchesForDays, ATTENDANCE_DAILY_Q_MAX } from '@/core/attendance';
 import { flagOf, statusOf } from '@/core/attendance-derive';
 import { listCompanies, listDepartments } from '@/core/read';
+import { withSharedReadSnapshot } from '@/db/client';
 import { Avatar, Button, Card, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { AttendanceTabs } from '@/components/attendance-tabs';
 import { AttendanceDayCells, AttendanceTrailRow, dayCellLabels } from '@/components/attendance-day-cells';
@@ -47,29 +48,32 @@ export default async function DailyAttendancePage({
   const todayIso = todayInKualaLumpur();
   const date = sp.date && /^\d{4}-\d{2}-\d{2}$/.test(sp.date) ? sp.date : todayIso;
 
-  const [companies, departments] = await Promise.all([
-    listCompanies(s),
-    listDepartments(s, { companyIds: scopeIds }),
-  ]);
   // Company filter narrows the scope to a single company (still fenced by the switcher scope); Department
   // filters via the employee's current assignment. Blank = all companies in scope / all departments.
   const companyFilter = sp.company && scopeIds.includes(sp.company) ? sp.company : undefined;
-  const deptFilter = sp.dept && departments.some((d) => d.id === sp.dept) ? sp.dept : undefined;
   const effectiveScope = companyFilter ? [companyFilter] : scopeIds;
   const q = (sp.q ?? '').trim().slice(0, ATTENDANCE_DAILY_Q_MAX);
   const pq = parsePageQuery(sp);
-  const { rows: dayPage, total } = await attendanceForDatePage(s, date, effectiveScope, {
-    departmentId: deptFilter,
-    q,
-    limit: pq.limit,
-    offset: pq.offset,
+  const { companies, departments, deptFilter, dayPage, total, punchesByAttendance } = await withSharedReadSnapshot(s, async () => {
+    const [companies, departments] = await Promise.all([
+      listCompanies(s),
+      listDepartments(s, { companyIds: scopeIds, usage: false }),
+    ]);
+    const deptFilter = sp.dept && departments.some((d) => d.id === sp.dept) ? sp.dept : undefined;
+    const { rows: dayPage, total } = await attendanceForDatePage(s, date, effectiveScope, {
+      departmentId: deptFilter,
+      q,
+      limit: pq.limit,
+      offset: pq.offset,
+    });
+    // Fetch the punch trail for just the rows on this page.
+    const punchesByAttendance = await attendancePunchesForDays(
+      s,
+      dayPage.flatMap((r) => (r.attendanceId ? [r.attendanceId] : [])),
+    );
+    return { companies, departments, deptFilter, dayPage, total, punchesByAttendance };
   });
   const pgState = pageState(pq, total, dayPage.length);
-  // R45 — the clocking trail for the page's days only (one read), for the "several clockings" line.
-  const punchesByAttendance = await attendancePunchesForDays(
-    s,
-    dayPage.flatMap((r) => (r.attendanceId ? [r.attendanceId] : [])),
-  );
 
   /**
    * dde08629 (r319) — the sticky identity columns. `left-[7rem]` is arithmetic, not a guess: the code
