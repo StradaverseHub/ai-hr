@@ -123,10 +123,11 @@ try {
     page.setDefaultNavigationTimeout(120000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    await page.goto(base + '/login');
     const admin = '22222222-2222-2222-2222-222222222222';
-    await page.locator(`form[action="/login/as"]:has(input[value="${admin}"]) button`).click();
-    await page.waitForURL(url => !url.pathname.startsWith('/login'));
+    // Use the app's identity-selection handler directly so development need not compile Home.
+    const login = await page.request.post(base + '/login/as', {form: {userId: admin}, maxRedirects: 0});
+    assert.equal(login.status(), 303);
+    assert.equal(login.headers().location, '/');
     const session = (await page.context().cookies(base)).find(cookie => cookie.name === 'dev_user');
     assert.equal(session?.value, admin, 'Fixture admin selection did not commit a session');
     const response = await page.goto(base + '/analytics');
