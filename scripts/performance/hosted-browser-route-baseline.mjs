@@ -53,8 +53,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44759931493,artifactId:14639958877,
-  sourceSha:'94b95e8ed736ba4a6b0b17c012f98ebde9a9189e'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44762713497,artifactId:14642887375,
+  sourceSha:'f49895a2e800ddf8156d6f6c3ddd7e4121742ad9'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -330,7 +330,7 @@ function retainMixedDriverStage(path){
 
 // The driver snapshots contain private SQL text and session details. Publish only
 // fixed category names and aggregate counters for its bounded statement sample.
-function summarizeMixedStatements(statements){
+function summarizeMixedStatements(statements, applicationRoot=false){
  if(!Array.isArray(statements)||statements.length===0||statements.length>35)return null;
  const categories=[
   ['offboarding-posting-access',/\boffboarding_posting_queue_access\b/i],
@@ -348,6 +348,20 @@ function summarizeMixedStatements(statements){
   ['workflow',/\b(?:workflow|approval|lifecycle|notification)_\w+\b/i],
   ['workforce',/\b(?:employment|employee|person|workforce)(?:_\w+)?\b/i],
  ];
+ const rootFamilies=[
+  ['account-task-bundle',/\btask_caller\b/i],
+  ['letters-navigation',/\bletter_permission_for_user\b/i],
+  ['shell-navigation',/\bonboarding_status\b/i],
+  ['workforce-scope',/\b(?:access_workforce_unassigned|access_workforce_projection_company)\b/i],
+  ['offboarding-postings',/\boffboarding_posting_queue_access\b/i],
+  ['lifecycle-navigation',/\b(?:contract_shared_navigation_access|probation_navigation_access|onboarding_v9_page_reader)\b/i],
+  ['transaction-context-setup',/\bset_config\b/i],
+  ['own-payroll',/\b(?:payslip|native_payroll_payslip|payroll_batch)\b/i],
+  ['principal-and-own-subject',/\bprincipal_snapshot_current\b[\s\S]*\bis_self_person\b/i],
+  ['principal-proof-with-other-work',/\bprincipal_snapshot_current\b/i],
+  ['claimed-grants-with-other-work',/\bcurrent_grants\b/i],
+ ];
+ const groupsByKind=applicationRoot?rootFamilies:categories;
  const metrics={
   calls:['calls'],
   executionMs:['total_exec_time'],
@@ -364,7 +378,7 @@ function summarizeMixedStatements(statements){
  const groups=new Map();
  for(const statement of statements){
   if(typeof statement?.normalized_query!=='string')continue;
-  const category=categories.find(([,pattern])=>pattern.test(statement.normalized_query))?.[0]??'unclassified';
+  const category=groupsByKind.find(([,pattern])=>pattern.test(statement.normalized_query))?.[0]??'unclassified';
   const group=groups.get(category)??{
    category,statements:0,...Object.fromEntries(Object.keys(metrics).map(key=>[key,0])),
   };
@@ -412,8 +426,10 @@ function readMixedRootStatements(name,dockerConfig){
    '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
    '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
   ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:256*1024,stdio:['ignore','pipe','pipe']});
-  const categories=summarizeMixedStatements(JSON.parse(result));
-  return categories?{scope:'up to 35 top-level statements executed under the application role',categories}:null;
+  const sample=JSON.parse(result);
+  const categories=summarizeMixedStatements(sample);
+  const statementFamilies=summarizeMixedStatements(sample,true);
+  return categories?{scope:'up to 35 top-level statements executed under the application role',categories,statementFamilies}:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
