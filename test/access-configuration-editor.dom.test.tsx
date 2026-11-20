@@ -28,6 +28,16 @@ function fixture(){
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 describe('access editor decisions and stale preview behavior',()=>{
  it('renders the existing security controls at desktop and phone sizes',async()=>{fixture();await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-permissions');},60000);
+ it('provides a page heading and keeps the selected user available while filtering',()=>{
+  fixture();
+  expect(screen.getByRole('heading',{name:'Security & permissions',level:1})).toBeVisible();
+  const search=screen.getByRole('searchbox',{name:'Search users'});
+  const users=screen.getByRole('combobox',{name:'User',exact:true});
+  fireEvent.change(search,{target:{value:'missing user'}});
+  expect(Array.from((users as HTMLSelectElement).options,option=>option.text)).toEqual(['Fictional root']);
+  fireEvent.change(search,{target:{value:'WORKER'}});
+  expect(Array.from((users as HTMLSelectElement).options,option=>option.text)).toEqual(['Fictional root','Fictional worker']);
+ });
  it('keeps protected groups and unsupported capabilities read-only and never offers confirmation before preview',()=>{
   const f=fixture();expect((screen.getByRole('textbox',{name:'Group name'}) as HTMLInputElement).disabled).toBe(true);
   f.chooseReaders();expect((screen.getByRole('checkbox',{name:/Maintain workforce records/}) as HTMLInputElement).disabled).toBe(true);

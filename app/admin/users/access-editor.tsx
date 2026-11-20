@@ -1,5 +1,5 @@
 'use client';
-import {useRef,useState} from 'react';
+import {useMemo,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {Button,Card,Field,inputCls} from '@/components/ui';
@@ -40,7 +40,10 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
  const userLabel=(id:string)=>users.find(user=>user.id===id)?.label??t('unavailable');
  const companyLabel=(id:string|null)=>id===null?t('allCompanies'):companies.find(company=>company.id===id)?.label??t('unavailable');
  const capabilityLabel=(id:string)=>capabilities.find(capability=>capability.id===id)?.label??t('unavailable');
- const foundUsers=users.filter(user=>user.id===userId||user.label.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
+ const foundUsers=useMemo(()=>{
+  const search=query.toLocaleLowerCase();
+  return search?users.filter(user=>user.id===userId||user.label.toLocaleLowerCase().includes(search)):users;
+ },[query,userId,users]);
  const mutableCapabilities=capabilities.filter(capability=>capability.id!=='access.system_admin');
  const matchingMembers=snapshot.memberships.filter(row=>row.groupId===groupId&&row.userId===userId&&row.companyId===scope);
  const derivedMember=matchingMembers.some(row=>row.derived);
@@ -80,12 +83,12 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
  function resolutionLabel(resolution:AccessResolution){return resolution.reason==='allowed'?t('allowed'):resolution.reason==='denied'?t('denied'):resolution.reason==='unassigned'?t('noGrant'):t('unavailable');}
 
  return <div className="space-y-6">
-  <div><h2 className="text-xl font-semibold">{t('title')}</h2><p className="mt-1 text-sm text-muted-foreground">{t('description')}</p></div>
+  <div><h1 className="text-xl font-semibold">{t('title')}</h1><p className="mt-1 text-sm text-muted-foreground">{t('description')}</p></div>
   {error&&<div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{t(`errors.${error}`)}{error==='changed'&&<Button variant="outline" className="ml-3" onClick={()=>router.refresh()}>{t('reload')}</Button>}</div>}
   {saved&&<div role="status" className="rounded-md border p-3 text-sm">{t('saved')} <Button variant="outline" onClick={()=>router.refresh()}>{t('reload')}</Button></div>}
   <fieldset disabled={disabled} className="space-y-6">
    <Card className="space-y-5 p-4 sm:p-6">
-    <h3 className="font-semibold">{t('groups')}</h3>
+    <h2 className="font-semibold">{t('groups')}</h2>
     <div className="grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
      <nav aria-label={t('groups')} className="space-y-1">{groups.map(row=><button type="button" key={row.id} aria-pressed={groupId===row.id} onClick={()=>selectGroup(row.id)} className={`w-full rounded-md border px-3 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${groupId===row.id?'border-primary bg-primary/5':'border-transparent hover:bg-muted'}`}>{row.name}{row.systemAdministrator&&<span className="mt-1 block text-xs text-muted-foreground">{t('protected')}</span>}</button>)}{!groups.length&&<p className="text-sm text-muted-foreground">{t('noGroups')}</p>}</nav>
      <div className="min-w-0 space-y-4">{group&&<>
@@ -104,7 +107,7 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
     </div>
    </Card>
    <Card className="space-y-4 p-4 sm:p-6">
-    <h3 className="font-semibold">{t('individualAccess')}</h3><p className="text-sm text-muted-foreground">{t('individualHelp')}</p>
+    <h2 className="font-semibold">{t('individualAccess')}</h2><p className="text-sm text-muted-foreground">{t('individualHelp')}</p>
     <div className="grid gap-4 sm:grid-cols-2"><Field label={t('searchUsers')}><input type="search" className={inputCls} value={query} onChange={event=>{invalidate();setQuery(event.target.value);}}/></Field><Field label={t('user')}><select className={inputCls} value={userId} onChange={event=>{invalidate();setUserId(event.target.value);}}>{foundUsers.map(user=><option key={user.id} value={user.id}>{user.label}</option>)}</select></Field></div>
     <p className="text-sm">{t('selectedGroup')}: <strong>{group?.name??t('unavailable')}</strong>{' · '}{companyLabel(scope)}</p>
     {derivedMember?<p className="text-sm text-muted-foreground">{t('roleMembershipHelp')}</p>:<Button type="button" variant="outline" disabled={pending!==null||!group||!userId||group.systemAdministrator} onClick={()=>group&&review({kind:'setMembership',groupId:group.id,userId,companyId:scope,enabled:matchingMembers.length===0})}>{matchingMembers.length?t('previewRemoveMember'):t('previewAddMember')}</Button>}
@@ -117,12 +120,12 @@ function AccessConfigurationEditorDraft({snapshot,capabilities,users,companies,p
   </fieldset>
   <div aria-live="polite">{pending==='preview'&&<p role="status" className="text-sm text-muted-foreground">{t('preparing')}</p>}</div>
   {preview&&<Card className="space-y-4 p-4 sm:p-6">
-   <h3 className="font-semibold">{t('reviewTitle')}</h3><p className="text-sm font-medium">{t(`operations.${preview.command.kind}`)}{`: ${commandSubject(preview.command)}`}</p><p className="text-sm text-muted-foreground">{t('safeguards')}</p>
+   <h2 className="font-semibold">{t('reviewTitle')}</h2><p className="text-sm font-medium">{t(`operations.${preview.command.kind}`)}{`: ${commandSubject(preview.command)}`}</p><p className="text-sm text-muted-foreground">{t('safeguards')}</p>
    {preview.result.changesUnrestrictedScope&&<p className="rounded-md border border-amber-400/50 bg-amber-50/10 p-3 text-sm">{t('futureScope')}</p>}
    {!preview.result.changes.length&&<p className="text-sm text-muted-foreground">{t('noCurrentChanges')}</p>}
-   <div className="space-y-3">{preview.result.changes.map((change,index)=><section key={change.userId+change.capabilityId+String(change.companyId)+index} className="rounded-md border p-3"><h4 className="text-sm font-medium">{userLabel(change.userId)} · {capabilityLabel(change.capabilityId)} · {companyLabel(change.companyId)}</h4><div className="mt-2 grid gap-3 sm:grid-cols-2"><div className="text-sm"><p>{t('before')}: {resolutionLabel(change.before)}</p>{permissionSources(change.before)}</div><div className="text-sm"><p>{t('after')}: {resolutionLabel(change.after)}</p>{permissionSources(change.after)}</div></div></section>)}</div>
+   <div className="space-y-3">{preview.result.changes.map((change,index)=><section key={change.userId+change.capabilityId+String(change.companyId)+index} className="rounded-md border p-3"><h3 className="text-sm font-medium">{userLabel(change.userId)} · {capabilityLabel(change.capabilityId)} · {companyLabel(change.companyId)}</h3><div className="mt-2 grid gap-3 sm:grid-cols-2"><div className="text-sm"><p>{t('before')}: {resolutionLabel(change.before)}</p>{permissionSources(change.before)}</div><div className="text-sm"><p>{t('after')}: {resolutionLabel(change.after)}</p>{permissionSources(change.after)}</div></div></section>)}</div>
    <div className="flex flex-wrap gap-3"><Button type="button" disabled={pending!==null||saved} onClick={confirm}>{pending==='save'?t('saving'):t('confirm')}</Button><Button type="button" variant="outline" disabled={pending==='save'} onClick={invalidate}>{t('back')}</Button></div>
   </Card>}
-  <Card className="space-y-3 p-4 sm:p-6"><h3 className="font-semibold">{t('history')}</h3>{history.length?<ul className="divide-y">{history.map(event=><li key={event.id} className="py-3 text-sm"><p>{event.operationLabel}</p><p className="mt-1 text-xs text-muted-foreground">{event.actorLabel} · {event.when}</p></li>)}</ul>:<p className="text-sm text-muted-foreground">{t('noHistory')}</p>}</Card>
+  <Card className="space-y-3 p-4 sm:p-6"><h2 className="font-semibold">{t('history')}</h2>{history.length?<ul className="divide-y">{history.map(event=><li key={event.id} className="py-3 text-sm"><p>{event.operationLabel}</p><p className="mt-1 text-xs text-muted-foreground">{event.actorLabel} · {event.when}</p></li>)}</ul>:<p className="text-sm text-muted-foreground">{t('noHistory')}</p>}</Card>
  </div>;
 }
