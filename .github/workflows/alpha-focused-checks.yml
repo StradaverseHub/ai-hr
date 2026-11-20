@@ -156,7 +156,9 @@ jobs:
           if [[ "$REUSE_COMBINED_SURFACE" == true ]] && {
             [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(rewards|workflow-both)$ || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
             [[ "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 &&
-               ( "$EXPECTED_SHA" != d51fa7bb0b2a68071901187f6f0864239bbfd677 || "$BROWSER_SURFACE_PROBE" != workflow-both ) ]];
+               ( ( "$EXPECTED_SHA" != d51fa7bb0b2a68071901187f6f0864239bbfd677 &&
+                   "$EXPECTED_SHA" != f495a75d7743861bd4ec9ef3e5829ef99f0af15f ) ||
+                 "$BROWSER_SURFACE_PROBE" != workflow-both ) ]];
           }; then
             exit 2
           fi
@@ -270,6 +272,9 @@ jobs:
             d51fa7bb0b2a68071901187f6f0864239bbfd677)
               job=136440848152 run=44780216803 artifact=14652078434
               controller=2e9f358e10397feb07f91f93d723ab154a154fba digest=f76f009a6b42caa383dbdd9973ee08b24d51d136c58a05bc05a2f8f7634a68de ;;
+            f495a75d7743861bd4ec9ef3e5829ef99f0af15f)
+              job=136454932657 run=44784219411 artifact=14653418466
+              controller=fe78688f5b7da5a0a5167857f6a5e7df8b7e43c2 digest=84305517549121bf18bc0bc9975e94ccc7e3bd8655d6800d6aac030584cafc54 ;;
             *) exit 2 ;;
           esac
           test "$(gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job" --jq '[.conclusion,.run_attempt,.name,.run_id,.head_sha] | @tsv')" = "$(printf 'success\t1\tlinux-build\t%s\t%s' "$run" "$controller")"

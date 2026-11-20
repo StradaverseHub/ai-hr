@@ -66,6 +66,10 @@ const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrac
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
+function checkpoint(stage){
+ report.browserStage=stage;
+ save();
+}
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
@@ -1979,12 +1983,13 @@ try{
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
-  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+  checkpoint('group-shape-seeding');
+  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:10,connection:{statement_timeout:60000,lock_timeout:10000}});
   try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   save();
+   checkpoint('group-shape-closing');
   }finally{await owner.end({timeout:5});}
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
@@ -1997,18 +2002,26 @@ try{
   report.fixture.rewardsDraftSeeded=true;
  }
  report.fixtureVerified=true;
+ checkpoint('fixture-verified');
  if(!fixtureOnly){
   if(staticShard===null&&!diagnosticCount)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true',
     AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
+  checkpoint('application-startup');
   await waitForApp();
+  checkpoint('browser-proxy-startup');
   await proxy();
+  checkpoint('browser-measurement');
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='workflow-both'){
+   checkpoint('attendance-workflow-list');
    try{await measureSurfaceProbe(fixture,'workflow-list');}
-   finally{await measureAttendanceWorkflowEditor(fixture);}
+   finally{
+    checkpoint('attendance-workflow-editor');
+    await measureAttendanceWorkflowEditor(fixture);
+   }
   }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
@@ -2036,6 +2049,7 @@ try{
    assert(journeysObserved,'Browser baseline had missing or failed actions');
   }
  }
+ checkpoint('browser-measurement-finished');
 }finally{
  try{await browser?.close();}
  finally{
