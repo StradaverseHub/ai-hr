@@ -1315,7 +1315,9 @@ async function main(){
  save();
  requireCleanDriver();
  markComparisonStage('workflow-baseline');
+ const markWorkflow=(step)=>{if(stageEvidence)markComparisonStage(step);};
  if(suite==='whole-system'||strictRenderedPreflight){
+  markWorkflow('baseline-org-explorer');
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    let stage='org-explorer-workflow';
@@ -1323,9 +1325,11 @@ async function main(){
     requireNativeBusiness();
     await withLockWorkload('org-explorer',()=>exerciseOrgExplorer({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='personnel-switcher-workflow';
+    markWorkflow('baseline-personnel-switcher');
     requireNativeBusiness();
     await withLockWorkload('personnel-switcher',()=>exercisePersonnelSwitcher({page,user:group,fixture,report,save,phase:'baseline'}));
     stage='payroll-readiness-workflow';
+    markWorkflow('baseline-payroll-group');
     requireNativeBusiness();
     await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:group,fixture,report,save,phase:'baseline'}));
    }catch(reason){notePreflightStageFailure(reason,stage,group,page);throw reason;}
@@ -1333,16 +1337,20 @@ async function main(){
   requireCleanDriver();
  }
  if(suite==='whole-system'||suite==='workflow-preflight'){
+  markWorkflow('baseline-movement');
   const ctx=await context(group);
   await withContext(ctx,async()=>{const page=await ctx.newPage();
    requireNativeBusiness();
    await withLockWorkload('movement',()=>exerciseMovement({base,page,actor:group,subject:employee,fixture,db,report,save,phase:'baseline',recordEvent:suite==='workflow-preflight'}));
+   markWorkflow('baseline-payroll-register');
    requireNativeBusiness();
    await withLockWorkload('payroll-register',()=>exercisePayrollRegister({base,page,user:group,fixture,db,request,report,save}));
+   markWorkflow('baseline-saved-reports');
    requireNativeBusiness();
    await withLockWorkload('saved-reports',()=>exerciseSavedReport({page,user:group,fixture,db,base,phase:'baseline',thinkTimeMs,report,save}));
   });
   requireCleanDriver();
+  markWorkflow('baseline-register-authority');
   const foreignGroup=fixture.users.find(user=>user.role==='groupHR'&&user.tenant!==group.tenant);
   assert(foreignGroup,'Payroll register needs a foreign group HR boundary actor');
   for(const actor of [hr,foreignGroup]){
@@ -1352,6 +1360,7 @@ async function main(){
   }
  }
  // Tenant-wide AI spend and provider configuration keep their group-administrator guards.
+ markWorkflow('baseline-ai-authority');
  {
   const ctx=await context(hr);
   await withContext(ctx,async()=>{const page=await ctx.newPage();for(const path of ['/control-tower/agents/spending','/control-tower/agents/provider']){
@@ -1361,6 +1370,7 @@ async function main(){
    report.boundaries.push({kind:'AI group-administrator-only route',role:hr.role,path,redirectDenied:true});save();
   }
   if(suite==='whole-system'||strictRenderedPreflight){
+   markWorkflow('baseline-payroll-company');
    requireNativeBusiness();
    await withLockWorkload('payroll-readiness',()=>exercisePayrollBrowser({base,page,user:hr,fixture,report,save,phase:'baseline'}));
   }
@@ -1368,6 +1378,7 @@ async function main(){
   requireCleanDriver();
  }
  // Locale projection and real client navigation must work before any capacity claim.
+ markWorkflow('baseline-claims-language');
  for(const locale of ['en','ms','zh','ta','th','vi']){
   const ctx=await context(employee,locale);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/claims');
@@ -1380,6 +1391,7 @@ async function main(){
   requireCleanDriver();
  }
  {
+  markWorkflow('baseline-client-navigation');
   const ctx=await context(employee);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,employee,'/leave');
   const documents=[];page.on('request',request=>{if(request.resourceType()==='document')documents.push(request.url());});
@@ -1397,6 +1409,7 @@ async function main(){
   });
   requireCleanDriver();save();
  }
+ markWorkflow('baseline-language-switch');
  for(const [user,path]of [[employee,'/claims'],[hr,'/admin/personnel']]){
   const ctx=await context(user);
   await withContext(ctx,async()=>{const page=await ctx.newPage();await visit(page,user,path);await languageJourney(page,user,path,'baseline');});
