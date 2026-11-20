@@ -12,7 +12,9 @@ it('reuses the exact admission request after transport failure and preserves the
  render(<NextIntlClientProvider locale="en" messages={en}><ContractManualWorkflow caseId="case" revision={7}/></NextIntlClientProvider>);
  fireEvent.change(await screen.findByLabelText('Live manual workflow'),{target:{value:'workflow'}});fireEvent.click(screen.getByRole('button',{name:'Start selected workflow'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('selection is retained');expect(screen.getByLabelText('Live manual workflow')).toHaveValue('workflow');
- fireEvent.click(screen.getByRole('button',{name:'Start selected workflow'}));await waitFor(()=>expect(commands.start).toHaveBeenCalledTimes(2));
+ const retry=screen.getByRole('button',{name:'Start selected workflow'});
+ await waitFor(()=>expect(retry).toBeEnabled());
+ fireEvent.click(retry);await waitFor(()=>expect(commands.start).toHaveBeenCalledTimes(2));
  expect(commands.start.mock.calls[1][0]).toEqual(commands.start.mock.calls[0][0]);expect(commands.start.mock.calls[0][0]).toMatchObject({caseId:'case',revision:7,workflowId:'workflow',workflowRevision:4,requestId:expect.any(String)});expect(commands.refresh).toHaveBeenCalledOnce();expect(await screen.findByText(/workflow was accepted/)).toBeVisible();
 });
 it('shows a denied live-choice read as an error instead of loading forever',async()=>{

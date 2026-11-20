@@ -7,7 +7,7 @@ import { opaque } from './crypto';
 import { INTERNAL_EMAIL_STATE_KEY } from './active-relay';
 import { sendSmtp, type Relay, type Mail, type MailTransport } from './smtp';
 import type {StoredEmailRelay} from '../identity/email-relay';
-import {bindLifecycleEmailConnection,nameLifecycleSender,publicLifecycleSenders,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,type ConnectionState} from './email-connections';
+import {bindLifecycleEmailConnection,nameLifecycleSender,publicLifecycleSenders,publicEmailConnections,saveEmailConnection,testedEmailConnection,activateEmailConnection,deactivateEmailConnection,type ConnectionState} from './email-connections';
 export { sendSmtp } from './smtp';
 export type { Relay, Mail, MailTransport } from './smtp';
 
@@ -35,12 +35,19 @@ export async function internalEmailRequest<T>(request: EmailSettingsRequest, tra
     if (request.op === 'view') {
       const connections=publicEmailConnections(state);
       const selected=request.connectionId&&state.connections&&Object.hasOwn(state.connections,request.connectionId)?state.connections[request.connectionId]:undefined;
-      if(request.connectionId&&request.connectionId!=='new'&&!selected)throw new EmailSettingsError('conflict');
+      const staleConnection = Boolean(request.connectionId && request.connectionId !== 'new' && !selected);
       return { active: state.active ? { ...state.active.config, hasPassword: Boolean(state.active.password) } : null,
         supportsLifecycleSenders:true,lifecycleSenders:publicLifecycleSenders(state,ctx.tenantId),
-        connections,selectedConnectionId:selected?.id,selectedConnectionName:selected?.name,
+        connections,staleConnection,selectedConnectionId:selected?.id,selectedConnectionName:selected?.name,
         revision: request.connectionId?state.connectionsRevision??state.revision:state.revision, draft: selected?{id:selected.version,config:selected.config,hasPassword:Boolean(selected.password),testedAt:selected.testedAt&&selected.testedBy===identity.subject&&selected.testedAgainstRevision===state.revision&&(selected.testedAgainstLifecycleRevision??'initial')===(state.lifecycleRevision??'initial')?new Date(selected.testedAt).toISOString():null}:request.connectionId?null:draft ? { id: draft.id, config: draft.config, hasPassword: Boolean(draft.password), testedAt: draft.testedAt ? new Date(draft.testedAt).toISOString() : null } : null,
         testRecipient: identity.email } satisfies EmailSettingsView as T;
+    }
+    if (request.op === 'deactivate') {
+      deactivateEmailConnection(state, request.connectionId, request.revision);
+      await writeRecord(tx, STATE, state, null);
+      await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'identity-email.deactivated','user',$2::uuid,$3::jsonb)",
+        [ctx.tenantId, ctx.userId!, JSON.stringify({connectionId: request.connectionId})]);
+      return {ok:true} as T;
     }
     if(request.op==='lifecycleSenderName'){
       // Tenant-scoped by the verified session, never by a posted identifier. The address is unchanged.

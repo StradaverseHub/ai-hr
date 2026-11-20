@@ -22,7 +22,7 @@ vi.mock('../lib/identity/email-model',()=>({defaultEmailConfig:{host:'',port:465
 vi.mock('../lib/internal-auth/account-email-view',()=>({withInternalRecoveryLabels:async(_session:unknown,_actor:unknown,items:unknown)=>items}));
 vi.mock('../core/account-email',()=>({readAccountEmailHistory:async()=>({items:[{id:'delivery-fixture',kind:'invitation',email:'alexandra.christina.consultant@synthetic-company.example.test',status:'sent',attempts:1,error:null,createdAt:new Date('2026-10-27T01:00:00Z'),canRetry:true}],hasMore:true,nextCursor:'synthetic-next-page'})}));
 vi.mock('../core/account-email-retention',()=>({readAccountEmailRetention:async()=>({days:null,revision:0,lastRunAt:null,lastDeleted:0})}));
-vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),saveEmailRetention:vi.fn(),saveLifecycleSenderName:vi.fn()}));
+vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),deactivateEmailConnection:vi.fn(),saveEmailRetention:vi.fn(),saveLifecycleSenderName:vi.fn()}));
 vi.mock('../app/admin/settings/email/demo-actions',()=>({testDemoSmtpConnection:vi.fn()}));
 vi.mock('../app/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
 const {default:EmailPage}=await import('../app/admin/settings/email/page');
@@ -57,6 +57,10 @@ describe('Email delivery page list/detail at desktop and mobile sizes',()=>{
     expect(screen.getByLabelText(messages.identityEmail.password)).toHaveValue('');
     expect(screen.getByRole('button',{name:messages.identityEmail.sendTest})).toBeVisible();
     expect(screen.getByRole('checkbox',{name:messages.identityEmail.received})).not.toBeChecked();
+    expect(screen.getByRole('button',{name:messages.identityEmail.deactivate})).toBeVisible();
+    const confirmDeactivation=screen.getByRole('checkbox',{name:messages.identityEmail.deactivateConfirm});
+    expect(confirmDeactivation).toBeRequired();
+    expect(confirmDeactivation).not.toBeChecked();
    }else{
     expect(screen.getByRole('link',{name:messages.identityEmail.newConnection})).toBeVisible();
     expect(screen.getAllByText(messages.identityEmail.connectionActive).some(node=>node.getClientRects().length>0)).toBe(true);

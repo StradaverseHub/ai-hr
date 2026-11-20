@@ -25648,6 +25648,9 @@
     "sendTest": "Hantar e-mel ujian",
     "received": "Saya menerima e-mel ujian daripada draf ini.",
     "activateHelp": "Ujian tamat selepas 30 minit. Pengaktifan menggantikan geganti e-mel log masuk dan mengaktifkan pemulihan kata laluan. Perubahan tersimpan memerlukan ujian baharu.",
+    "deactivate": "Nyahaktifkan geganti pemasangan",
+    "deactivateHelp": "Jemputan, pemulihan kata laluan dan e-mel lain yang menggunakan geganti pemasangan akan terhenti. Sambungan yang disimpan boleh diuji dan diaktifkan semula.",
+    "deactivateConfirm": "Saya faham kesannya terhadap penghantaran e-mel.",
     "activate": "Aktifkan geganti",
     "saving": "Sedang diproses…",
     "errors": {
@@ -25656,6 +25659,7 @@
       "invalid": "Semak medan geganti dan kata laluan.",
       "conflict": "Geganti atau draf telah berubah. Muat semula dan simpan draf baharu.",
       "needsTest": "Hantar e-mel ujian baharu sebelum pengaktifan.",
+      "needsDeactivationConfirmation": "Sahkan kesannya terhadap penghantaran e-mel sebelum menyahaktifkan geganti.",
       "needsReceipt": "Sahkan penerimaan e-mel ujian.",
       "authenticationFailed": "Geganti menolak pengesahan.",
       "connectionFailed": "Tidak dapat menyambung ke geganti.",
@@ -25667,6 +25671,7 @@
     "success": {
       "save": "Draf disimpan. Geganti aktif tidak berubah.",
       "test": "Geganti menerima mesej ujian. Semak peti masuk sebelum pengaktifan.",
+      "deactivate": "Geganti pemasangan dinyahaktifkan. Sambungan masih disimpan.",
       "apply": "Geganti diaktifkan. Jemputan dan pemulihan kata laluan kini boleh menggunakannya.",
       "sender": "Pengirim kitar hayat dikemas kini. Pemulihan akaun dan lalai pemasangan kekal sama.",
       "senderName": "Nama pengirim disimpan. E-mel On/Off Boarding yang dihantar mulai sekarang menggunakannya."

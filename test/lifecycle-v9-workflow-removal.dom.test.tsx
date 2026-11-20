@@ -28,7 +28,7 @@ function actions(overrides: Partial<WorkflowRemovalActions> = {}): WorkflowRemov
 }
 function Harness({ editable = true, removal }: { editable?: boolean; removal: WorkflowRemovalActions }) {
   const [config] = useState(fixture), [selected, select] = useState(''), [module, setModule] = useState<'off' | 'onb'>('off');
-  return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={() => {}} cases={[]} users={[]} actor={{ id: 'hr', name: 'HR' }} labels={{}} removal={removal}/></NextIntlClientProvider>;
+  return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor save={{state:'saved',error:'',flush:async()=>true,retry:()=>{}}} config={config} selected={selected} select={select} module={module} setModule={setModule} editable={editable} edit={() => {}} cases={[]} users={[]} actor={{ id: 'hr', name: 'HR' }} labels={{}} removal={removal}/></NextIntlClientProvider>;
 }
 const preview = (extra: object) => ({ revision: 1, workflowId: 'unused', name: 'Fictional test workflow', module: 'off' as const, mode: 'delete' as const, cases: 0, automatic: false, when: 'Offboarding case is submitted', ...extra });
 

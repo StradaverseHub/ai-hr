@@ -1563,3 +1563,17 @@ This approval covers staging source binding. Existing evaluation and promotion r
 ### Six-item release repairs, 19 November 2026 MYT
 
 The repository owner chose “Approve this exact fingerprint for staging” for `2dcbe0929d2e71097ddbcfd7838367209e64911b28e987c4440ec5ba78ed88eb`, produced by reviewed source `7fbc87f41afab8e18e906a4d9829318d69934d23`. The registry carries forward the same 28 approved records from `220aa349a2e71fb050fd38a0d84812d36136e518b00fd2454e3716e87fad8b28` by changing only those records' digests. The inherited fixture corrections and populated-upgrade checks preserve the existing migration bytes. The two creator-scoped payroll history pages require native navigation, and the Days/Hours resolver is imported through the existing payroll service. Provider payloads and model-executable actions stay within the existing review scope.
+
+## Movement correction dates and email/workflow saves, 20 November 2026 MYT
+
+The repository owner approved carrying forward the same 28 existing provider approvals to fingerprint `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` for staging. The reviewed combined source is `dd18b9e7b709f99124ee7593198b7d18f73f34bb` and covers 1,831 files.
+
+The Movement repair adds an audited date amendment and uses it in Personnel history. Email settings preserve saved connection records when deactivating a relay or following a stale link. Workflow pause targets the last saved definition and retains draft edits. The covered source adds no AI provider fields, purposes or transports.
+
+Exactly 28 digest literals move from `2dcbe0929d2e71097ddbcfd7838367209e64911b28e987c4440ec5ba78ed88eb` to the approved fingerprint. Reversing those substitutions restores the previous registry byte for byte. Existing evaluation and promotion records retain their source identities. The combined candidate proceeds through hosted release verification and staging acceptance.
+
+### Exact approval for the email deactivation handoff, 20 November 2026 MYT
+
+The repository owner approved carrying the same 28 provider approvals to `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf`. The source delta from `4e5ec01bde370ddd922115a22d27376ad03b0335` classifies the Deactivate Email server action as a human handoff under Access and Authentication, matching the other email settings actions. It adds no model-executable action, provider field, purpose or transport.
+
+The provider closure contains 1,831 files. Exactly 28 literals change from `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte. Pending and retired records, review metadata and previous evaluations remain as recorded. Staging remains ordered after the existing production release and requires passing release verification.

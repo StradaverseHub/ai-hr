@@ -54,7 +54,7 @@ describe('Native Contract builder preview authority and source values',()=>{
   await expect(contractRoutingPreviewCases(editor)).rejects.toMatchObject({code:'forbidden'});
   const nobody=await ordinary();await expect(contractTemplatePreviewCases(nobody)).rejects.toMatchObject({code:'forbidden'});
   await expect(withTenant(editor,tx=>tx.execute(sql`select * from contract_shared_case`))).rejects.toThrow();
- });
+ },90000); // The 1,000-case fixture exceeded 30s in hosted gate 44585205934.
  it('checks only the selected matching routing row and real active named people, without simulating a fallback',async()=>{
   await seedScale();admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),named=await ordinary();
   const routing:Routing={id:randomUUID(),name:'Fictional matching row',rows:[{match:{company:[cases.rows[0].companyId]},assignTo:{kind:'people',userIds:[named.userId!]}},{match:{},assignTo:{kind:'people',userIds:[admin.userId!]}}]};

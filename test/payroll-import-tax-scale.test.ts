@@ -2,7 +2,7 @@
 import {afterAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import {PgDialect} from 'drizzle-orm/pg-core';
-import type {SQL} from 'drizzle-orm';
+import {sql,type SQL} from 'drizzle-orm';
 import {owner,resetDb,seedBase,setModule,entitledCtx,closeAll} from './harness';
 import {createBatch} from '../core/payroll';
 import {createTaxBasisPreviewReadTx} from '../core/payroll-tax-basis-read';
@@ -36,6 +36,17 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  expect(preview.employees.map(employee=>employee.employeeNo)).toEqual(expected);expect(preview.eligibleCount).toBe(930);expect(preview.blockedCount).toBe(0);expect(preview.recordCount).toBe(930);expect(preview.totals).toMatchObject({beforeTaxable:4650000,taxable:5115000,difference:465000});
  expect(preview.employees.every(employee=>employee.months.length===1&&employee.months[0].taxable===5500&&employee.months[0].items.find(item=>item.code==='TRV')?.taxable===500)).toBe(true);
  const options=await taxBasisOptions(ctx);expect(options.companies).toHaveLength(70);expect(options.employees.map(employee=>employee.employeeNo)).toEqual(expected);
+ // The 930 fixture subjects all have one effective payslip in this company. Compare the full
+ // second page with independently seeded employment rows, using the public picker as the app role.
+ const scopedPage=await database.withTenant(ctx,tx=>tx.execute(sql`
+  select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid,${b.companyId}::uuid],500,500)`));
+ const fixturePage=await owner.client`
+  select e.id,e.company_id as "companyId",e.employee_code as "employeeNo",p.full_name as name
+  from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+  where e.tenant_id=${b.tenantId}::uuid and e.company_id=${b.companyId}::uuid and e.employee_code like 'PCB-SCALE-%'
+  order by e.employee_code,e.id limit 500 offset 500`;
+ expect(scopedPage).toHaveLength(430);
+ expect([...scopedPage]).toEqual([...fixturePage]);
  const selected=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:preview.employees.slice(490,510).map(employee=>employee.id)});
  expect(selected.employees.map(employee=>employee.employeeNo)).toEqual(expected.slice(490,510));expect(selected.totals.taxable).toBe(110000);
  await expect(database.withTenant(ctx,tx=>createTaxBasisPreviewReadTx(tx,ctx,['00000000-0000-4000-8000-000000000000']))).rejects.toThrow(/Original payroll source is unavailable/);
