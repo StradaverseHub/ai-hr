@@ -40,14 +40,20 @@ function appPagePaths(appPathRoutes){
 }
 
 export const STATIC_CENSUS_SHARDS=8;
-export function staticPageCensusPlan(appPathRoutes,shard){
+export const STATIC_CENSUS_PARTS=4;
+export function staticPageCensusPlan(appPathRoutes,shard,part){
  assert(Number.isInteger(shard)&&shard>=0&&shard<STATIC_CENSUS_SHARDS,'Invalid static browser census shard');
+ assert(part===undefined||(Number.isInteger(part)&&part>=0&&part<STATIC_CENSUS_PARTS),'Invalid static census part');
  const pages=appPagePaths(appPathRoutes);
  const staticPages=pages.filter(path=>!path.includes('['));
  return {
   staticPageCount:staticPages.length,
   dynamicTemplateCount:pages.length-staticPages.length,
-  paths:staticPages.filter(path=>createHash('sha256').update(path).digest().readUInt32BE(0)%STATIC_CENSUS_SHARDS===shard),
+  paths:staticPages.filter(path=>{
+   const hash=createHash('sha256').update(path).digest();
+   return hash.readUInt32BE(0)%STATIC_CENSUS_SHARDS===shard
+    &&(part===undefined||hash.readUInt32BE(4)%STATIC_CENSUS_PARTS===part);
+  }),
  };
 }
 

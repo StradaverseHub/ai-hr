@@ -29,8 +29,10 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
-assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static census configuration');
-const staticShard=shardInput===''?null:Number(shardInput);
+const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
+assert(!shardInput||(shardMatch&&!fixtureOnly),'Invalid static census configuration');
+const staticShard=shardMatch?Number(shardMatch[1]):null;
+const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -668,10 +670,10 @@ async function discoverDynamicPages(page,sourcePath,depth,matcher,discovered,par
 
 async function measureStaticPageCensus(fixture,shard){
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
- const plan=staticPageCensusPlan(appPathRoutes,shard);
+ const plan=staticPageCensusPlan(appPathRoutes,shard,staticPart);
  const routesManifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
  const dynamicMatcher=dynamicPageCensusMatcher(appPathRoutes,routesManifest);
- const census={shard,shards:STATIC_CENSUS_SHARDS,...plan,outcomes:[],dynamic:{
+ const census={shard,shards:STATIC_CENSUS_SHARDS,...(staticPart===undefined?{}:{part:staticPart}),...plan,outcomes:[],dynamic:{
   templates:dynamicMatcher.templates,missingMatchers:dynamicMatcher.missingMatchers,
   maxTemplatesPerRole:maxDynamicTemplatesPerRole,maxLinkDepth:maxDynamicLinkDepth,
   discoveryFailures:0,limitedRoles:[],outcomes:[],

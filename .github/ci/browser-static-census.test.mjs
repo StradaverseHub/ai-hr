@@ -79,3 +79,30 @@ test('reports discovery caps and unavailable route matchers',()=>{
  assert.deepEqual(report.dynamicTemplatesWithoutMatcher,[unmatched]);
  assert.deepEqual(report.dynamicDiscoveryLimits,[{shard:limited.shard,discoveryFailures:1,limitedRoles:['groupHR']}]);
 });
+
+test('recovers one exact source shard in disjoint parts with separate build provenance',()=>{
+ const original=fixture();
+ const shard=original.find(report=>report.staticPageCensus.paths.includes('/')).staticPageCensus.shard;
+ const removed=original[shard];
+ const recovery={shard,controllerSha:'c'.repeat(40)};
+ const fragments=Array.from({length:4},(_,part)=>{
+  const plan=staticPageCensusPlan(manifest,shard,part);
+  return {...removed,controllerSha:recovery.controllerSha,buildId:'recovery-build',staticPageCensus:{
+   ...removed.staticPageCensus,...plan,part,
+   outcomes:removed.staticPageCensus.outcomes.filter(row=>plan.paths.includes(row.path)),
+   dynamic:{...removed.staticPageCensus.dynamic,
+    outcomes:removed.staticPageCensus.dynamic.outcomes.filter(row=>plan.paths.includes(row.sourcePath)),
+   },
+  }};
+ });
+ const reports=[...original.filter(report=>report!==removed),...fragments];
+ const report=reconcileStaticPageCensus(reports,{...identity,recovery});
+ assert.equal(report.kind,'FICTIONAL_COMPILED_BROWSER_CENSUS_RECOVERY');
+ assert.equal(report.buildId,'test-build');
+ assert.deepEqual(report.recovery,{...recovery,buildId:'recovery-build',parts:4});
+ assert.equal(report.staticAttempts,4);
+ assert.equal(report.dynamicTemplatesWithHeading,2);
+ assert.throws(()=>reconcileStaticPageCensus([...reports.slice(0,-1),fragments[0]],{...identity,recovery}),/Duplicate recovery part/);
+ assert.throws(()=>reconcileStaticPageCensus([...reports.slice(0,-1),{...fragments[3],buildId:'unrelated'}],{...identity,recovery}));
+ assert.throws(()=>reconcileStaticPageCensus(reports.slice(0,-1),{...identity,recovery}),/Incomplete static census receipts/);
+});

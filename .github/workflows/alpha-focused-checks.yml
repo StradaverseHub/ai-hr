@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       browser_static_shard:
-        description: Static browser census shard (0–7), or all to cover the compiled inventory
+        description: Static census shard (0–7), all, or split:N to recover shard N in four jobs
         default: ''
         type: string
       model_eval:
@@ -121,11 +121,14 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
+          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7])$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
+          elif [[ "$BROWSER_STATIC_SHARD" == split:* ]]; then
+            shard=${BROWSER_STATIC_SHARD#split:}
+            printf 'static_shards=["%s.0","%s.1","%s.2","%s.3"]\n' "$shard" "$shard" "$shard" "$shard" >> "$GITHUB_OUTPUT"
           else
             printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
           fi
@@ -235,7 +238,7 @@ jobs:
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ inputs.browser_static_shard == 'all' && format('browser-route-baseline-shard-{0}', matrix.static_shard) || 'browser-route-baseline' }}
+          name: ${{ (inputs.browser_static_shard == 'all' || startsWith(inputs.browser_static_shard, 'split:')) && format('browser-route-baseline-shard-{0}', matrix.static_shard) || 'browser-route-baseline' }}
           path: ${{ runner.temp }}/browser-route-baseline.json
           if-no-files-found: warn
           retention-days: 14
