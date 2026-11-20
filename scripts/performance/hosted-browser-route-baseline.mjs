@@ -354,9 +354,31 @@ async function measureMixedLoad(command){
    };
    const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
    if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;
+   const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
+   if(data.browserErrors?.length){
+    const pageRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+    const staticPaths=new Set(Object.entries(pageRoutes)
+     .filter(([file,path])=>file.endsWith('/page')&&typeof path==='string'&&!path.includes('['))
+     .map(([,path])=>path));
+    const errorNames=new Set(['Error','TypeError','ReferenceError','SyntaxError','SecurityError',
+     'AbortError','RangeError','NotFoundError','ChunkLoadError']);
+    report.mixedBrowserErrors=data.browserErrors.slice(0,12).map(row=>{
+     const error=typeof row.error==='string'?row.error:'';
+     const separator=error.indexOf(': ');
+     const errorName=row.kind==='pageerror'&&separator>0?error.slice(0,separator):null;
+     const message=errorName?error.slice(separator+2):error;
+     const reactCode=message.match(/^Minified React error #(\d{2,3});/)?.[1];
+     return {path:staticPaths.has(row.path)?row.path:null,external:row.path==='<external>',
+      role:roles.includes(row.role)?row.role:null,locale:knownLocales.has(row.locale)?row.locale:null,
+      kind:['pageerror','console'].includes(row.kind)?row.kind:null,
+      errorName:errorNames.has(errorName)?errorName:null,
+      fingerprint:reactCode?'react-minified-'+reactCode:browserPreflightErrorFingerprint(message),
+      ...counts(row,['atMs']),
+     };
+    });
+   }
    if(report.mixedDriverStage?.stage==='baseline-language-switch'){
     const languagePaths=new Set(['/claims','/admin/personnel']);
-    const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
     report.mixedLanguageSwitch={
      completed:(data.browserLanguageSwitches??[]).filter(row=>row.phase==='baseline'
       &&languagePaths.has(row.path)&&roles.includes(row.role)&&knownLocales.has(row.locale)
@@ -364,13 +386,6 @@ async function measureMixedLoad(command){
        path:row.path,role:row.role,locale:row.locale,draftRetained:row.draftRetained===true,
        ...counts(row,['elapsedMs','draftReadyWaitMs']),
       })),
-     browserErrors:(data.browserErrors??[]).slice(-12).map(row=>({
-      path:languagePaths.has(row.path)?row.path:null,
-      role:roles.includes(row.role)?row.role:null,
-      locale:knownLocales.has(row.locale)?row.locale:null,
-      kind:['pageerror','console'].includes(row.kind)?row.kind:null,
-      fingerprint:browserPreflightErrorFingerprint(typeof row.error==='string'?row.error:''),
-     })),
     };
    }
    const primaryRequest=data.workerRequestFailure;
