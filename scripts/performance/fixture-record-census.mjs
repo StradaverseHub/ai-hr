@@ -267,9 +267,43 @@ function payrollCorrectionRoutes(fixture) {
   }));
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
+function payrollConfigurationRoutes(fixture) {
+  const [group, company] = fixture.users;
+  assert.deepEqual([group.role, company.role], ['groupHR', 'companyHR']);
+  const overview = '/payroll/configuration';
+  const tabs = [
+    ['', 'Statutory Configuration', 'Per-body versions'],
+    ['/epf', 'EPF', 'EPF / KWSP'],
+    ['/socso', 'SOCSO', 'SOCSO / PERKESO'],
+    ['/eis', 'EIS', 'EIS / SIP'],
+    ['/skbbk', 'SKBBK', 'SKBBK (Lindung 24 Jam)'],
+    ['/pcb', 'PCB', 'PCB / MTD — income tax'],
+    ['/hrdf', 'HRDF', 'HRDF mandatory rate'],
+  ];
+  const editTitle = 'Publish a new statutory version';
+  return [group, company].flatMap(actor => {
+    const orderedTabs = actor === group ? tabs : [...tabs].reverse();
+    return orderedTabs.flatMap(([part, heading, content]) => {
+      const template = overview + part;
+      const read = {
+        actor, template, path: template, view: 'summary', exactHeading: heading,
+        content, exactContent: true,
+        ...(part === '/skbbk' ? {witness: 'table tbody tr'} : {}),
+      };
+      if (part === '/hrdf') return [read];
+      return [read, {
+        actor, template, path: template + '?edit=1', view: 'advanced-edit',
+        exactHeading: part ? heading + ' · ' + editTitle : editTitle,
+        witness: 'form input[name="version"]',
+      }];
+    });
+  });
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, payrollConfiguration }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = payrollCorrections ? payrollCorrectionRoutes(fixture)
+    : payrollConfiguration ? payrollConfigurationRoutes(fixture)
     : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture), ...await organisationLifecycleRoutes(db, fixture)];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
@@ -280,7 +314,10 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     try {
       const page = await context.newPage();
       for (const pass of ['first', 'repeat']) {
-        const row = { template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response' };
+        const row = {
+          template: entry.template, role: entry.actor.role, pass, outcome: 'browser-failure', step: 'response',
+          ...(entry.view ? {view: entry.view} : {}),
+        };
         rows.push(row);
         const started = performance.now();
         const remaining = () => Math.max(1, Math.floor(15000 - (performance.now() - started)));

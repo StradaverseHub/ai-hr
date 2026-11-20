@@ -32,7 +32,8 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
-const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections;
+const censusPayrollConfiguration=shardInput==='payroll-configuration';
+const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections||censusPayrollConfiguration;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -53,7 +54,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:censusPayrollConfiguration?'FICTIONAL_PAYROLL_CONFIGURATION_CENSUS':censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -1548,7 +1549,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   if(censusFixtureRecords&&!censusPayrollCorrections){
+   if(shardInput==='fixture-records'){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
@@ -1593,7 +1594,7 @@ try{
    const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
-   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,payrollCorrections:censusPayrollCorrections});}
+   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,payrollCorrections:censusPayrollCorrections,payrollConfiguration:censusPayrollConfiguration});}
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
