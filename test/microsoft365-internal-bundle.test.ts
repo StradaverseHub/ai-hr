@@ -8,7 +8,9 @@ it('ships the exact token peer and both private units inside the built Reports i
  // Never overwrite an operator's pre-existing generated artifact.
  expect(existsSync(output)).toBe(false);
  try{
-  const log=execFileSync(process.execPath,['--import','tsx','deploy/identity-email/build-internal-reports.ts'],{cwd:process.cwd(),encoding:'utf8',timeout:25000});
+  // Bundling on a shared hosted runner can exceed 25 seconds. Keep the
+  // child and its enclosing test bounded while retaining every byte check.
+  const log=execFileSync(process.execPath,['--import','tsx','deploy/identity-email/build-internal-reports.ts'],{cwd:process.cwd(),encoding:'utf8',timeout:60000});
   const bundle=readFileSync(output,'utf8');expect(bundle.length).toBeGreaterThan(10000);
   for(const name of ['smtp-token-peer.py','aihr-smtp-token.socket','aihr-smtp-token@.service']){
    const source=readFileSync('deploy/identity-email/'+name),hash=createHash('sha256').update(source).digest('hex');
@@ -18,4 +20,4 @@ it('ships the exact token peer and both private units inside the built Reports i
   if(existsSync(output))unlinkSync(output);
   if(!hadDirectory&&existsSync(directory))rmdirSync(directory);
  }
-},30000);
+},70000);

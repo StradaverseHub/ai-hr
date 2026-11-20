@@ -10,6 +10,7 @@ import {and,asc,eq,isNull} from 'drizzle-orm';
 import * as schema from '../db/schema';
 import {withTenant} from '../db/client';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {expectNoLeakedValue} from './helpers/leaf-values';
 import {hireEmployee} from '../core/org';
 import {createMovementEvent,movementDetail,movementHistory,reverseMovementEvent} from '../core/movement';
 import {previewMovementImport,commitMovementImport} from '../core/movement-import';
@@ -141,7 +142,7 @@ describe('recording history before a date',()=>{
   expect(detail?.after).toMatchObject({salaryAmount:'4800.00',paymentMethod:'bank_transfer'});
   const [logged]=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent).where(eq(schema.domainEvent.id,result.eventId));
   expect(logged.payload).toMatchObject({hasPayEvidence:true});
-  expect(JSON.stringify(logged.payload)).not.toContain('4500');
+  for(const secret of [4500,4800,'cash','bank_transfer'])expectNoLeakedValue(logged.payload,secret);
   const [actualEmployment]=await owner.db.select({method:schema.employment.paymentMethod}).from(schema.employment).where(eq(schema.employment.id,id));
   expect(actualEmployment.method).toBeNull();
   expect(await owner.db.select().from(schema.compensation).where(eq(schema.compensation.employmentId,id))).toEqual(live);
