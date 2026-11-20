@@ -120,7 +120,7 @@ vi.mock('../core/approvals-inbox',()=>({pendingTaskSummary:fx.approvalSummary,li
  {id:'t-toil',kind:'replacementLeave',subjectName:'Siti Fictional',createdAt:'2026-11-07T01:00:00.000Z',linkPath:'/approvals?section=replacement&focus=t-toil'},
  {id:'t-profile',kind:'profile',subjectName:'Wei Fictional',createdAt:'2026-11-07T01:00:00.000Z',linkPath:'/admin/personnel/profile-changes'}];}}));
 
-import {readMyPayrollReadiness} from '../core/pre-salary/person-items';
+import {readMyPayrollApprovalPreview,readMyPayrollReadiness} from '../core/pre-salary/person-items';
 import {NOT_COVERED,askMyPayrollReadiness} from '../core/pre-salary/ask';
 import {ALL_PAYROLL_ITEM_KINDS,type PayrollItem} from '../lib/pre-salary/items';
 import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
@@ -372,6 +372,21 @@ it('bounds UI approval rows while preserving exact Claim totals and excluding un
  expect(fx.approvalSummary).toHaveBeenCalledWith(CTX,['co-1'],{attendance:true,claims:true,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false});
  expect(fx.calls.some(call=>call[0]==='listPendingTasks')).toBe(false);
 });
+it('resolves the personal checklist while a separately streamed approval preview is still pending',async()=>{
+ const task={id:'claim-later',kind:'claim',subjectName:'Fictional claimant',linkPath:'/approvals?category=claim'};
+ let resolvePreview!:(result:{items:typeof task[];claimTotal:number})=>void;
+ fx.approvalSummary.mockReturnValueOnce(new Promise(resolve=>{resolvePreview=resolve;}));
+ const ownRead=readMyPayrollReadiness(CTX,{today:TODAY,locale:'en',includeApprovals:false});
+ const preview=readMyPayrollApprovalPreview(CTX,['co-1'],ownRead);
+ const own=await ownRead;
+ expect(own?.items.length).toBeGreaterThan(0);
+ expect(own?.approvals).toEqual([]);
+ resolvePreview({items:[task],claimTotal:2});
+ expect(await preview).toMatchObject({
+  claimTotal:2,status:'todo',items:[{kind:'approve_claim',due:own?.period.cutOff,label:'Fictional claimant'}],
+ });
+});
+
 it('keeps the existing unabridged read contract for callers that did not request a UI preview',async()=>{
  const result=(await read())!;expect(result.approvals).toHaveLength(5);expect(result).not.toHaveProperty('approvalTotal');
  expect(fx.approvalSummary).not.toHaveBeenCalled();
