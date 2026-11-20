@@ -1,11 +1,32 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {act,cleanup,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,render,screen,waitFor,within} from '@testing-library/react';
+import {hydrateRoot} from 'react-dom/client';
+import {renderToString} from 'react-dom/server';
 import userEvent from '@testing-library/user-event';
 const f=vi.hoisted(()=>({setLocale:vi.fn()}));
 vi.mock('next-intl',()=>({useLocale:()=> 'en'}));
 vi.mock('../app/i18n-actions',()=>({setLocale:f.setLocale}));
 import {LanguageSwitcher} from '../components/language-switcher';
 afterEach(()=>{cleanup();vi.clearAllMocks();});
+it('opens the language choices on the first click after hydration',async()=>{
+ const tree=<LanguageSwitcher/>;
+ const host=document.createElement('div');
+ host.innerHTML=renderToString(tree);
+ document.body.append(host);
+ const trigger=()=>within(host).getByRole('button',{name:'Change language'});
+ let root:ReturnType<typeof hydrateRoot>|undefined;
+ try{
+  expect(trigger()).toBeDisabled();
+  await act(async()=>{root=hydrateRoot(host,tree);});
+  expect(trigger()).toBeEnabled();
+  await userEvent.click(trigger());
+  expect(within(host).getByRole('button',{name:'简体中文'})).toBeEnabled();
+  expect(f.setLocale).not.toHaveBeenCalled();
+ }finally{
+  await act(async()=>root?.unmount());
+  host.remove();
+ }
+});
 it('does not submit the already active locale',async()=>{
  render(<LanguageSwitcher/>);await userEvent.click(screen.getByRole('button',{name:'Change language'}));
  const active=screen.getByRole('button',{name:'English'});expect(active).toBeDisabled();await userEvent.click(active);expect(f.setLocale).not.toHaveBeenCalled();

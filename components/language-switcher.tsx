@@ -1,6 +1,7 @@
 'use client';
 
 import { ActionButton } from '@/components/ui/action-button';
+import { useClientReady } from './use-client-ready';
 import { useState, useTransition } from 'react';
 import { useLocale } from 'next-intl';
 import { Check, Languages, LoaderCircle } from 'lucide-react';
@@ -10,6 +11,7 @@ import { cn } from '@/lib/utils';
 
 /** Top-bar UI-language picker. Sets the NEXT_LOCALE cookie via a server action; no URL routing. */
 export function LanguageSwitcher() {
+  const interactive = useClientReady();
   const [open, setOpen] = useState(false);
   const [pending, startTransition] = useTransition();
   const submit = (formData: FormData) => startTransition(async () => { await setLocale(formData); });
@@ -21,7 +23,7 @@ export function LanguageSwitcher() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        disabled={pending}
+        disabled={!interactive || pending}
         aria-busy={pending}
         aria-expanded={open}
         aria-label="Change language"
