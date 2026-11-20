@@ -21,7 +21,13 @@ jit_args=(-c "jit=$AIHR_CI_PG_JIT")
 statement_args=()
 [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 0 || "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]] || exit 2
 if [[ "${AIHR_CI_PG_STATEMENTS:-0}" == 1 ]]; then
-  [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch && ( "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == attendance-sql-profile || "${AIHR_CI_PG_STATEMENTS_OWNER:-}" == visibility-plan-benchmark ) ]] || exit 2
+  [[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch ]] || exit 2
+  case "${AIHR_CI_PG_STATEMENTS_OWNER:-}" in
+    attendance-sql-profile|visibility-plan-benchmark) ;;
+    insights-browser-profile)
+      [[ "${GITHUB_WORKFLOW:-}" == alpha-focused-checks && "${GITHUB_JOB:-}" == selected-tests ]] || exit 2 ;;
+    *) exit 2 ;;
+  esac
   statement_args=(-c shared_preload_libraries=pg_stat_statements -c compute_query_id=on
     -c pg_stat_statements.track=all -c pg_stat_statements.track_utility=off
     -c pg_stat_statements.track_planning=on -c pg_stat_statements.max=10000 -c track_io_timing=on)

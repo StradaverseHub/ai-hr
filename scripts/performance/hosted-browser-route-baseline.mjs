@@ -24,6 +24,7 @@ import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
 import {seedBrowserGroupShape,measureBrowserGroupScope} from './browser-group-shape.mjs';
 import {measureApprovalsLeaveBrowser,seedApprovalsLeaveBrowserFixture} from './approvals-leave-browser.mjs';
+import {snapshotInsightsQueries,summarizeInsightsQueries} from './insights-query-profile.mjs';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -31,7 +32,8 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','insights-sql','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox'].includes(surfaceProbe),'Unknown browser surface');
+const insightsSqlProfile=surfaceProbe==='insights-sql';
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -43,7 +45,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(surfaceProbe!=='leave-inbox'||groupShape,'The Leave inbox comparison requires group scale');
+assert((surfaceProbe!=='leave-inbox'&&!insightsSqlProfile)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -77,7 +79,8 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
-const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
+const pgEnv={...env,AIHR_CI_UNIT:'db-1',
+ ...(insightsSqlProfile&&{AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'insights-browser-profile'})};
 
 function start(label,command,args,childEnv) {
  const fd=openSync(join(privateDir,label+'.log'),'wx',0o600);
@@ -828,7 +831,7 @@ const focusedSurfaces={
  }},
 };
 
-async function measureSurfaceProbe(fixture,surface){
+async function measureSurfaceProbe(fixture,surface,readQueryProfile){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
  const {path:route,witnesses,actorIndexes=[0,1]}=focusedSurfaces[surface];
@@ -845,6 +848,7 @@ async function measureSurfaceProbe(fixture,surface){
    for(const pass of ['first','repeat-1','repeat-2']){
     const row={role:actor.role,pass,status:'incomplete',milestones:{}};
     visits.push(row);
+    const before=await readQueryProfile?.();
     const started=performance.now(),elapsed=()=>Math.round(performance.now()-started);
     try{
      const response=await page.goto(origin+path,{waitUntil:'commit',timeout:15000});
@@ -857,6 +861,7 @@ async function measureSurfaceProbe(fixture,surface){
      }));
      assert(milestones.every(result=>result.status==='fulfilled'),'A focused browser milestone did not become visible');
      await assertContentAvailable(page);
+     if(readQueryProfile)row.sql=summarizeInsightsQueries(before,await readQueryProfile());
      if(surface==='workflow-list'){
       const overtimePath=path+'?applicationType=self_overtime';
       const overtime=page.locator(`main a[href="${overtimePath}"]`);
@@ -2011,6 +2016,12 @@ try{
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
    await measureApprovalsLeaveBrowser({origin,signedInContext,fixture,report,save,assertContentAvailable});
+  }
+  else if(insightsSqlProfile){
+   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+   const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
+   try{await measureSurfaceProbe(fixture,'insights',()=>snapshotInsightsQueries(owner));}
+   finally{await owner.end({timeout:5});}
   }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']
