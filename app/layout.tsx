@@ -181,7 +181,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
@@ -193,9 +192,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-  ]);
+  // These shell facts have no dependency on each other. Share one authenticated read
+  // transaction so their startup does not reserve three database connections per render.
+  const [{allowed,scopeIds},viewer,navigationAccess]=await withSharedReadSnapshot(session,()=>Promise.all([
+    companyContextForPage(session),
+    viewerIdentity(session),
+    readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
+  ]));
+  const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
     ? await letterNavigation(session,scopeIds) : [];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
