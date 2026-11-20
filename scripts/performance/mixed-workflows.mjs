@@ -60,13 +60,27 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   // Bind to a request initiated after arming this click, never an advisory response already in flight.
   // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
   // the surrounding workflow still verifies UI readiness and independent committed native state.
-  const waiting=page.waitForRequest(req=>req.method()==='POST'&&Boolean(req.headers()['next-action'])&&(!marker||req.postDataBuffer()?.includes(Buffer.from(marker))),{timeout:90000});
+  let posts=0,actionPosts=0;
+  const waiting=page.waitForRequest(req=>{
+   if(req.method()!=='POST')return false;
+   posts++;
+   if(!req.headers()['next-action'])return false;
+   actionPosts++;
+   return !marker||req.postDataBuffer()?.includes(Buffer.from(marker));
+  },{timeout:90000});
   let response,req,timer;
   try{
    [req]=await Promise.all([waiting,click()]);
    response=await Promise.race([req.response(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Mutation response headers exceeded90 seconds')),90000);})]);
    assert(response,'Mutation request failed before response headers');assert(response.status()<400,'Browser mutation returned an HTTP error');
-  }catch(error){notePrimary(error);noteEvidence(()=>{report.mixedWorkflows.error={stage:kind,message:driverErrorFact(error).kind};save();});throw error;}
+  }catch(error){
+   notePrimary(error);
+   noteEvidence(()=>{
+    report.mixedWorkflows.error={stage:kind,message:driverErrorFact(error).kind,posts,actionPosts};
+    save();
+   });
+   throw error;
+  }
   finally{clearTimeout(timer);}
   const headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];

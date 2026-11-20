@@ -99,7 +99,7 @@ describe('leave submission retains correction context',()=>{
  it('opens the Leave Request dialog on the first click after hydration',async()=>{
   const tree=<NextIntlClientProvider locale="en" messages={en}>
    <RequestLeaveDialog types={[{id:'annual',label:'Annual leave',durations:null}]} startDefault="2026-11-09"
-    ownEmploymentId="own" previewAction={async()=>null} submitAction={async()=>null} summaryAction={async()=>null}/>
+    ownEmploymentId="own" previewAction={async()=>null} submitAction={async()=>undefined} summaryAction={async()=>null}/>
   </NextIntlClientProvider>;
   const host=document.createElement('div');
   host.innerHTML=renderToString(tree);
