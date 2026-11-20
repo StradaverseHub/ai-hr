@@ -13,6 +13,7 @@ import {verifyExactRecovery,validateExactRecoveryGrantEvidence,validateExactReco
 import {validateFocusedMetadata,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
 import {operatorRelease} from './operator-release.mjs';
 import {validateExactControllerDelta} from './exact-recovery.mjs';
+import {MIXED} from './payroll-mixed-source.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
@@ -150,6 +151,17 @@ test('History binds all numbered recovery aliases and refuses unaccounted aliase
  assert.deepEqual(validateExactRecoveryHistory(f).runIds,[200]);
  f.rows.push({...f.rows[0],id:201,display_title:'Focused only · owned-recovery-100-2',status:'in_progress'});
  assert.throws(()=>validateExactRecoveryHistory(f),/Unaccounted/);
+});
+test('Mixed history records only the known failed attempts and never counts them as passing',()=>{
+ const f=historyInput();
+ f.sourceRun.id=MIXED.originalRun;
+ const focused={...f.rows[0],id:MIXED.failedFocusedRun,display_title:`Focused only · owned-recovery-${MIXED.originalRun}-3`,conclusion:'failure'};
+ const refused={...focused,id:MIXED.refusedUnitRun,head_sha:MIXED.refusedController,display_title:`Missing whole unit · ${MIXED.unit} · owned`};
+ f.rows.push(focused,refused);
+ f.previousFailures=[focused,refused].map(row=>({id:row.id,title:row.display_title,controller:row.head_sha,updatedAt:row.updated_at}));
+ assert.deepEqual(validateExactRecoveryHistory(f).runIds,[200]);
+ const bad=structuredClone(f);bad.rows[1].conclusion='success';
+ assert.throws(()=>validateExactRecoveryHistory(bad),/Previous failed run identity changed/);
 });
 for(const [name,change] of [
  ['later failure',f=>f.rows.push({...f.rows[0],id:201,conclusion:'failure'})],['active older execution',f=>f.rows.push({...f.rows[0],id:201,status:'in_progress',created_at:time(60),updated_at:time(59)})],['superseding success',f=>f.rows.push({...f.rows[0],id:201})],['missing known run',f=>f.rows=[]],['conflicting snapshots',f=>f.rows.push({...f.rows[0],conclusion:'failure'})],['rerun',f=>f.rows[0].run_attempt=2],['overlapping failure',f=>f.rows.push({...f.rows[0],id:201,created_at:time(30),conclusion:'failure'})]

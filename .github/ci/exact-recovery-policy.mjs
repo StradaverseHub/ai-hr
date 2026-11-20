@@ -125,6 +125,7 @@ export function validateExactRecoveryGrantEvidence(evidence,run){
  if(c.runId===MIXED.originalRun){
   assert(c.missingUnit?.unitId===MIXED.unit&&c.missingUnit.source.controller===c.verificationController&&c.missingUnit.priorExpectationUsedAsPass===false,'Reviewed interrupted unit proof required');
   runIds.push(c.missingUnit.source.runId);
+  same(c.history?.previousFailures?.map(entry=>entry.id).sort((a,b)=>a-b),[MIXED.failedFocusedRun,MIXED.refusedUnitRun],'Both previous failed recovery attempts must remain in the certificate');
  }
  assert(c.history?.kind==='AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY'&&c.history.originalRunId===c.runId&&isDeepStrictEqual(c.history.runIds,runIds.sort((a,b)=>a-b)),'Complete exact recovery history required');
  assert(c.verificationDiagnostic?.controller===c.verificationController&&positive(c.verificationDiagnostic.runId)&&c.reviewedController===c.verificationController,'Reviewed verification controller validation missing');
@@ -142,7 +143,7 @@ export function exactRecoveryBranch(candidateBranch,runId,ref){
 }
 
 /** Complete API history, including overlapping failures and active executions. */
-export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,focusedRunIds,focusedController=sourceRun.head_sha,missingRunId,missingController}){
+export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,focusedRunIds,focusedController=sourceRun.head_sha,missingRunId,missingController,previousFailures=[]}){
  assert(sourceRun.display_title===`Alpha CI · ${candidateBranch}`&&/^[A-Za-z0-9][A-Za-z0-9._/-]*$/.test(candidateBranch)&&!candidateBranch.includes('..'),'Exact original candidate branch required');
  assert(Array.isArray(rows)&&rows.length<=8000,'Bounded complete history required');
  const expected=new Set(focusedRunIds),found=new Map();
@@ -156,6 +157,15 @@ export function validateExactRecoveryHistory({sourceRun,rows,candidateBranch,foc
   assert(!found.has(r.id)||isDeepStrictEqual(found.get(r.id),record),'Conflicting history snapshots; retry after stabilization');found.set(r.id,record);
  }
  const relevant=[...found.values()].filter(r=>r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(sourceRun.updated_at)).sort((a,b)=>a.id-b.id);
- assert(relevant.length===expected.size&&relevant.every(r=>expected.has(r.id)&&r.controller===(r.id===missingRunId?missingController:focusedController)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, failed, superseding, foreign-controller or active recovery execution');
- return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY',originalRunId:sourceRun.id,runIds:relevant.map(r=>r.id),metadataFingerprint:hash(relevant)};
+ const failures=new Map(previousFailures.map(failure=>[failure.id,failure]));
+ assert(failures.size===previousFailures.length,'Duplicate failed recovery observations');
+ if(failures.size)assert(sourceRun.id===MIXED.originalRun&&failures.size===2&&failures.has(MIXED.failedFocusedRun)&&failures.has(MIXED.refusedUnitRun),'Only the exact audited recovery failures may be retained');
+ for(const [id,failure] of failures){
+  const row=relevant.find(item=>item.id===id);
+  assert(row&&row.title===failure.title&&row.controller===failure.controller&&row.status==='completed'&&row.conclusion==='failure'&&row.attempt===1&&row.updatedAt===failure.updatedAt,'Previous failed run identity changed');
+  assert(!expected.has(id),'Failed attempt cannot supply passing coverage');
+ }
+ const successes=relevant.filter(row=>!failures.has(row.id));
+ assert(successes.length===expected.size&&successes.every(r=>expected.has(r.id)&&r.controller===(r.id===missingRunId?missingController:focusedController)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, failed, superseding, foreign-controller or active recovery execution');
+ return {kind:'AUTHENTICATED_EXACT_SOURCE_RECOVERY_HISTORY',originalRunId:sourceRun.id,runIds:successes.map(r=>r.id),metadataFingerprint:hash(relevant),...(failures.size?{previousFailures}: {})};
 }

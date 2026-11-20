@@ -538,11 +538,8 @@ jobs:
         if: ${{ inputs.missing_unit != '' }}
         env: {AIHR_CI_UNIT: '${{ matrix.unit }}'}
         run: node ../automation/.github/ci/unit-postgres-prepull.mjs "$RUNNER_TEMP/aihr-ci/native-postgres-prepull.json"
-      - name: Source-bound fixed HTTPS fonts for missing whole unit
-        if: ${{ inputs.missing_unit != '' }}
-        run: node ../automation/.github/ci/fixed-noto-bootstrap.mjs "$RUNNER_TEMP/aihr-ci/noto-font-setup.json"
       - name: Provision System Labels multilingual fonts before tests
-        if: ${{ steps.system-label-fonts.outputs.required == 'true' && inputs.missing_unit == '' }}
+        if: ${{ steps.system-label-fonts.outputs.required == 'true' }}
         run: node ../automation/.github/ci/fixed-noto-bootstrap.mjs "$RUNNER_TEMP/aihr-ci/noto-font-setup.json"
       - name: Preserve suite headroom after PDF tooling
         if: ${{ github.run_attempt == 1 }}

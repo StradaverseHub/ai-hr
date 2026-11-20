@@ -11,6 +11,12 @@ export const MIXED=Object.freeze({
  baseline:'d6bfd00891e4db5d25d5f0027d0b14b0383ef6fd',
  expectedSource:'ebbb66ba9c34e8453e7a6eb2ee47b0f751900e4a',
  expectedRun:44592409673,
+ failedFocusedRun:44659230701,
+ failedFocusedJob:136033266140,
+ failedFocusedArtifact:14595420727,
+ failedFocusedDigest:'sha256:4f35bdbcf389960abe0242d65c73f62ba03f4e20af62cd83dcdf62fa4c9a81c9',
+ refusedUnitRun:44659735445,
+ refusedController:'f0186f2a370bfbe3de8204e193f170853b557102',
 });
 export function validateMixedHostedRequest(env,event){
  const i=event?.inputs,ref='refs/heads/'+MIXED.branch;
