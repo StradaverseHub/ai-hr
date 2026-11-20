@@ -6,6 +6,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { withSharedReadSnapshot } from '@/db/client';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz-model';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -66,17 +67,20 @@ async function decisionReturnUrl(s: Awaited<ReturnType<typeof getSession>>, nav:
   };
   if (!isAdmin(s) && !(s.roles ?? []).includes('manager')) {
     try {
-      const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
-      if (!hasNextAssignment) {
-        const { scopeIds } = await scopedSession();
-        // WP-A1: Performance/Rewards task sources off — /approvals shows neither performance work nor a
-        // second copy of the Rewards queue read beside it (same reasoning as app/approvals/page.tsx).
-        const [tasks,rewards]=await Promise.all([
-          listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:false,rewards:false,probation:false}),
-          isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
-        ]);
-        if (!tasks.length&&!rewards.length) return neutralDestination();
-      }
+      // All destination checks run after the decision, under the same fresh principal and snapshot.
+      return await withSharedReadSnapshot(s, async () => {
+        const hasNextAssignment = isModuleEnabledOrFalse(s, 'attendance') && await hasPendingAttendanceParticipantAssignment(s);
+        if (!hasNextAssignment) {
+          const { scopeIds } = await scopedSession();
+          // The Rewards queue has its own owner. The inbox omits Performance and does not read Rewards twice.
+          const [tasks,rewards]=await Promise.all([
+            listPendingTasks(s,scopeIds,{attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:false,rewards:false,probation:false}),
+            isModuleEnabledOrFalse(s, 'rewards') ? pendingRewardReviews(s, scopeIds) : Promise.resolve([]),
+          ]);
+          if (!tasks.length&&!rewards.length) return neutralDestination();
+        }
+        return approvalsReturnUrl({ ...nav, ...feedback });
+      });
     } catch {
       // Navigation reads cannot turn an already-committed decision into a failed action.
       // Home retains the original outcome without assuming any remaining inbox authority.
