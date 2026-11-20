@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,onboardingTasks:vi.fn(),lifecycleRead:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,onboardingTasks:vi.fn(),onboardingNavigation:vi.fn(),lifecycleRead:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -15,7 +15,7 @@ vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:(
 vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
-vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:m.onboardingTasks,onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:m.onboardingTasks,onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:m.onboardingNavigation}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:false,launcher:null})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
@@ -49,7 +49,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.onboardingTasks.mockReset();m.onboardingTasks.mockResolvedValue([]);m.lifecycleRead.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.onboardingTasks.mockReset();m.onboardingTasks.mockResolvedValue([]);m.onboardingNavigation.mockReset().mockResolvedValue({module:false,master:false,requisitions:false,joiners:0,checklists:0});m.lifecycleRead.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -197,6 +197,28 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([{id:'onboarding-fixture',kind:'onboarding',subjectName:'Review checklist · Fictional hire',linkPath:'/tasks'}]);
  expect(m.onboardingTasks).toHaveBeenCalledOnce();
 });
+
+it('returns the main shell while Lifecycle navigation checks its permission owners', async () => {
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+  m.operator.mockResolvedValue(false);
+  m.module.mockImplementation((_session, code) => code === 'lifecycle');
+  let finish!: (facts: object) => void;
+  m.onboardingNavigation.mockImplementation(() => {
+    expect(currentDatabaseWorkload()).toBe('background');
+    return new Promise(resolve => { finish = resolve; });
+  });
+  const layout = Layout({children:<main>Available before Lifecycle navigation</main>});
+  try {
+    const tree = await layout;
+    const source = sidebarProps(tree)?.lifecycleNavigationSource;
+    expect(source).toBeInstanceOf(Promise);
+    finish({module:true,master:true,requisitions:true,joiners:7,checklists:2});
+    await expect(source).resolves.toMatchObject({onboardingAccess:true,onboardingMaster:true,
+      onboardingRequisitionsAccess:true,onboardingJoinerCount:7,onboardingChecklistCount:2});
+  } finally {
+    finish?.({});
+  }
+}, 3_000);
 
 it('returns the interactive shell while the passive Lifecycle inbox is still pending',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});

@@ -40,6 +40,7 @@ vi.mock('../app/notification-actions', () => ({
 vi.mock('../app/scope-actions', () => ({ setCompanyScope: vi.fn() }));
 
 import { Sidebar } from '../components/sidebar';
+import type { ShellLifecycleFacts } from '../lib/navigation/shell-resolver';
 import { IntentBar } from '../components/intent-bar';
 import { CommandBar } from '../components/command-bar';
 import { NotificationCenter } from '../components/notification-center';
@@ -88,6 +89,30 @@ afterEach(() => {
   cleanup();
   setTheme(null);
   pathname = '/';
+});
+
+it('streams the allowed Lifecycle menu and removes its previous facts as soon as the source changes', async () => {
+  setTheme('monolith');
+  let deliver!: (facts: ShellLifecycleFacts) => void;
+  const pending = new Promise<ShellLifecycleFacts>(resolve => { deliver = resolve; });
+  const renderSource = (source: Promise<ShellLifecycleFacts>) => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <Sidebar isAdmin defaultCollapsed={false} lifecycleNavigationSource={source} />
+    </NextIntlClientProvider>
+  );
+  const { rerender } = render(renderSource(pending));
+  expect(screen.getByRole('link', {name:'Today'})).toBeVisible();
+  expect(screen.queryByRole('button', {name:'Probation Confirmation'})).toBeNull();
+
+  await act(async () => deliver({probationAccess:{page:true,configure:false}}));
+  const probation = await screen.findByRole('button', {name:'Probation Confirmation'});
+  fireEvent.click(probation);
+  expect(screen.getByRole('link', {name:'Probation tracker'})).toHaveAttribute('href', '/lifecycle/probation');
+
+  rerender(renderSource(Promise.resolve({})));
+  expect(screen.queryByRole('button', {name:'Probation Confirmation'})).toBeNull();
+  expect(screen.queryByRole('link', {name:'Probation tracker'})).toBeNull();
+  expect(screen.getByRole('link', {name:'Today'})).toBeVisible();
 });
 
 describe('Performance workspace shell',()=>{

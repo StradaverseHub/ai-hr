@@ -2,7 +2,7 @@
 
 import Link from './intent-link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useIsMonolith, useUiTheme } from './ui-theme-context';
 import {
@@ -42,10 +42,30 @@ import { V9_SHARED_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
 
 import { isCollapsible, type ChildItem, type CollapsibleGroupItem, type Row, type Group } from '@/lib/navigation/shell-inventory';
-import { resolveShellNavigation, type ShellNavigationFacts } from '@/lib/navigation/shell-resolver';
+import { resolveShellNavigation, type ShellLifecycleFacts, type ShellNavigationFacts } from '@/lib/navigation/shell-resolver';
 export { SIDEBAR_AUDIENCE_INVENTORY } from '@/lib/navigation/shell-inventory';
 
 const REVIEW_WORKSPACE_PATH = '/performance/workspace';
+
+const subscribeToHydration = () => () => {};
+const hydratedClient = () => true;
+const hydratingServer = () => false;
+const pendingLifecycle: ShellLifecycleFacts = {};
+
+function useStreamedLifecycle(source?: Promise<ShellLifecycleFacts>) {
+  const hydrated = useSyncExternalStore(subscribeToHydration, hydratedClient, hydratingServer);
+  const [snapshot, setSnapshot] = useState<{ source: Promise<ShellLifecycleFacts>; facts: ShellLifecycleFacts }>();
+  useEffect(() => {
+    if (!source) return;
+    let current = true;
+    void source.then(facts => {
+      if (current) setSnapshot({ source, facts });
+    }, () => {});
+    return () => { current = false; };
+  }, [source]);
+  return hydrated && snapshot?.source === source ? snapshot?.facts : undefined;
+}
+
 
 /** Detached rail that floats on the canvas. Collapses to an icon-only strip; expands
  *  to icon + label. The choice persists via the `rail_collapsed` cookie (read SSR-side
@@ -83,8 +103,9 @@ export function Sidebar({
   onboardingV9Navigation,
   onboardingMaster,
   onboardingRequisitionsAccess,
-  onboardingJoinerCount,
-  onboardingChecklistCount,
+  onboardingJoinerCount: initialJoinerCount,
+  onboardingChecklistCount: initialChecklistCount,
+  lifecycleNavigationSource,
   enabledModules,
   assistantAccess,
   feedbackAccess,
@@ -105,11 +126,19 @@ export function Sidebar({
   canConfigurePeopleGeneral?: boolean;
   onboardingJoinerCount?:number;
   onboardingChecklistCount?:number;
+  lifecycleNavigationSource?: Promise<ShellLifecycleFacts>;
   defaultCollapsed: boolean;
   /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
   viewerName?: string | null;
   viewerCode?: string | null;
 }) {
+  const streamedLifecycle = useStreamedLifecycle(lifecycleNavigationSource);
+  const lifecycle = lifecycleNavigationSource ? streamedLifecycle ?? pendingLifecycle : {
+    probationAccess, contractStaffAccess, offboardingPostingsAccess, onboardingAccess,
+    onboardingV9Access, onboardingV9Navigation, onboardingMaster, onboardingRequisitionsAccess,
+    onboardingJoinerCount: initialJoinerCount, onboardingChecklistCount: initialChecklistCount,
+  };
+  const { onboardingJoinerCount, onboardingChecklistCount } = lifecycle;
   const approvals=useShellApprovalFacts()?.result;
   const hasAssignedAttendanceApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedAttendanceApproval:assignedAttendanceFromProps;
   const hasAssignedApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedApproval:assignedApprovalFromProps;
@@ -193,9 +222,8 @@ export function Sidebar({
     canPreviewIdentityEmail, canApprove, hasAssignedAttendanceApproval, hasAssignedApproval,
     canReviewProfileChanges, canAdministerAi, canAdministerSecurity, canConfigureAccess,
     canProvisionUsers, canConfigureAiProvider, canAccessTeam, letterDestinations,
-    rewardDestinations, canAdministerOnehr, canAdministerRecruitment, performanceAdminHref, probationAccess,
-    contractStaffAccess, offboardingPostingsAccess, onboardingAccess, onboardingV9Access, onboardingV9Navigation,
-    onboardingMaster, onboardingRequisitionsAccess, enabledModules, assistantAccess,
+    rewardDestinations, canAdministerOnehr, canAdministerRecruitment, performanceAdminHref,
+    ...lifecycle, enabledModules, assistantAccess,
     feedbackAccess, privateCaseHandler, referralPortal,
   });
   const navigation = placeNavigation(destinations);

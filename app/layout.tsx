@@ -233,12 +233,31 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
-  ]);
-  const onboardingAccess=onboardingNav.module;
+  // Resolve optional navigation through the same owners without holding the first page frame.
+  const scopedLifecycleNavigation = withBackgroundReadWork(session.tenantId, () => lifecycleModuleNavigation(session))
+    .catch(() => ({
+      probation: { page: false, configure: false, intake: false, access: false },
+      contractStaff: { page: false, configure: false, intake: false, automation: false, postings: false },
+    }));
+  const lifecycleNavigation = withBackgroundReadWork(session.tenantId, async () => {
+    const [onboarding, scoped, offboardingPostingsAccess] = await Promise.all([
+      lifecycleEnabled ? onboardingNavigation(session).catch(() => null) : null,
+      scopedLifecycleNavigation,
+      lifecycleEnabled ? offboardingPostingAccess(session).catch(() => false) : false,
+    ]);
+    return {
+      probationAccess: scoped.probation,
+      contractStaffAccess: scoped.contractStaff,
+      offboardingPostingsAccess,
+      onboardingAccess: onboarding?.module,
+      onboardingV9Access: onboarding?.v9,
+      onboardingV9Navigation: onboarding?.v9Navigation,
+      onboardingJoinerCount: onboarding?.joiners,
+      onboardingChecklistCount: onboarding?.checklists,
+      onboardingMaster: onboarding?.master,
+      onboardingRequisitionsAccess: onboarding?.requisitions,
+    };
+  });
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -264,7 +283,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const lifecycleWork = withBackgroundReadWork(session.tenantId, async () => {
     const [queue, inbox] = await Promise.all([
       lifecycleEnabled ? onboardingTasks(session) : [],
-      lifecycleModuleInbox(session, scopedLifecycleNavigation),
+      scopedLifecycleNavigation.then(navigation => lifecycleModuleInbox(session, navigation)),
     ]);
     return {
       tasks: [...queue.map(onboardingNotificationTask), ...inbox.items],
@@ -350,16 +369,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              onboardingAccess={onboardingAccess}
-              probationAccess={scopedLifecycleNavigation.probation}
-              contractStaffAccess={scopedLifecycleNavigation.contractStaff}
-              offboardingPostingsAccess={offboardingPostingsAccess}
-              onboardingV9Access={onboardingNav.v9}
-              onboardingV9Navigation={onboardingNav.v9Navigation}
-              onboardingJoinerCount={onboardingNav.joiners}
-              onboardingChecklistCount={onboardingNav.checklists}
-              onboardingMaster={onboardingNav.master}
-              onboardingRequisitionsAccess={onboardingNav.requisitions}
+              lifecycleNavigationSource={lifecycleNavigation}
               // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array
               // (or null), never the snapshot itself: Sidebar is a client component, and passing the
               // entitlement context would drag the resolver into the client bundle. null means "no
