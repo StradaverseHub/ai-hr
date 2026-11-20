@@ -28,3 +28,16 @@ test('omits private paths and refuses to report a secondary failure as the prima
   assert.equal(mixedDriverPrimaryOrigin(text), null);
   assert.equal(mixedDriverPrimaryOrigin('unrecognized diagnostic'), null);
 });
+
+test('reports the browser navigation assertion ahead of its mixed-load caller', () => {
+  const reason = new Error('Fictional private failure contents');
+  reason.stack = [
+    reason.toString(),
+    '    at captureScenario (/home/runner/private/source/scripts/performance/navigation-browser-capture.ts:401:5)',
+    '    at Object.captureActor (/home/runner/private/source/scripts/performance/navigation-browser-capture.ts:341:23)',
+    '    at run (file:///home/runner/private/source/scripts/performance/system-load-owner.mjs:1248:27)',
+  ].join('\n');
+  assert.deepEqual(mixedDriverPrimaryOrigin(inspect({ primary: { failed: true, reason }, secondary: [] })), {
+    file: 'navigation-browser-capture.ts', line: 401, column: 5,
+  });
+});
