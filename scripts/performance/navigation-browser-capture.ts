@@ -396,14 +396,12 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
   }
   if(scenario.outcome==='usable'&&entry.kind==='shell-menu')await clickNativeShellDestination(page,scenario.href,remaining);
   if(scenario.outcome==='usable'&&entry.selector){
-   const anchor=page.locator(entry.selector);
+   const matches=page.locator(entry.selector);
+   const anchor=matches.filter({visible:true});
    await anchor.first().waitFor({state:'visible',timeout:remaining()});
-   const total=await anchor.count();
-   if(total!==1){
-    const visible=await anchor.filter({visible:true}).count().catch(()=>null);
-    linkFailureCounts={total,visible};
-   }
-   assert.equal(total,1,'Canonical native destination link missing or ambiguous');
+   const visible=await anchor.count();
+   if(visible!==1)linkFailureCounts={total:await matches.count(),visible};
+   assert.equal(visible,1,'Canonical visible destination link missing or ambiguous');
    assert(await anchor.getAttribute('href')===scenario.href,'Native destination address differs from reviewed scenario');
    assert(await anchor.isVisible()&&await anchor.isEnabled(),'Native destination is not actionable');
    await anchor.click({timeout:remaining()});
