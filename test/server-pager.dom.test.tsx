@@ -16,7 +16,7 @@
  * the pager's markup, not Next's navigation.
  */
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
 import en from '../messages/en.json';
@@ -55,8 +55,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
+  default: ({ href, prefetch, children, ...rest }: { href: string; prefetch?: boolean; children: ReactNode }) => (
+    <a href={href} data-prefetch={String(prefetch)} {...rest}>
       {children}
     </a>
   ),
@@ -74,6 +74,16 @@ async function renderPager(locale: string, messages: Record<string, unknown>, pa
   const el = await Pager({ basePath: '/admin/pay-components', params: { q: 'lee' }, maxPageSize, state: pageState(q, total, shown) });
   return render(el);
 }
+
+it('prefetches only the pager destination with keyboard intent', async () => {
+  const view = await renderPager('en', en, 1, 150);
+  const links = within(view.container).getAllByRole('link');
+  expect(links.length).toBeGreaterThan(2);
+  expect(links.every(link => link.getAttribute('data-prefetch') === 'false')).toBe(true);
+  fireEvent.focus(links[0]);
+  expect(links[0].getAttribute('data-prefetch')).toBe('true');
+  expect(links.slice(1).every(link => link.getAttribute('data-prefetch') === 'false')).toBe(true);
+});
 
 const LOCALES = [
   ['en', en],

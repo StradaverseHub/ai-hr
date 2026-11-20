@@ -46,8 +46,8 @@ vi.mock('next/navigation', () => ({
 }));
 
 vi.mock('next/link', () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
+  default: ({ href, prefetch, children, ...rest }: { href: string; prefetch?: boolean; children: ReactNode }) => (
+    <a href={href} data-prefetch={String(prefetch)} {...rest}>
       {children}
     </a>
   ),
@@ -138,6 +138,7 @@ describe('the prompt replaces the separate full screen', () => {
     // ⌘-click, middle-click and a JS-less browser must all still reach the full screen: the route is the
     // tour's target and every draft row's ?draft= destination, and it is deliberately not deleted.
     expect(trigger.getAttribute('href')).toBe('/admin/personnel/new');
+    expect(trigger.getAttribute('data-prefetch')).toBe('false');
     // The onboarding tour anchors on this attribute (lib/module-tours.json → people.hire), and it moved
     // here with the button it belongs to.
     expect(trigger.getAttribute('data-tour')).toBe('people-hire');

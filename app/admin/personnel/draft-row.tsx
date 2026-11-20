@@ -17,7 +17,7 @@
  * Like EmployeeRow, this component holds no translator of its own — every string arrives resolved, so the
  * page stays the one place the listing's wording is chosen.
  */
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { Avatar, EmployeeCode, StatusBadge } from '@/components/ui';
 import type { EmployeeColumnKey } from '@/lib/employee-columns';
 import { CLICKABLE_ROW_CLS, ROW_CELL_CLS, ROW_NAME_LINK_CLS, RowOverlayLink } from './row-link';
@@ -62,9 +62,9 @@ export function DraftRow({
             <div className="flex items-center gap-3">
               <Avatar name={avatarName} />
               <div className="min-w-0">
-                <Link href={href} className={ROW_NAME_LINK_CLS}>
+                <IntentLink href={href} className={ROW_NAME_LINK_CLS}>
                   {label}
-                </Link>
+                </IntentLink>
                 <div className="truncate text-xs text-muted-foreground">{subtitle}</div>
               </div>
             </div>

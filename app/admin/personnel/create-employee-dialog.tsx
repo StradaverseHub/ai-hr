@@ -84,6 +84,7 @@ export function CreateEmployeeDialog({
     <Dialog.Root open={open} onOpenChange={change}>
       <Link
         href="/admin/personnel/new"
+        prefetch={false}
         data-tour="people-hire"
         aria-haspopup="dialog"
         aria-expanded={open}
