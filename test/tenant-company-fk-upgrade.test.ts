@@ -2874,7 +2874,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
       when (select app.current_user_id() is null or app.principal_snapshot_current()) then true
       when (select app.payroll_leaver_self_history()) then ${ownHistory} else false end)`);
    }
-   const rows=await tx`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
+   const rows=await tx<{
+    schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;
+    qual:string|null;with_check:string|null;
+   }[]>`select schemaname::text,tablename::text,policyname::text,permissive::text,roles::text,cmd::text,qual,with_check
     from pg_policies where schemaname='public' and tablename in ('payroll_batch','payslip')
     and policyname='upgrade_expected_current_human_read' order by tablename`;
    await tx`drop policy upgrade_expected_current_human_read on public.payroll_batch`;
