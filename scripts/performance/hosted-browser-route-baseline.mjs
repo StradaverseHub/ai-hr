@@ -140,7 +140,44 @@ async function waitForApp(){
  throw Error('Application startup deadline exceeded');
 }
 
-async function measureMixedLoad(){
+function retainMixedStartupFailure(label){
+ // Startup errors occur before the driver writes its structured report.
+ // Preserve only bounded codes and source frames from the private runner log.
+ const log=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-32000);
+ const codes=log.matchAll(/\bERR_[A-Z_]{2,60}\b/g);
+ const frames=log.matchAll(/\/source\/((?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_./-]{1,140}:\d{1,5}(?::\d{1,5})?)(?=[)\s]|$)/gm);
+ const kind=/^\s*(AssertionError|SyntaxError|TypeError|ReferenceError|Error)(?=[: ])/m.exec(log)?.[1];
+ report.mixedLoadStartupFailure={
+  phase:label,kind:kind??'unknown',
+  codes:[...new Set(Array.from(codes,match=>match[0]))].slice(0,5),
+  locations:[...new Set(Array.from(frames,match=>match[1]))].slice(0,8),
+ };
+ save();
+}
+
+function mixedDriverRuntime(){
+ const command=env.AIHR_MIXED_DRIVER_NODE;
+ assert(typeof command==='string'&&command.startsWith('/')&&existsSync(command),'Mixed workload driver runtime unavailable');
+ const version=execFileSync(command,['--version'],{encoding:'utf8',timeout:5000}).trim();
+ assert.equal(version,'v22.23.3','Unexpected mixed workload driver runtime');
+ report.mixedLoadRuntime={driver:version,application:process.version};
+ save();
+ return command;
+}
+
+async function verifyMixedDriver(command){
+ const label='import-mixed-workload-driver';
+ try{
+  await run(label,command,['--import','tsx','--input-type=module','--eval',
+   "import assert from 'node:assert/strict'; const driver=await import('./scripts/performance/system-load-owner.mjs'); assert.equal(typeof driver.runDevelopmentSystemLoad,'function');"],
+   {...dbEnv,GITHUB_ACTIONS:'false'},30000);
+ }catch(error){
+  retainMixedStartupFailure(label);
+  throw error;
+ }
+}
+
+async function measureMixedLoad(command){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
  const dockerConfig=join(privateDir,'docker-config');
@@ -156,25 +193,14 @@ async function measureMixedLoad(){
  assert(/^[1-9][0-9]*$/.test(clockTicks));
  const resultPath=join(driverEvidence,'http-browser.json');
  try{
-  await run('measure-500-user-mixed-load',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{
+  await run('measure-500-user-mixed-load',command,['--import','tsx','scripts/performance/system-load.mjs'],{
    ...dbEnv,AIHR_CI_UNIT:pgEnv.AIHR_CI_UNIT,PERF_EVIDENCE_DIR:driverEvidence,PERF_HTTP_THINK_MS:'1000',
    PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:'1',PERF_APP_PID:String(app.pid),PERF_PROXY_PID:String(process.pid),
    PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
   },1800000);
  }finally{
   if(!existsSync(resultPath)){
-   // Startup errors occur before the driver writes its structured report.
-   // Preserve only bounded codes and source frames from the private runner log.
-   const log=readFileSync(join(privateDir,'measure-500-user-mixed-load.log'),'utf8').slice(-32000);
-   const codes=log.matchAll(/\bERR_[A-Z_]{2,60}\b/g);
-   const frames=log.matchAll(/\/source\/((?:app|core|db|lib|packs|scripts|test)\/[A-Za-z0-9_./-]{1,140}:\d{1,5}(?::\d{1,5})?)(?=[)\s]|$)/gm);
-   const kind=/^\s*(AssertionError|SyntaxError|TypeError|ReferenceError|Error)(?=[: ])/m.exec(log)?.[1];
-   report.mixedLoadStartupFailure={
-    kind:kind??'unknown',
-    codes:[...new Set(Array.from(codes,match=>match[0]))].slice(0,5),
-    locations:[...new Set(Array.from(frames,match=>match[1]))].slice(0,8),
-   };
-   save();
+   retainMixedStartupFailure('measure-500-user-mixed-load');
   }else{
    const data=JSON.parse(readFileSync(resultPath,'utf8'));
    const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
@@ -1100,6 +1126,8 @@ async function measureActions(fixture){
 
 save();
 try{
+ const driverCommand=mixedLoad?mixedDriverRuntime():null;
+ if(driverCommand)await verifyMixedDriver(driverCommand);
  if(!fixtureOnly){
   report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
   assert(report.buildId,'Missing measured application build');
@@ -1137,7 +1165,7 @@ try{
   await waitForApp();
   await proxy();
  }
- if(mixedLoad&&!fixtureOnly)await measureMixedLoad();
+ if(driverCommand&&!fixtureOnly)await measureMixedLoad(driverCommand);
  else if(!fixtureOnly){
   await measureRoutes(fixture);
   await measureShellLinks(fixture);
