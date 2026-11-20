@@ -15,6 +15,7 @@ import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {measureOwnPayslipDetail} from './own-payslip-detail-browser.mjs';
 import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-register-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
@@ -1976,7 +1977,7 @@ const actionLaneByJourney={
  'personal-calendar-month':'shell','shell-popovers':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
  'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
- 'payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
+ 'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
  'approvals-summary-readiness':'approvals','approvals-categories':'approvals','claim-approval':'approvals','saved-report-draft':'approvals',
 };
 
@@ -2004,6 +2005,8 @@ async function measureActions(fixture){
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
+  {name:'own-released-payslip-detail',actorIndex:4,run:measureOwnPayslipDetail,
+   timings:result=>result.payslipDetailSteps},
   ...[0,1].map(actorIndex=>({name:'payroll-history-breakdown',actorIndex,run:measurePayrollHistoryDisclosure,
    timings:result=>result.payrollDisclosureSteps})),
   ...[0,1].map(actorIndex=>({name:'job-description-editor-open',actorIndex,run:measureJobDescriptionEditor,

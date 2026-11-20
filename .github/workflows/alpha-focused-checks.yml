@@ -77,7 +77,7 @@ on:
         type: boolean
         default: false
       browser_static_shard:
-        description: Static browser census shard (0–7), or all to cover the compiled inventory
+        description: Static census shard (0–7 or all), or one action lane when browser_surface_probe is actions
         default: ''
         type: string
       model_eval:
@@ -137,8 +137,13 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
-            exit 2
+          if [[ -n "$BROWSER_STATIC_SHARD" ]]; then
+            [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true ]] || exit 2
+            if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
+              [[ "$BROWSER_STATIC_SHARD" =~ ^(shell|workforce|payroll|approvals)$ ]] || exit 2
+            else
+              [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2
+            fi
           fi
           if [[ "$BROWSER_PAYROLL_READ_TRACE" == true ]] && { [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD" ]]; }; then
             exit 2
@@ -148,15 +153,18 @@ jobs:
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
             [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions|leave-inbox|roster|content-readiness)$ ]] ||
-            [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
-               || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
+            [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true
+               || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]] ||
+            [[ "$BROWSER_SURFACE_PROBE" != actions && -n "$BROWSER_STATIC_SHARD" ]];
           }; then
             exit 2
           fi
           if [[ "$REUSE_ACTION_BUILD" == true ]] && {
             [[ "$BROWSER_SURFACE_PROBE" != actions || "$RUN_BUILD" == true || "$EXPECTED_SHA" != f27f355c89530c994a084bfddaa38823425fcd4d ]];
           }; then exit 2; fi
-          if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
+          if [[ "$BROWSER_SURFACE_PROBE" == actions && -n "$BROWSER_STATIC_SHARD" ]]; then
+            printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
+          elif [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
             printf 'static_shards=["shell","workforce","payroll","approvals"]\n' >> "$GITHUB_OUTPUT"
           elif [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
