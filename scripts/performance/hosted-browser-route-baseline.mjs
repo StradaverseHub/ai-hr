@@ -1138,6 +1138,34 @@ async function measureCalendarMonth({page,user,fixture,report,save}){
  await calendar.locator('button[aria-current="date"]').waitFor({state:'visible',timeout:15000});
 }
 
+async function measureLifecycleMenu({page,user,fixture,report,save}){
+ const path='/admin/personnel';
+ const opened=performance.now(),deadline=opened+20000;
+ const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ report.lifecycleMenuSteps=[];
+ const measure=(step,started=opened)=>{
+  report.lifecycleMenuSteps.push({step,elapsedMs:Math.round(performance.now()-started)});
+  save();
+ };
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:timeout()});
+ assert.equal(response?.status(),200);
+ assert.equal(page.url(),origin+path);
+ const menu=page.getByRole('button',{name:'On/Off Boarding',exact:true});
+ await Promise.all([
+  readyContent(page,user,path,timeout,undefined,fixture).then(result=>{
+   assert.equal(result,'usable-content');
+   measure('personnel-usable');
+  }),
+  menu.waitFor({state:'visible',timeout:timeout()}).then(()=>measure('lifecycle-trigger-visible')),
+ ]);
+ const clicked=performance.now();
+ await menu.click({timeout:timeout()});
+ const access=page.getByRole('link',{name:'Module Access',exact:true});
+ await access.waitFor({state:'visible',timeout:timeout()});
+ assert.equal(await access.getAttribute('href'),'/lifecycle/v9?view=access');
+ measure('authorized-lifecycle-flyout',clicked);
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -1148,7 +1176,10 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
-  ...(groupShape?[{name:'group-company-scope',actorIndex:0,run:measureBrowserGroupScope,timings:result=>result.groupScopeSteps}]:[]),
+  ...(groupShape?[
+   {name:'group-company-scope',actorIndex:0,run:measureBrowserGroupScope,timings:result=>result.groupScopeSteps},
+   {name:'group-lifecycle-menu',actorIndex:0,run:measureLifecycleMenu,timings:result=>result.lifecycleMenuSteps},
+  ]:[]),
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
