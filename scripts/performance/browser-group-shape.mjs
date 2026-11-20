@@ -17,6 +17,12 @@ export async function seedBrowserGroupShape(owner,fixture){
  const tenantId=group.tenantId;
 
  const {companies,counts}=await owner.begin(async tx=>{
+  // Whole-system seeding can publish the organisation before this overlay runs.
+  // Keep the native assignment guard active and bind this fixture transaction to its tenant.
+  const [binding]=await tx`
+   select set_config('app.tenant_id',${tenantId},true) as tenant_id
+  `;
+  assert.equal(binding.tenant_id,tenantId);
   const companies=await tx`
    insert into company (tenant_id,legal_name,country,parent_company_id)
    select ${tenantId}::uuid,${companyPrefix} || lpad(n::text,2,'0'),'MY',${group.companyId}::uuid
