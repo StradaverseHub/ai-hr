@@ -15,8 +15,12 @@ import {closeAll,migrateTestDb,owner} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 
 const POPULATION=50_000, FIXTURE_BATCH=5_000, FETCH_SIZE=4_096;
-const CASE_MS=300_000, CELL_MS=120_000, STATEMENT_MS=20_000, SETTLEMENT_MS=10_000;
+const CELL_MS=120_000, STATEMENT_MS=20_000, SETTLEMENT_MS=10_000;
 const RESERVED_READ_MS=120_000;
+// The full gate exhausted the old 170s fixture deadline while seeding 50,000
+// employments. Keep seeding headroom separate from the native read and settlement budgets.
+const FIXTURE_MS=260_000;
+const CASE_MS=FIXTURE_MS+RESERVED_READ_MS+SETTLEMENT_MS;
 const PLAN_BYTES=1_048_576, PLAN_NODES=256, PLAN_DEPTH=64, RECEIPT_BYTES=65_536;
 const RECEIPT='analytics-carry-searched-native-50k.json';
 const EXPLAIN_PREFIX='explain(analyze,buffers,verbose,settings,timing off,format json) ';

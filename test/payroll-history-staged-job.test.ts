@@ -150,6 +150,41 @@ async function state(t:Tenant,attemptId:string){
 }
 
 describe('payroll history confirm and revert as staged jobs',()=>{
+ it('publishes a post-employment workbook row under its authorized company without dated coverage', async () => {
+ const t = await tenant();
+ const [workbookCompany] = await owner.db.insert(schema.company).values({
+  tenantId:t.b.tenantId, legalName:'Fictional archived payroll company', companyLabel:'OLDCO', country:'MY',
+ }).returning();
+ await seedPayrollCycleCatalog(t.ctx,workbookCompany.id);
+ await owner.db.update(schema.employment).set({terminatedOn:processed+'-15'}).where(eq(schema.employment.id,t.employments['0007']));
+ const workbook = Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),
+  ...lines('0007',earlier,'1400.00').map(([employee,period,cycle,code,,amount])=>[employee,period,cycle,code,'OLDCO',amount]),
+ ]));
+ const review = await previewPayrollHistoryUpload(t.ctx,{name:'former-employee.csv', content:workbook, maintenance:{version:1,mode:'replace'}});
+ expect(review.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
+ const job = await requestPayrollHistoryConfirm(t.ctx,{attemptId:review.attemptId,previewHash:review.plan.previewHash,confirmReplacement:true});
+ if (!('jobId' in job)) throw new Error('Expected a maintenance confirmation job');
+ expect(await drain(job.jobId)).toBe('completed');
+ const [record] = await owner.db.select().from(schema.payrollHistoryImportRecord).where(eq(schema.payrollHistoryImportRecord.employmentId,t.employments['0007']));
+ expect(record).toMatchObject({companyId:workbookCompany.id, period:earlier});
+ const [paid] = await owner.db.select({gross:schema.payslip.grossPay, statutory:schema.payslip.statutory})
+  .from(schema.payslip).innerJoin(schema.payrollBatch,eq(schema.payrollBatch.id,schema.payslip.batchId))
+  .where(eq(schema.payrollBatch.historyImportAttemptId,review.attemptId));
+ expect(paid).toMatchObject({gross:'1400.00',statutory:{pcb:0,epfEmployee:0}});
+ expect(paid.statutory).not.toHaveProperty('segment');
+});
+
+it('holds the versioned workbook when it would replace a closed native payroll result', async () => {
+ const t = await tenant();
+ const before = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,t.ordinary));
+ const review = await previewPayrollHistoryUpload(t.ctx,{name:'closed-payroll.csv',content:file(),maintenance:{version:1,mode:'replace'}});
+ expect(review.plan.rows.find(row=>row.period===processed)).toMatchObject({operation:'invalid',reasons:[expect.stringMatching(/closed payroll/i)]});
+ await expect(requestPayrollHistoryConfirm(t.ctx,{attemptId:review.attemptId,previewHash:review.plan.previewHash,confirmReplacement:true})).rejects.toThrow(/Correct the file/);
+ expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,t.ordinary))).toEqual(before);
+ expect(await owner.db.select().from(schema.payrollHistoryImportRecord)).toEqual([]);
+});
+
+
  beforeAll(migrateTestDb);
  beforeEach(resetDb);
  afterAll(closeAll);
