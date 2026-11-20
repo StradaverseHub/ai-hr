@@ -155,7 +155,8 @@ jobs:
           fi
           if [[ "$REUSE_COMBINED_SURFACE" == true ]] && {
             [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(rewards|workflow-both)$ || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
+            [[ "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 &&
+               ( "$EXPECTED_SHA" != d51fa7bb0b2a68071901187f6f0864239bbfd677 || "$BROWSER_SURFACE_PROBE" != workflow-both ) ]];
           }; then
             exit 2
           fi
@@ -261,15 +262,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 111852a4b932fbf49a7bd7df6056f390f5f11409
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136381859095 --jq '
-            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44763397635 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+          case "$AIHR_CI_HEAD" in
+            111852a4b932fbf49a7bd7df6056f390f5f11409)
+              job=136381859095 run=44763397635 artifact=14644151151
+              controller=1b366cab7ad279105a5d9a771ce80024cac873cd digest=ff70731a259ef46c3b1e55a844d4a8244becd73b45bf24df07ce9ccbc423ed9a ;;
+            d51fa7bb0b2a68071901187f6f0864239bbfd677)
+              job=136440848152 run=44780216803 artifact=14652078434
+              controller=2e9f358e10397feb07f91f93d723ab154a154fba digest=f76f009a6b42caa383dbdd9973ee08b24d51d136c58a05bc05a2f8f7634a68de ;;
+            *) exit 2 ;;
+          esac
+          test "$(gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job" --jq '[.conclusion,.run_attempt,.name,.run_id,.head_sha] | @tsv')" = "$(printf 'success\t1\tlinux-build\t%s\t%s' "$run" "$controller")"
           archive="$(mktemp "$RUNNER_TEMP/combined-surface-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14644151151/zip > "$archive"
-          printf '%s  %s\n' 'ff70731a259ef46c3b1e55a844d4a8244becd73b45bf24df07ce9ccbc423ed9a' "$archive" | sha256sum -c -
+          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact/zip" > "$archive"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
