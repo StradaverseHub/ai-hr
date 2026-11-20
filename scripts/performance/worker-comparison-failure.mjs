@@ -165,10 +165,20 @@ export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,er
 const mixedBrowserPhases=new Set(['baseline','sign-in-preflight','loaded']);
 const mixedBrowserRoutes=new Set([...knownRoutes,'/payroll/transaction-view']);
 const mixedBrowserErrorKinds=new Set(['Error','AssertionError','TimeoutError','AbortError','TypeError','AggregateError','unclassified']);
+const mixedTableRoutes=new Set(['/claims','/admin/personnel','/payroll']);
+
+export function projectMixedLoadedTable(row){
+ if(row?.phase!=='loaded'||!roles.has(row.role)||!mixedTableRoutes.has(row.path)||!row.tableNavigation)return null;
+ const {responseMs,firstVisibleRowMs,documentParsedMs}=row.tableNavigation;
+ if(![responseMs,firstVisibleRowMs,documentParsedMs].every(value=>knownCount(value,910000)))return null;
+ if([firstVisibleRowMs,documentParsedMs].some(value=>value!==null&&(responseMs===null||value<responseMs)))return null;
+ return {role:row.role,route:row.path,responseMs,firstVisibleRowMs,documentParsedMs};
+}
 
 /** Retain closed facts from the first failed rendered visit on the disposable fixture. */
 export function projectMixedBrowserVisitFailure(row){
  if(!mixedBrowserPhases.has(row?.phase)||!roles.has(row.role)||!mixedBrowserErrorKinds.has(row.errorType))return null;
+ const table=projectMixedLoadedTable(row);
  return {
   phase:row.phase,
   role:row.role,
@@ -176,6 +186,7 @@ export function projectMixedBrowserVisitFailure(row){
   step:stageSteps.has(row.visitStage)?row.visitStage:'unavailable',
   kind:row.errorType,
   elapsedMs:wholeMs(row.elapsedMs,910000),
+  ...(table?{tableNavigation:table}:{}),
   dom:row.dom?{
    readyState:['loading','interactive','complete'].includes(row.dom.readyState)?row.dom.readyState:null,
    ...Object.fromEntries(['headingCount','mainCount','iframeCount','busyCount','alertCount']

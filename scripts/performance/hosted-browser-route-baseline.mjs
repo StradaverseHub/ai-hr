@@ -11,7 +11,7 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
-import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
+import {projectMixedBrowserVisitFailure,projectMixedLoadedTable} from './worker-comparison-failure.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -569,6 +569,10 @@ async function measureMixedLoad(command){
    }
    const failedVisit=projectMixedBrowserVisitFailure(data.browserFailedNavigation);
    if(failedVisit)report.mixedBrowserVisitFailure=failedVisit;
+   if(Array.isArray(data.browser)){
+    const tables=data.browser.map(projectMixedLoadedTable).filter(Boolean).slice(0,18);
+    if(tables.length)report.mixedLoadedTableNavigation=tables;
+   }
    const knownLocales=new Set(['en','ms','zh','ta','th','vi']);
    if(data.browserErrors?.length){
     const pageRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));

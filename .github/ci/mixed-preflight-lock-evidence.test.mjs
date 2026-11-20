@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createPreflightRequestTimeline,originalAdvisoryAttribution,projectMixedPreflightLockWaits} from '../../scripts/performance/lock-sample-attribution.mjs';
+import {projectMixedBrowserVisitFailure,projectMixedLoadedTable} from '../../scripts/performance/worker-comparison-failure.mjs';
+
+test('retains visible rows during a document timeout without exposing route data',()=>{
+ const row={phase:'loaded',role:'companyHR',path:'/admin/personnel',visitStage:'navigation',errorType:'TimeoutError',
+  elapsedMs:90000,tableNavigation:{responseMs:217,firstVisibleRowMs:647,documentParsedMs:null,text:'private'}};
+ const expected={role:'companyHR',route:'/admin/personnel',responseMs:217,firstVisibleRowMs:647,documentParsedMs:null};
+ assert.deepEqual(projectMixedLoadedTable(row),expected);
+ assert.deepEqual(projectMixedBrowserVisitFailure(row).tableNavigation,expected);
+ assert.equal(projectMixedLoadedTable({...row,path:'/admin/personnel/private-id'}),null);
+ assert.equal(projectMixedLoadedTable({...row,tableNavigation:{...row.tableNavigation,responseMs:null}}),null);
+ assert.equal(projectMixedLoadedTable({...row,tableNavigation:{...row.tableNavigation,firstVisibleRowMs:216}}),null);
+});
 
 const edge={source:'original-sample',family:'audit-chain',waiterMode:'ExclusiveLock',
  blockerMode:'ExclusiveLock',blockerState:'granted',waiterCategory:'auth-audit-append',
