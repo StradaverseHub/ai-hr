@@ -50,7 +50,7 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import { readShellNavigationContext } from '@/lib/shell-navigation-context';
+import { readSignedInShellNavigation } from '@/lib/shell-navigation-context';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
@@ -75,7 +75,6 @@ import { AiAskAvailability } from '@/components/ai-centre/ask-availability';
 import { BackToInbox } from '@/components/ai-centre/back-to-inbox';
 import { IntentBar } from '@/components/intent-bar';
 import { ShellRoutePath, ShellLiveClock, ShellStatusLine } from '@/components/shell-top-line';
-import { readShellFeatureNavigation } from '@/lib/shell-feature-navigation';
 
 // r396: Classic's faces are no longer the default, so they are not preloaded on every page (they still load,
 // on demand, for a Classic user). Monolith's two faces preload.
@@ -187,7 +186,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [{allowed,scopeIds},viewer,navigationAccess]=await readShellNavigationContext(session);
+  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
+    await readSignedInShellNavigation(session);
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
     letters: letterDestinations,
@@ -196,7 +196,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     privateCases: privateCaseHandler,
     recruitmentTeam,
     referralPortal,
-  } = await readShellFeatureNavigation(session, scopeIds);
+  } = features;
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);

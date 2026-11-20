@@ -3,8 +3,9 @@ import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
 import { employment } from '../db/schema';
-import { readShellNavigationContext } from '../lib/shell-navigation-context';
-import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase } from './harness';
+import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/shell-navigation-context';
+import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
+import { closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
 
 const browser = vi.hoisted(() => ({ companyScope: undefined as string | undefined }));
@@ -23,6 +24,7 @@ beforeAll(async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
+  for (const module of ['assistant', 'rewards', 'recruitment']) await setModule(base.tenantId, module, 'active');
   group = await buildScaleFixture(base, { employments: 1000, events: 0 });
   const [staff] = await owner.db
     .select({ personId: employment.personId, companyId: employment.companyId })
@@ -40,7 +42,7 @@ beforeAll(async () => {
 }, 90000);
 afterAll(closeAll);
 
-it('keeps group, selected company and scoped roles equivalent on one shell read connection', async () => {
+it('keeps shell identity, scope and features equivalent on one connection at group scale', async () => {
   expect(group.companyIds).toHaveLength(71);
   expect(group.employmentIds).toHaveLength(1000);
   const cases = [
@@ -58,15 +60,23 @@ it('keeps group, selected company and scoped roles equivalent on one shell read 
       browser.companyScope = selection;
       const proof: SharedReadStats[] = [];
       hooks.__aihrPerfSharedRead = stats => { proof.push(stats); };
-      const shared = await readShellNavigationContext(session);
-      const independent = await withIndependentTransactions(() => readShellNavigationContext(session));
+      const context = await readShellNavigationContext(session);
+      const features = await readShellFeatureNavigation(session, context[0].scopeIds);
+      expect(proof).toHaveLength(2);
+      expect(proof.map(snapshot => snapshot.carriers)).toEqual([1, 1]);
+      proof.length = 0;
+
+      const shared = await readSignedInShellNavigation(session);
+      const independent = await withIndependentTransactions(() => readSignedInShellNavigation(session));
+      expect(shared).toEqual({ context, features });
       expect(shared).toEqual(independent);
-      const [companies, viewer] = shared;
+      const [companies, viewer] = shared.context;
       expect([...companies.scopeIds].sort()).toEqual([...expected].sort());
       expect(viewer.name).toBeTruthy();
       expect(viewer.employed).toBe(true);
       expect(proof).toHaveLength(1);
-      expect(proof[0]).toMatchObject({ carriers: 1, joins: 3, fallbacks: 0 });
+      expect(proof[0]).toMatchObject({ carriers: 1, fallbacks: 0 });
+      expect(proof[0].joins).toBeGreaterThanOrEqual(8);
     }
   } finally {
     browser.companyScope = undefined;
