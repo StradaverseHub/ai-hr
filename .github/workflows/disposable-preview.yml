@@ -60,6 +60,8 @@ jobs:
           NODE_OPTIONS: ${{ steps.build-heap.outputs.node_options }}
           AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
           AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
+          TURBO_TASKS_AVAILABLE_PARALLELISM: '2'
+          TOKIO_WORKER_THREADS: '2'
           RAYON_NUM_THREADS: '2'
           DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
           MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database

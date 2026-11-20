@@ -25,8 +25,8 @@ const evidence = join(runner.RUNNER_TEMP, 'preview-evidence');
 const memory = JSON.parse(readFileSync(join(evidence, 'memory/build-memory.json'), 'utf8'));
 assert.equal(memory.source, source);
 assert.equal(memory.exitCode, 0);
-assert.equal(memory.availableMemoryVerdict, 'pass');
-assert.ok(['pass', 'warn'].includes(memory.verdict));
+assert.equal(memory.availableMemoryVerdict, 'within');
+assert.ok(['within', 'warn'].includes(memory.verdict));
 const report = {
   kind: 'DISPOSABLE_SYNTHETIC_PREVIEW',
   source,
