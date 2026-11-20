@@ -109,12 +109,13 @@ describe('e440991b point 5 — the payslip rows open the employee’s full resul
     // d035f387d (docs/adr/2026-11-07-payroll-inquiry-pages.md) resolves the selection through bounded
     // employee choices instead of the full scoped list: the requested id is only ever handed to the
     // scoped owner, and only the employee IT returns becomes the filter.
-    expect(view).toContain("readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId})");
-    expect(view).toContain('const employmentId=employeeChoices.selected?.employmentId;');
+    expect(view).toContain("const employeeChoiceInput = { companyIds: scopeIds, labelMode: 'labels' as const, selectedId: sp.employmentId };");
+    expect(view).toContain('readEmployeeChoiceSelection(s, employeeChoiceInput)');
+    expect(view).toContain('const employmentId=selection?.employmentId;');
     expect(view.match(/\bsp\.employmentId\b/g), 'the raw parameter reaches no other read').toHaveLength(1);
     const choices = code('core/employee-choice.ts');
     expect(choices).toContain('const scoped=sql`${employment.tenantId}=${ctx.tenantId}::uuid and ${p.companyIds.length?sql`${employment.companyId}=any(');
-    expect(choices).toContain('where ${scoped} and ${employment.id}=${p.selectedId}::uuid');
+    expect(choices).toContain('where ${scope} and ${employment.id}=${id}::uuid');
     // …and the company fence it sits behind.
     expect(view).toMatch(/const companyId = sp\.companyId && scopeIds\.includes\(sp\.companyId\) \? sp\.companyId : undefined;/);
   });

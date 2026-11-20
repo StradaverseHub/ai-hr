@@ -5,7 +5,7 @@ import {availableParallelism,cpus,totalmem} from 'node:os';
 import {eq,sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
 import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
-import {readEmployeeChoices,readEmployeeChoicesTx} from '../core/employee-choice';
+import {readEmployeeChoices,readEmployeeChoicesTx,readEmployeeChoiceSelection} from '../core/employee-choice';
 import {isEmployeeChoicePage,type EmployeeChoice,type EmployeeChoicePage} from '../lib/employee-choice';
 import {listEmployees} from '../core/read';
 import {rosterPopulationReview,rosterWindowPage} from '../core/roster-presentation';
@@ -36,6 +36,10 @@ it('preserves native scope, exact JavaScript Unicode search, facets and independ
  const first=await readEmployeeChoices(ctx,{companyIds:[b.companyId],limit:25,selectedId:ids.at(-1)});
  expect(isEmployeeChoicePage(JSON.parse(JSON.stringify(first)))).toBe(true);expect(first.total).toBe(names.length);expect(first.rows.map(row=>row.employmentId)).toEqual(legacy.slice(0,25).map(row=>row.employmentId));
  expect(first.selected?.employmentId).toBe(ids.at(-1));expect(first.rows).toHaveLength(25);
+ expect(await readEmployeeChoiceSelection(ctx,{companyIds:[b.companyId],selectedId:ids.at(-1)})).toEqual(first.selected);
+ expect(await readEmployeeChoiceSelection(ctx,{companyIds:[randomUUID()],selectedId:ids.at(-1)})).toBeNull();
+ expect(await readEmployeeChoiceSelection(ctx,{companyIds:[b.companyId],selectedId:'invalid'})).toBeNull();
+
  expect(first.allDepartmentOptions.map(row=>row.id).sort()).toEqual([b.deptA,b.deptB].sort());
  const page=await readEmployeeChoices(ctx,{companyIds:[b.companyId],limit:25,offset:25});
  expect(page.rows.map(row=>row.employmentId)).toEqual(legacy.slice(25,50).map(row=>row.employmentId));
