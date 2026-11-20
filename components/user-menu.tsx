@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import Link from 'next/link';
+import Link from '@/components/intent-link';
 import { useTranslations } from 'next-intl';
 import { ChevronDown, UserRound } from 'lucide-react';
 import { Avatar } from '@/components/ui';
