@@ -352,6 +352,12 @@ async function measureMixedLoad(command){
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const driverFacts=data.driverFailures;
+   if(Array.isArray(data.driverFailureLocations)){
+    report.mixedDriverFailureLocations=data.driverFailureLocations.slice(0,6).flatMap(location=>
+     typeof location?.file==='string'&&/^[a-z0-9-]{1,90}\.(mjs|ts)$/.test(location.file)
+     &&Number.isSafeInteger(location.line)&&location.line>0&&location.line<=99999
+      ?[{file:location.file,line:location.line}]:[]);
+   }
    const safeFailure=fact=>{
     if(!fact||!['Error','AssertionError','TimeoutError','AbortError','TypeError','AggregateError','unclassified'].includes(fact.kind))return null;
     const code=typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|E[A-Z_]{2,40})$/.test(fact.code)?fact.code:null;
@@ -382,7 +388,7 @@ async function measureMixedLoad(command){
      };
     });
    }
-   if(report.mixedDriverStage?.stage==='baseline-language-switch'){
+   if(Array.isArray(data.browserLanguageSwitches)){
     const languagePaths=new Set(['/claims','/admin/personnel']);
     report.mixedLanguageSwitch={
      completed:(data.browserLanguageSwitches??[]).filter(row=>row.phase==='baseline'
