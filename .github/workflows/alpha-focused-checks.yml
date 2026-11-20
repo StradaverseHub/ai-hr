@@ -73,7 +73,7 @@ on:
         default: ''
         type: string
       reuse_intent_tab_control_build:
-        description: Use the pinned integrated application build as the tab traffic control
+        description: Use the pinned integrated application build as the tab traffic or Attendance Workflow list control
         default: false
         type: boolean
       browser_static_shard:
@@ -99,7 +99,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.browser_surface_probe == 'intent-tabs' && '-intent-tab-traffic' || '' }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_intent_tab_control_build && format('-surface-{0}', inputs.browser_surface_probe) || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -154,7 +154,7 @@ jobs:
             exit 2
           fi
           if [[ "$REUSE_INTENT_TAB_CONTROL" == true ]] && {
-            [[ "$BROWSER_SURFACE_PROBE" != intent-tabs || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(intent-tabs|workflow-list)$ || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
             [[ "$EXPECTED_SHA" != e366a225e20215e0b7d4be01d352a914a0a4c84c ]];
           }; then
             exit 2
