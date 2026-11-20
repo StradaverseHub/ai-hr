@@ -31,7 +31,8 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+const readinessRoutes=new Set(['/lifecycle','/lifecycle/offboarding','/me/notifications','/payroll/formula-builder','/roster/exceptions']);
 const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const actionLane=surfaceProbe==='actions'?laneInput:null;
 assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
@@ -405,6 +406,40 @@ async function readyContent(page,actor,path,timeout,onHeading=()=>{},fixture) {
   await main.locator('input[type="search"]:visible').first().waitFor({state:'visible',timeout:timeout()});
   return 'usable-content';
  }
+ if(path==='/lifecycle'){
+  await main.locator('a[data-tour="lifecycle-request"][href="/lifecycle/asset-requests/new"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('[data-tour="lifecycle-my-requests"] [data-ui-section-count]').waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/lifecycle/offboarding'){
+  await main.locator('a[href="/lifecycle/offboarding/new"]').waitFor({state:'visible',timeout:timeout()});
+  const register=main.getByRole('table');
+  await register.getByRole('link').or(register.getByText('No offboarding cases here.',{exact:true}))
+   .first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await register.getByRole('columnheader').count(),7);
+  return 'usable-content';
+ }
+ if(path==='/me/notifications'){
+  const form=main.locator('form').filter({has:page.locator('input[name="enabled"]')});
+  await form.locator('select[name="locale"]').waitFor({state:'visible',timeout:timeout()});
+  const employmentForm=main.locator('form').filter({has:page.locator(`input[name="employmentId"][value="${actor.employmentId}"]`)});
+  await employmentForm.locator('fieldset input[name="category"]').first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
+ if(path==='/payroll/formula-builder'){
+  await main.locator('form input[name="search"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('form select[name="method"]').waitFor({state:'visible',timeout:timeout()});
+  await main.locator('tbody a[href^="/payroll/formula-builder/"]').or(main.getByText('No formulas match these filters.',{exact:true}))
+   .first().waitFor({state:'visible',timeout:timeout()});
+  assert.equal(await main.getByRole('columnheader').count(),6);
+  return 'usable-content';
+ }
+ if(path==='/roster/exceptions'){
+  await main.locator('[data-ui-section-count]').filter({hasText:/^\([0-9]+\)$/}).waitFor({state:'visible',timeout:timeout()});
+  await main.locator('ul li').or(main.getByText('Nothing went off plan in this month.',{exact:true}))
+   .first().waitFor({state:'visible',timeout:timeout()});
+  return 'usable-content';
+ }
  return 'heading';
 }
 // Collect timing before application scripts run, and retain only counts and durations.
@@ -575,14 +610,18 @@ async function measureShellLinks(fixture){
   }
  }finally{await context.close();}
 }
-async function measureRoutes(fixture){
- const plan=[...nativePreflightRoutePlan()];
+async function measureRoutes(fixture,paths){
+ let plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
   for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9','/approvals']){
    plan.push({role,actorIndex,requested:path,final:path});
   }
  }
  plan.push({role:'employee',actorIndex:4,requested:'/me/cases',final:'/me/cases'});
+ if(paths){
+  plan=plan.filter(route=>paths.has(route.final));
+  assert.equal(new Set(plan.map(route=>route.final)).size,paths.size,'A requested content check is missing from the route plan');
+ }
  report.plannedRoleRoutes=plan.length;
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,[]);
@@ -2102,6 +2141,12 @@ try{
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
+  else if(surfaceProbe==='content-readiness'){
+   await measureRoutes(fixture,readinessRoutes);
+   assert.equal(report.observations.length,2*report.plannedRoleRoutes);
+   assert(report.observations.every(row=>row.status==='observed'&&row.readiness==='usable-content'),
+    'A selected route missed its usable-content check');
+  }
   else if(surfaceProbe==='leave-inbox'){
    const require=createRequire(join(process.cwd(),'package.json'));
    browser??=await require('playwright').chromium.launch();
