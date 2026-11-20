@@ -31,8 +31,10 @@ const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const genericPlans=env.AIHR_BROWSER_GENERIC_PLANS==='true';
+const lightweightSqlTrace=env.AIHR_BROWSER_LIGHTWEIGHT_SQL_TRACE==='true';
 assert(!establishedAttendance||mixedLoad,'Established Attendance comparison requires mixed traffic');
-assert(!genericPlans||(mixedLoad&&establishedAttendance&&!fixtureOnly&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
+assert(!(genericPlans&&lightweightSqlTrace));
+assert(!(genericPlans||lightweightSqlTrace)||(mixedLoad&&establishedAttendance&&!fixtureOnly&&env.AIHR_BROWSER_REUSED_BUILD==='true'));
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -420,13 +422,13 @@ function readMixedRootStatements(name,dockerConfig){
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
-async function enableFictionalGenericPlans(){
+async function configureFictionalApplicationDatabase(){
  assert.equal(sha,'8e5a6009b0dc90e1fde3323ab5145f4aaec478f0');
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  assert.equal(dbEnv.DATABASE_URL,'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
- const dockerConfig=join(privateDir,'generic-plan-docker-config');
+ const dockerConfig=join(privateDir,'application-database-docker-config');
  mkdirSync(dockerConfig,{mode:0o700});
  const label=execFileSync('/usr/bin/docker',[
   '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
@@ -437,10 +439,20 @@ async function enableFictionalGenericPlans(){
  const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connect_timeout:5});
  const application=postgres(dbEnv.DATABASE_URL,{max:1,connect_timeout:5});
  try{
-  await owner`alter role ai_hr_app in database ai_hr_dev set plan_cache_mode = force_generic_plan`;
-  const [row]=await application`select current_setting('plan_cache_mode') as mode`;
-  assert.equal(row?.mode,'force_generic_plan');
-  report.mixedApplicationPlanMode='force_generic_plan';
+  if(genericPlans){
+   await owner`alter role ai_hr_app in database ai_hr_dev set plan_cache_mode = force_generic_plan`;
+  }else{
+   await owner.begin(async tx=>{
+    await tx`alter role ai_hr_app in database ai_hr_dev set pg_stat_statements.track = 'top'`;
+    await tx`alter role ai_hr_app in database ai_hr_dev set pg_stat_statements.track_planning = off`;
+   });
+  }
+  const [settings]=await application`select current_setting('plan_cache_mode') as mode,
+   current_setting('pg_stat_statements.track') as track,current_setting('pg_stat_statements.track_planning') as planning`;
+  if(genericPlans)assert.equal(settings?.mode,'force_generic_plan');
+  else assert.deepEqual(settings,{mode:'auto',track:'top',planning:'off'});
+  report.mixedApplicationPlanMode=settings.mode;
+  report.mixedApplicationSqlTrace={track:settings.track,planning:settings.planning==='on'};
   save();
  }finally{await Promise.all([owner.end({timeout:5}),application.end({timeout:5})]);}
 }
@@ -1607,7 +1619,7 @@ try{
   }
  }
  if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
- if(genericPlans)await enableFictionalGenericPlans();
+ if(genericPlans||lightweightSqlTrace)await configureFictionalApplicationDatabase();
  report.fixtureVerified=true;
  save();
  if(!fixtureOnly){

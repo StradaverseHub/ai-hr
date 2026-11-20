@@ -72,6 +72,10 @@ on:
         description: Test generic application-role plans in the disposable mixed workload database
         default: false
         type: boolean
+      browser_lightweight_sql_trace:
+        description: Measure the same mixed workload with top-level application SQL counters and planning tracking off
+        default: false
+        type: boolean
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -91,7 +95,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.browser_lightweight_sql_trace && '-lightweight-sql-trace' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -141,6 +145,9 @@ jobs:
             [[ "$EXPECTED_SHA" != 8e5a6009b0dc90e1fde3323ab5145f4aaec478f0 ]];
           }; then exit 2; fi
           if [[ "$GENERIC_PLANS" == true && "$REUSE_BUILD" != true ]]; then exit 2; fi
+          if [[ "$LIGHTWEIGHT_SQL_TRACE" == true && ( "$REUSE_BUILD" != true || "$GENERIC_PLANS" == true ) ]]; then
+            exit 2
+          fi
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
@@ -150,6 +157,7 @@ jobs:
           ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
           GENERIC_PLANS: ${{ inputs.browser_generic_plans }}
+          LIGHTWEIGHT_SQL_TRACE: ${{ inputs.browser_lightweight_sql_trace }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -277,6 +285,7 @@ jobs:
           AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
           AIHR_BROWSER_GENERIC_PLANS: ${{ inputs.browser_generic_plans }}
+          AIHR_BROWSER_LIGHTWEIGHT_SQL_TRACE: ${{ inputs.browser_lightweight_sql_trace }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
