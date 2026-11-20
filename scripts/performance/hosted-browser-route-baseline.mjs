@@ -13,7 +13,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
-import {mixedDriverPrimaryOrigin} from './mixed-driver-primary-origin.mjs';
+import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure} from './mixed-driver-primary-origin.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -523,6 +523,8 @@ async function measureMixedLoad(command){
     .map(row=>({role:row.role,kind:row.kind,route:row.route,...counts(row,sampleMetrics),
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
+   const navigationFailure=projectMixedNavigationPreflightFailure(data.mixedNavigationPreflightFailure);
+   if(navigationFailure)report.mixedNavigationPreflightFailure=navigationFailure;
    const driverFacts=data.driverFailures;
    const privateFailureLog=join(privateDir,'driver-failures.log');
    if(driverFacts?.primary&&existsSync(privateFailureLog)){

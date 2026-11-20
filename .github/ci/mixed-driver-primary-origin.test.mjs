@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { inspect } from 'node:util';
-import { mixedDriverPrimaryOrigin } from '../../scripts/performance/mixed-driver-primary-origin.mjs';
+import { mixedDriverPrimaryOrigin, projectMixedNavigationPreflightFailure } from '../../scripts/performance/mixed-driver-primary-origin.mjs';
 
 test('retains only allowlisted source coordinates from the primary mixed driver failure', () => {
   const reason = new Error('Fictional private failure contents');
@@ -40,4 +40,17 @@ test('reports the browser navigation assertion ahead of its mixed-load caller', 
   assert.deepEqual(mixedDriverPrimaryOrigin(inspect({ primary: { failed: true, reason }, secondary: [] })), {
     file: 'navigation-browser-capture.ts', line: 401, column: 5,
   });
+});
+
+test('retains a reviewed scenario and bounded link counts without publishing page text', () => {
+  const scenario = 'submenu.claims.types.companyHR.usable';
+  const result = projectMixedNavigationPreflightFailure({
+    scenario, role: 'companyHR', pageText: 'private fixture text',
+    linkMatches: {total: 2, visible: 1, href: '/private-record'},
+  });
+  assert.deepEqual(result, {scenario, role: 'companyHR', linkMatches: {total: 2, visible: 1}});
+  assert.equal(projectMixedNavigationPreflightFailure({scenario, role: 'employee'}), null);
+  assert.equal(projectMixedNavigationPreflightFailure({scenario: 'invented', role: 'companyHR'}), null);
+  assert.deepEqual(projectMixedNavigationPreflightFailure({scenario, role: 'companyHR', linkMatches: {total: 1001}}),
+    {scenario, role: 'companyHR', linkMatches: null});
 });
