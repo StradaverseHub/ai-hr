@@ -1,3 +1,5 @@
+import { Suspense, type ComponentProps } from 'react';
+import { randomUUID } from 'node:crypto';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import Link from 'next/link';
@@ -11,7 +13,9 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { listPayrollCyclesForCompanies, listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
 import { listCompanies } from '@/core/read';
-import {readEmployeeChoices} from '@/core/employee-choice';
+import { readEmployeeChoices, readEmployeeChoiceSelection } from '@/core/employee-choice';
+import { withBackgroundReadWork } from '@/db/client';
+import { EMPLOYEE_CHOICE_PAGE_SIZE, type EmployeeChoicePage } from '@/lib/employee-choice';
 import { listPayComponents } from '@/core/pay-components';
 import {
   INDIVIDUAL_TXN_STATUS_FILTERS,
@@ -144,7 +148,7 @@ function intParam(v: string | undefined, min: number, max: number): number | und
   return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
 }
 
-type PayrollViewReadPhase = 'scope' | 'employee-options' | 'company-options' | 'catalogue'
+type PayrollViewReadPhase = 'scope' | 'employee-options' | 'employee-selection' | 'company-options' | 'catalogue'
   | 'cycle-options' | 'default-period' | 'history-page' | 'statutory-settings'
   | 'reprocess-outcomes' | 'recorded-sources' | 'render-ready';
 
@@ -160,6 +164,21 @@ function payrollViewReadTrace() {
       elapsedMs: Math.round(performance.now() - phaseStarted),
     }));
   };
+}
+
+type EmployeePanelProps = ComponentProps<typeof EmployeeScopePanel>;
+
+async function HistoryEmployeeChoices({ load, start, ...panel }: Omit<EmployeePanelProps, 'remote'> & {
+  load: () => Promise<EmployeeChoicePage>;
+  start: Pick<EmployeeChoicePage, 'contextId' | 'labelMode' | 'limit'>;
+}) {
+  try {
+    const initial = await load();
+    return <EmployeeScopePanel {...panel} remote={{ initial }} />;
+  } catch {
+    // A failed passive lookup can retry through the panel without hiding payroll results.
+    return <EmployeeScopePanel {...panel} remote={{ start }} />;
+  }
 }
 
 export default async function TransactionViewPage({
@@ -217,8 +236,11 @@ export default async function TransactionViewPage({
   // saved links keep working; only the no-tab default moves.
   const tab: Tab = TABS.includes(sp.tab as Tab) ? (sp.tab as Tab) : 'history';
 
-  const [employeeChoices, companies, components, creators, gridComponents] = await Promise.all([
-    readPhase('employee-options', () => readEmployeeChoices(s,{companyIds:scopeIds,labelMode:'labels',selectedId:sp.employmentId})),
+  const employeeChoiceInput = { companyIds: scopeIds, labelMode: 'labels' as const, selectedId: sp.employmentId };
+  const [employeeChoices, historySelection, companies, components, creators, gridComponents] = await Promise.all([
+    tab === 'history' ? null : readPhase('employee-options', () => readEmployeeChoices(s, employeeChoiceInput)),
+    tab === 'history' && employeeChoiceInput.selectedId
+      ? readPhase('employee-selection', () => readEmployeeChoiceSelection(s, employeeChoiceInput)) : null,
     readPhase('company-options', () => listCompanies(s)),
     tab === 'fixed' ? listPayComponents(s) : Promise.resolve([]),
     tab === 'individual' ? listIndividualTxnCreators(s, { companyIds: scopeIds }) : Promise.resolve([]),
@@ -234,7 +256,7 @@ export default async function TransactionViewPage({
     tab === 'grid' || tab === 'history' ? readPhase('catalogue', () => listPayComponents(s, { includeArchived: true })) : Promise.resolve([]),
   ]);
   // Full-scope department options and selected identity are independent of the rail's current page.
-  const departmentOptions=employeeChoices.allDepartmentOptions;
+  const departmentOptions=employeeChoices?.allDepartmentOptions??[];
   // Narrow the company dropdown to the authorised scope — the filter can only narrow, never widen.
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
 
@@ -242,7 +264,8 @@ export default async function TransactionViewPage({
   // treated as "no selection", so URL tampering cannot cross the company fence.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
-  const employmentId=employeeChoices.selected?.employmentId;
+  const selection = tab === 'history' ? historySelection : employeeChoices?.selected;
+  const employmentId=selection?.employmentId;
   const componentId =
     sp.componentId && components.some((c) => c.id === sp.componentId) ? sp.componentId : undefined;
   const status = sp.status === 'active' || sp.status === 'ended' ? sp.status : undefined;
@@ -534,7 +557,7 @@ export default async function TransactionViewPage({
   };
   // The chosen person, for whichever tab is showing — the id it is looked up by is the SCOPE-GUARDED one,
   // so this can only ever resolve to somebody the caller is allowed to see.
-  const selectedEmployee=employeeChoices.selected?{...employeeChoices.selected,department:employeeChoices.selected.departmentCode??employeeChoices.selected.department}:null;
+  const selectedEmployee=selection?{...selection,department:selection.departmentCode??selection.department}:null;
 
   /**
    * bd14b7e2 — what each of the four inquiry tabs carries across an employee switch: its OWN already
@@ -652,6 +675,27 @@ export default async function TransactionViewPage({
     </>
   );
 
+  const panelStart = tab === 'history'
+    ? { contextId: randomUUID(), labelMode: 'labels' as const, limit: EMPLOYEE_CHOICE_PAGE_SIZE }
+    : null;
+  const pickerText = panelStart && tabPanelDefaultOpen ? await getTranslations('employeePanel') : null;
+  const historyPanel = panelStart && (
+    tabPanelDefaultOpen && pickerText
+      ? <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">{pickerText('loadingEmployees')}</p>}>
+          <HistoryEmployeeChoices
+            start={panelStart}
+            load={() => readPhase('employee-options', () => withBackgroundReadWork(s.tenantId,
+              () => readEmployeeChoices(s, employeeChoiceInput)))}
+            selectedId={employmentId ?? null}
+            basePath="/payroll/transaction-view"
+            preserve={tabPanelPreserve}
+            allowAll
+          />
+        </Suspense>
+      : <EmployeeScopePanel remote={{ start: panelStart }} selectedId={employmentId ?? null}
+          basePath="/payroll/transaction-view" preserve={tabPanelPreserve} allowAll />
+  );
+
   trace?.('render-ready', pageStarted);
   return (
     // 1372d169 — ONE width rule for the whole screen. 080de5cf gave the Transaction Detail tab the full
@@ -737,7 +781,7 @@ export default async function TransactionViewPage({
               <h2 className="text-sm font-semibold">{t('view.panel.heading')}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{t('view.panel.hint')}</p>
               <div className="mt-3">
-                <EmployeeScopePanel
+                {tab === 'history' ? historyPanel : employeeChoices && <EmployeeScopePanel
                   remote={{initial:employeeChoices}}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
@@ -753,7 +797,7 @@ export default async function TransactionViewPage({
                   // reached the same conclusion by keeping its own wrapper; this tab shares the shell and
                   // so has to say it here.
                   allowAll={tab !== 'statutory'}
-                />
+                />}
               </div>
             </Card>
           }
@@ -1199,7 +1243,7 @@ export default async function TransactionViewPage({
               <p className="mt-1 text-xs text-muted-foreground">{t('view.grid.pickEmployeeHint')}</p>
               <div className="mt-3">
                 <EmployeeScopePanel
-                  remote={{initial:employeeChoices}}
+                  remote={employeeChoices ? { initial: employeeChoices } : undefined}
                   selectedId={employmentId ?? null}
                   basePath="/payroll/transaction-view"
                   preserve={gridPanelPreserve}

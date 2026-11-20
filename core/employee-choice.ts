@@ -75,6 +75,25 @@ export async function readEmployeeChoices(ctx:SessionContext,p:EmployeeChoiceInp
  const captured=captureContext(ctx),input=captureInput(p);
  return withTenant(captured,tx=>readChoicePageTx(tx,captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE,{signal,ownedSnapshot:true}),{readOnlySnapshot:true,readSignal:signal});
 }
+/** Resolve a deep selection without loading the page, count or organisation facets. */
+export async function readEmployeeChoiceSelection(ctx:SessionContext,p:Pick<EmployeeChoiceServerInput,'companyIds'|'selectedId'|'labelMode'>):Promise<EmployeeChoice|null>{
+ if(!p.selectedId||!uuid.test(p.selectedId))return null;
+ const captured=captureContext(ctx),input=captureInput(p);
+ const {from,scoped,labelMode}=prepareChoices(captured,input,EMPLOYEE_CHOICE_MAX_PAGE_SIZE);
+ return withTenant(captured,async tx=>{
+  await assertAiPresentationPrincipalTx(tx,captured);
+  if(labelMode==='labels'&&!isAdmin(captured))throw new EmployeeChoiceAccessError('Employee catalogue labels require current administration access');
+  return readChoiceSelectionTx(tx,input.selectedId,sql`select ${columns(labelMode==='labels')} ${from}`,scoped);
+ },{readOnlySnapshot:true});
+}
+
+async function readChoiceSelectionTx(tx:Tx,id:string|undefined,base:SQL,scope:SQL){
+ if(!id||!uuid.test(id))return null;
+ const [selected]=await tx.execute<EmployeeChoice>(sql`${base} where ${scope} and ${employment.id}=${id}::uuid
+  order by ${person.fullName},${employment.id},${assignment.id} limit 1`);
+ return selected??null;
+}
+
 /** Borrow only an actual enforced RR/READ ONLY human presentation transaction.
  * The module still admits its own purpose. Its transport must derive population afresh.
  * One complete count/facet read and one bounded page support the shared All ceiling.
@@ -138,7 +157,7 @@ async function readChoicePageTx(
     order by ${person.fullName},${employment.id},${assignment.id}`);
   }
   signal?.throwIfAborted();
-  const selected=p.selectedId&&uuid.test(p.selectedId)?(await tx.execute<EmployeeChoice>(sql`${base} where ${scoped} and ${employment.id}=${p.selectedId}::uuid order by ${person.fullName},${employment.id},${assignment.id} limit 1`))[0]??null:null;
+  const selected=await readChoiceSelectionTx(tx,p.selectedId,base,scoped);
   signal?.throwIfAborted();
   const populationSize=p.employmentIds?.length??0;
   const options=await readOptions(tx,scoped,labelMode==='labels',ctx.tenantId,populationSize>0&&populationSize<=25,signal);

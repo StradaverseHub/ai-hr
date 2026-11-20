@@ -2,7 +2,7 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
-import {EmployeeScopePanel} from '../components/collapsible-employee-panel';
+import {CollapsibleEmployeePanel,EmployeeScopePanel} from '../components/collapsible-employee-panel';
 import type {EmployeeChoice,EmployeeChoicePage} from '../lib/employee-choice';
 const push=vi.fn();vi.mock('next/navigation',()=>({useRouter:()=>({push})}));
 const row=(n:number):EmployeeChoice=>({employmentId:'e'+n,name:'Employee '+n,employeeCode:'CODE'+n,company:'Company A',companyId:'co-a',department:'Operations',departmentId:'dept-a',businessUnit:'HQ',businessUnitId:'bu-a',status:'active'});
@@ -55,4 +55,25 @@ it('uses an explicit module endpoint while preserving default consumers and navi
  expect(fetcher.mock.calls[0][0]).toBe('/api/leave/inquiry/employees');expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({offset:25,selectedId:'e99'});
  fireEvent.click(screen.getByRole('button',{name:/Employee 26/}));
  const url=new URL(push.mock.calls[0][0],'https://fixture.invalid');expect(url.pathname).toBe('/leave/employee-balances');expect(url.searchParams.getAll('type')).toEqual(['annual','pool']);expect(url.searchParams.get('asOf')).toBe('2026-07-01');expect(url.searchParams.get('emp')).toBe('e26');
+});
+
+
+it('loads the first authorized choices only when the deferred panel opens', async () => {
+ const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>page()});
+ vi.stubGlobal('fetch',fetcher);
+ render(<NextIntlClientProvider locale="en" messages={messages}>
+  <CollapsibleEmployeePanel defaultOpen={false} cookieKey="fixture-picker" showLabel="Choose employee"
+    panel={<EmployeeScopePanel remote={{start:{contextId:'deferred-picker',labelMode:'names',limit:25}}}
+      selectedId="e99" basePath="/payroll/transaction-view" preserve={{tab:'history'}}/>}>
+   <p>Payroll results</p>
+  </CollapsibleEmployeePanel>
+ </NextIntlClientProvider>);
+ expect(screen.getByText('Payroll results')).toBeTruthy();
+ expect(fetcher).not.toHaveBeenCalled();
+ fireEvent.click(screen.getAllByRole('button',{name:'Choose employee'})[0]);
+ expect(await screen.findByText('Employee 1')).toBeTruthy();
+ expect(fetcher).toHaveBeenCalledOnce();
+ expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({offset:0,limit:25,selectedId:'e99'});
+ fireEvent.click(screen.getByRole('button',{name:/Employee 1/}));
+ expect(push).toHaveBeenCalledWith('/payroll/transaction-view?tab=history&employmentId=e1');
 });
