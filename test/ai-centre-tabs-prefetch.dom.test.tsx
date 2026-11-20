@@ -1,9 +1,6 @@
-/** AI v2 W9: an AI Centre tab switch should render from the client cache, not from the loading shell. Every page here
- * is dynamic, so the default prefetch stops at the loading boundary (components/route-loading.tsx) and a click waits
- * for the whole server render plus React's Suspense reveal (components/intent-link.tsx, r394). The tab rows elsewhere
- * in the product prefetch the full destination once the person shows intent; this pins the same for the AI Centre tab
- * bar and the administrator sub-navigation, for an administrator and an employee, without changing a link, a label or
- * the current-page marker. Fictional; no session. */
+/** AI Centre tabs prefetch the full destination on deliberate focus, touch or pointer dwell.
+ * Rendered tabs stay quiet until that intent. Their destinations and current-page markers still
+ * follow the shared navigation registry for administrators and employees. Fictional; no session. */
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -23,22 +20,21 @@ beforeEach(()=>{vi.useFakeTimers();});
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('AI Centre tabs prefetch the whole destination on intent',()=>{
- for(const isAdmin of [true,false])it(`${isAdmin?'administrator':'employee'}: every tab starts at the default prefetch and escalates on focus, touch or a resting pointer`,()=>{
+ for(const isAdmin of [true,false])it(`${isAdmin?'administrator':'employee'}: every tab waits for focus, touch or a resting pointer`,()=>{
   const view=wrap(<AiCentreTabs active="ask" isAdmin={isAdmin}/>);
   const tabs=links(view.container);
-  // Same tabs, same targets, same order as before: only the prefetch behaviour is new.
   expect(tabs.map(link=>link.getAttribute('href'))).toEqual(centreTabsFor({isAdmin}).map(tab=>tab.href));
-  for(const link of tabs)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('null');
+  for(const link of tabs)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('false');
   // AI v2 Phase 1: no Inbox tab, so an employee has three tabs; the touch case gets its own render below.
   const [ask,second]=tabs;
   fireEvent.focus(second);expect(second.getAttribute('data-prefetch')).toBe('true');
   const last=tabs.at(-1)!;
-  fireEvent.pointerEnter(last);expect(last.getAttribute('data-prefetch'),'not before the dwell').toBe('null');
+  fireEvent.pointerEnter(last);expect(last.getAttribute('data-prefetch'),'not before the dwell').toBe('false');
   act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS);});
   expect(last.getAttribute('data-prefetch')).toBe('true');
-  // A pointer passing over without resting never asks for the full page.
+  // A pointer passing over without resting leaves the tab unfetched.
   fireEvent.pointerEnter(ask);act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS-30);});fireEvent.pointerLeave(ask);act(()=>{vi.advanceTimersByTime(1000);});
-  expect(ask.getAttribute('data-prefetch')).toBe('null');
+  expect(ask.getAttribute('data-prefetch')).toBe('false');
   // The current-page marker is unchanged.
   expect(view.container.querySelectorAll('[data-ai-centre-tabs] a[aria-current="page"]')).toHaveLength(1);
   expect(ask.getAttribute('aria-current')).toBe('page');
@@ -52,7 +48,7 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   const view=wrap(<AiCentreSubnav group="spend" active="allowances" available={sections} hrefOf={section=>`/control-tower/agents/${section}`}/>);
   const items=[...view.container.querySelectorAll<HTMLAnchorElement>('a')];
   expect(items.map(link=>link.getAttribute('href'))).toEqual(sections.map(section=>`/control-tower/agents/${section}`));
-  for(const link of items)expect(link.getAttribute('data-prefetch')).toBe('null');
+  for(const link of items)expect(link.getAttribute('data-prefetch')).toBe('false');
   fireEvent.focus(items[1]);expect(items[1].getAttribute('data-prefetch')).toBe('true');
   expect(items[0].getAttribute('aria-current')).toBe('page');
  });
@@ -64,10 +60,10 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   const items=[...view.container.querySelectorAll<HTMLAnchorElement>(`[data-ai-centre-sections="${group}"] a`)];
   expect(items.map(link=>link.getAttribute('href'))).toEqual(centreSectionsFor(group,{payroll:true}).map(section=>section.href));
   expect(items.length).toBeGreaterThan(1);
-  for(const link of items)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('null');
+  for(const link of items)expect(link.getAttribute('data-prefetch'),link.getAttribute('href')??'').toBe('false');
   fireEvent.focus(items[1]);expect(items[1].getAttribute('data-prefetch')).toBe('true');
   fireEvent.touchStart(items[2]);expect(items[2].getAttribute('data-prefetch')).toBe('true');
-  expect(items[0].getAttribute('data-prefetch')).toBe('null');
+  expect(items[0].getAttribute('data-prefetch')).toBe('false');
   expect(items[0].getAttribute('aria-current')).toBe('page');
  });
 });
