@@ -1,11 +1,10 @@
 import type { SessionContext } from '@/db/client';
 import { NotificationCenter, type NotificationTaskItem,type NotificationTaskQueueLink } from '@/components/notification-center';
-import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
-import { onboardingNoticeSummary } from '@/packs/lifecycle/service';
+import { readNotificationBellView, type NotificationBellScope } from './notification-bell-view';
 
 export async function ShellNotificationCenter({ session, scope, catchUp, lifecycleEnabled, lifecycleWork, claimPreviewRevision, canApprove }: {
   session: SessionContext;
-  scope: { letterCompanyIds?: string[] } | null;
+  scope: NotificationBellScope;
   catchUp: boolean;
   lifecycleEnabled: boolean;
   lifecycleWork: Promise<{
@@ -16,24 +15,16 @@ export async function ShellNotificationCenter({ session, scope, catchUp, lifecyc
   claimPreviewRevision?: string;
   canApprove: boolean;
 }) {
-  const [notices, bell, lifecycle] = await Promise.all([
-    lifecycleEnabled ? onboardingNoticeSummary(session) : { unread: [], read: [], unreadCount: 0 },
-    (async () => {
-      if (catchUp) await dispatchNotifications(session, { skipIfBusy: true }).catch(() => {});
-      return scope ? notificationBellSummary(session, scope)
-        : { unread: 0, taskCount: 0, items: [], tasks: [], read: [] };
-    })(),
+  const [bell, lifecycle] = await Promise.all([
+    readNotificationBellView(session, scope, lifecycleEnabled, catchUp),
     lifecycleWork.catch(() => null),
   ]);
   return <NotificationCenter
-    unread={bell.unread + notices.unreadCount}
-    items={[...bell.items, ...notices.unread]}
+    {...bell}
     tasks={lifecycle?.tasks ?? []}
     taskQueueLinks={lifecycle?.taskQueueLinks}
-    taskNotifications={bell.tasks}
     claimPreviewRevision={claimPreviewRevision}
-    taskCount={(lifecycle?.taskCount ?? 0) + bell.taskCount}
-    readItems={[...bell.read, ...notices.read]}
+    taskCount={(lifecycle?.taskCount ?? 0) + bell.notificationTaskCount}
     canApprove={canApprove}
   />;
 }
