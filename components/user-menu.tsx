@@ -94,9 +94,13 @@ export function UserMenu({
   const accessT=useTranslations('accessConfiguration');
   const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
+  const [interactive, setInteractive] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+
+  // The translated server shell can paint before its client event handlers are attached.
+  useEffect(() => setInteractive(true), []);
 
   // Observe the actual document rather than a fixed backdrop inside the header's stacking context.
   // Outside interaction still reaches its destination; only Escape returns focus to our trigger.
@@ -132,6 +136,7 @@ export function UserMenu({
         ref={trigger}
         type="button"
         onClick={() => setOpen(value => !value)}
+        disabled={!interactive}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={open ? menuId : undefined}
