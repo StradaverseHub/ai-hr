@@ -5,7 +5,7 @@ import {CENTRE_TABS,CENTRE_SECTIONS} from '../lib/ai-centre/centre-nav';
 import {isNativeOwnPayslipPdfPath,requireNativePreflightFixtureDay} from '../scripts/performance/native-preflight-content';
 import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrowserRoutes,nativePreflightRoutePlan,
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
- requireNativeRenderedUnion,readManifestRoute,builtPageCoverage,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher} from '../scripts/performance/system-route-manifest.mjs';
+ requireNativeRenderedUnion,readManifestRoute,builtPageCoverage,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
  const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards','/admin/rewards/plans','/admin/rewards/shared']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
@@ -70,6 +70,22 @@ it('uses compiled template precedence and only observes concrete app pages',()=>
  expect(census.match('/reports/archive/fixture-draft')).toBe('/reports/[...path]');
  expect(census.match('/api/item/fixture-id')).toBeUndefined();
  expect(census.missingMatchers).toEqual(['/profile/[id]']);
+});
+
+it('counts each successful action registration once and exposes gaps by compiled page worker',()=>{
+ const pages={'/(secure)/reports/page':'/reports','/personnel/[id]/page':'/personnel/[id]'};
+ const registry=serverActionRegistry(pages,{
+  node:{shared:{workers:{'app/(secure)/reports/page':{},'app/personnel/[id]/page':{}}},
+   missing:{workers:{'private/unbound.js':{}}}},
+  edge:{shared:{workers:{'app/(secure)/reports/page':{}}},personnel:{workers:{'app/personnel/[id]/page':{}}}},
+ });
+ expect(serverActionCoverage(registry,new Set(['shared','unknown']))).toEqual({
+  registered:3,seenInPassedJourneys:1,withoutPage:1,
+  byPageWorker:[
+   {path:'/personnel/[id]',registrations:2,seenInPassedJourneys:1},
+   {path:'/reports',registrations:1,seenInPassedJourneys:1},
+  ],
+ });
 });
 
 const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status:200,accountObserved:true,

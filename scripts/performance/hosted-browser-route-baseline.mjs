@@ -9,12 +9,13 @@ import {once} from 'node:events';
 import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
-import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher} from './system-route-manifest.mjs';
+import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage} from './system-route-manifest.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
 import {exercisePersonnelSwitcher} from './personnel-switcher-browser.mjs';
 import {exercisePayrollBrowser} from './payroll-browser.mjs';
+import {exercisePayrollRegister,verifyPayrollRegisterBoundary} from './payroll-register-browser.mjs';
 import {exerciseOrgExplorer} from './org-explorer-browser.mjs';
 import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
@@ -1273,11 +1274,12 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
 }
 
 async function measureActions(fixture){
- const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
- const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
- assert(declaredActions.size>0,'The measured build must have registered Server Actions');
+ const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
+ const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+ const registrations=serverActionRegistry(appPathRoutes,referenceManifest);
+ assert(registrations.size>0,'The measured build must have registered Server Actions');
  const exercisedActions=new Set();
- report.serverActionInventory={registered:declaredActions.size,seenInPassedJourneys:0};
+ report.serverActionInventory=serverActionCoverage(registrations,exercisedActions);
  const require=createRequire(join(process.cwd(),'package.json'));
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
@@ -1313,6 +1315,12 @@ async function measureActions(fixture){
   {name:'payroll-wizard',actorIndex:0,run:exercisePayrollBrowser,
    timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,usable:row.usable,
     ...(Number.isFinite(row.trace?.expectedEmployeeVisibleMs)&&{continueToReadyMs:row.trace.expectedEmployeeVisibleMs-row.trace.continueStartedMs})}))},
+  {name:'payroll-register-pager',actorIndex:0,run:exercisePayrollRegister,
+   timings:result=>result.browserPayrollRegister?.map(({kind,elapsedMs,visibleRows,exactTotalRows,totalsMatch})=>
+    ({step:kind,elapsedMs,visibleRows,exactTotalRows,totalsMatch}))},
+  ...[1,250].map(actorIndex=>({name:'payroll-register-boundary',actorIndex,run:async options=>{
+   await verifyPayrollRegisterBoundary({...options,actor:options.user,owner:options.fixture.users[0]});
+  },timings:result=>result.browserPayrollRegister?.map(({kind,scope,status,denied})=>({step:kind,scope,status,denied}))})),
   {name:'payroll-scope-denial',actorIndex:1,run:exercisePayrollBrowser,
    timings:result=>result.browserPayrollReadiness?.map(row=>({step:row.surface,elapsedMs:row.elapsedMs,scopeDenied:row.scopeDenied}))},
   {name:'org-explorer',actorIndex:250,run:exerciseOrgExplorer,timings:result=>result.orgExplorerJourneys?.[0]?.steps
@@ -1369,27 +1377,43 @@ async function measureActions(fixture){
     if(result.assistantStartup)row.startup=result.assistantStartup;
     save();
    };
-   const matchedActions=new Set();
-   const observeAction=request=>{
+   const actionRequests=new Map();
+   const observeRequest=request=>{
     if(request.method()!=='POST'||new URL(request.url()).origin!==origin)return;
     const id=request.headers()['next-action'];
-    if(declaredActions.has(id))matchedActions.add(id);
+    if(registrations.has(id))actionRequests.set(request,{id,started:performance.now()});
+   };
+   const observeResponse=response=>{
+    const activity=actionRequests.get(response.request());
+    if(activity){
+     activity.status=response.status();
+     activity.elapsedMs=Math.round(performance.now()-activity.started);
+    }
    };
    try{
     const page=await context.newPage();
-    page.on('request',observeAction);
+    page.on('request',observeRequest);
+    page.on('response',observeResponse);
     await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
-    row.serverActionsSeen=matchedActions.size;
-    for(const actionId of matchedActions)exercisedActions.add(actionId);
-    report.serverActionInventory.seenInPassedJourneys=exercisedActions.size;
+    const successful=new Set();
+    for(const activity of actionRequests.values()){
+     if(activity.status>=200&&activity.status<400)successful.add(activity.id);
+    }
+    row.serverActionsSeen=successful.size;
+    for(const id of successful)exercisedActions.add(id);
    }catch(error){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
     const step=result.actionStage??result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
    }
-   finally{retain();await context.close();}
+   finally{
+    row.serverActionResponses=[...actionRequests.values()].map(({status,elapsedMs})=>({status:status??null,elapsedMs:elapsedMs??null}));
+    report.serverActionInventory=serverActionCoverage(registrations,exercisedActions);
+    retain();
+    await context.close();
+   }
   }
  }finally{await db.end({timeout:5});}
 }

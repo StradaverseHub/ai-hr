@@ -94,6 +94,41 @@ export function builtPageCoverage(appPathRoutes,plan,observations){
   dynamicPageTemplates:pages.filter(path=>path.includes('[')),
  };
 }
+/** Associate build-local Server Action registrations with their compiled page workers. */
+export function serverActionRegistry(appPathRoutes,referenceManifest){
+ const registrations=new Map();
+ for(const runtime of [referenceManifest.node,referenceManifest.edge]){
+  for(const [id,definition] of Object.entries(runtime??{})){
+   const pages=registrations.get(id)??new Set();
+   for(const worker of Object.keys(definition.workers??{})){
+    const entry=worker.replace(/^app\//,'/');
+    if(entry.endsWith('/page')&&Object.hasOwn(appPathRoutes,entry)){
+     pages.add(appPathRoutes[entry]);
+    }
+   }
+   registrations.set(id,pages);
+  }
+ }
+ return registrations;
+}
+
+export function serverActionCoverage(registrations,passed){
+ const byPage=new Map();
+ let withoutPage=0,successful=0;
+ for(const [id,paths] of registrations){
+  if(passed.has(id))successful++;
+  if(!paths.size)withoutPage++;
+  for(const path of paths){
+   const row=byPage.get(path)??{path,registrations:0,seenInPassedJourneys:0};
+   row.registrations++;
+   if(passed.has(id))row.seenInPassedJourneys++;
+   byPage.set(path,row);
+  }
+ }
+ return {registered:registrations.size,seenInPassedJourneys:successful,withoutPage,
+  byPageWorker:[...byPage.values()].sort((a,b)=>a.path.localeCompare(b.path))};
+}
+
 export const additionalBrowserRoutes=Object.freeze({
  employee:[...aiCentreRoutes,'/tasks','/org','/me/calendar','/me/letters','/me/notifications','/leave/history'],
  manager:['/tasks','/delegations','/leave/tracker'],

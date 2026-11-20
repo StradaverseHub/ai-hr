@@ -80,7 +80,8 @@ export async function exercisePayrollRegister({base,page,user,fixture,db,request
   evidence.push({kind:'page-two-browser-click',elapsedMs:performance.now()-clickStart,documentRequests:documents,...second});save();
  }finally{page.off('request',countDocument);}
 
- // Full-document SSR observations are separate from browser usability, after the browser reads.
+ // The load driver also records the wire and server document data.
+ if(!request)return;
  for(const [index,href]of [path,targetUrl.pathname+targetUrl.search].entries()){
   const {status,ttfbMs,durationMs,wireBytes,decodedBytes}=await request(user,href,undefined,200,false);
   evidence.push({kind:'warm-ssr-document',page:index+1,status,ttfbMs,durationMs,wireBytes,decodedBytes});save();
