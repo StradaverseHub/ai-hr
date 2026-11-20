@@ -1993,6 +1993,18 @@ try{
  if(measureDevelopment)developmentWorkCompleted=true;
 }catch(reason){
  if(reason!==lifecycleRefused){
+  if(stageEvidence&&reason instanceof Error&&typeof reason.stack==='string'){
+   // Retain only locations under this diagnostic directory. Error text and
+   // request data can include fixture identifiers and stay in the owned realm.
+   const directory=new URL('./',import.meta.url).href;
+   report.driverFailureLocations=reason.stack.split('\n').slice(1,12).flatMap(frame=>{
+    if(!/^\s+at /.test(frame))return [];
+    const start=frame.lastIndexOf(directory);
+    if(start<0)return [];
+    const location=frame.slice(start+directory.length).match(/^([a-z0-9-]+\.(?:mjs|ts)):(\d{1,5}):\d{1,4}\)?$/);
+    return location?[{file:location[1],line:Number(location[2])}]:[];
+   }).slice(0,6);
+  }
   failures.notePrimary(reason);
   nativeAdmission?.close(reason);
  }
