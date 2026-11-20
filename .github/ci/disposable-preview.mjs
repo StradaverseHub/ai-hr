@@ -133,6 +133,9 @@ try {
     const response = await page.goto(base + '/analytics');
     assert.equal(response.status(), 200);
     assert.equal(new URL(page.url()).pathname, '/analytics');
+    const tour = page.getByRole('dialog', {name: 'Product tour'});
+    await tour.getByRole('button', {name: 'Skip', exact: true}).click({timeout: 15000});
+    await tour.waitFor({state: 'hidden', timeout: 10000});
     const card = page.locator('#chart-hc-dept').locator('xpath=../..');
     const heading = card.getByRole('heading');
     await heading.waitFor();
@@ -161,29 +164,17 @@ try {
     await card.screenshot({path: join(evidence, 'analytics-card.png'), timeout: 15000});
 
     const button = card.getByRole('button', {name: '↓ PNG', exact: true});
-    let failure;
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      try {
-        const [png] = await Promise.all([
-          page.waitForEvent('download', {timeout: 15000}),
-          button.click({timeout: 10000}),
-        ]);
-        const filename = png.suggestedFilename();
-        assert.match(filename, /^headcount-dept_.*\.png$/);
-        assert.equal(await png.failure(), null);
-        const signature = readFileSync(await png.path()).subarray(0, 8);
-        assert.equal(signature.toString('hex'), '89504e470d0a1a0a');
-        report.pngExport = {passed: true, filename, attempt};
-        break;
-      } catch (error) {
-        failure = error.message;
-        // Let the prior download listener expire before another click.
-        if (attempt === 1) await page.waitForLoadState('networkidle', {timeout: 5000}).catch(() => {});
-      }
-    }
-    report.pngExport ??= {passed: false, error: failure};
+    const [png] = await Promise.all([
+      page.waitForEvent('download', {timeout: 15000}),
+      button.click({timeout: 10000}),
+    ]);
+    const filename = png.suggestedFilename();
+    assert.match(filename, /^headcount-dept_.*\.png$/);
+    assert.equal(await png.failure(), null);
+    const signature = readFileSync(await png.path()).subarray(0, 8);
+    assert.equal(signature.toString('hex'), '89504e470d0a1a0a');
+    report.pngExport = {passed: true, filename};
     report.browserErrors = errors;
-    if (!report.pngExport.passed) throw new Error(report.pngExport.error);
     assert.deepEqual(errors, []);
   });
   assert.equal(git('status', '--porcelain'), '');
