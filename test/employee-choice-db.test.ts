@@ -19,7 +19,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {seedPersonnelNativeFixture} from './performance/personnel-native-fixture';
 import {createAssignmentAuthorityFixture} from './performance/employee-choice-assignment-authority';
-import {firstWitnessDepartmentFacet,isDepartmentFacet,isSparseDepartmentFacet,sparseDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
+import {firstWitnessDepartmentFacet,isRepresentedDepartmentFacet,isSparseDepartmentFacet,representedDepartmentFacetBinds} from './performance/employee-choice-department-pair-probe';
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(resetDb);
 
 it('preserves native scope, exact JavaScript Unicode search, facets and independent deep selection',async()=>{
@@ -314,7 +314,7 @@ it('keeps manager and department hierarchy facets inside native effective report
  ],[acme],departments));
 },120000);
 
-it('compares product sparse Department pairs with the first witness under native scope and independent denials',async()=>{
+it('compares product Department pairs with the first witness under native scope and independent denials',async()=>{
  const f=await createAssignmentAuthorityFixture(),{b,otherCompany,alpha,gamma,transferred,unassigned}=f;
  const dialect=new PgDialect(),tenantPairs=[[b.companyId,b.deptA],[b.companyId,b.deptB],[otherCompany,b.deptB]];
  const sorted=(rows:string[][])=>rows.map(row=>row.join('/')).sort();
@@ -325,13 +325,12 @@ it('compares product sparse Department pairs with the first witness under native
    if(key==='execute')return async(query:SQL)=>{
     const compiled=dialect.sqlToQuery(query),text=compiled.sql.trimStart();
     const sparse=isSparseDepartmentFacet(text);
-    if(!sparse&&!isDepartmentFacet(text))return target.execute(query);
+    if(!isRepresentedDepartmentFacet(text))return target.execute(query);
     if(capture.original)throw new Error('Multiple native Department statements');
     const populationSize=input.employmentIds?.length??0;
     expect(sparse).toBe(populationSize>0&&populationSize<=25);
     const reference=firstWitnessDepartmentFacet(ctx.tenantId,input);
-    if(sparse)expect(compiled.params).toEqual(sparseDepartmentFacetBinds(ctx.tenantId,input));
-    else expect(compiled).toEqual(dialect.sqlToQuery(reference));
+    expect(compiled.params).toEqual(representedDepartmentFacetBinds(ctx.tenantId,input));
     capture.original=query;
     const forwarded=baseline?reference:query;
     capture.forwarded=forwarded;

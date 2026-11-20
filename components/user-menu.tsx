@@ -94,9 +94,12 @@ export function UserMenu({
   const accessT=useTranslations('accessConfiguration');
   const navT=useTranslations('nav');
   const [open, setOpen] = useState(false);
+  const [interactive, setInteractive] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
+
+  useEffect(() => { setInteractive(true); }, []);
 
   // Observe the actual document rather than a fixed backdrop inside the header's stacking context.
   // Outside interaction still reaches its destination; only Escape returns focus to our trigger.
@@ -131,13 +134,14 @@ export function UserMenu({
       <button
         ref={trigger}
         type="button"
+        disabled={!interactive}
         onClick={() => setOpen(value => !value)}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={open ? menuId : undefined}
         aria-label={t('accountMenu')}
         data-tour="account"
-        className="flex min-w-0 max-w-full items-center min-h-11 gap-1 sm:gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-1 sm:pr-2 text-left transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+        className="flex min-w-0 max-w-full items-center min-h-11 gap-1 sm:gap-2 rounded-full border border-border bg-card py-1 pl-1 pr-1 sm:pr-2 text-left transition duration-150 ease-snappy enabled:hover:bg-muted enabled:active:scale-[0.98] disabled:cursor-wait"
       >
         {named ? (
           <Avatar name={displayName} className="size-7" />
@@ -202,7 +206,8 @@ export function UserMenu({
               </div>
             </div>
             <div className="my-1 h-px bg-border" />
-            <Link
+            {/* Opening the account menu should only render its own controls. */}
+            <Link prefetch={false}
               href={PROFILE_HREF}
               role="menuitem"
               onClick={() => setOpen(false)}
@@ -210,12 +215,12 @@ export function UserMenu({
             >
               {t('viewProfile')}
             </Link>
-            <Link href="/me/home" role="menuitem" onClick={()=>setOpen(false)} className="flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+            <Link prefetch={false} href="/me/home" role="menuitem" onClick={()=>setOpen(false)} className="flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">
               {t('homePreferences')}
             </Link>
-            {canViewWorkforce&&<Link href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
+            {canViewWorkforce&&<Link prefetch={false} href="/admin/personnel" role="menuitem" onClick={()=>setOpen(false)}
               className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{navT('personnelAdmin')}</Link>}
-            {canConfigureAccess&&<Link href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
+            {canConfigureAccess&&<Link prefetch={false} href="/admin/users/access" role="menuitem" onClick={()=>setOpen(false)}
               className="flex w-full items-center rounded-md px-2 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted">{accessT('title')}</Link>}
             {/* Moved out of the header (r256) so the corner has room to say who you are on a laptop. */}
             <TourLauncher variant="menu" onSelect={() => setOpen(false)} />

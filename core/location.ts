@@ -366,6 +366,28 @@ export type LocationRow = {
   headcount: number;
 };
 
+function locationRows(tx: Tx) {
+  return tx
+    .select({
+      id: location.id,
+      companyId: location.companyId,
+      companyName: company.legalName,
+      code: location.code,
+      name: location.name,
+      country: location.country,
+      state: location.state,
+      branch: location.branch,
+      archivedAt: location.archivedAt,
+      headcount: sql<number>`(
+        select count(*)::int from assignment a
+        where a.location_id = ${location.id}
+          and a.valid_to is null and a.superseded_at is null
+      )`,
+    })
+    .from(location)
+    .innerJoin(company, eq(company.id, location.companyId));
+}
+
 /** Locations in scope, joined with company name + active headcount (open assignment rows pointing here) +
  *  RLS already scopes rows to admin-of-company; companyIds further narrows to the UI's active scope.
  *  ADR-0086: the mapped holiday calendar's name/archetype used to come back here too, via a left join on
@@ -380,29 +402,30 @@ export function listLocations(
     const conds = [];
     if (companyIds.length) conds.push(inArray(location.companyId, companyIds));
     if (!opts.includeArchived) conds.push(isNull(location.archivedAt));
-    return tx
-      .select({
-        id: location.id,
-        companyId: location.companyId,
-        companyName: company.legalName,
-        code: location.code,
-        name: location.name,
-        country: location.country,
-        state: location.state,
-        branch: location.branch,
-        archivedAt: location.archivedAt,
-        headcount: sql<number>`(
-          select count(*)::int from assignment a
-          where a.location_id = ${location.id}
-            and a.valid_to is null and a.superseded_at is null
-        )`,
-      })
-      .from(location)
-      .innerJoin(company, eq(company.id, location.companyId))
+    return locationRows(tx)
       .where(conds.length ? and(...conds) : undefined)
       .orderBy(asc(company.legalName), asc(location.code));
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
+}
+
+/** Look up one Work Location under the register's administrative scope, including archived sites. */
+export function getWorkLocation(ctx: SessionContext, id: string): Promise<LocationRow | undefined> {
+  return withTenant(ctx, async tx => {
+    // RLS enforces the location's company grant. Match the old list's archive semantics:
+    // an empty active-company scope let listLocations rely on RLS alone.
+    const [row] = await locationRows(tx)
+      .where(and(
+        eq(location.id, id),
+        sql`(${company.archivedAt} is null or not exists (
+          select 1 from company active_company
+          where active_company.tenant_id = ${ctx.tenantId}
+            and active_company.archived_at is null and app.is_admin_for(active_company.id)
+        ))`,
+      ))
+      .limit(1);
+    return row;
+  });
 }
 
 /** A location's company id (for the cross-company coherence check in transferEmployee). Null if absent. */

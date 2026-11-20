@@ -52,8 +52,7 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {readShellNavigationAccess} from '@/core/shell-navigation-access';
-import { companyContextForPage } from '@/lib/scope';
+import { readShellNavigationContext } from '@/lib/shell-navigation-context';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
@@ -180,7 +179,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
@@ -192,9 +190,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-  ]);
+  const [{allowed,scopeIds},viewer,navigationAccess]=await readShellNavigationContext(session);
+  const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
     ? await letterNavigation(session,scopeIds) : [];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')

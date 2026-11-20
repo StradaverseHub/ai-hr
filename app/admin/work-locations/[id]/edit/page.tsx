@@ -2,8 +2,7 @@ import { ActionButton } from '@/components/ui/action-button';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies } from '@/core/read';
-import { listLocations } from '@/core/location';
+import { getWorkLocation } from '@/core/location';
 import { listProfileOptions } from '@/core/profile-options';
 import { Card, PageHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { workLocationsReturnTo } from '@/lib/return-to';
@@ -23,9 +22,7 @@ import { UUID_RE, readTypedLocationValues, type LocationFormValues } from '../..
  * the listing landed on this row, highlighted; Cancel and Back return there with nothing saved; a
  * refusal lands back HERE with the reason and everything typed (../../location-fields.ts).
  *
- * ⚠️ `[id]` IS SHAPE-CHECKED BEFORE ANY QUERY, and the location is looked for among the companies
- * `listCompanies(s, { adminOnly: true })` returned — so a location outside this admin's scope is
- * notFound() rather than opened for editing. Same boundary as the listing and the View screen.
+ * The route validates `[id]` before the record lookup. The lookup applies the register's company scope.
  *
  * ARCHIVE / RESTORE LIVE HERE, not on the listing: the listing renders no form at all, and archiving is
  * a property of one location rather than of the company block it sits in. The listing still SHOWS an
@@ -49,9 +46,7 @@ export default async function EditLocationPage({
   const error = typeof sp.error === 'string' ? sp.error : undefined;
   const backHref = workLocationsReturnTo(sp.from);
 
-  const companies = await listCompanies(s, { adminOnly: true });
-  const locations = await listLocations(s, companies.map((c) => c.id), { includeArchived: true });
-  const site = locations.find((l) => l.id === rawId);
+  const site = await getWorkLocation(s, rawId);
   if (!site) notFound();
 
   const branchOptions = await listProfileOptions(s, 'branch', { activeOnly: true,companyId:site.companyId });

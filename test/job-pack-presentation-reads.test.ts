@@ -6,9 +6,10 @@ import {afterAll,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
+import {observeNativeRead} from './helpers/native-read-observer';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {appUser,person,roleAssignment,company} from '../db/schema';
-import {DEFAULT_FORM,attachJobDocument,configureJobForm,downloadJobAttachment,getJobDocumentPage,getJobForm,getJobMasters,listJobDocuments,readJobDocument,saveJobDraft,type JobInput} from '../packs/job-descriptions/service';
+import {DEFAULT_FORM,attachJobDocument,configureJobForm,downloadJobAttachment,getJobCompanyOptions,getJobDocumentPage,getJobForm,getJobListFilters,getJobMasters,listJobDocuments,readJobDocument,saveJobDraft,type JobInput} from '../packs/job-descriptions/service';
 import {architecturePeople,architectureSeatList,architectureWorkspace,canViewJobArchitecture,approvedPositionArchitecture,architectureAdviceForDraft} from '../packs/job-architecture/service';
 
 let b:Base,ctx:SessionContext,saved:{jobId:string;revisionId:string},attachmentId:string,seatId:string;
@@ -24,7 +25,7 @@ const roots=(current=ctx)=>[
  ()=>getJobMasters(current),()=>getJobForm(current,b.companyId),()=>readJobDocument(current,saved.jobId),
  ()=>getJobDocumentPage(current,{q:'SNAPSHOT-',company:b.companyId}),()=>listJobDocuments(current,{company:b.companyId}),
  ()=>downloadJobAttachment(current,attachmentId),()=>architectureWorkspace(current,b.companyId),
- ()=>architecturePeople(current),()=>architectureSeatList(current),()=>canViewJobArchitecture(current),
+ ()=>architecturePeople(current),()=>architectureSeatList(current),()=>canViewJobArchitecture(current),()=>getJobListFilters(current),()=>getJobCompanyOptions(current),
 ];
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
@@ -63,7 +64,7 @@ it('all admitted display roots finish against known records while a real exclusi
   void command.then(()=>{settled=true;},()=>{settled=true;});
   const pending=roots().map(read=>read());reads=[...pending];
   const outcomes=await Promise.allSettled(pending);
-  expect(outcomes.map(v=>v.status)).toEqual(Array(10).fill('fulfilled'));
+  expect(outcomes.map(v=>v.status)).toEqual(Array(12).fill('fulfilled'));
   const values=outcomes.map(v=>{if(v.status!=='fulfilled')throw v.reason;return v.value;});
   expect(values[0]).toMatchObject({companies:[{value:b.companyId,label:'Acme Sdn Bhd'}]});
   expect(values[1]).toMatchObject({version:2,sections:[expect.objectContaining({label:'Snapshot fixture form'}),...DEFAULT_FORM.sections.slice(1)]});
@@ -74,7 +75,9 @@ it('all admitted display roots finish against known records while a real exclusi
   expect(values[6]).toMatchObject({companies:[{id:b.companyId,name:'Acme Sdn Bhd'}],positions:[{id:b.positionId,title:'Executive',companyId:b.companyId}]});
   expect(values[7]).toContainEqual({id:ctx.userId,name:'Fictional pack reader'});
   expect(values[8]).toMatchObject([{id:seatId,user_id:ctx.userId,company_id:b.companyId,role:'pbp'}]);expect(values[9]).toBe(true);
-  expect(modes).toHaveLength(10);for(const mode of modes)expect(mode).toEqual({isolation:'repeatable read',readOnly:true});
+  expect(values[10]).toMatchObject({companies:[{value:b.companyId,label:'Acme Sdn Bhd'}]});
+  expect(values[11]).toEqual([{value:b.companyId,label:'Acme Sdn Bhd'}]);
+  expect(modes).toHaveLength(12);for(const mode of modes)expect(mode).toEqual({isolation:'repeatable read',readOnly:true});
   const[waiting]=await owner.client<{yes:boolean}[]>`select exists(select 1 from pg_locks l where l.locktype='advisory' and not l.granted and l.objsubid=1 and l.database=(select oid from pg_database where datname=current_database()) and ((l.classid::bigint<<32)|l.objid::bigint)=hashtextextended(${'access-configuration:'+b.tenantId},0)) as yes`;
   expect(waiting.yes).toBe(true);expect(settled).toBe(false);
   expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId} order by id`).toEqual(before);
@@ -121,6 +124,55 @@ it('retains company and current-seat boundaries without promoting login proof in
  await owner.client`update job_architecture_seat set valid_to='2020-01-02' where user_id=${employee.userId!}`;
  expect(await canViewJobArchitecture(employee)).toBe(false);await expect(architectureWorkspace(employee)).rejects.toThrow();await expect(architecturePeople(employee)).rejects.toThrow();
 });
+
+it('preserves the list filter options for a 72-company group without loading editor or reviewer data',async()=>{
+ const companies=await owner.client<{id:string}[]>`
+  insert into company(tenant_id,legal_name)
+  select ${b.tenantId}::uuid,'Fictional job filters company '||number from generate_series(1,71) number returning id`;
+ const ids=[b.companyId,...companies.map(row=>row.id)];
+ const added=await owner.client<{count:number}[]>`
+  with people as (
+   insert into person(tenant_id,full_name,primary_email)
+   select ${b.tenantId}::uuid,'Fictional job filter employee '||number,'job-filter-'||number||'@example.invalid'
+   from generate_series(1,1152) number returning id
+  ), staff as (
+   insert into employment(tenant_id,person_id,company_id,hired_on)
+   select ${b.tenantId}::uuid,p.id,c.id,'2024-01-01'::date
+   from (select id,row_number() over(order by id) n from people) p
+   join unnest(${ids}::uuid[]) with ordinality c(id,n) on c.n=1+(p.n-1)%72
+   returning person_id
+  ), users as (
+   insert into app_user(tenant_id,person_id,workos_user_id)
+   select ${b.tenantId}::uuid,person_id,'job-filter-'||person_id from staff returning id
+  ) select count(*)::int as count from users`;
+ expect(added[0].count).toBe(1152);
+ const single=await principal('hr_admin',b.companyId);
+ for(const [label,current,expected] of [['group',ctx,ids],['company',single,[b.companyId]]] as const){
+  const probe=observeNativeRead();
+  let actual!:Awaited<ReturnType<typeof getJobListFilters>>;
+  const started=performance.now();
+  try{actual=await getJobListFilters(current);}finally{probe.restore();}
+  const filtersMs=Math.round(performance.now()-started);
+  expect(probe.queries.length).toBeGreaterThan(0);
+  expect(probe.queries.some(query=>/job_document_reviewer_eligible|profile_option|\blocation\b/.test(query.sql))).toBe(false);
+  expect(new Set(actual.companies.map(company=>company.value))).toEqual(new Set(expected));
+  const picker=await getJobCompanyOptions(current);
+  expect(picker).toEqual(actual.companies);
+  const before=performance.now();
+  const full=await getJobMasters(current);
+  const editorMs=Math.round(performance.now()-before);
+  const {companies,businessUnit,department,grade,family}=full;
+  expect(actual).toEqual({companies,businessUnit,department,grade,family});
+  const selectedAt=performance.now();
+  const scoped=await getJobMasters(current,b.companyId);
+  const scopedEditorMs=Math.round(performance.now()-selectedAt);
+  const expectedPeople=full.people.filter(option=>option.companyIds?.includes(b.companyId))
+   .map(option=>({...option,companyIds:[b.companyId]}));
+  expect(expectedPeople.length).toBeGreaterThan(0);
+  expect(scoped).toEqual({...full,people:expectedPeople});
+  console.info('Job descriptions list filters',{label,filtersMs,editorMs,scopedEditorMs});
+ }
+},120000);
 
 it('captures mutable session grants and list filters before waiting for native data access',async()=>{
  const supplied=structuredClone(ctx),filters={q:'SNAPSHOT-',company:b.companyId};

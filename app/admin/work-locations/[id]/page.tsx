@@ -2,8 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies } from '@/core/read';
-import { listLocations } from '@/core/location';
+import { getWorkLocation } from '@/core/location';
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
 import { workLocationsReturnTo, withWorkLocationsFrom } from '@/lib/return-to';
 import { UUID_RE, locationEditPage } from '../location-fields';
@@ -21,10 +20,7 @@ import { UUID_RE, locationEditPage } from '../location-fields';
  * any query (junk reaching `eq(location.id, …)` makes Postgres throw "invalid input syntax for type
  * uuid" — the r263 verifier's 500). Junk and an unknown id are both notFound().
  *
- * SCOPE IS THE QUERY. The location is looked for among the ones belonging to the companies
- * `listCompanies(s, { adminOnly: true })` returned, so a location in a company this admin does not
- * administer is notFound() rather than rendered — the same boundary the listing draws, drawn again here
- * rather than trusted from the link that got us here.
+ * The record lookup applies the same company scope as the register, including on direct entry.
  *
  * r423 (83c0d3c8) — NO CLOCKING LOCATIONS HERE ANY MORE. They render beside the location they hung off
  * from r338 until r423; Attendance › Locations (../clocking/page.tsx) is now the one list of clocking
@@ -44,9 +40,7 @@ export default async function ViewLocationPage({
   if (!UUID_RE.test(rawId)) notFound();
 
   const backHref = workLocationsReturnTo(sp.from);
-  const companies = await listCompanies(s, { adminOnly: true });
-  const locations = await listLocations(s, companies.map((c) => c.id), { includeArchived: true });
-  const site = locations.find((l) => l.id === rawId);
+  const site = await getWorkLocation(s, rawId);
   if (!site) notFound();
 
   const facts: [string, string][] = [

@@ -70,7 +70,7 @@ import { ActionButton } from '@/components/ui/action-button';
  *    employee a row is — the Company FILTER is the answer, and the plan said so before this was built.
  */
 import { useMemo, useState, useTransition } from 'react';
-import Link from 'next/link';
+import { IntentLink } from '@/components/intent-link';
 import { paginateRows } from '@/lib/pagination';
 import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
@@ -467,12 +467,13 @@ export function RosterGrid({
                 </td>
                 {canEdit && (
                   <td className="sticky max-lg:static z-10 truncate border-r border-border bg-background px-2 py-1.5" style={pinned.col('edit')}>
-                    <Link
+                    <IntentLink
                       href={editHref(e.employmentId)}
+                      prefetchOnIntentOnly
                       className="text-xs font-medium text-primary underline-offset-2 hover:underline"
                     >
                       {t('colEdit')}
-                    </Link>
+                    </IntentLink>
                   </td>
                 )}
                 {dates.map((d) => {

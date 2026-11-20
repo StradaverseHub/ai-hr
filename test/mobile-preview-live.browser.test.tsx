@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import type { MobilePreviewData } from '../components/mobile-preview/types';
+import type { MobilePreviewData, MobilePreviewView } from '../components/mobile-preview/types';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -28,12 +28,12 @@ const data = (): MobilePreviewData => ({
   requests: ready({ total: 1, items: [{ id: 'own-request', type: 'Configured leave 1', from: '2026-10-12', to: '2026-10-13', status: 'approved', partial: true }] }),
   claims: ready([{ id: 'own-claim', type: 'Synthetic claim', date: '2026-10-02', status: 'pending', amount: '28.00' }]),
   team: ready([{ employmentId: 'authorized-report', name: 'Synthetic Report', dates: [{ date: '2026-10-08', status: 'approved', session: 'AM' }] }]),
-  tasks: ready([{ id: 'assigned-task', kind: 'leave', subject: 'Synthetic Report', href: '/approvals' }]),
+  tasks: ready({ items: [{ id: 'assigned-task', kind: 'leave', subject: 'Synthetic Report', href: '/approvals' }], total: 1 }),
   inbox: ready([{ id: 'update', title: 'Own update', body: 'Own body', href: 'https://example.test/private', read: false, createdAt: '2026-10-08T00:54:00Z' }]),
   payslips: ready([{ id: 'own-slip', company: 'Synthetic Employer', period: '2026-09' }]),
 });
 const messages = { en, ms, zh, ta, th, vi: viMessages };
-function mount(d = data(), locale: keyof typeof messages = 'en') {
+function mount(d: MobilePreviewView = data(), locale: keyof typeof messages = 'en') {
   return render(<NextIntlClientProvider locale={locale} messages={messages[locale]} timeZone="Asia/Kuala_Lumpur"><div style={{ width: 320, maxWidth: '100%' }}><MobileApp data={d} /></div></NextIntlClientProvider>);
 }
 function assertFits(container: HTMLElement) {
@@ -47,6 +47,30 @@ function assertFits(container: HTMLElement) {
   }
 }
 describe('Live Monolith in a real browser', () => {
+  it('opens the phone and own requests while assigned tasks are still loading', async () => {
+    let finishTasks!: (value: MobilePreviewData['tasks']) => void;
+    const tasks = new Promise<MobilePreviewData['tasks']>(resolve => { finishTasks = resolve; });
+    const preview = data();
+    const ui = mount({ ...preview, tasks });
+    expect(ui.getByRole('status').textContent).toContain(en.mobilePreview.live.refreshing);
+    expect(ui.queryByText(en.mobilePreview.live.allClear)).toBeNull();
+    fireEvent.click(ui.getByRole('button', { name: 'Requests' }));
+    expect(ui.getByText(/Partially approved/)).toBeTruthy();
+    fireEvent.click(ui.getByRole('button', { name: 'Home' }));
+    finishTasks(preview.tasks);
+    expect((await ui.findByRole('link', { name: /Synthetic Report Approve/ })).getAttribute('href')).toBe('/approvals');
+  });
+  it('shows the exact task count and links to the task centre when the preview is bounded', () => {
+    const preview = data();
+    if (preview.tasks.status !== 'ready') throw new Error('Missing task fixture');
+    preview.tasks.data.total = 45;
+    const ui = mount(preview);
+    expect(ui.getByRole('link', { name: /View all tasks.*45/ }).getAttribute('href')).toBe('/tasks');
+    fireEvent.click(ui.getByRole('button', { name: 'Requests' }));
+    fireEvent.click(ui.getByRole('button', { name: /Needs you.*45/ }));
+    expect(ui.getByRole('link', { name: /Synthetic Report Approve/ })).toBeTruthy();
+    expect(ui.getByRole('link', { name: /View all tasks.*45/ }).getAttribute('href')).toBe('/tasks');
+  });
   it('holds navigation and task links while a real punch is waiting for its server receipt', async () => {
     let resolve!: (value: Response) => void;
     const pending = new Promise<Response>(r => { resolve = r; });

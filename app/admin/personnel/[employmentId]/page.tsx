@@ -7,7 +7,7 @@ import {movementTypeControls} from '@/core/movement-type-controls';
 import {SalaryRecordingChoices,type SalaryRecordingOptions} from '@/components/salary-recording-choices';
 import {latestApplicableMovementCandidates} from '@/lib/movement-latest-applicable';
 import {isComparisonKind} from '@/core/movement-kinds';
-import {employmentPaymentMethodHistory} from '@/core/employment-payment-method';
+import { readPersonnelPayHistories } from './pay-histories';
 import {movementDeleteAccess} from '@/core/movement-delete-access';
 import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from '@/lib/movement-employment-periods';
 import { MOVEMENT_FORM_IDS } from '@/lib/movement-form-contract';
@@ -153,8 +153,6 @@ import { serviceYearsMonthsDaysAt } from '@/core/leave';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import {
   closedPayrollPeriodsFor,
-  compensationHistoryDetailed,
-  compensationAmendmentHistory,
   overlapsClosedPeriod,
   type CompensationHistoryRow,
 } from '@/core/comp';
@@ -424,11 +422,10 @@ export default async function EmployeePage({
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
   const amendmentPage=Number(rawSearchParams.salaryAmendmentPage);
-  const [paymentMethodHistory,salaryHistory,salaryAmendments]=await Promise.all([
-    readProfileCards?employmentPaymentMethodHistory(s,employmentId):[],
-    readProfileCards?compensationHistoryDetailed(s,employmentId):[],
-    readProfileCards?compensationAmendmentHistory(s,employmentId,Number.isSafeInteger(amendmentPage)&&amendmentPage>0&&amendmentPage<=100000?amendmentPage:1):{page:1,hasMore:false,rows:[]},
-  ]);
+  const [paymentMethodHistory, salaryHistory, salaryAmendments] = readProfileCards
+    ? await readPersonnelPayHistories(s, employmentId,
+        Number.isSafeInteger(amendmentPage) && amendmentPage > 0 && amendmentPage <= 100000 ? amendmentPage : 1)
+    : [[], [], { page: 1, hasMore: false, rows: [] }];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
   const closedPayrollPeriods = readProfileCards || movementPage === 'edit' || spNewEvent ? await closedPayrollPeriodsFor(s, employmentId) : [];
