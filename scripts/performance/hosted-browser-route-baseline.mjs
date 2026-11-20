@@ -35,7 +35,7 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -64,7 +64,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
- AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:surfaceProbe==='rewards'?'whole-system':'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
  PERF_ATTENDANCE_REJECTION_BROWSER:surfaceProbe==='attendance'?'1':'0',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
@@ -788,6 +788,17 @@ async function measureAttendanceWorkflowEditor(fixture){
 }
 
 const focusedSurfaces={
+ 'rewards-salary':{path:'/admin/rewards/salary-structures',actorIndexes:[0],witnesses:{
+  heading:'main h1',
+  salaryVersion:'main table a[href*="&version="]',
+  libraryFilter:'main input[type="number"][name="year"]',
+ }},
+ 'rewards-uploaded':{path:'/admin/rewards/uploaded',actorIndexes:[0],witnesses:{
+  heading:'main h1',
+  companyChoices:'main form select[name="companyId"]',
+  businessUnitChoices:'main form select[name="businessUnitId"]',
+  submitControl:'main form button[type="submit"]',
+ }},
  'access-editor':{path:'/admin/users/access',actorIndexes:[0],witnesses:{
   heading:'main :is(h1,h2)',
   userGroups:'main nav[aria-label="User groups"] button',
@@ -814,7 +825,9 @@ const focusedSurfaces={
 async function measureSurfaceProbe(fixture,surface){
  const require=createRequire(join(process.cwd(),'package.json'));
  browser??=await require('playwright').chromium.launch();
- const {path,witnesses,actorIndexes=[0,1]}=focusedSurfaces[surface];
+ const {path:route,witnesses,actorIndexes=[0,1]}=focusedSurfaces[surface];
+ const rewardSurface=surface.startsWith('rewards-');
+ const path=surface==='rewards-salary'?route+'?year='+fixture.tenants[0].rewardDraft.year:route;
  report.surfaceProbes??={};
  const visits=[];
  report.surfaceProbes[surface]=visits;
@@ -864,16 +877,33 @@ async function measureSurfaceProbe(fixture,surface){
       assert.equal(await options.count(),row.initialUserChoices);
       row.searchAndClearMs=Math.round(performance.now()-selectionStarted);
      }
+     if(surface==='rewards-salary'){
+      assert(await page.getByRole('heading',{name:'Salary Structures',exact:true}).isVisible());
+      const version=page.locator(witnesses.salaryVersion).first();
+      const href=await version.getAttribute('href');
+      assert(href?.startsWith(path+'&version='));
+      const versionStarted=performance.now();
+      await Promise.all([page.waitForURL(origin+href,{timeout:15000}),version.click({timeout:5000})]);
+      await page.locator('main input[name="name"]').waitFor({state:'visible',timeout:5000});
+      assert((await page.locator('main input[name="name"]').inputValue()).length>0);
+      row.versionEditorMs=Math.round(performance.now()-versionStarted);
+     }
+     if(surface==='rewards-uploaded'){
+      assert(await page.getByRole('heading',{name:'Create Uploaded awards review',exact:true}).isVisible());
+      row.companyOptions=await page.locator(witnesses.companyChoices+' option').count();
+      row.businessUnitOptions=await page.locator(witnesses.businessUnitChoices+' option').count();
+      assert(row.companyOptions>0&&row.businessUnitOptions>0,'The authorized Rewards review form must have real choices');
+     }
      row.status='observed';
     }catch(error){
      row.status='failed';
      row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
-     if(surface!=='access-editor')throw error;
+     if(surface!=='access-editor'&&!rewardSurface)throw error;
     }finally{save();}
    }
   }finally{await context.close();}
  }
- assert(visits.every(row=>row.status==='observed'),'A focused surface did not become usable on each visit');
+ if(!rewardSurface)assert(visits.every(row=>row.status==='observed'),'A focused surface did not become usable on each visit');
 }
 
 async function measurePayrollReadTrace(fixture){
@@ -1925,6 +1955,11 @@ try{
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
  report.fixture.joinersSeeded=true;
+ if(surfaceProbe==='rewards'){
+  const rewards=fixture.tenants[0].rewardDraft;
+  assert(rewards?.planVersionId&&Number.isInteger(rewards.year),'Missing fictional approved Rewards plan');
+  report.fixture.rewardsDraftSeeded=true;
+ }
  report.fixtureVerified=true;
  if(!fixtureOnly){
   if(staticShard===null&&!diagnosticCount)await seedNotificationReads(fixture);
@@ -1936,8 +1971,12 @@ try{
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe){
-   const requested=surfaceProbe==='both'?['insights','recruitment']:[surfaceProbe];
+   const requested=surfaceProbe==='both'?['insights','recruitment']
+    :surfaceProbe==='rewards'?['rewards-salary','rewards-uploaded']:[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);
+   if(surfaceProbe==='rewards')assert(requested.every(surface=>
+    report.surfaceProbes[surface].length===3&&report.surfaceProbes[surface].every(row=>row.status==='observed')),
+   'The authorized Rewards setup controls were not usable on each visit');
   }
   else if(mobileTaskTrace)await measureMobileTaskTrace(fixture);
   else if(payrollReadTrace)await measurePayrollReadTrace(fixture);
