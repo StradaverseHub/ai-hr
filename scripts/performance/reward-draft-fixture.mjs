@@ -1,10 +1,29 @@
 /** Extra Rewards membership for the isolated fictional browser workloads. */
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {sql} from 'drizzle-orm';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
-import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
+import {saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
 import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
+import {setupAuthority,setupLock,setupTenant} from '../../packs/rewards/setup-data.ts';
+import {normalizedRewardTargets,parseRewardPolicyGroupVersion,rewardPolicyGroupEditSchema} from '../../packs/rewards/policy-group-model.ts';
+import {assertRewardPolicyGrids} from '../../packs/rewards/policy-grid-validation.ts';
+import {sharedRewardPolicyProjection} from '../../packs/rewards/shared-policy-projection.ts';
+
+// The standalone fixture loader uses static imports for validation. The draft still goes
+// through the same authenticated transaction, authority check, lock and storage function.
+async function seedRewardPlanSource(ctx,input){
+ const draft=rewardPolicyGroupEditSchema.parse(input);
+ assertRewardPolicyGrids(draft.policy);
+ return setupTenant(ctx,async tx=>{
+  await setupAuthority(tx,null,'manage');
+  await setupLock(tx,ctx,'plans');
+  const [row]=await tx.execute(sql`select app.reward_setup_policy_commit(${draft.groupId}::uuid,${draft.expectedRevision},${draft.name},
+   ${JSON.stringify(sharedRewardPolicyProjection(draft.policy))}::jsonb,${JSON.stringify(normalizedRewardTargets(draft.targets))}::jsonb) as version`);
+  return parseRewardPolicyGroupVersion(row?.version);
+ });
+}
 
 export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,includeOrgExplorerMember,expectedCompanyEmploymentIds,phase=(_name,run)=>run()}){
  const suite=process.env.PERF_HTTP_SUITE;
@@ -53,7 +72,7 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  const {policy,salary,bonus}=await phase('libraries',()=>fixtures.setupRewardLibrariesFixture(maker,year,undefined,checker));
  await phase('pat',()=>fixtures.confirmFixturePat(maker,company.companyId,year,{targetCents:policy.patTarget,forecastCents:null,actualCents:policy.patActual,targetMonthsBp:policy.targetMonthsBp},checker));
  const name='Fictional Rewards draft '+randomUUID();
- const source=await phase('draft',()=>saveRewardPlanConfiguration(maker,{groupId:null,expectedRevision:0,name,policy,targets:[{companyId:company.companyId,businessUnitId:unit.id}]}));
+ const source=await phase('draft',()=>seedRewardPlanSource(maker,{groupId:null,expectedRevision:0,name,policy,targets:[{companyId:company.companyId,businessUnitId:unit.id}]}));
  const revision=await phase('setup',()=>saveRewardSetupPlan(maker,{versionId:source.versionId,expectedRevision:0,cycleName:name,snapshotDate:today,bindings:[{companyId:company.companyId,businessUnitId:unit.id,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'}],reason:'Independently reviewed fictional browser fixture'}));
  await phase('submit',()=>submitRewardSetupPlan(maker,source.versionId,revision));
  await phase('approve',()=>approveRewardSetupPlan(checker,source.versionId,revision+1));
