@@ -80,18 +80,42 @@ export async function measurePayrollCorrection({context, db, fixture, origin, ru
         Boolean(url.searchParams.get('job')) && !url.searchParams.has('error'), {timeout: 15000}),
       addition.form.getByRole('button', {name: 'Reprocess 1 employee(s)', exact: true}).click({timeout: 8000}),
     ]);
+    const jobId = new URL(page.url()).searchParams.get('job');
+    assert.match(jobId ?? '', /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+    const progress = page.getByRole('heading', {name: 'Reprocessing in the background', exact: true});
+    await progress.waitFor({state: 'visible', timeout: 8000});
     proof.reprocessAcknowledgedMs = elapsed(started);
     save();
-    proof.step = 'worker-and-result';
+    proof.step = 'worker';
     started = performance.now();
     await runWorker();
-    await page.reload({waitUntil: 'domcontentloaded', timeout: 15000});
-    await page.getByText('Added to this run', {exact: true}).first().waitFor({state: 'visible', timeout: 8000});
-    proof.workerAndResultMs = elapsed(started);
+    proof.workerMs = elapsed(started);
+    proof.step = 'verify-persistence';
     const completed = await readRun();
     const restored = forSubject(completed);
     assert(restored && restored.gross_pay === initialSlip.gross_pay && restored.net_pay === initialSlip.net_pay &&
       sameSlips(otherSlips(completed), remaining), 'Reprocessing did not restore only the selected payroll result');
+    const [job] = await db`select status, result from payroll_reprocess_job
+      where tenant_id = ${group.tenantId}::uuid and batch_id = ${group.batchId}::uuid and id = ${jobId}::uuid`;
+    const jobOutcomes = job?.result?.outcomes ?? [];
+    const [outcome] = jobOutcomes;
+    assert(job?.status === 'completed' && jobOutcomes.length === 1 &&
+      outcome.employmentId === subject.employmentId && outcome.status === 'reprocessed' &&
+      outcome.classification === 'added' && outcome.payslipId === restored.id &&
+      outcome.versionAfter === restored.version, 'The job did not record the selected employee and restored payslip');
+    proof.persistenceVerified = true;
+    proof.step = 'browser-result';
+    const outcomes = page.getByRole('table').filter({
+      has: page.getByRole('columnheader', {name: 'Processing status', exact: true}),
+    });
+    const employeeResult = outcomes.getByRole('row').filter({
+      has: page.getByText('Reprocessed', {exact: true}),
+    });
+    await employeeResult.getByRole('link').filter({
+      has: page.getByText(subject.name, {exact: true}),
+    }).waitFor({state: 'visible', timeout: 15000});
+    await progress.waitFor({state: 'hidden', timeout: 15000});
+    proof.workerAndResultMs = elapsed(started);
     proof.status = 'observed';
   } finally { save(); }
 }
