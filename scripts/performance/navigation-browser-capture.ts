@@ -17,6 +17,12 @@ import {assertNativeShellDestinationHidden,clickNativeShellDestination} from './
 import {DEVELOPMENT_RENDERED_CAPTURE_MAX_BYTES} from './driver-shutdown.mjs';
 import {nativePreflightRoutePlan,requireNativeRenderedUnion} from './system-route-manifest.mjs';
 const BASE='https://localhost:3443';
+const businessDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+
+/** The undated Daily Attendance link defaults to the request's local date. */
+export function matchesDailyAttendanceBusinessDate(value: string, startedAt: Date, observedAt: Date): boolean {
+ return value === businessDate.format(startedAt) || value === businessDate.format(observedAt);
+}
 const failuresSelector={busy:'main[data-personnel-busy],main[data-page-busy],main [data-personnel-busy],main [data-page-busy]',
  unavailable:'main [data-read-unavailable],main [data-today-unavailable]',alerts:'main [role="alert"]'} as const;
 type LoadState={active:number;inSteadyWindow:boolean};
@@ -369,6 +375,7 @@ export async function openNativePersonnelFilter(page:Page,remaining:()=>number){
 
 async function captureScenario(page:Page,actorIndex:number,scenario:NavigationScenario,phase:'baseline'|'loaded',bindings:Readonly<NavigationFixtureTextBindings>,loadState?:()=>LoadState):Promise<NavigationObservation>{
  const actor=fixtureNavigationActor(actorIndex),entry=navigationScenarioEntry(scenario),started=performance.now(),deadline=started+90000;
+ const wallStarted = new Date();
  const remaining=()=>{const ms=Math.floor(deadline-performance.now());assert(ms>0,'Navigation scenario deadline exceeded');return ms;};
  const sample=()=>{const state=loadState?.();if(phase==='loaded')assert(state?.active===500&&state.inSteadyWindow===true,'Navigation must start and finish within steady 500-user load');return state?{active:state.active,inSteadyWindow:state.inSteadyWindow}:undefined;};
  const startedWith=sample(),failures={busy:0,unavailable:0,alerts:0,http500:0,pageErrors:0};
@@ -448,7 +455,13 @@ async function captureScenario(page:Page,actorIndex:number,scenario:NavigationSc
     assert(await visible[0].evaluate(element=>element.tagName.toLowerCase())===check.tag&&await visible[0].isEnabled(),'Reviewed native control is unavailable');
    }else if(check.kind==='text-exact')assert((await visible[0].innerText({timeout:remaining()})).trim()===navigationExpectedText(check.expected,actorIndex,bindings),'Expected exact native fixture content differs');
    else if(check.kind==='text')assert((await visible[0].innerText({timeout:remaining()})).includes(navigationExpectedText(check.expected,actorIndex,bindings)),'Expected independent fixture content missing');
-   else if(check.kind==='value'||check.kind==='roster-month')assert(await visible[0].inputValue({timeout:remaining()})===navigationExpectedText(check.expected,actorIndex,bindings),'Expected native control value differs');
+   else if(check.kind==='value'||check.kind==='roster-month'){
+    const value=await visible[0].inputValue({timeout:remaining()});
+    const matchesValue=check.kind==='value'&&check.id==='native-fixture-day'&&scenario.href==='/attendance/daily'
+     ?matchesDailyAttendanceBusinessDate(value,wallStarted,new Date())
+     :value===navigationExpectedText(check.expected,actorIndex,bindings);
+    assert(matchesValue,'Expected native control value differs');
+   }
    else if(check.kind==='attribute')assert(await visible[0].getAttribute(check.name)===check.expected,'Reviewed native control attribute differs');
    checks.push({id:check.id,passed:true,observedCount:visible.length});
   }

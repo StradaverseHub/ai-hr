@@ -20,10 +20,21 @@ vi.mock('../scripts/performance/navigation-source',()=>({
 }));
 vi.mock('../scripts/performance/navigation-fixture-bindings',()=>({readNavigationFixtureBindings:()=>new Map([[4,{actorName:'PERF Person 0004',actorEmployeeCode:'PERF0004',firstCompanyPersonName:'PERF Person 0000',activeHeadcount:'50',historicalPayrollMonth:'2026-07',seedToday:'2026-11-07',seedMonth:'2026-11',rosterScope:{}}]])}));
 import {createNavigationCaptureCollector,installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,writeNavigationCaptureBundle,
- DEVELOPMENT_RENDERED_UNION_MEMBER,writeDevelopmentRenderedRouteUnion,legacyNavigationFailureFacts} from '../scripts/performance/navigation-browser-capture';
+ DEVELOPMENT_RENDERED_UNION_MEMBER,writeDevelopmentRenderedRouteUnion,legacyNavigationFailureFacts,matchesDailyAttendanceBusinessDate} from '../scripts/performance/navigation-browser-capture';
 import {nativePreflightReadiness,nativePreflightRoutePlan} from '../scripts/performance/system-route-manifest.mjs';
 import {NAVIGATION_CAPTURE_MEMBER,NATIVE_HIDDEN_SHELL_CASES,NATIVE_SHELL_BASELINE_VERSION,NATIVE_SHELL_LEGACY_SCENARIO_SHA256,nativeHiddenShellCasesSha256,
  validateNativeShellBaseline,type NativeShellBaseline} from '../scripts/performance/navigation-protocol';
+
+it('checks the Daily Attendance default against the actual business date, including across MYT midnight',()=>{
+ const before=new Date('2026-11-20T15:59:59.900Z');
+ const after=new Date('2026-11-20T16:00:00.100Z');
+ const later=new Date('2026-11-20T16:01:30.000Z');
+ expect(matchesDailyAttendanceBusinessDate('2026-11-20',before,after)).toBe(true);
+ expect(matchesDailyAttendanceBusinessDate('2026-11-21',before,after)).toBe(true);
+ expect(matchesDailyAttendanceBusinessDate('2026-11-20',after,later)).toBe(false);
+ expect(matchesDailyAttendanceBusinessDate('2026-11-21',after,later)).toBe(true);
+ expect(matchesDailyAttendanceBusinessDate('2026-11-22',before,later)).toBe(false);
+});
 
 function developmentPageCensusModel(){
  const source=readFileSync(new URL('../scripts/performance/system-load-owner.mjs',import.meta.url),'utf8');
