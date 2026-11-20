@@ -35,7 +35,8 @@ const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','workflow-startup'].includes(surfaceProbe),'Unknown browser surface');
+assert(surfaceProbe!=='workflow-startup'||groupShape,'Workflow startup comparison requires the group fixture');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -734,7 +735,7 @@ async function measureAttendanceJourneys(fixture){
 
 async function measureAttendanceWorkflowEditor(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
- browser=await require('playwright').chromium.launch();
+ browser??=await require('playwright').chromium.launch();
  const path='/admin/attendance/approval-workflow/new';
  const visits=report.attendanceWorkflowEditor=[];
  for(const actorIndex of [0,1]){
@@ -759,8 +760,11 @@ async function measureAttendanceWorkflowEditor(fixture){
      await assertContentAvailable(page);
      await page.waitForLoadState('domcontentloaded',{timeout:5000});
      stage='approver-source';
-     await editor.locator('select:has(option[value="specific_employee"])').first().selectOption('specific_employee',{timeout:5000});
-     const trigger=editor.getByRole('button',{name:'Search Employee ID or name',exact:true}).first();
+     const source=editor.getByRole('combobox',{name:'Approver source',exact:true}).first();
+     await source.selectOption('specific_employee',{timeout:5000});
+     stage='approver-picker-control';
+     const trigger=editor.locator('button[aria-controls][aria-expanded]')
+      .filter({hasText:'Search Employee ID or name'}).first();
      await trigger.waitFor({state:'visible',timeout:5000});
      stage='approver-search';
      const actionStarted=performance.now();
@@ -1908,6 +1912,11 @@ try{
   await proxy();
   if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
+  else if(surfaceProbe==='workflow-startup'){
+   const list=await measureSurfaceProbe(fixture,'workflow-list').then(()=>true,()=>false);
+   await measureAttendanceWorkflowEditor(fixture);
+   assert(list,'Workflow list did not become usable on every visit');
+  }
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']:[surfaceProbe];
    for(const surface of requested)await measureSurfaceProbe(fixture,surface);

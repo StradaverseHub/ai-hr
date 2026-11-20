@@ -143,10 +143,13 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|workflow-startup)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
+            exit 2
+          fi
+          if [[ "$BROWSER_SURFACE_PROBE" == workflow-startup && "$BROWSER_GROUP_SHAPE" != true ]]; then
             exit 2
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
@@ -161,6 +164,7 @@ jobs:
           BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
           BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
+          BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
       - name: Resolve frozen same-repository candidate
