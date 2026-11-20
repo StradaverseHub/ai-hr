@@ -603,11 +603,11 @@ describe('c3258a72 — the Skipped group', () => {
     const user = userEvent.setup();
     const { container } = form({ newCandidates: [skipRow] });
     await user.click(boxes().find((b) => b.value === 's1')!);
-    await checkReady(user);
-    expect(submit()).toBeEnabled();
     const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
     expect(review.textContent).toContain('Dato Lim');
     expect(review.textContent).toContain('1 of them are being added to this run for the first time');
+    await checkReady(user);
+    expect(submit()).toBeEnabled();
     const data = new FormData(container.querySelector('form') as HTMLFormElement);
     expect(data.getAll('employmentIds')).toEqual(['s1']);
   });

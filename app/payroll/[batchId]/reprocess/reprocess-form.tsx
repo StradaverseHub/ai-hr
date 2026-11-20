@@ -484,7 +484,7 @@ export function ReprocessForm({
       {/* THE REVIEW STEP. Reprocessing is not destructive, but it does move somebody's pay, so what is
           about to happen is restated in names — and, just as importantly, what is NOT about to happen.
           Rendered from the same state as the ticks above, in the same form: see `idempotencyKey`. */}
-      {picked.length > 0 && !reviewPending && (
+      {picked.length > 0 && !reviewPending && !review && (
         <div className="rounded-xl border border-dashed border-primary/45 bg-primary/5 px-4 py-3">
           <p className="text-sm font-medium">{t('reprocessReviewTitle', { n: picked.length, total })}</p>
           <p className="mt-1 text-sm">

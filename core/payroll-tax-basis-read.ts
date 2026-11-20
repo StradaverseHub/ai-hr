@@ -165,7 +165,7 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
    const settings=receiptSettings as Record<string,unknown>[];
    for(const saved of settings){
     if(saved.id==='system-basic-salary'){if(hasBasic)unavailable();continue;}
-    const live=currentById.get(saved.id);
+    const live=typeof saved.id==='string'?currentById.get(saved.id):undefined;
     if(!live||canonical(importedTaxSettingEvidence([live]))!==canonical(importedTaxSettingEvidence([saved])))unavailable();
    }
    if(options.sameMonth){
