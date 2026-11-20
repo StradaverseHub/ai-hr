@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { Suspense } from 'react';
+import type { SessionContext } from '@/db/client';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
@@ -85,12 +87,14 @@ const STATUTORY_LINE_LABEL: Record<StatutoryLineKey, string> = {
   hrdf: 'lineHrdf',
 };
 
+type ReprocessQuery = { error?: string; job?: string; from?: string; page?: string; size?: string; newPage?: string; newSize?: string; q?: string };
+
 export default async function ReprocessPage({
   params,
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;newPage?:string;newSize?:string;q?:string }>;
+  searchParams: Promise<ReprocessQuery>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -194,38 +198,6 @@ export default async function ReprocessPage({
     ? batch.recalcEmploymentIds.filter((x): x is string => typeof x === 'string')
     : [];
 
-  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q});
-  const candidates: ReprocessCandidate[] = selection.rows.map((sl) => ({
-    employmentId: sl.employmentId,
-    employeeCode: sl.employeeCode,
-    name: sl.name,
-    gross: sl.gross,
-    net: sl.net,
-    // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
-    // the native page projection: no extra read and therefore no Department column here.
-    reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
-  }));
-
-  // fbcf706d — everyone eligible for this month with NO payslip on this run. Until now nothing on any
-  // screen said these people existed, and the only way to pay them was Reset, which throws away the
-  // month's processing and its record and re-runs the whole company. The read resolves the SAME period
-  // window the engine computes and calls the same readiness checks, so what is listed here is what
-  // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
-  // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
-  // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
-  // rows in their own Skipped group instead of New / Pending.
-  const additions=await payslipLessEligibleWithSkipPage(s,{batchId,page:parsePageQuery({page:sp.newPage,size:sp.newSize}),search:sp.q});
-  const newCandidates: ReprocessAddCandidate[] = additions.rows.map((r) => ({
-    employmentId: r.employmentId,
-    employeeCode: r.employeeCode,
-    name: r.name,
-    hiredOn: r.hiredOn,
-    outsideScope: r.outsideScope,
-    blockers: r.blockers,
-    warnings: r.warnings,
-    skip: r.skip,
-  }));
-
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
   // with the cause named. It reads `payroll_employee_result_history`, NOT domain events, so the Audit
   // Trail does not carry it: this page is now its ONLY reader, which is why point 4 MOVED it here
@@ -251,6 +223,15 @@ export default async function ReprocessPage({
   const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
   const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
   const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
+
+  const selectionProps = { s, batchId, sp, preselectedIds, currency, listFrom, formKey: thisJob?.id ?? 'selection' };
+  // A submitted job can acknowledge or report its outcome while the picker reloads below it.
+  const loadingSelection = thisJob ? (await getTranslations('common'))('loading') : null;
+  const selectionMarkup = thisJob
+    ? <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">{loadingSelection}</p>}>
+        <ReprocessSelection {...selectionProps} />
+      </Suspense>
+    : await ReprocessSelection(selectionProps);
 
   const money = (n: unknown) => formatMoney(n, currency);
   /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
@@ -301,37 +282,7 @@ export default async function ReprocessPage({
         </Card>
       )}
 
-      <Card>
-        <SectionHeader title={t('reprocessTitle')} />
-        <div className="px-4 pb-4">
-          <p className="mb-3 text-xs text-muted-foreground">
-            {/* d0d2c9d1 — a selective reprocess passes `reprocessSubset`, and the attach guard is
-                `!subset && runType === 'regular'`, so it does NOT collect outstanding transactions.
-                Reset-and-regenerate is the path that does, and saying so here is the only place the
-                operator can act on it. */}
-            {t('reprocessHint')} {t('reprocessDoesNotCollect')}
-            {/* fbcf706d — the sentence above is still true of a CORRECTION and stops being true of an
-                ADDITION, whose first payslip collects the one-offs already waiting for that person
-                exactly as the original processing would have. Saying only the first half would now be
-                a false reassurance, so the second half is stated whenever the group is on screen. */}
-            {additions.runTotal > 0 && ` ${t('reprocessNewCollects')}`}
-          </p>
-          {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
-              redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying
-              no filter query, and every Payroll Result link the result table then draws drops the
-              operator on an unfiltered list. The Remove form carries it the same way. */}
-          <ReprocessForm
-            key={thisJob?.id ?? 'selection'}
-            batchId={batchId}
-            employees={candidates}
-            newCandidates={newCandidates}
-            preselectedIds={preselectedIds}
-            currency={currency}
-            from={listFrom ?? null}
-            paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??''}}
-          />
-        </div>
-      </Card>
+      {selectionMarkup}
 
       {/* RECALCULATION HISTORY, moved off the run screen (point 4) rather than deleted. Here it reads as
           the record of past reprocessing on this run instead of clutter under a payslip list — one
@@ -479,6 +430,83 @@ export default async function ReprocessPage({
         </Card>
       )}
     </div>
+  );
+}
+
+async function ReprocessSelection({ s, batchId, sp, preselectedIds, currency, listFrom, formKey }: {
+  s: SessionContext;
+  batchId: string;
+  sp: ReprocessQuery;
+  preselectedIds: string[];
+  currency: string | null;
+  listFrom?: string;
+  formKey: string;
+}) {
+  const t = await getTranslations('payroll.batch');
+  const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q});
+  const candidates: ReprocessCandidate[] = selection.rows.map((sl) => ({
+    employmentId: sl.employmentId,
+    employeeCode: sl.employeeCode,
+    name: sl.name,
+    gross: sl.gross,
+    net: sl.net,
+    // version 1 = as first generated, so the number of prior recalculations is version - 1. Already on
+    // the native page projection: no extra read and therefore no Department column here.
+    reprocessedTimes: Math.max(0, (sl.version ?? 1) - 1),
+  }));
+
+  // fbcf706d — everyone eligible for this month with NO payslip on this run. Until now nothing on any
+  // screen said these people existed, and the only way to pay them was Reset, which throws away the
+  // month's processing and its record and re-runs the whole company. The read resolves the SAME period
+  // window the engine computes and calls the same readiness checks, so what is listed here is what
+  // pressing the button will actually do. Plain serialisable data — no closures cross to the client.
+  // c3258a72 — `skip` is the run's own decision that there is nothing to pay them (no monthly basic and no
+  // positive money on any door), narrowed exactly as the run page narrows its notice; the form puts those
+  // rows in their own Skipped group instead of New / Pending.
+  const additions=await payslipLessEligibleWithSkipPage(s,{batchId,page:parsePageQuery({page:sp.newPage,size:sp.newSize}),search:sp.q});
+  const newCandidates: ReprocessAddCandidate[] = additions.rows.map((r) => ({
+    employmentId: r.employmentId,
+    employeeCode: r.employeeCode,
+    name: r.name,
+    hiredOn: r.hiredOn,
+    outsideScope: r.outsideScope,
+    blockers: r.blockers,
+    warnings: r.warnings,
+    skip: r.skip,
+  }));
+
+  return (
+    <Card>
+      <SectionHeader title={t('reprocessTitle')} />
+      <div className="px-4 pb-4">
+        <p className="mb-3 text-xs text-muted-foreground">
+          {/* d0d2c9d1 — a selective reprocess passes `reprocessSubset`, and the attach guard is
+              `!subset && runType === 'regular'`, so it does NOT collect outstanding transactions.
+              Reset-and-regenerate is the path that does, and saying so here is the only place the
+              operator can act on it. */}
+          {t('reprocessHint')} {t('reprocessDoesNotCollect')}
+          {/* fbcf706d — the sentence above is still true of a CORRECTION and stops being true of an
+              ADDITION, whose first payslip collects the one-offs already waiting for that person
+              exactly as the original processing would have. Saying only the first half would now be
+              a false reassurance, so the second half is stated whenever the group is on screen. */}
+          {additions.runTotal > 0 && ` ${t('reprocessNewCollects')}`}
+        </p>
+        {/* b372e923 — `from` rides the SUBMIT, not just the address bar. The action redirects, and a
+            redirect builds a brand-new URL: without this the reprocess result lands on a URL carrying
+            no filter query, and every Payroll Result link the result table then draws drops the
+            operator on an unfiltered list. The Remove form carries it the same way. */}
+        <ReprocessForm
+          key={formKey}
+          batchId={batchId}
+          employees={candidates}
+          newCandidates={newCandidates}
+          preselectedIds={preselectedIds}
+          currency={currency}
+          from={listFrom ?? null}
+          paging={{existing:selection.state,additions:additions.state,runTotal:selection.runTotal+additions.runTotal,existingTotal:selection.runTotal,search:sp.q??''}}
+        />
+      </div>
+    </Card>
   );
 }
 
