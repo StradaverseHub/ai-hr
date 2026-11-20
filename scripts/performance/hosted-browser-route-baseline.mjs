@@ -200,6 +200,23 @@ async function verifyMixedFixtureBinding(command){
  }
 }
 
+const mixedDriverStages=new Set([
+ 'driver-initialization','pilot-http','browser-launch','browser-baseline','sign-in-and-navigation',
+ 'navigation-seal','ai-baseline','workflow-baseline','preflight-checks','preflight-lock-gate',
+ 'steady-plan','loaded-setup','loaded-workload','loaded-acceptance','driver-settlement',
+]);
+
+function retainMixedDriverStage(path){
+ if(!existsSync(path))return;
+ let checkpoint;
+ try{checkpoint=JSON.parse(readFileSync(path,'utf8'));}catch{return;}
+ if(!mixedDriverStages.has(checkpoint?.stage)||!Number.isSafeInteger(checkpoint.elapsedMs)||checkpoint.elapsedMs<0)return;
+ if(report.mixedDriverStage?.stage===checkpoint.stage&&report.mixedDriverStage?.elapsedMs===checkpoint.elapsedMs)return;
+ report.mixedDriverStage={stage:checkpoint.stage,elapsedMs:checkpoint.elapsedMs};
+ console.info('Fictional mixed-load driver phase',checkpoint.stage,checkpoint.elapsedMs);
+ save();
+}
+
 async function measureMixedLoad(command){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
@@ -215,13 +232,18 @@ async function measureMixedLoad(command){
  const clockTicks=execFileSync('/usr/bin/getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}).trim();
  assert(/^[1-9][0-9]*$/.test(clockTicks));
  const resultPath=join(driverEvidence,'http-browser.json');
+ const stagePath=join(driverEvidence,'driver-stage.json');
+ const stagePoll=setInterval(()=>retainMixedDriverStage(stagePath),15000);
  try{
   await run('measure-500-user-mixed-load',command,['--import','tsx','scripts/performance/system-load.mjs'],{
    ...dbEnv,AIHR_CI_UNIT:pgEnv.AIHR_CI_UNIT,PERF_EVIDENCE_DIR:driverEvidence,PERF_HTTP_THINK_MS:'1000',
+   PERF_DRIVER_STAGE_RECEIPT:'1',
    PERF_HTTP_HOLD_MS:'300000',PERF_APP_WORKERS:'1',PERF_APP_PID:String(app.pid),PERF_PROXY_PID:String(process.pid),
    PERF_CLOCK_TICKS:clockTicks,PERF_POSTGRES_CONTAINER:name,PERF_POSTGRES_CONTAINER_ID:containerId,
   },1800000);
  }finally{
+  clearInterval(stagePoll);
+  retainMixedDriverStage(stagePath);
   if(!existsSync(resultPath)){
    retainMixedStartupFailure('measure-500-user-mixed-load');
   }else{
