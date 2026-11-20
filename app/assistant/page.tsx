@@ -253,16 +253,17 @@ export default async function AssistantPage({
   const chatImportRead=read('importAvailability', () => launcher.then(owner=>owner.chatImportOfferedAction()).catch(()=>false));
   const conversationScope=await read('scope', () => assistantBrowserConversationScope(s));
   const scopeReset=assistantConversationScopeDigest(s,conversationScope);
+  const {e:exchangeId,chat:chatId}=sp;
   // AI Centre navigation speed: the chat reads below are independent, so they run together. Each reads only within
   // this conversation scope and keeps its own checks and failure handling.
   const [savedChats,selectedChat,storedChats,storedChat,chatImport,keepDays]=await Promise.all([
     read('legacyList', () => listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null)),
-    sp.e?read('legacySelected', () => loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null)):null,
+    exchangeId?read('legacySelected', () => loadOwnAssistantChat(s,{exchangeId},conversationScope).catch(()=>null)):null,
     // AI v2 W4: the Chats column lists the person's stored AI Centre chats (core/teras-chats.ts, re-authorised there).
     read('storedList', () => listOwnChats(s,{},conversationScope).catch(()=>null)),
     // AI Centre issue 18: the floating panel's "Open in AI Centre" opens its stored chat here (?chat=<id>) and, while the
     // Noveri conversation switch admits this caller, the next question continues that same chat.
-    sp.chat&&!sp.e?read('storedSelected', () => launcher.then(owner=>owner.openStoredChatAction({chatId:sp.chat})).then(reply=>reply.ok?reply:null).catch(()=>null)):null,
+    chatId&&!exchangeId?read('storedSelected', () => launcher.then(owner=>owner.openStoredChatAction({chatId})).then(reply=>reply.ok?reply:null).catch(()=>null)):null,
     chatImportRead,
     askRetentionRead,
   ]);
