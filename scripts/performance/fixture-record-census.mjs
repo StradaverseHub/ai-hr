@@ -3,49 +3,57 @@ import assert from 'node:assert/strict';
 async function fixtureRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const employee = fixture.users[4];
+  const unit = fixture.tenants[0].companies[0];
   assert.equal(group.role, 'groupHR');
   assert.equal(company.role, 'companyHR');
   assert.equal(employee.role, 'employee');
-  assert.equal(company.companyId, group.companyId);
-  assert.equal(employee.companyId, group.companyId);
-  const unit = fixture.tenants[0].companies[0];
-  assert.equal(unit.companyId, group.companyId);
+  assert.equal(group.tenantId, employee.tenantId);
+  assert.equal(company.companyId, employee.companyId);
+  assert.equal(unit.companyId, employee.companyId);
 
-  const lineages = await db`
-    select lineage_id as id, name from attendance_workflow_template
-    where tenant_id = ${group.tenantId}::uuid and company_id = ${group.companyId}::uuid
-      and code = 'PERF' and superseded_at is null
+  const historicalSlips = await db`
+    select batch.pay_period as period
+    from payslip slip
+    join payroll_batch batch on batch.id = slip.batch_id and batch.tenant_id = slip.tenant_id
+    where slip.tenant_id = ${employee.tenantId}::uuid and batch.company_id = ${employee.companyId}::uuid
+      and slip.employment_id = ${employee.employmentId}::uuid and batch.id = ${unit.historicalBatchId}::uuid
+      and batch.status = 'closed'
   `;
-  const slips = await db`
-    select id from payslip where tenant_id = ${employee.tenantId}::uuid
-      and employment_id = ${employee.employmentId}::uuid and batch_id = ${unit.historicalBatchId}::uuid
-  `;
-  assert.equal(lineages.length, 1, 'Expected the active fictional Attendance workflow');
-  assert.equal(slips.length, 1, 'Expected the previously released fictional payslip');
+  assert.equal(historicalSlips.length, 1, 'The employee must have a released fictional payslip');
+  assert.match(historicalSlips[0].period, /^\d{4}-\d{2}$/);
 
-  const workflow = '/admin/attendance/approval-workflow/' + lineages[0].id;
-  const workflowTemplate = '/admin/attendance/approval-workflow/[lineageId]';
-  const profile = '/personnel/' + employee.employmentId;
-  const payroll = '/payroll/' + unit.batchId;
-  const taxYear = Number(fixture.today.slice(0, 4)) - 1;
-  const taxSubject = '?employmentId=' + employee.employmentId;
-  const tp1 = '/payroll/transactions/tp1/' + taxYear;
-  const payslip = '/me/payslip/' + slips[0].id;
-
+  const year = historicalSlips[0].period.slice(0, 4);
+  const employmentId = employee.employmentId;
+  const cp22 = '/payroll/cp22/' + employmentId;
+  const cp22a = '/payroll/cp22a/' + employmentId;
   return [
-    { actor: group, template: workflowTemplate, path: workflow, exactHeading: lineages[0].name, witness: `a[href="${workflow}/edit"]` },
-    { actor: group, template: workflowTemplate + '/edit', path: workflow + '/edit', exactHeading: 'Edit ' + lineages[0].name, witness: 'form' },
-    { actor: group, template: workflowTemplate + '/previews', path: workflow + '/previews', exactHeading: 'Preview History', witness: `a[href="${workflow}"]` },
-    { actor: group, template: '/admin/personnel/[employmentId]/movement/[mode]', path: '/admin' + profile + '/movement/new', content: employee.name, witness: 'form' },
-    { actor: group, template: '/people/[employmentId]', path: '/people/' + employee.employmentId, redirectTo: profile, content: employee.name },
-    { actor: company, template: '/lifecycle/requisitions/[number]', path: '/lifecycle/requisitions/REQ-PERF-PENDING', exactHeading: 'REQ-PERF-PENDING · Fictional pending requisition' },
-    { actor: group, template: '/payroll/[batchId]/close', path: payroll + '/close', exactHeading: 'Close batch' },
-    { actor: group, template: '/payroll/[batchId]/reset', path: payroll + '/reset', exactHeading: 'Reset Payroll Process' },
-    { actor: group, template: '/payroll/[batchId]/remove', path: payroll + '/remove', exactHeading: 'Remove Employee Payroll' },
-    { actor: group, template: '/payroll/[batchId]/reprocess', path: payroll + '/reprocess', exactHeading: 'Reprocess selected employees' },
-    { actor: group, template: '/payroll/transactions/tp1/[year]', path: tp1 + taxSubject, redirectTo: tp1 + '/1' + taxSubject, content: employee.name },
-    { actor: group, template: '/payroll/transactions/tp1/[year]/[month]', path: tp1 + '/1' + taxSubject, content: employee.name },
-    { actor: employee, template: '/me/payslip/[payslipId]', path: payslip, content: employee.name, witness: `a[href="${payslip}/pdf"][download]` },
+    {
+      actor: group, template: '/payroll/[batchId]/tax-configuration/[employmentId]',
+      path: '/payroll/' + unit.batchId + '/tax-configuration/' + employmentId,
+      exactHeading: 'Tax configuration for this payroll run',
+      witness: 'form:has(input[name="payrollBatchId"][value="' + unit.batchId + '"]) #income-tax-resident',
+    },
+    {
+      actor: employee, template: '/payroll/reports/ea/[employmentId]',
+      path: '/payroll/reports/ea/' + employmentId + '?year=' + year,
+      content: employee.name,
+      witness: 'a[href="/me/ea/' + employmentId + '/pdf?year=' + year + '"]',
+    },
+    {
+      actor: company, template: '/payroll/cp22/[employmentId]/preview',
+      path: cp22 + '/preview', exactHeading: 'Review the CP22 before you produce it',
+      content: employee.name, witness: 'a[href^="' + cp22 + '/pdf?"][href*="inline=1"]',
+    },
+    {
+      actor: company, template: '/payroll/cp22a/[employmentId]/preview',
+      path: cp22a + '/preview', exactHeading: 'CP22A — notice of an employee leaving',
+      content: employee.name, witness: 'a[href^="' + cp22a + '/pdf"]',
+    },
+    {
+      actor: group, template: '/admin/users/[userId]/account',
+      path: '/admin/users/' + employee.userId + '/account',
+      exactHeading: 'Manage account', content: employee.username, witness: 'dl dd',
+    },
   ];
 }
 
@@ -98,4 +106,5 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     }
   }
   assert.equal(rows.length, cases.length * 2);
+  assert(rows.every(row => row.outcome === 'usable-content'), 'One or more fictional record screens missed their readiness witness');
 }
