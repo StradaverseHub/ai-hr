@@ -8,6 +8,8 @@ export type PreviewLeave = {
 };
 export type PreviewRequest = { id: string; type: string; from: string; to: string; status: string; partial: boolean };
 export type PreviewAway = { employmentId: string; name: string; dates: { date: string; status: 'approved' | 'pending'; session: string }[] };
+export type PreviewTask = { id: string; kind: string; subject: string | null; href: string };
+export type PreviewTasks = { items: PreviewTask[]; total: number };
 export type MobilePreviewData = {
   today: string; loadedAt: string; leaveHistoryHref: string;
   person: { name: string | null; employeeCode: string | null };
@@ -18,7 +20,7 @@ export type MobilePreviewData = {
   requests: PreviewRead<{ items: PreviewRequest[]; total: number }>;
   claims: PreviewRead<{ id: string; type: string; date: string; status: string; amount: string }[]>;
   team: PreviewRead<PreviewAway[]>;
-  tasks: PreviewRead<{ id: string; kind: string; subject: string | null; href: string }[]>;
+  tasks: PreviewRead<PreviewTasks>;
   inbox: PreviewRead<{ id: string; title: string; body: string; href: string | null; read: boolean; createdAt: string }[]>;
   payslips: PreviewRead<{ id: string; company: string; period: string }[]>;
 };
