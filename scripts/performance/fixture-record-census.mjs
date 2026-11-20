@@ -28,7 +28,9 @@ export async function seedWorkLocationRecords(owner, fixture) {
     const { count: sites } = (await tx`
       with seeded as (
         insert into location (tenant_id, company_id, code, name)
-        select c.tenant_id, c.id, 'PERF-CENSUS-DECOY-' || n, 'Fictional comparison site ' || n
+        select c.tenant_id, c.id,
+          'PERF-CENSUS-DECOY-' || row_number() over (order by c.id, n),
+          'Fictional comparison site ' || n
         from company c cross join generate_series(1, 10) n
         where c.tenant_id = ${company.tenantId} and c.archived_at is null
         returning id
