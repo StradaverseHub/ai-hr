@@ -1,7 +1,8 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,it,expect,vi} from 'vitest';
-import type {SessionContext} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll,createAppUser,seedBase,adminCtx,setModule} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {hireEmployee} from '../core/org';
@@ -46,6 +47,32 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
    expect(JSON.stringify(page.rows)).not.toContain('Scale Aina');got.push(...page.rows.map(row=>row.id));if(!page.hasMore)break;
   }
   expect(got,actor.name+' complete ordering/count').toEqual(actor.wanted.map(row=>row.id));
+ }
+ const queueProof=readFileSync(new URL('./fixtures/offboarding-posting-queue-set-proof.sql',import.meta.url),'utf8');
+ await owner.db.execute(sql.raw(queueProof));
+ try{
+  const expected=[true,true,true,true,false,false,false];
+  for(const [index,actor] of actors.entries()){
+   const [row]=await withTenant(actor.ctx,tx=>tx.execute<{canonical:boolean;candidate:boolean}>(sql`
+    select app.offboarding_posting_queue_access() as canonical,
+           app.offboarding_posting_queue_access_set_proof() as candidate
+   `),{readOnlySnapshot:true});
+   expect(row,actor.name).toEqual({canonical:expected[index],candidate:expected[index]});
+  }
+  const execution=await withTenant(f.watcher,async tx=>{
+   const [canonical]=await tx.execute<{['QUERY PLAN']:[{'Execution Time':number}]}>(sql`
+    explain (analyze,format json,timing off) select app.offboarding_posting_queue_access()
+   `);
+   const [candidate]=await tx.execute<{['QUERY PLAN']:[{'Execution Time':number}]}>(sql`
+    explain (analyze,format json,timing off) select app.offboarding_posting_queue_access_set_proof()
+   `);
+   return {canonicalMs:canonical['QUERY PLAN'][0]['Execution Time'],
+    candidateMs:candidate['QUERY PLAN'][0]['Execution Time']};
+  },{readOnlySnapshot:true});
+  expect(Number.isFinite(execution.canonicalMs)&&Number.isFinite(execution.candidateMs)).toBe(true);
+  console.info('OFFBOARDING_QUEUE_ACCESS_PROOF '+JSON.stringify(execution));
+ }finally{
+  await owner.db.execute(sql`drop function app.offboarding_posting_queue_access_set_proof()`);
  }
  const ids=fixture.slice(0,50).map(row=>row.id),singleIds=fixture.filter(row=>row.companyId===single).map(row=>row.id);
  expect(await loadOffboardingPostingApprovers(f.admin,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}]))); // Explicit approved and Probation IDs never disclose waiting names.
