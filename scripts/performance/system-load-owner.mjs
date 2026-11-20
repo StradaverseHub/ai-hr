@@ -1444,36 +1444,45 @@ async function main(){
   return request(user,'/claims',fields,template.status,false,template.headers,template.fieldOrder,undefined,attempt);
  }
  async function browserClaimJourney(page,user,description,phase){
+  const markClaim=step=>{if(phase==='baseline')markWorkflow(step);};
   await visit(page,user,'/claims',phase);const timings=[],form=claimDraftForm(page);
+  markClaim('baseline-claim-draft-fields');
   const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
   await form.locator('[name="claimTypeId"]:visible').selectOption(user.claimTypeId);await form.locator('[name="amount"]:visible').fill('1');await form.locator('[name="incurredOn"]:visible').fill(fixture.today);
   await form.locator('textarea[name="description"]:visible').fill(description);
   let started,draft,deleteTemplate;
   const requireRestore=()=>requireNativeClaimRestoration(user,draft.id);
   async function deleteDraft(custody){
+   markClaim('baseline-claim-delete');
    requireRestore();
    await page.locator('main form:visible').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).getByRole('button').click();started=performance.now();
    requireRestore();
    custody?.begin('delete');
    if(custody)requireRestore();
    const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+   markClaim('baseline-claim-delete-response');
    deleteTemplate=await capturedAction(deleteResponse);
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
    assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
    custody?.verify('delete');
   }
   return ownClaimDraft('browser',user,description,async custody=>{
+   markClaim('baseline-claim-create');
    started=performance.now();
    requireNativeBusiness();
    custody?.begin('create');
    if(custody)requireNativeBusiness();
-   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);const createTemplate=await capturedAction(createResponse);
+   const [createResponse]=await Promise.all([browserAction(),form.locator('button[name="intent"][value="draft"]:visible').click()]);
+   markClaim('baseline-claim-create-response');
+   const createTemplate=await capturedAction(createResponse);
+   markClaim('baseline-claim-create-persistence');
    await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
    const drafts=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;
    [draft]=drafts;assert(draft,'browser create did not persist');
    if(custody)assert.equal(drafts.length,1,'Protected browser draft identity is ambiguous');
    custody?.verify('create',draft.id);
    if(phase==='loaded')await pause(thinkTimeMs);
+   markClaim('baseline-claim-edit');
    requireNativeBusiness();
    await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await form.locator('[name="amount"]:visible').fill('2');started=performance.now();
    requireNativeBusiness();
@@ -1494,10 +1503,14 @@ async function main(){
   });
  }
  {
+  markWorkflow('baseline-claim-draft-open');
   const ctx=await context(employee);
-  await withContext(ctx,async()=>{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');});
+  await withContext(ctx,async()=>{const page=await ctx.newPage();contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');
+   markWorkflow('baseline-claim-draft-close');
+  });
   requireCleanDriver();
  }
+ markWorkflow('baseline-claim-action-protocol');
  const {createTemplate,deleteTemplate}=contextTemplates;
  async function restoreKnownClaimDraft(user,draft,custody){
   const fields={...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:user.employmentId,[deleteTemplate.prefix+'id']:draft.id};
