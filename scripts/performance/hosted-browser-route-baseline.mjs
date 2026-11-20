@@ -442,6 +442,33 @@ function readMixedRootStatements(name,dockerConfig){
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
+/** Show the last verified workflow steps without retaining form contents or exception text. */
+function retainBaselineWorkflowProgress(workflows){
+ if(!workflows||!Array.isArray(workflows.baseline)||!Array.isArray(workflows.capturedTransport))return null;
+ const actionNames=new Set([
+  'leaveCreate','leaveEdit','leaveCancel','personnelCreate','personnelEdit','personnelDelete',
+  'attendanceCreate','attendanceApprove','payrollProcess','payrollPublicationProcess','payrollClose',
+  'importValidate','importCommit',
+ ]);
+ const workflowNames=new Map([
+  ['leave create/edit/withdraw','leave'],
+  ['personnel draft create/edit/delete','personnel-draft'],
+  ['attendance correction/approval/applied punches','attendance-correction'],
+  ['actor-issued Attendance replay','attendance-actor-replay'],
+  ['Claims queue-wide bulk selection','claims-selection'],
+  ['payroll calculation and scoped CSV export','payroll-export'],
+  ['payroll close and employee publication','payroll-publication'],
+  ['clocking file validate/import','clocking-import'],
+ ]);
+ const status=code=>Number.isInteger(code)&&code>=100&&code<=599?code:null;
+ return {
+  completed:[...new Set(workflows.baseline.flatMap(row=>workflowNames.has(row?.workflow)?[workflowNames.get(row.workflow)]:[]))],
+  responses:workflows.capturedTransport.filter(row=>actionNames.has(row?.stage)).slice(0,32)
+   .map(row=>({action:row.stage,httpStatus:status(row.status)})),
+  failedAction:actionNames.has(workflows.error?.stage)?workflows.error.stage:null,
+ };
+}
+
 async function measureMixedLoad(command){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
@@ -563,6 +590,8 @@ async function measureMixedLoad(command){
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const driverFacts=data.driverFailures;
+   const workflowProgress=retainBaselineWorkflowProgress(data.mixedWorkflows);
+   if(workflowProgress)report.baselineWorkflowProgress=workflowProgress;
    const payroll=data.mixedWorkflows?.baseline?.find(workflow=>workflow.workflow==='payroll calculation and scoped CSV export');
    if(payroll?.persisted===true&&payroll.employees===50&&Number.isSafeInteger(payroll.completionObservedMs)
       &&payroll.completionObservedMs>=0&&payroll.completionObservedMs<=90000){
@@ -673,7 +702,7 @@ async function measureMixedLoad(command){
     };
    }
    report.mixedLoad={
-    expectedUsers:500,steadyHoldMs:300000,applicationWorkers:1,fixtureVerified:report.fixtureVerified,
+    expectedUsers:500,steadyHoldMs:300000,applicationWorkers:applications.length,fixtureVerified:report.fixtureVerified,
     latencyTargetMet:data.latencyTargetMet===true,trafficSettled:data.trafficSettled===true,
     functionalAccountingComplete:data.functionalAccountingComplete===true,
     functionalErrors:Array.isArray(data.functionalErrors)?data.functionalErrors.length:null,
