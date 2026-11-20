@@ -106,7 +106,7 @@ describe('Mobile App Preview uses the viewer’s authorized records', () => {
       code: 'MOBILE_PROOF', name: 'Fictional mobile preview claim', requiresReceipt: false, defaultTaxable: false,
     });
     await owner.db.insert(schema.claimRequest).values(Array.from({ length: 45 }, (_, index) => ({
-      tenantId: b.tenantId, employmentId: subject.employmentId, claimTypeId: claimType.id, status: 'pending',
+      tenantId: b.tenantId, employmentId: subject.employmentId, claimTypeId: claimType.id, status: 'pending' as const,
       amount: '467.31', incurredOn: today, description: 'Private fictional claim description',
       createdAt: new Date(Date.UTC(2025, 0, 1, 0, index)),
     })));
