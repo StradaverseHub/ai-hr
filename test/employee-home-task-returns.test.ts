@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../db/client';
+import type {SharedReadStats} from '../db/shared-read';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -37,7 +38,16 @@ async function fixture(){
 describe('assigned Employee-role decision feedback',()=>{
  it('keeps confirmation on Home after the final real decision removes inbox admission',async()=>{
   const f=await fixture();
-  await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/?toast=Leave+approved&approvalSeal=1'});
+  const snapshots:SharedReadStats[]=[];
+  const hooks=globalThis as {__aihrPerfSharedRead?:(stats:SharedReadStats)=>void};
+  const previous=hooks.__aihrPerfSharedRead;
+  hooks.__aihrPerfSharedRead=stats=>snapshots.push(stats);
+  try{
+   await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/?toast=Leave+approved&approvalSeal=1'});
+  }finally{hooks.__aihrPerfSharedRead=previous;}
+  expect(snapshots).toHaveLength(1);
+  expect(snapshots[0].joins).toBeGreaterThan(1);
+  expect(snapshots[0].carriers).toBe(1);
   expect((await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.id,f.request.leaveRequestId)))[0].status).toBe('approved');
  });
  it('preserves the filtered inbox and confirmation while another actual assignment remains',async()=>{
