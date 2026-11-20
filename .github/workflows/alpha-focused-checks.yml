@@ -154,7 +154,7 @@ jobs:
             exit 2
           fi
           if [[ "$REUSE_ACTION_BUILD" == true ]] && {
-            [[ "$BROWSER_SURFACE_PROBE" != actions || "$RUN_BUILD" == true || "$EXPECTED_SHA" != 111852a4b932fbf49a7bd7df6056f390f5f11409 ]];
+            [[ "$BROWSER_SURFACE_PROBE" != actions || "$RUN_BUILD" == true || "$EXPECTED_SHA" != f27f355c89530c994a084bfddaa38823425fcd4d ]];
           }; then exit 2; fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
             printf 'static_shards=["shell","workforce","payroll","approvals"]\n' >> "$GITHUB_OUTPUT"
@@ -259,14 +259,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$AIHR_CI_HEAD" = 111852a4b932fbf49a7bd7df6056f390f5f11409
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136381859095 --jq '
+          test "$AIHR_CI_HEAD" = f27f355c89530c994a084bfddaa38823425fcd4d
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136474975628 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44763397635 and .head_sha == "1b366cab7ad279105a5d9a771ce80024cac873cd"' | grep -qx true
+            .run_id == 44789974570 and .head_sha == "5653dd03515c2c5f5a1208881f2b919bba5f917b"' | grep -qx true
           archive="$(mktemp "$RUNNER_TEMP/combined-action-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14644151151/zip > "$archive"
-          printf '%s  %s\n' 'ff70731a259ef46c3b1e55a844d4a8244becd73b45bf24df07ce9ccbc423ed9a' "$archive" | sha256sum -c -
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14656093852/zip > "$archive"
+          printf '%s  %s\n' '8f92d81f1cf532a862a34e62fa51c4c26dcf66cb251b7db1d0c442794a05360d' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
