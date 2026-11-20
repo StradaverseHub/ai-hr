@@ -7,7 +7,7 @@ BEGIN
    AND r.rolname=current_user AND NOT r.rolsuper AND NOT r.rolbypassrls
    AND p.prosecdef AND p.provolatile='s' AND p.prorettype='jsonb'::regtype
    AND p.proconfig=ARRAY['search_path=pg_catalog, public, pg_temp']
-   AND pg_catalog.md5(p.prosrc)='0d6ca27b939a580a33090d52cf4d7c56'
+   AND pg_catalog.md5(p.prosrc)='e4faa856a188bfca29d23efe5af7c7b6'
    AND pg_catalog.has_function_privilege('ai_hr_app',p.oid,'EXECUTE')
    AND NOT EXISTS (
     SELECT 1 FROM pg_catalog.aclexplode(coalesce(p.proacl,pg_catalog.acldefault('f',p.proowner))) acl
@@ -44,7 +44,7 @@ BEGIN
     'grants',COALESCE((SELECT jsonb_agg(jsonb_build_object('capabilityId',a.capability_id,'companyId',a.company_id) ORDER BY a.capability_id,a.company_id NULLS FIRST) FROM public.access_group_grant a WHERE a.tenant_id=t AND a.group_id=g.id AND a.retired_at IS NULL),'[]'::jsonb)) ORDER BY g.id) FROM public.access_group g WHERE g.tenant_id=t),'[]'::jsonb),
    'memberships',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',m.user_id,'groupId',m.group_id,'companyId',m.company_id,'derived',m.derived) ORDER BY m.user_id,m.group_id,m.company_id NULLS FIRST,m.derived) FROM public.access_effective_membership m WHERE m.tenant_id=t),'[]'::jsonb),
    'overrides',COALESCE((SELECT jsonb_agg(jsonb_build_object('userId',o.user_id,'capabilityId',o.capability_id,'companyId',o.company_id,'effect',o.effect) ORDER BY o.user_id,o.capability_id,o.company_id NULLS FIRST) FROM public.access_user_override o WHERE o.tenant_id=t AND o.retired_at IS NULL),'[]'::jsonb)),
-  'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings) ORDER BY c.id) FROM public.access_capability c),'[]'::jsonb),
+  'catalog',COALESCE((SELECT jsonb_agg(jsonb_build_object('id',c.id,'scope',c.scope,'supported',c.supported,'bindings',c.bindings) ORDER BY c.id) FROM app.access_capability_effective(t) c),'[]'::jsonb),
   'companyIds',COALESCE((SELECT jsonb_agg(c.id ORDER BY c.id) FROM public.company c WHERE c.tenant_id=t),'[]'::jsonb),
   'coverage',COALESCE((SELECT jsonb_agg(jsonb_build_object('ancestor',a.ancestor,'company',a.company) ORDER BY a.ancestor,a.company) FROM ancestors a),'[]'::jsonb),
   'recoveryUserIds',COALESCE((SELECT jsonb_agg(u.id ORDER BY u.id) FROM public.app_user u WHERE u.tenant_id=t AND app.access_recovery_available(u.id)),'[]'::jsonb),

@@ -34,6 +34,9 @@ it('preserves the complete Access editor state while computing effective ancestr
  const rollback=new Error('Roll back the fictional native owner rehearsal');
  await expect(owner.client.begin(async tx=>{
   await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  await tx`insert into app.access_capability_publication(version,bindings_sha256,state,previous)
+   values(9001,repeat('f',64),'publishing','{"profile.review":{"supported":false,"bindings":[]}}'::jsonb)`;
+  await tx`insert into app.access_capability_tenant_publication(version,tenant_id) values(9001,${foreignBase.tenantId}::uuid)`;
   const assume=async(actor:SessionContext)=>{
    await tx.unsafe('set local role ai_hr_app');
    await tx`select set_config('app.tenant_id',${actor.tenantId},true),
@@ -42,7 +45,7 @@ it('preserves the complete Access editor state while computing effective ancestr
   };
   const state=async(actor:SessionContext)=>{
    await assume(actor);
-   const [row]=await tx<{state:{companyIds:string[];coverage:{ancestor:string;company:string}[];snapshot:{users:unknown[]}}}[]>`
+   const [row]=await tx<{state:{companyIds:string[];coverage:{ancestor:string;company:string}[];snapshot:{users:unknown[]};catalog:{id:string;bindings:unknown}[]}}[]>`
     select app.access_configuration_state() as state
    `;
    return row.state;
@@ -62,6 +65,8 @@ it('preserves the complete Access editor state while computing effective ancestr
   expect(before.coverage.filter(pair=>pair.ancestor===base.companyId)).toHaveLength(70);
   expect(foreignBefore.companyIds).toEqual([foreignBase.companyId]);
   expect(foreignBefore.coverage).toEqual([]);
+  expect(before.catalog.find(capability=>capability.id==='profile.review')?.bindings).toEqual([]);
+  expect(foreignBefore.catalog.find(capability=>capability.id==='profile.review')?.bindings).not.toEqual([]);
 
   await tx.unsafe('set local role ai_hr_owner');
   await tx.unsafe(replacement);
