@@ -27,9 +27,9 @@ describe('r399 · IntentLink waits for a resting pointer', () => {
   it('a pointer that rests for the dwell escalates to a full prefetch', () => {
     render(<IntentLink href="/feedback/x">Item</IntentLink>);
     const a = screen.getByText('Item');
-    expect(a.getAttribute('data-prefetch')).toBe('null');
+    expect(a.getAttribute('data-prefetch')).toBe('false');
     fireEvent.pointerEnter(a);
-    expect(a.getAttribute('data-prefetch'), 'not before the dwell').toBe('null');
+    expect(a.getAttribute('data-prefetch'), 'not before the dwell').toBe('false');
     act(() => { vi.advanceTimersByTime(INTENT_DWELL_MS); });
     expect(a.getAttribute('data-prefetch')).toBe('true');
   });
@@ -41,7 +41,7 @@ describe('r399 · IntentLink waits for a resting pointer', () => {
     act(() => { vi.advanceTimersByTime(INTENT_DWELL_MS - 30); });
     fireEvent.pointerLeave(a);
     act(() => { vi.advanceTimersByTime(1000); });
-    expect(a.getAttribute('data-prefetch')).toBe('null');
+    expect(a.getAttribute('data-prefetch')).toBe('false');
   });
 
   it('focus and touch are deliberate: they escalate at once', () => {
@@ -67,6 +67,17 @@ describe('r399 · IntentLink waits for a resting pointer', () => {
     fireEvent.focus(focus);
     expect(focus.getAttribute('data-prefetch')).toBe('true');
     expect(screen.getByText('Untouched').getAttribute('data-prefetch')).toBe('false');
+  });
+
+  it('lets a caller explicitly keep automatic viewport prefetch', () => {
+    render(<>
+      <IntentLink href="/a" prefetch={null}>Automatic</IntentLink>
+      <IntentLink href="/b" prefetchOnIntentOnly={false}>Legacy automatic</IntentLink>
+      <IntentLink href="/c" prefetch>Full</IntentLink>
+    </>);
+    expect(screen.getByText('Automatic')).toHaveAttribute('data-prefetch', 'null');
+    expect(screen.getByText('Legacy automatic')).toHaveAttribute('data-prefetch', 'null');
+    expect(screen.getByText('Full')).toHaveAttribute('data-prefetch', 'true');
   });
 
   it("a caller's prefetch={false} still wins", () => {
