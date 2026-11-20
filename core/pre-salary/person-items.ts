@@ -362,6 +362,28 @@ async function approvalsGroup(approvalsRead:ReturnType<typeof startApprovals>,pe
   ...(preview?{total:items.length+omittedClaims,claimTotal:tasks.value.claimTotal}:{})};
 }
 
+export type PayrollApprovalPreview = Readonly<{
+ status: GroupState['status'];
+ items: readonly PayrollItem[];
+ claimTotal: number;
+}>;
+
+/** The personal page can show its own checklist while the separate approvals owner is still reading. */
+export async function readMyPayrollApprovalPreview(
+ ctx:SessionContext,scopeIds:readonly string[],ownRead:Promise<PayrollReadiness|null>,
+):Promise<PayrollApprovalPreview|null>{
+ if(!ctx.userId||ctx.agent||moduleState(ctx,'payroll')==='off')return null;
+ const started=startApprovals(ctx,scopeIds,true);
+ const own=await ownRead;
+ if(!own)return null;
+ const approvals=await approvalsGroup(started,own.period);
+ return {
+  status:groupStatus(approvals.items,approvals.read),
+  items:orderItems(approvals.items),
+  claimTotal:approvals.claimTotal??0,
+ };
+}
+
 /** The one-statement read of every own owner for this subject, the period owner's cut-off day included, with the
  * groups the checklist reads (core/pre-salary/before-payroll-bundle.ts). null: the owners read on their own. */
 function readOwnInputs(ctx:SessionContext,subject:Subject,payroll:'on'|'failed',today:string,locale:string):Promise<BeforePayrollBundle|null>{
