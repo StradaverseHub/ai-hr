@@ -83,7 +83,10 @@ it('reads History filters at group scale without evaluating approval-editor choi
     const all=await attendanceHistoryFilterOptions(group.personas.group, group.companyIds);
     const selected=await attendanceHistoryFilterOptions(group.personas.group, [group.singleCompanyId]);
     expect(all.companies).toHaveLength(71);
-    expect(all.employees).toHaveLength(1000);
+    const stored = await owner.db.select({id:employment.id}).from(employment)
+      .where(eq(employment.tenantId,group.personas.group.tenantId));
+    expect(stored.length).toBeGreaterThanOrEqual(1000);
+    expect(all.employees.map(row=>row.id).sort()).toEqual(stored.map(row=>row.id).sort());
     expect(selected.employees).toEqual(all.employees.filter(row=>row.companyId===group.singleCompanyId));
     expect(selected.employees.length).toBeGreaterThan(0);
     expect(probe.queries.some(query=>/attendance_workflow_v3_approver_options|attendance_workflow_approver_availability/i.test(query.sql))).toBe(false);
