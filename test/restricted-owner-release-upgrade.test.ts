@@ -45,6 +45,7 @@ import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
 import {copyTenantRowsAtPrefix} from './helpers/prefix-seed';
 import {PROJECT_INSTALLED_OWNERSHIP} from './helpers/installed-owner-projection';
+import {assertRestrictedOwnerPayrollRuntime} from './helpers/restricted-owner-payroll-runtime';
 
 type Entry={idx:number;version:string;when:number;tag:string;breakpoints:boolean};
 type Notice={severity:string;code:string;message:string};
@@ -401,6 +402,9 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   // 7. A second run of the engine as the owner is a no-op.
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});
   expect(await ledger(restricted)).toEqual(expectedLedger);
+
+  // 8. Exercise production role ownership with application reads on independently seeded history.
+  await assertRestrictedOwnerPayrollRuntime(observer,at(names.restricted,'ai_hr_app'));
  }finally{
   for(const sql of [...open])await sql.end({timeout:5});
   for(const name of Object.values(names))await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);

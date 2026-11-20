@@ -1,3 +1,10 @@
+# Payroll restricted-owner read authorization, 20 November 2026
+
+Candidate reservation `7012_payroll_read_authorization`, journal index `10412`, timestamp
+`1795028007012`, SQL SHA-256 `81c2b0625235bbf95da80dfe6d39751cd43807399f2f58cf2ccce16b875d8a44`.
+It follows `7011` and precedes the existing `7020` reservation.
+Recheck competing reservations and installed ledgers at release admission.
+
 # Payroll income-tax recalculation loading repair, 20 November 2026
 
 Reserve `7011_payroll_tax_basis_picker_set`, journal index `10411`, timestamp

@@ -466,9 +466,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10400,when:1795028007000,tag:'7000_movement_history_pay_evidence'},
  {idx:10410,when:1795028007010,tag:'7010_payroll_history_point_read_plan'},
  {idx:10411,when:1795028007011,tag:'7011_payroll_tax_basis_picker_set'},
+ {idx:10412,when:1795028007012,tag:'7012_payroll_read_authorization'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '7012_payroll_read_authorization':'81c2b0625235bbf95da80dfe6d39751cd43807399f2f58cf2ccce16b875d8a44',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
