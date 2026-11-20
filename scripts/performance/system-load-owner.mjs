@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
+import {waitForTodayBrowserReadiness} from './today-browser-readiness.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
 import {routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
@@ -273,7 +274,9 @@ function rejectBusyPage(user,path,channel){
 }
 
 const claimRestorationKey=Symbol('owned claim restoration');
-const homeHttp=createHomeHttpReplay({base,request,report});
+const useTodayHome=suite==='whole-system';
+const personalCalendarPath='/me/calendar';
+const homeHttp=createHomeHttpReplay({base,request,report,browserRoute:useTodayHome?personalCalendarPath:'/'});
 function request(...args){requireNativeBusiness();return requests.run(()=>requestBody(...args));}
 function readRoute(user,route){return readManifestRoute(route,(path,status)=>request(user,path,undefined,status));}
 // Private request facts keyed by the error an owned request threw. Only the primary failure's facts are
@@ -922,7 +925,25 @@ async function main(){
   }
   let homeCards=null,homeCardIds=[],todaySectionIds=[],cardFailures=0;
   visitStage='home-cards';
-  if(path==='/'||(path==='/me/calendar'&&['employee','manager'].includes(user.role))){
+  if(path==='/'&&useTodayHome){
+   const today=await waitForTodayBrowserReadiness(page,user.role,timeout);
+   homeCardIds=today.panels;
+   todaySectionIds=today.required;
+   homeCards=homeCardIds.length;
+   const failureNodes=await page.locator('main [role="alert"], main [data-today-page-unavailable], main [data-today-unavailable], main [data-read-unavailable]').evaluateAll(nodes=>nodes.map(node=>({
+    card:null,
+    marker:node.hasAttribute('data-read-unavailable')?'read-unavailable':node.hasAttribute('role')&&node.getAttribute('role')==='alert'?'alert':'today-unavailable',
+    section:node.closest('[data-today-panel]')?.getAttribute('data-today-panel')??null,
+    text:node.textContent??'',
+   })));
+   cardFailures=failureNodes.length;
+   if(cardFailures)report.homeCardFailures.push({role:user.role,phase,cards:homeCardFailureFacts(failureNodes,homeFailureMessages)});
+   if(signIn){
+    const baseline=report.browser.find(row=>row.phase==='baseline'&&row.role===user.role&&row.path==='/');
+    assert.deepEqual(todaySectionIds,baseline?.todaySectionIds,'The required Today panels changed during sign-in');
+   }
+   if(cardFailures===0)witness='home-card-inventory';
+  }else if(path==='/'||(path===personalCalendarPath&&['employee','manager'].includes(user.role))){
    const personal=['employee','manager'].includes(user.role),attribute=personal?'data-home-card':'data-dashboard-card';
    const cards=page.locator('main ['+attribute+']');
    await cards.first().waitFor({timeout:timeout()});
@@ -1099,6 +1120,9 @@ async function main(){
   await withContext(ctx,async()=>{const page=await ctx.newPage();
   const routes=strictRenderedPreflight&&primaryActors.includes(user)?['/']:suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/','/admin/personnel','/payroll','/lifecycle/onboarding'];
   for(const route of routes)await visit(page,user,route);
+  if(useTodayHome&&['employee','manager'].includes(user.role)&&!routes.includes(personalCalendarPath)){
+   await visit(page,user,personalCalendarPath);
+  }
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});
   });
  },failures));
