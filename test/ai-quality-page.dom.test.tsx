@@ -165,8 +165,14 @@ describe('AI quality, as an administrator',()=>{
   expect(ticks.slice(0,5)).toEqual(['0','25','50','75','100']);
   const bars=[...chart.querySelectorAll('rect')];
   expect(bars).toHaveLength(6);
-  const plot=220-12-48;
+  const gridY=[...chart.querySelectorAll('line')]
+   .filter(line=>line.getAttribute('y1')===line.getAttribute('y2'))
+   .map(line=>Number(line.getAttribute('y1')));
+  expect(gridY).toHaveLength(5);
+  const plot=Math.max(...gridY)-Math.min(...gridY);
+  expect(plot).toBeGreaterThan(0);
   expect(Number(bars[4].getAttribute('height'))).toBeCloseTo(plot*0.75,5);
+  expect(Number(bars[4].getAttribute('y'))+Number(bars[4].getAttribute('height'))).toBeCloseTo(Math.max(...gridY),5);
   expect(Number(bars[0].getAttribute('height'))).toBe(0);
  });
 

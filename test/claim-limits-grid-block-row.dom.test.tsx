@@ -165,7 +165,8 @@ describe('e7eb5d83 rev 6 · the five controls are ONE row', () => {
     expect(sized).toHaveLength(3);
     for (const el of sized) {
       expect(el.className, `${el.tagName} must be sized by flex-basis`).toMatch(/\bbasis-\d+\b/);
-      expect(el.className, `${el.tagName} carries a w-* that silently loses to w-full`).not.toMatch(/\bw-\d+\b/);
+      // Match width utilities (including variants), not the min-w-0 reset.
+      expect(el.className, `${el.tagName} carries a w-* that silently loses to w-full`).not.toMatch(/(?:^|[\s:])!?w-\d/);
       expect(el.className).toContain('shrink-0');
     }
   });

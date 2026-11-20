@@ -455,7 +455,7 @@ export default async function RosterPage({
           <button className={btnPrimary}>{t('query')}</button>
           <span className="text-xs text-muted-foreground sm:col-span-full">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
           <details className="min-w-0 text-sm sm:col-span-full" data-roster-guidance>
-            <summary className="cursor-pointer py-1 font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('manageShiftsLink')}</summary>
+            <summary className="cursor-pointer py-1 font-medium text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('shifts')}</summary>
             <div className="space-y-2 pt-2 text-muted-foreground">
               <p>{t('manageShiftsHint')}</p>
               {admin&&<Link href="/admin/attendance" className="inline-flex min-h-9 items-center font-medium text-primary hover:underline">{t('manageShiftsLink')} →</Link>}
