@@ -62,6 +62,7 @@ vi.mock('next-intl/server', () => ({
 
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { resolveServerTree } from './helpers/server-tree';
 import { hireEmployee } from '../core/org';
 import { EmployeeScopePanel } from '../components/collapsible-employee-panel';
 import { EmployeeSearchField } from '../components/employee-search-field';
@@ -479,11 +480,13 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
    */
   const ALL_EMPLOYEES_TABS = ['fixed', 'individual', 'history', 'outstanding'] as const;
 
+  async function renderTransactionPicker(searchParams: { tab: string; employmentId?: string }) {
+    return resolveServerTree(await TransactionViewPage({ searchParams: Promise.resolve(searchParams) }));
+  }
+
   it('bd14b7e2 — the four inquiry tabs pick an employee with the shared PANEL, and the dropdown is gone', async () => {
     for (const tab of PANEL_TABS) {
-      const tree = await TransactionViewPage({
-        searchParams: Promise.resolve({ tab, employmentId: mine.employmentId }),
-      });
+      const tree = await renderTransactionPicker({ tab, employmentId: mine.employmentId });
 
       expect(
         findByType(tree, EmployeeSearchField),
@@ -512,9 +515,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
 
   it('bd14b7e2 — an out-of-scope ?employmentId= selects NOTHING on all four, and Apply carries nothing', async () => {
     for (const tab of PANEL_TABS) {
-      const tree = await TransactionViewPage({
-        searchParams: Promise.resolve({ tab, employmentId: foreign.employmentId }),
-      });
+      const tree = await renderTransactionPicker({ tab, employmentId: foreign.employmentId });
       expect(panelSelection(tree), `${tab}: a company outside scope must coerce to no selection`).toBeNull();
 
       // A FIELD THAT IS ALWAYS SUBMITTED CANNOT BE READ BY PRESENCE — so the hidden input exists only when
@@ -544,7 +545,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     // each of them opens on today. On every screen that shows ONE person's record it is a row leading
     // nowhere, so the prop must default off and no existing consumer may quietly acquire it.
     for (const tab of ALL_EMPLOYEES_TABS) {
-      const tree = await TransactionViewPage({ searchParams: Promise.resolve({ tab }) });
+      const tree = await renderTransactionPicker({ tab });
       expect(
         findByType(tree, EmployeeScopePanel)[0].props.allowAll,
         `${tab}: clearing the selection is this tab's default view and must be offered`,

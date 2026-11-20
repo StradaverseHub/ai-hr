@@ -726,7 +726,9 @@ describe('417d4937 — every record-line surface is actually handed the catalogu
     const page = readSrc('app/payroll/transaction-view/page.tsx');
     // The read used to be `tab === 'grid'` alone, which would have left the repair inert on the tab the
     // reporter opens.
-    expect(page).toContain("tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true })");
+    expect(page).toMatch(
+      /tab === 'grid' \|\| tab === 'history'\s*\?\s*(?:readPhase\('catalogue',\s*\(\)\s*=>\s*)?listPayComponents\(s, \{ includeArchived: true \}\)/,
+    );
     expect(page).toContain('const payItemNames: Record<string, string> = Object.fromEntries(');
     // Plain data across the RSC boundary — a function prop 500s at runtime while tsc and next build pass.
     expect(page).toContain('payItemNames={payItemNames}');
