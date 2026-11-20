@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
@@ -12,7 +13,7 @@ import { MAX_ITEM_MINUTES, MAX_MINUTES_PER_STAFF_ACTION, measurable } from '@/co
 import { BASELINE_DAYS, CAPACITY_ITEMS, CAPACITY_PERIODS, MEASURED_BY, type CapacityItem, type CapacityPeriod } from '@/core/capacity/types';
 import { setCapacityBaselineAction } from '@/app/assistant/capacity-actions';
 import { cn } from '@/lib/utils';
-import { CapacityProcesses, readCapacityProcesses } from './capacity-processes';
+import { CapacityProcesses } from './capacity-processes';
 
 /** AI v2 Phase 2, P2-4 — AI Centre › Insights › HR capacity (approved mock-up Ledger.dc.html, revised).
  *
@@ -36,9 +37,9 @@ function href(query: Readonly<Record<string, string | null | undefined>>) {
 }
 
 export async function CapacityLedgerSection({ session, query }: { session: SessionContext; query: CapacityQuery }) {
-  const [t, tl, f] = await Promise.all([getTranslations('aiCentre.capacity'), getTranslations('aiCentre.loops'), getFormatter()]);
-  // The processes' two readers start with the ledger's read; each checks the administrator again.
-  const processes = readCapacityProcesses(session, { pdays: query.pdays });
+  const [t, tl, f, common] = await Promise.all([
+    getTranslations('aiCentre.capacity'), getTranslations('aiCentre.loops'), getFormatter(), getTranslations('common'),
+  ]);
   const view = await capacityLedger(session, { period: query.period, companyId: query.company });
   const setupCompany = view.companies.find(row => row.id === query.setup);
   const setup = setupCompany ? await baselineSetup(session, { companyId: setupCompany.id, days: query.days }) : null;
@@ -188,7 +189,10 @@ export async function CapacityLedgerSection({ session, query }: { session: Sessi
           </details>
         </section>
 
-        {await CapacityProcesses({ reads: await processes, query: { pdays: query.pdays }, companies: view.companies, baselines: view.baselines, keep: { period: view.period, company } })}
+        <Suspense fallback={<p id="capacity-processes" role="status" className="text-sm text-muted-foreground">{common('loading')}</p>}>
+          <CapacityProcesses session={session} query={{ pdays: query.pdays }} companies={view.companies}
+            baselines={view.baselines} keep={{ period: view.period, company }} />
+        </Suspense>
       </>}
     </section>
   );
