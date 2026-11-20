@@ -29,13 +29,16 @@ const appPort=3174;
 const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
-const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
+const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions'].includes(surfaceProbe),'Unknown browser surface');
+const laneInput=env.AIHR_BROWSER_STATIC_SHARD??'';
+const actionLane=surfaceProbe==='actions'?laneInput:null;
+assert(actionLane===null||['shell','workforce','payroll','approvals'].includes(actionLane),'Unknown action lane');
+const shardInput=actionLane===null?laneInput:'';
 assert(!shardInput||(/^[0-7]$/.test(shardInput)&&!fixtureOnly),'Invalid static census configuration');
 const staticShard=shardInput===''?null:Number(shardInput);
 const payrollReadTrace=env.AIHR_BROWSER_PAYROLL_READ_TRACE==='true';
 const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
-const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards'].includes(surfaceProbe),'Unknown browser surface');
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
@@ -55,8 +58,9 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:actionLane?'FICTIONAL_SCRIPTED_ACTIONS':surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
+ ...(actionLane&&{actionLane}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
@@ -1763,6 +1767,14 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
  measure('authorized-lifecycle-flyout',clicked);
 }
 
+const actionLaneByJourney={
+ 'personal-calendar-month':'shell','shell-popovers':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
+ 'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
+ 'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
+ 'payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
+ 'approvals-summary-readiness':'approvals','approvals-categories':'approvals','claim-approval':'approvals','saved-report-draft':'approvals',
+};
+
 async function measureActions(fixture){
  const referenceManifest=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
@@ -1773,6 +1785,7 @@ async function measureActions(fixture){
  const acceptedByAction=new Map();
  report.serverActionInventory=serverActionCoverage(registrations,acceptedByAction);
  const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
@@ -1860,7 +1873,13 @@ async function measureActions(fixture){
   },timings:result=>result.joinerSteps},
  ];
  try{
-  for(const action of actions){
+  if(actionLane)assert(actions.every(action=>Object.hasOwn(actionLaneByJourney,action.name)),'Unassigned scripted journey');
+  const scheduled=actionLane?actions.filter(action=>actionLaneByJourney[action.name]===actionLane):actions;
+  if(actionLane){
+   assert(scheduled.length>0,'Empty scripted action lane');
+   report.plannedJourneys=scheduled.map(({name,actorIndex})=>({name,role:fixture.users[actorIndex].role}));
+  }
+  for(const action of scheduled){
    const user=fixture.users[action.actorIndex],context=await signedInContext(user),result={};
    const row={journey:action.name,role:user.role,status:'incomplete',timings:[]};
    report.journeys.push(row);
@@ -1904,6 +1923,7 @@ async function measureActions(fixture){
     }
     row.serverActionsAccepted=successful.size;
    }catch(error){
+    row.status='failed';
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
     const step=result.actionStage??result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
@@ -1962,13 +1982,23 @@ try{
  }
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!diagnosticCount)await seedNotificationReads(fixture);
+  if(staticShard===null&&(!diagnosticCount||actionLane==='shell'))await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true',
     AIHR_PAYROLL_TRANSACTION_READ_TRACE:String(payrollReadTrace)});
   await waitForApp();
   await proxy();
-  if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
+  if(actionLane){
+   await measureActions(fixture);
+   assert.equal(report.journeys.length,report.plannedJourneys.length,'Scripted action inventory is incomplete');
+   if(actionLane==='shell'){
+    await measureShellLinks(fixture);
+    await measurePublicLogin();
+   }
+   assert(report.journeys.every(row=>row.status==='observed'),
+    'Some scripted actions did not reach their verified result');
+  }
+  else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe){
    const requested=surfaceProbe==='both'?['insights','recruitment']

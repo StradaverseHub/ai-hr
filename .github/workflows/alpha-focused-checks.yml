@@ -69,7 +69,7 @@ on:
         default: false
         type: boolean
       browser_surface_probe:
-        description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor), Access editor or Rewards setup browser measurement
+        description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor), Access editor, Rewards setup, or scripted actions
         default: ''
         type: string
       browser_static_shard:
@@ -143,13 +143,15 @@ jobs:
             exit 2
           fi
           if [[ -n "$BROWSER_SURFACE_PROBE" ]] && {
-            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards)$ ]] ||
+            [[ ! "$BROWSER_SURFACE_PROBE" =~ ^(insights|recruitment|both|attendance|workflow|workflow-list|access-editor|rewards|actions)$ ]] ||
             [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true || -n "$BROWSER_STATIC_SHARD"
                || "$BROWSER_PAYROLL_READ_TRACE" == true || "$BROWSER_MOBILE_TASK_TRACE" == true ]];
           }; then
             exit 2
           fi
-          if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
+          if [[ "$BROWSER_SURFACE_PROBE" == actions ]]; then
+            printf 'static_shards=["shell","workforce","payroll","approvals"]\n' >> "$GITHUB_OUTPUT"
+          elif [[ "$BROWSER_STATIC_SHARD" == all ]]; then
             printf 'static_shards=["0","1","2","3","4","5","6","7"]\n' >> "$GITHUB_OUTPUT"
           else
             printf 'static_shards=["%s"]\n' "$BROWSER_STATIC_SHARD" >> "$GITHUB_OUTPUT"
@@ -266,7 +268,7 @@ jobs:
         if: ${{ always() && inputs.browser_route_baseline }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ inputs.browser_static_shard == 'all' && format('browser-route-baseline-shard-{0}', matrix.static_shard) || 'browser-route-baseline' }}
+          name: ${{ inputs.browser_surface_probe == 'actions' && format('browser-action-lane-{0}', matrix.static_shard) || inputs.browser_static_shard == 'all' && format('browser-route-baseline-shard-{0}', matrix.static_shard) || 'browser-route-baseline' }}
           path: ${{ runner.temp }}/browser-route-baseline.json
           if-no-files-found: warn
           retention-days: 14
