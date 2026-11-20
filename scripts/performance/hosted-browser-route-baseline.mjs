@@ -1736,21 +1736,42 @@ async function rosterStatementSnapshot(db){
  return new Map(rows.map(({id,...statement})=>[id,statement]));
 }
 
-function rosterDatabaseWork(before,after){
+async function rosterDatabaseWork(db,before,after){
  const statements=[];
  const categories=new Map();
  for(const [id,{category,...totals}] of after){
   const delta=Object.fromEntries(Object.entries(totals).map(([metric,value])=>[metric,value-(before.get(id)?.[metric]??0)]));
   assert(Object.values(delta).every(value=>Number.isFinite(value)&&value>=0),'Roster SQL counters moved backwards');
   if(delta.calls===0)continue;
-  statements.push({category,...delta});
+  statements.push({id,category,...delta});
   const aggregate=categories.get(category)??{category,calls:0,rows:0,executionMs:0,planningMs:0};
   for(const [metric,value] of Object.entries(delta))aggregate[metric]+=value;
   categories.set(category,aggregate);
  }
  assert(statements.length>0,'No completed application SQL observed during the Roster open');
+ const slowest=statements.sort((a,b)=>b.executionMs-a.executionMs).slice(0,8);
+ // Preserve only names that have an independent catalogue entry on this fictional database.
+ // SQL text, bound values and statement identifiers never enter the report.
+ const unclassified=slowest.filter(row=>row.category==='other-application-sql').map(row=>row.id);
+ const shapes=unclassified.length?await db`
+  select s.queryid::text as id,
+   array(select distinct p.proname::text from regexp_matches(s.query,
+      '(?i)(?:app|public)[.]"?([a-z_][a-z_0-9]*)"?[[:space:]]*[(]', 'g') as m(parts)
+     join pg_proc p on p.proname=m.parts[1]
+     join pg_namespace n on n.oid=p.pronamespace and n.nspname in ('app','public')
+     order by p.proname::text limit 12) as functions,
+   array(select distinct c.relname::text from regexp_matches(s.query,
+      '(?i)(?:from|join)[[:space:]]+(?:(?:public|app)[.])?"?([a-z_][a-z_0-9]*)', 'g') as m(parts)
+     join pg_class c on c.relname=m.parts[1]
+     join pg_namespace n on n.oid=c.relnamespace and n.nspname in ('app','public')
+     order by c.relname::text limit 12) as relations
+  from pg_stat_statements s where s.toplevel and s.queryid=any(${unclassified}::bigint[])
+   and s.dbid=(select oid from pg_database where datname=current_database())
+   and s.userid=(select oid from pg_roles where rolname='ai_hr_app')
+ `:[];
+ const shapeById=new Map(shapes.map(({id,...shape})=>[id,shape]));
  return {databaseWork:[...categories.values()].sort((a,b)=>b.executionMs-a.executionMs),
-  slowestStatements:statements.sort((a,b)=>b.executionMs-a.executionMs).slice(0,8)};
+  slowestStatements:slowest.map(({id,...row})=>({...row,...shapeById.get(id)}))};
 }
 
 function countRosterRequests(request,counts){
@@ -1792,7 +1813,7 @@ async function measureFocusedRoster(fixture){
       page.off('request',observe);
       row.requestsBeforeExceptionCount=counts;
       assert.equal(counts.documents,1,'A Roster open must observe exactly one document');
-      Object.assign(row,rosterDatabaseWork(before,await rosterStatementSnapshot(db)));
+      Object.assign(row,await rosterDatabaseWork(db,before,await rosterStatementSnapshot(db)));
       save();
      };
      try{
