@@ -187,6 +187,54 @@ class PreparedFlowTests(unittest.TestCase):
       changed.append(True)
     f.boundary=alter;reason='excluded/unobserved subtree'if fault=='unobserved-target'else'complete source/compiled/dependency/runtime metadata changed'
     self.assertRaisesRegex(ValueError,reason,f.invoke_live,f.live_record(a,proof));self.assertEqual(changed,[True]);self.assertGreaterEqual(f.native_calls,1);self.assert_no_unit_mutation(f)
+ def test_late_cutover_runs_actual_guard_and_full_activation_graph(self):
+  late=core.load_native('late_worker_owner','bank_import_worker_late_v1.py')
+  f=self.fixture()
+  preparation=f.prepare_record(True)
+  failure={key:preparation['preparation']['failure'][key]for key in late.FAILURE_FIELDS}
+  shutil.rmtree(f.operation)  # This separate fixture models no worker operation before the failed web install.
+  f.web=f.source
+  f.report.update(MainPID='123',ActiveState='active',SubState='running')
+  selected=copy.deepcopy(f.original_auth)
+  selected.update(launch={'current':selected['launch']['current']},lateFailure=failure,
+                  nativeActivation={name:ci.sha((f.directory/name).read_bytes()) for name in ('activate-intent.json','activate-result.json')})
+  observed=f.native
+  def native(argv,identity,environment,**options):
+   result=observed(argv,identity,environment,**options)
+   if result.get('kind')=='EXACT_FAILED_NATIVE_WORKER_CHECK_INSTALL':result['build']=f.new_build
+   return result
+  f.native=native
+  # The exact production pins have separate unit controls. This graph substitutes a fictional case.
+  with patch.object(ci,'LATE',late,create=True),patch.object(late,'CASE',selected['identity']), \
+       patch.object(late,'authority',side_effect=lambda base,*args: base.check(f.held_phase=='installing','fictional lease moved')):
+   def run(stage,add=()):
+    a={key:value for key,value in {**selected,**dict(add),'gate':f.first['gate']}.items() if key in late.fields(ci,stage)}
+    a.update(kind=late.KINDS[stage],issuedAt=f.iso(),expiresAt=f.iso(late.AUTHORITY_SECONDS[stage]))
+    path=f.approval(f.root/(stage+'.json'),a)
+    f.additional_root_private_files.add(path)
+    f.auth=a
+    with f.prepared_ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+     guard.launch(['guarded-'+stage,'--approval',str(path),'--approval-sha256',ci.sha(path.read_bytes())],f.fmt,f.base,ci,update)
+    return path
+   run(late.PREPARE)
+   self.assert_no_unit_mutation(f)
+   self.assertEqual(f.report['MainPID'],'123')
+   proof=f.operation/'late-prepared.json'
+   f.additional_root_private_files.add(proof)
+   pin={'path':str(proof),'sha256':ci.sha(proof.read_bytes())}
+   drain=run(late.DRAIN,{'preparedWorker':pin})
+   self.assertEqual(f.report['MainPID'],'0')
+   drained=f.operation/'drained.json'
+   os.utime(drained,(f.clock,f.clock))
+   f.clock+=1
+   run(late.ACTIVATE,{'preparedWorker':pin,'firstStageApproval':str(drain),
+                      'firstStageApprovalSha256':ci.sha(drain.read_bytes()),'drainSha256':ci.sha(drained.read_bytes())})
+   receipt=json.loads((f.operation/'activated.json').read_bytes())
+   self.assertEqual(receipt['mode'],'activate-late-ci-worker')
+   self.assertEqual((receipt['fullNativeAudits'],receipt['completeMetadataFences']),(2,10))
+   self.assertTrue(receipt['serviceStable'])
+   self.assertEqual((f.state/'current').read_text().count('result=failed'),1)
+
  def test_normal_prepared_wrapper_full_graph(self):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a);self.assert_no_unit_mutation(f);r=f.invoke_live(f.live_record(a,proof));self.assertTrue(r['serviceStable']);self.assertFalse(r['journeyVerified']);self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
  def test_normal_preparation_normalizes_restrictive_umask(self):
