@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies } from '@/core/read';
-import { listLocations } from '@/core/location';
+import { getWorkLocation } from '@/core/location';
 import { CLOCKING_LIST, UUID_RE } from './clocking/form-fields';
 
 /**
@@ -19,10 +18,8 @@ import { CLOCKING_LIST, UUID_RE } from './clocking/form-fields';
  * on the unchanged `locations` screenKey in lib/permissions.ts — nothing about what this address GRANTS
  * changes, only what it renders.
  *
- * `?focus=<id>` IS RESOLVED TO ITS COMPANY, under the SAME scope rule the old listing drew
- * (`listCompanies(s, { adminOnly: true })` — a company-scoped admin can only resolve a location inside a
- * company they administer; a location outside that scope, or a malformed/unknown id, simply fails to
- * resolve and the operator lands on step 1, the company list, which is never wrong — only less precise).
+ * `?focus=<id>` resolves to its company through the same scoped record lookup as View and Edit.
+ * A malformed, unknown or out-of-scope id falls back to the company list.
  * Every other query parameter (`saved`, `error`, the `typed*` echoes no screen here ever posts) rides
  * through unchanged, because a stale bookmark should land as close to what it meant as the new shape
  * allows, not merely avoid a 404.
@@ -36,19 +33,14 @@ export default async function WorkLocationsRedirect({
   const sp = await searchParams;
   const rawFocus = typeof sp.focus === 'string' ? sp.focus : undefined;
 
-  let companyId: string | undefined;
-  if (rawFocus && UUID_RE.test(rawFocus)) {
-    const companies = await listCompanies(s, { adminOnly: true });
-    const locations = await listLocations(s, companies.map((c) => c.id), { includeArchived: true });
-    companyId = locations.find((l) => l.id === rawFocus)?.companyId;
-  }
+  const site = rawFocus && UUID_RE.test(rawFocus) ? await getWorkLocation(s, rawFocus) : undefined;
 
   const usp = new URLSearchParams();
   for (const [k, v] of Object.entries(sp)) {
     if (typeof v === 'string') usp.set(k, v);
     else if (Array.isArray(v) && v[0] != null) usp.set(k, v[0]);
   }
-  if (companyId) usp.set('company', companyId);
+  if (site) usp.set('company', site.companyId);
   const qs = usp.toString();
   redirect(`${CLOCKING_LIST}${qs ? `?${qs}` : ''}`);
 }
