@@ -29,18 +29,18 @@ function sharingFrames(response,expectedStatus,url){
  return cards;
 }
 
-export function createHomeHttpReplay({base,request,report}){
+export function createHomeHttpReplay({base,request,report,browserRoute='/'}){
  const templates=new Map();report.homeApiTraffic={templates:[],completed:{},sharingFrames:{}};
  function track(page,user,path){
-  // HR's dashboard is server-rendered; only personal Home emits these subject-bound APIs.
-  if(path!=='/'||!['employee','manager'].includes(user.role))return()=>{};
+  // Bind replay templates to the browser surface that actually makes subject-scoped requests.
+  if(path!==browserRoute||!['employee','manager'].includes(user.role))return()=>{};
   const observed=new Set(),listener=req=>{
    const url=new URL(req.url());
    if(req.method()==='GET'&&url.origin===base&&paths.has(url.pathname)&&url.searchParams.get('employmentId')===user.employmentId){url.searchParams.set('employmentId','__PERF_SUBJECT__');observed.add(url.pathname+url.search);}
   };
   page.on('request',listener);
   return()=>{
-   page.off('request',listener);assert(observed.size>0,'Home browser did not issue subject-bound reads');
+   page.off('request',listener);assert(observed.size>0,'The personal browser surface did not issue subject-bound reads');
    const own=templates.get(user.role)??new Set();for(const path of observed)own.add(path);templates.set(user.role,own);
    report.homeApiTraffic.templates=[...templates].map(([role,urls])=>({role,requests:[...urls].map(path=>{const url=new URL(path,base);return{path:url.pathname,queryKeys:[...url.searchParams.keys()].sort()};})}));
   };
