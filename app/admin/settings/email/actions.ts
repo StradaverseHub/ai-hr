@@ -44,6 +44,21 @@ export async function saveLifecycleSenderName(form:FormData){
  }catch(e){error=e instanceof EmailSettingsError?e.code:'unavailable';}
  revalidatePath(path);redirect(path+'?'+new URLSearchParams(error?{error}:{success:'senderName'}));
 }
+export async function deactivateEmailConnection(form: FormData) {
+ const {actor} = await requireIdentityEmailAdmin();
+ const connectionId = String(form.get('connectionId') ?? '');
+ const revision = String(form.get('revision') ?? '');
+ let error: string | undefined;
+ try {
+  if (!internalSelected() || !connectionId || !revision) throw new EmailSettingsError('invalid');
+  if (form.get('confirmed') !== 'true') throw new EmailSettingsError('needsDeactivationConfirmation');
+  await identityEmailRequest({op:'deactivate', actor, connectionId, revision});
+ } catch (e) {
+  error = e instanceof EmailSettingsError ? e.code : 'unavailable';
+ }
+ revalidatePath(path);
+ redirect(path+'?'+new URLSearchParams(error ? {error, connection:connectionId} : {success:'deactivate'}));
+}
 export async function testEmailDraft(form:FormData){await execute('test',form);}
 export async function activateEmailDraft(form:FormData){await execute('apply',form);}
 export async function saveEmailRetention(form:FormData){

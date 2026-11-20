@@ -25648,6 +25648,9 @@
     "sendTest": "Gửi email thử",
     "received": "Tôi đã nhận email thử từ bản nháp này.",
     "activateHelp": "Kết quả thử hết hạn sau 30 phút. Kích hoạt thay máy chủ gửi email đăng nhập và bật khôi phục mật khẩu. Lưu thay đổi yêu cầu thử lại.",
+    "deactivate": "Tắt máy chủ chuyển tiếp email của hệ thống",
+    "deactivateHelp": "Email mời, khôi phục mật khẩu và các email khác sử dụng máy chủ này sẽ ngừng gửi. Bạn có thể kiểm tra và kích hoạt lại kết nối đã lưu.",
+    "deactivateConfirm": "Tôi hiểu ảnh hưởng đối với việc gửi email.",
     "activate": "Kích hoạt máy chủ",
     "saving": "Đang xử lý…",
     "errors": {
@@ -25656,6 +25659,7 @@
       "invalid": "Kiểm tra các trường và mật khẩu máy chủ.",
       "conflict": "Cấu hình hoặc bản nháp đã thay đổi. Tải lại và lưu bản nháp mới.",
       "needsTest": "Gửi email thử mới trước khi kích hoạt.",
+      "needsDeactivationConfirmation": "Hãy xác nhận ảnh hưởng đối với việc gửi email trước khi tắt máy chủ.",
       "needsReceipt": "Xác nhận đã nhận email thử.",
       "authenticationFailed": "Máy chủ từ chối xác thực.",
       "connectionFailed": "Không thể kết nối máy chủ.",
@@ -25667,6 +25671,7 @@
     "success": {
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
+      "deactivate": "Đã tắt máy chủ chuyển tiếp email của hệ thống. Kết nối vẫn được lưu.",
       "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này.",
       "sender": "Đã cập nhật người gửi thư vòng đời. Khôi phục tài khoản và mặc định của bản cài đặt không thay đổi.",
       "senderName": "Đã lưu tên người gửi. Thư nhận việc/nghỉ việc gửi từ bây giờ sẽ dùng tên này."

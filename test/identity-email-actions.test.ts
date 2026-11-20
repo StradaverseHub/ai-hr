@@ -5,12 +5,12 @@ vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:mocks.g
 vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:mocks.ipc}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
-import {saveEmailDraft,testEmailDraft,activateEmailDraft,saveEmailRetention,saveLifecycleSenderName} from '../app/admin/settings/email/actions';
+import {saveEmailDraft,testEmailDraft,activateEmailDraft,deactivateEmailConnection,saveEmailRetention,saveLifecycleSenderName} from '../app/admin/settings/email/actions';
 const actor={issuer:'https://hr.test',subject:'server-derived',userId:'22222222-2222-4222-8222-222222222222',tenantId:'11111111-1111-4111-8111-111111111111'};
 beforeEach(()=>{vi.clearAllMocks();mocks.guard.mockResolvedValue({actor,session:{tenantId:actor.tenantId,userId:actor.userId}});mocks.ipc.mockResolvedValue({});mocks.retention.mockResolvedValue(undefined);});
 afterEach(()=>vi.unstubAllEnvs());
 describe('SMTP server action authentication boundary',()=>{
- it.each([saveEmailDraft,testEmailDraft,activateEmailDraft,saveEmailRetention,saveLifecycleSenderName])('checks identity authority before any IPC operation',async action=>{
+ it.each([saveEmailDraft,testEmailDraft,activateEmailDraft,deactivateEmailConnection,saveEmailRetention,saveLifecycleSenderName])('checks identity authority before any IPC operation',async action=>{
   mocks.guard.mockRejectedValue(new Error('denied'));await expect(action(new FormData())).rejects.toThrow('denied');expect(mocks.ipc).not.toHaveBeenCalled();
  });
  it('saves retention only with the server identity and reports a fixed error on failure',async()=>{
@@ -52,4 +52,19 @@ it('names the tenant sender only with the server actor, a valid name and the emb
  for(const name of ['','Fictional <x@untrusted.invalid>','ops@untrusted.invalid','x'.repeat(161)]){mocks.ipc.mockClear();form.set('senderName',name);await expect(saveLifecycleSenderName(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();}
  form.set('senderName','Fictional Group HR');vi.stubEnv('AUTH_PROVIDER','keycloak');mocks.ipc.mockClear();await expect(saveLifecycleSenderName(form)).rejects.toThrow('error=invalid');expect(mocks.ipc).not.toHaveBeenCalled();
  vi.stubEnv('AUTH_PROVIDER','internal');mocks.ipc.mockRejectedValueOnce(new (await import('../lib/identity/email-model')).EmailSettingsError('forbidden'));await expect(saveLifecycleSenderName(form)).rejects.toThrow('error=forbidden');
+});
+
+
+it('requires confirmation and deactivates only through the enrolled installation actor', async () => {
+ vi.stubEnv('AUTH_PROVIDER','internal');
+ const form = new FormData();
+ form.set('connectionId','saved-connection');
+ form.set('revision','viewed-revision');
+ await expect(deactivateEmailConnection(form)).rejects.toThrow('error=needsDeactivationConfirmation');
+ expect(mocks.ipc).not.toHaveBeenCalled();
+ form.set('confirmed','true');
+ await expect(deactivateEmailConnection(form)).rejects.toThrow('success=deactivate');
+ expect(mocks.ipc).toHaveBeenCalledExactlyOnceWith({
+  op:'deactivate',actor,connectionId:'saved-connection',revision:'viewed-revision',
+ });
 });

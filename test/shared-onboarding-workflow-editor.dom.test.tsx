@@ -14,7 +14,7 @@ const flow=(module:'onb'|'off'):Workflow=>({id:module,name:'Fictional '+module,m
 function Harness(){
  const config=v9Defaults();config.workflows=[flow('onb'),flow('off')];
  const [selected,select]=useState('');
- return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor config={config} selected={selected} select={select} module="onb" setModule={()=>{}} edit={()=>{}} editable cases={[]} users={[]} actor={{id:'hr',name:'HR'}} labels={{}} initialFilter="onb" showModuleFilter={false} allowedModules={['onb']} historyAvailable={false} previewCases={[{id:'sample',module:'onb',label:'Fictional sample case'},{id:'other',module:'off',label:'Other sample'}]}/></NextIntlClientProvider>;
+ return <NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor save={{state:'saved',error:'',flush:async()=>true,retry:()=>{}}} config={config} selected={selected} select={select} module="onb" setModule={()=>{}} edit={()=>{}} editable cases={[]} users={[]} actor={{id:'hr',name:'HR'}} labels={{}} initialFilter="onb" showModuleFilter={false} allowedModules={['onb']} historyAvailable={false} previewCases={[{id:'sample',module:'onb',label:'Fictional sample case'},{id:'other',module:'off',label:'Other sample'}]}/></NextIntlClientProvider>;
 }
 it('embeds only Onboarding, uses sample references for dry runs, and avoids claiming absent history is empty',async()=>{
  render(<Harness/>);

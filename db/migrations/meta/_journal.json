@@ -7885,10 +7885,17 @@
       "breakpoints": true
     },
     {
-      "idx": 10412,
+      "idx": 10440,
       "version": "7",
-      "when": 1795028007012,
-      "tag": "7012_payroll_read_authorization",
+      "when": 1795028007040,
+      "tag": "7040_payroll_original_employer_row_security",
+      "breakpoints": true
+    },
+    {
+      "idx": 10441,
+      "version": "7",
+      "when": 1795028007041,
+      "tag": "7041_payroll_read_authorization",
       "breakpoints": true
     }
   ]

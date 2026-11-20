@@ -1,3 +1,4 @@
+import { alignedInformationDateSql, withAlignedInformationDate } from './information-correction-date';
 import {readMovementHistoryPayTx} from './movement-history-pay';
 import {movementGradeEvidence} from '../lib/movement-grade-evidence';
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
@@ -1162,6 +1163,13 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
   return { emp, events, rows, statusOf, today, resolvedTypes, catalogue };
 }
 
+/** Latest applied row from the same projection as Personnel Movement history. */
+export async function latestAppliedMovementForCorrectionDateTx(tx: Tx, tenantId: string, employmentId: string) {
+  const { rows, statusOf } = await projectRows(tx, tenantId, employmentId);
+  const row = rows.filter(candidate => candidate.sequence >= 0 && statusOf(candidate) === 'applied').at(-1);
+  return row ? { id: row.id, effectiveDate: row.effectiveDate } : null;
+}
+
 /** Batched canonical lifecycle projection for an already-authorized report snapshot. All database
  * reads are outside the employment loop; projectRows consumes the same preloaded facts as History.
  * No correction affordances, current compensation or employee names are exposed by this seam. */
@@ -1671,8 +1679,14 @@ export async function movementAutomationFactsTx(tx:Tx,input:{tenantId:string;com
 }
 
 /** Read-side correction overlay only. Existing effective-dated payroll/report reconstruction is untouched. */
-async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedRow[]){
- const hasCorrections=events.some(event=>event.eventType==='employment.information.corrected');
+async function personnelCorrectionViewTx(tx:Tx,tenantId:string,employmentId:string,events:RawEvent[],rows:ProjectedRow[]){
+ const correctionIds=events.filter(event=>event.eventType==='employment.information.corrected').map(event=>event.id);
+ const dates=correctionIds.length
+  ? await tx.select({id:domainEvent.id,date:alignedInformationDateSql()}).from(domainEvent)
+   .where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.subjectEmploymentId,employmentId),inArray(domainEvent.id,correctionIds)))
+  : [];
+ const dateById=new Map(dates.filter(row=>row.date!==null).map(row=>[row.id,row.date]));
+ const hasCorrections=correctionIds.length>0;
  const firstSequenceByGroup=new Map<string,number>();
  if(hasCorrections){
   for(const event of events){
@@ -1689,13 +1703,18 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
    return {...row,id:row.id+':before',effectiveDate:exit?row.effectiveDate:dayBefore(row.effectiveDate),groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
   })
   : [];
- const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
+ const effectiveEvents=dateById.size
+  ? events.map(event=>dateById.has(event.id)
+   ? {...event,payload:withAlignedInformationDate(event.payload,dateById.get(event.id))}
+   : event)
+  : events;
+ const corrections=personnelInformationCorrections(effectiveEvents,[...rows,...beforeRows]);
  const companyIds=new Set<string>(),gradeIds=new Set<string>();
  for(const list of corrections.values())for(const item of list){if(item.values.companyId)companyIds.add(item.values.companyId);if(item.values.gradeId)gradeIds.add(item.values.gradeId);}
  const companies=companyIds.size?await tx.select({id:company.id,name:company.legalName}).from(company).where(inArray(company.id,[...companyIds])):[];
  const grades=gradeIds.size?await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(inArray(jobGrade.id,[...gradeIds])):[];
  const companyLabels=new Map(companies.map(row=>[row.id,row.name])),gradeLabels=new Map(grades.map(row=>[row.id,row.name]));
- return {corrections,apply:(id:string,snapshot:MovementSnapshot)=>{
+ return {corrections,effectiveEvents,apply:(id:string,snapshot:MovementSnapshot)=>{
   const after={...snapshot};
   for(const item of corrections.get(id)??[]){if(item.needsReview)continue;
    if('companyId'in item.values&&!hasDatedCompanyHistory(events))after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
@@ -1772,7 +1791,7 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       tx,
       events.filter((e) => e.eventType === HIRE_CORRECTED_EVENT),
     );
-    const correctionView=await personnelCorrectionViewTx(tx,events,rows);
+    const correctionView=await personnelCorrectionViewTx(tx,ctx.tenantId,employmentId,events,rows);
     const eventsById = new Map<string, RawEvent>();
     const eventsByGroup = new Map<string, RawEvent[]>();
     for (const event of events) {
@@ -2190,7 +2209,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const exitEvent = group.find(event => event.eventType === 'employment.terminated');
     const exitBoundary = exitEvent ? { sequence: exitEvent.sequence, events: exitVersionEventsOf(events) } : undefined;
     const beforeDate = exitBoundary ? row.effectiveDate : dayBefore(row.effectiveDate);
-    const correctionView=await personnelCorrectionViewTx(tx,events,rows);
+    const correctionView=await personnelCorrectionViewTx(tx,ctx.tenantId,employmentId,events,rows);
     const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events), exitBoundary, row.kind==='hired'));
     // The entered business day and the first open payroll day are distinct after a closed-payroll correction.
     // Resolve this event's own amount by reference; never substitute the amount paid in the protected month.
@@ -2206,7 +2225,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         ? null
         : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, beforeDate, gradeEvents, beforeBound, false, companyEvents, hasDatedCompanyHistory(events), exitBoundary));
 
-    after.informationEvidence=movementInformationEvidence(events,row.effectiveDate,afterBound,true);
+    after.informationEvidence=movementInformationEvidence(correctionView.effectiveEvents,row.effectiveDate,afterBound,true);
     if(row.kind==='hired')for(const event of events){
       const payload=event.payload as {source?:string;fields?:string[];after?:Record<string,unknown>};
       if(event.eventType!=='employment.information.corrected'||payload?.source!=='original-hire')continue;
@@ -2214,7 +2233,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         const value=payload.after?.[field];if(value===null||typeof value==='string')after.informationEvidence[field as MovementInformationField]={known:true,value,eventId:event.id};
       }
     }
-    if(before)before.informationEvidence=movementInformationEvidence(events,beforeDate,beforeBound,false);
+    if(before)before.informationEvidence=movementInformationEvidence(correctionView.effectiveEvents,beforeDate,beforeBound,false);
     if (row.history && before?.informationEvidence) {
       const revision=await latestHistoryMovementRevisionTx(tx,employmentId,row.id);
       if(revision&&(revision.payload as {hasPayEvidence?:boolean})?.hasPayEvidence){

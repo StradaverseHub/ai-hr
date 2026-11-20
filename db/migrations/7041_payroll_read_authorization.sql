@@ -1,6 +1,5 @@
 -- These definers call authorization code that reads the forced-RLS company hierarchy.
--- Ordinary owner-exempt relations and all explicit tenant and company checks are unchanged.
-ALTER FUNCTION app.payroll_tax_basis_original_employer_read(uuid) SET row_security = on;
+-- Migration 7040 already protects the original-employer reader.
 ALTER FUNCTION app.payroll_tax_import_source_revision(uuid) SET row_security = on;
 ALTER FUNCTION app.payroll_import_tax_reader_compatible(uuid, uuid, jsonb) SET row_security = on;
 ALTER FUNCTION app.payroll_tax_basis_reader_compatible(uuid, uuid) SET row_security = on;

@@ -1,9 +1,17 @@
-# Payroll restricted-owner read authorization, 20 November 2026
+# Payroll restricted-owner read authorization — 20 November 2026
 
-Candidate reservation `7012_payroll_read_authorization`, journal index `10412`, timestamp
-`1795028007012`, SQL SHA-256 `81c2b0625235bbf95da80dfe6d39751cd43807399f2f58cf2ccce16b875d8a44`.
-It follows `7011` and precedes the existing `7020` reservation.
+Candidate reservation `7041_payroll_read_authorization`, journal index `10441`, timestamp
+`1795028007041`, SQL SHA-256 `5211279c62499fb323880968fabe448e5e65c7781788431aaf6ec6db59b62518`.
+Migration `7040` owns the original-employer repair. This follows it and replaces the
+unreleased `7012` candidate. It adds the other six function settings and two read policies.
 Recheck competing reservations and installed ledgers at release admission.
+
+# Payroll Process company access — 20 November 2026
+
+Reserve `7040_payroll_original_employer_row_security`, journal idx 10440, timestamp 1795028007040.
+SQL SHA-256 `c74f60e1f0a25c721c6b4a1b03b73cc001acd33eed980e89060f9d745cf53115`. The function retains its owner, grant checks and
+execute privileges. This migration allows its nested company hierarchy read
+to use the existing row-level security policy.
 
 # Payroll income-tax recalculation loading repair, 20 November 2026
 

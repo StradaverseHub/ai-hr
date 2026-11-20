@@ -124,3 +124,32 @@ it('lets only the enrolled email operator name the tenant sender, audits it and 
  await expect(internalEmailRequest({op:'lifecycleSenderName',actor:{...actor,issuer:'https://other.test/issuer',subject},name:'Fictional takeover'})).rejects.toMatchObject({code:'forbidden'});
  expect((await readLifecycleRelayTx(client,base.tenantId))?.senderName).toBe('Fictional Group HR');
 });
+
+it('deactivates the exact default relay while retaining its saved settings for reactivation', async () => {
+ const initial = await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:'new'});
+ const {connectionId} = await internalEmailRequest<{connectionId:string}>({
+  op:'save',actor,revision:initial.revision,connectionName:'Fictional relay',config,password:secret,
+ });
+ const read = () => internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId});
+ const selected = await read(), draftId = selected.draft!.id;
+ const test = () => internalEmailRequest({op:'test',actor,connectionId,draftId},async()=>{});
+ const activate = () => internalEmailRequest({op:'apply',actor,connectionId,draftId,received:true});
+ await test();
+ await activate();
+ const active = await read();
+ await expect(internalEmailRequest({op:'deactivate',actor,connectionId,revision:selected.revision})).rejects.toMatchObject({code:'conflict'});
+ expect(await recoveryMailReady()).toBe(true);
+ await internalEmailRequest({op:'deactivate',actor,connectionId,revision:active.revision});
+ expect(await recoveryMailReady()).toBe(false);
+ const inactive = await read();
+ expect(inactive.active).toBeNull();
+ expect(inactive.connections).toEqual([expect.objectContaining({id:connectionId,active:false,hasPassword:true})]);
+ const staleLink = await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:'retired-bookmark'});
+ expect(staleLink).toMatchObject({staleConnection:true,connections:[{id:connectionId}]});
+ await expect(activate()).rejects.toMatchObject({code:'needsTest'});
+ await test();
+ await activate();
+ expect(await recoveryMailReady()).toBe(true);
+ const events = await owner.client`select payload from domain_event where event_type='identity-email.deactivated'`;
+ expect(events).toEqual([{payload:{connectionId}}]);
+});
