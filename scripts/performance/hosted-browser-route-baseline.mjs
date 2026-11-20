@@ -582,6 +582,7 @@ async function measureLocalizedStartup(fixture){
     for(const pass of ['first','repeat']){
      const row={trial,locale,pass,status:'incomplete',stage:'document'};
      report.localizedStartup.push(row);
+     const errorsBefore=errors;
      const started=performance.now(),deadline=started+15000;
      const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
      try{
@@ -595,24 +596,43 @@ async function measureLocalizedStartup(fixture){
       await account.waitFor({timeout:remaining()});
       await assertContentAvailable(page);
       row.contentMs=Math.round(performance.now()-started);
-      row.stage='localized-account-menu';
+      row.stage='account-actionable';
+      const enabled=account.and(page.locator('button:enabled'));
+      await enabled.waitFor({timeout:remaining()});
+      row.accountEnabledMs=Math.round(performance.now()-started);
+      row.stage='first-account-click';
       const clicked=performance.now();
-      await account.click({timeout:remaining()});
-      const menu=page.getByRole('menu',{name:copy.accountMenu,exact:true});
-      await menu.getByRole('menuitem',{name:copy.viewProfile,exact:true}).waitFor({timeout:remaining()});
+      await enabled.click({timeout:remaining()});
+      row.stage='account-expanded';
+      await account.and(page.locator('[aria-expanded="true"]')).waitFor({timeout:remaining()});
       row.accountMenuMs=Math.round(performance.now()-clicked);
+      row.stage='localized-account-menu';
+      const menu=page.locator('[role="menu"]').filter({has:page.locator('a[role="menuitem"][href="/me"]')});
+      await menu.waitFor({timeout:remaining()});
+      assert.equal(await menu.getAttribute('aria-label'),copy.accountMenu,'The opened account menu label differs from the active locale');
+      const profile=menu.locator('a[role="menuitem"][href="/me"]');
+      assert(await profile.and(page.getByRole('menuitem',{name:copy.viewProfile,exact:true})).isVisible(),
+       'The rendered profile link label differs from the active locale');
       row.usableMs=Math.round(performance.now()-started);
       row.documentTiming=await documentTiming(page);
-      assert.equal(errors,0,'Browser or translation error in signed-in shell');
+      assert.equal(errors-errorsBefore,0,'Browser or translation error in signed-in shell');
       assert(row.documentTiming?.appScripts.count>0&&row.documentTiming.resourceBufferFull===false,
        'Missing or truncated localized startup asset timing');
       row.status='observed';
-     }finally{save();}
+     }catch(error){
+      row.status='failed';
+      row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+      row.documentTiming??=await documentTiming(page);
+     }finally{
+      row.browserOrMessageErrors=errors-errorsBefore;
+      save();
+     }
     }
    }finally{await context.close();}
   }
  }
  assert.equal(report.localizedStartup.length,2*locales.length*2);
+ assert(report.localizedStartup.every(row=>row.status==='observed'),'At least one localized startup did not reach usable account controls');
 }
 
 async function visit(page,actor,route,pass,fixture) {
