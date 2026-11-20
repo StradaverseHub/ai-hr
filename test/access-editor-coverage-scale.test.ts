@@ -32,10 +32,11 @@ it('preserves the complete Access editor state while computing effective ancestr
 
  const replacement=readFileSync(new URL('./fixtures/access-editor-coverage-set-proof.sql',import.meta.url),'utf8');
  const rollback=new Error('Roll back the fictional native owner rehearsal');
- await expect(owner.client.begin(async tx=>{
+ const run=owner.client.begin(async tx=>{
   await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  const pendingBindings=[{owner:'fictional.publication',operation:'read'}];
   await tx`insert into app.access_capability_publication(version,bindings_sha256,state,previous)
-   values(9001,repeat('f',64),'publishing','{"profile.review":{"supported":false,"bindings":[]}}'::jsonb)`;
+   values(9001,repeat('f',64),'publishing',${JSON.stringify({'profile.review':{supported:false,bindings:pendingBindings}})}::jsonb)`;
   await tx`insert into app.access_capability_tenant_publication(version,tenant_id) values(9001,${foreignBase.tenantId}::uuid)`;
   const assume=async(actor:SessionContext)=>{
    await tx.unsafe('set local role ai_hr_app');
@@ -65,8 +66,8 @@ it('preserves the complete Access editor state while computing effective ancestr
   expect(before.coverage.filter(pair=>pair.ancestor===base.companyId)).toHaveLength(70);
   expect(foreignBefore.companyIds).toEqual([foreignBase.companyId]);
   expect(foreignBefore.coverage).toEqual([]);
-  expect(before.catalog.find(capability=>capability.id==='profile.review')?.bindings).toEqual([]);
-  expect(foreignBefore.catalog.find(capability=>capability.id==='profile.review')?.bindings).not.toEqual([]);
+  expect(before.catalog.find(capability=>capability.id==='profile.review')?.bindings).toEqual(pendingBindings);
+  expect(foreignBefore.catalog.find(capability=>capability.id==='profile.review')?.bindings).not.toEqual(pendingBindings);
 
   await tx.unsafe('set local role ai_hr_owner');
   await tx.unsafe(replacement);
@@ -76,5 +77,6 @@ it('preserves the complete Access editor state while computing effective ancestr
   expect(Number.isFinite(canonicalMs)&&Number.isFinite(candidateMs)).toBe(true);
   console.info('ACCESS_EDITOR_COVERAGE_PROOF '+JSON.stringify({canonicalMs,candidateMs}));
   throw rollback;
- })).rejects.toBe(rollback);
+ });
+ await run.catch(error=>{if(error!==rollback)throw error;});
 },120_000);
