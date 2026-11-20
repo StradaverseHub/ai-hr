@@ -35672,6 +35672,7 @@
     "noticeReferences": "Income-tax correction references",
     "noticeView": "View income-tax correction",
     "reviewPayrollProcess": "Review Payroll Process",
+    "noTp3Opening": "No TP3 was recorded for this year. The review used RM0 as prior-employer exemption usage.",
     "basisNotTax": "Taxable totals in the summary and monthly table are cash wage inputs, not PCB deductions. Noncash benefit inputs are shown separately below; item detail identifies each stream. Original PCB paid and issued payroll stay unchanged.",
     "noNoncashItems": "No noncash items",
     "currentNoncashTaxable": "Current noncash taxable input",

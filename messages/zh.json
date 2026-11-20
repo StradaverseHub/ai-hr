@@ -35672,6 +35672,7 @@
     "noticeReferences": "所得税更正参考编号",
     "noticeView": "查看所得税更正",
     "reviewPayrollProcess": "查看薪资处理",
+    "noTp3Opening": "本年度没有 TP3 记录。审核按前雇主已用免税额 RM0 计算。",
     "basisNotTax": "摘要及月度表中的应税总额是现金工资输入，并非 PCB 扣款。非现金福利输入在下方单独列示；项目明细会标明各自类别。原已缴 PCB 和已出具的工资记录保持不变。",
     "noNoncashItems": "无非现金项目",
     "currentNoncashTaxable": "当前非现金应税输入",

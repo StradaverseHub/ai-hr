@@ -35672,6 +35672,7 @@
     "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
     "noticeView": "Xem điều chỉnh thuế thu nhập",
     "reviewPayrollProcess": "Xem xử lý lương",
+    "noTp3Opening": "Không có TP3 được lưu cho năm này. Khi rà soát, mức miễn thuế đã dùng tại nơi làm việc trước được tính là RM0.",
     "basisNotTax": "Tổng chịu thuế trong tóm tắt và bảng theo tháng là đầu vào tiền lương tiền mặt, không phải khấu trừ PCB. Đầu vào phúc lợi phi tiền mặt được hiển thị riêng bên dưới; chi tiết khoản lương xác định từng nhóm. PCB đã trả ban đầu và bảng lương đã phát hành không thay đổi.",
     "noNoncashItems": "Không có khoản phi tiền mặt",
     "currentNoncashTaxable": "Đầu vào chịu thuế phi tiền mặt hiện tại",

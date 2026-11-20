@@ -35672,6 +35672,7 @@
     "noticeReferences": "Rujukan pembetulan cukai pendapatan",
     "noticeView": "Lihat pembetulan cukai pendapatan",
     "reviewPayrollProcess": "Semak Proses Gaji",
+    "noTp3Opening": "Tiada TP3 direkodkan untuk tahun ini. Semakan menggunakan RM0 sebagai penggunaan pengecualian daripada majikan terdahulu.",
     "basisNotTax": "Jumlah bercukai dalam ringkasan dan jadual bulanan ialah input upah tunai, bukan potongan PCB. Input manfaat bukan tunai ditunjukkan secara berasingan di bawah; butiran item mengenal pasti setiap aliran. PCB asal yang dibayar dan penggajian yang dikeluarkan kekal tidak berubah.",
     "noNoncashItems": "Tiada item bukan tunai",
     "currentNoncashTaxable": "Input bercukai bukan tunai semasa",
