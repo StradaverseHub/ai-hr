@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, browser-image-suite-firefox]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, browser-image-suite-firefox, payroll-four-grant-rendered]
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -193,5 +193,53 @@ jobs:
         with:
           name: diagnostic-browser-image-${{ matrix.engine }}
           path: ${{ runner.temp }}/browser-image/
+          if-no-files-found: error
+          retention-days: 7
+
+  payroll-four-grant-rendered:
+    if: ${{ inputs.probe_scope == 'payroll-four-grant-rendered' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_PROFILE: legacy-2g
+      AIHR_CI_PG_MEMORY_GIB: '2'
+      AIHR_CI_PG_JIT: 'off'
+      DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
+      MIGRATION_DATABASE_URL: postgres://postgres@127.0.0.1:5433/ai_hr_test
+      TEST_DATABASE_URL: postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test
+      TEST_MIGRATION_DATABASE_URL: postgres://postgres@127.0.0.1:5433/ai_hr_test
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {capacity_profile: legacy, mobile: 'false'}
+      - name: Match candidate browser runtime
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Provision the disposable PostgreSQL database
+        run: |
+          test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          test -z "$(git status --porcelain)"
+          bash ../automation/.github/ci/postgres.sh reset
+          pnpm db:migrate
+      - name: Render Payroll under four direct company grants
+        run: |
+          mkdir -p "$RUNNER_TEMP/payroll-four-grant/operational-preview-heap"
+          node --conditions=react-server --import tsx ../automation/.github/ci/payroll-four-grant-rendered.mjs
+      - name: Remove owned database
+        if: always()
+        run: bash ../automation/.github/ci/postgres.sh stop
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: diagnostic-payroll-four-grant-rendered
+          path: ${{ runner.temp }}/payroll-four-grant/
           if-no-files-found: error
           retention-days: 7
