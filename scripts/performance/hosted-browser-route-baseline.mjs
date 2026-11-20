@@ -60,7 +60,9 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',
  TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',NEXT_TELEMETRY_DISABLED:'1'};
-const pgEnv={...env,AIHR_CI_UNIT:'db-1'};
+const pgEnv={...env,AIHR_CI_UNIT:'db-1',...(mixedLoad?{
+ AIHR_CI_PG_DURABLE_MIXED_LOAD:'1',AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'browser-mixed-load',
+}:{})};
 
 function start(label,command,args,childEnv) {
  const fd=openSync(join(privateDir,label+'.log'),'wx',0o600);
@@ -256,6 +258,17 @@ async function measureMixedLoad(command){
   '--format','{{.Id}} {{index .Config.Labels "aihr-owner"}}',name,
  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim().split(' ');
  assert(/^[0-9a-f]{64}$/.test(containerId)&&owner===name,'PostgreSQL container identity differs from the workload owner');
+ const configured=execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-U','postgres','-p','5433',
+  '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',
+  `select current_setting('fsync')='on' and current_setting('synchronous_commit')='on'
+    and current_setting('full_page_writes')='on' and current_setting('log_lock_waits')='on'
+    and exists(select 1 from pg_stat_statements)`,
+ ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000}).trim();
+ report.mixedDatabaseProfile={durableAndStatementStatistics:configured==='t'};
+ save();
+ assert.equal(configured,'t','The workload database lacks its required durability or statement instrumentation');
+
  const clockTicks=execFileSync('/usr/bin/getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}).trim();
  assert(/^[1-9][0-9]*$/.test(clockTicks));
  const resultPath=join(driverEvidence,'http-browser.json');
@@ -281,20 +294,32 @@ async function measureMixedLoad(command){
    const steady=data.steady;
    const roles=['employee','manager','companyHR','groupHR'];
    const kinds=['navigation','read','write'];
-   const knownRoutes=new Set(Object.values(routePools).flat());
+   const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
+    '/attendance/my-records/[date]','/attendance/application-history/[id]']);
    const routeRows=steady?.routeLatency?.rows??[];
    const routes=routeRows.filter(row=>roles.includes(row.role)&&kinds.includes(row.kind)
     &&typeof row.route==='string'&&(knownRoutes.has(row.route)||/^\/[a-z/-]{0,120}$/.test(row.route)))
     .map(row=>({role:row.role,kind:row.kind,route:row.route,...counts(row,sampleMetrics),
      ...(typeof row.action==='string'&&/^[A-Za-z][A-Za-z_-]{0,80}$/.test(row.action)?{action:row.action}:{}),
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
+   const driverFacts=data.driverFailures;
+   const safeFailure=fact=>{
+    if(!fact||!['Error','AssertionError','TimeoutError','AbortError','TypeError','AggregateError','unclassified'].includes(fact.kind))return null;
+    const code=typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|E[A-Z_]{2,40})$/.test(fact.code)?fact.code:null;
+    return {kind:fact.kind,code};
+   };
    report.mixedLoad={
     expectedUsers:500,steadyHoldMs:300000,applicationWorkers:1,fixtureVerified:report.fixtureVerified,
     latencyTargetMet:data.latencyTargetMet===true,trafficSettled:data.trafficSettled===true,
     functionalAccountingComplete:data.functionalAccountingComplete===true,
     functionalErrors:Array.isArray(data.functionalErrors)?data.functionalErrors.length:null,
     browserErrors:Array.isArray(data.browserErrors)?data.browserErrors.length:null,
-    driverFailures:data.driverFailures?Number(data.driverFailures.primary!==null)+(data.driverFailures.secondary?.length??0):null,
+    driverFailures:driverFacts?Number(driverFacts.primary!==null)+(driverFacts.secondary?.length??0):null,
+    driverPrimary:safeFailure(driverFacts?.primary),
+    driverSecondary:(driverFacts?.secondary??[]).slice(0,10).flatMap(fact=>{
+     const failure=safeFailure(fact);
+     return failure&&typeof fact.stage==='string'&&/^[a-z-]{2,64}$/.test(fact.stage)?[{stage:fact.stage,...failure}]:[];
+    }),
     load:counts(steady?.load,['holdMs','launched','peakActive','completed','failed','earlyLaneExits','iterations']),
     progress:counts(data.progress,['launched','active','peakActive','completed','failed','iterations','elapsedMs']),
     roles:Object.fromEntries(roles.map(role=>[
