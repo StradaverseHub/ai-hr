@@ -98,6 +98,38 @@ describe('idle sign-out', () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
+  it('keeps a single warning through a slow extension, and warns again at the next idle limit', async () => {
+    const {report,advance,signOut}=mount({idleTimeoutSeconds:300});
+    await advance(245_000);
+    let finish!:(response:Response)=>void;
+    report.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    const button=screen.getByRole('button',{name:'Stay signed in'});
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await advance(3_000);
+    expect(warning()?.open).toBe(true);
+    expect(screen.getByRole('button',{name:'Checking…'})).toBeDisabled();
+    expect(report).toHaveBeenCalledTimes(2);
+    await act(async()=>finish(ok(300)));
+    await advance(1_000);
+    expect(warning()?.open).toBe(false);
+    await advance(239_000);
+    expect(warning()?.open).toBe(true);
+    expect(signOut).not.toHaveBeenCalled();
+  });
+
+  it('keeps the warning and lets the operator retry after an unconfirmed extension', async () => {
+    const {report,advance}=mount({idleTimeoutSeconds:300});
+    await advance(245_000);
+    report.mockRejectedValueOnce(new Error('offline'));
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Stay signed in'})));
+    expect(warning()?.open).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent(en.sessionTimeout.extensionFailed);
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Stay signed in'})));
+    await advance(1_000);
+    expect(warning()?.open).toBe(false);
+  });
+
   it('real input keeps the session; one report follows when input stops', async () => {
     const { report, signOut, advance } = mount({ idleTimeoutSeconds: 300 });
     await advance(1_000);

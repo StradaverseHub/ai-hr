@@ -110,9 +110,9 @@ describe('authorized immutable historical income tax corrections',()=>{
   await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:subject.personId,tp3Year:2026,tp3ExemptionUsed:{PCB_TRA_BUSINESS:5000}}).onConflictDoUpdate({target:schema.employeeStatutoryMy.personId,set:{tp3Year:2026,tp3ExemptionUsed:{PCB_TRA_BUSINESS:5000}}});
   const uncapped=await previewTaxBasisRecalculation(ctx,selection());expect(uncapped.eligibleCount).toBe(1);
   await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TRA_BUSINESS'}).where(eq(schema.payComponent.id,travel));
-  const p=await previewTaxBasisRecalculation(ctx,selection());expect(p.blockedCount).toBe(1);expect(p.employees[0].reason).toMatch(/prior-employer/);expect(p.eligibleCount).toBe(0);
+  const p=await previewTaxBasisRecalculation(ctx,selection());expect(p.skippedCount).toBe(1);expect(p.employees[0].reason).toMatch(/prior-employer/);expect(p.eligibleCount).toBe(0);
   await owner.db.update(schema.employeeStatutoryMy).set({tp3ExemptionUsed:{}}).where(eq(schema.employeeStatutoryMy.personId,subject.personId));
-  const cleared=await previewTaxBasisRecalculation(ctx,selection());expect(cleared.blockedCount).toBe(1);expect(cleared.employees[0].reason).toMatch(/prior-employer/);
+  const cleared=await previewTaxBasisRecalculation(ctx,selection());expect(cleared.skippedCount).toBe(1);expect(cleared.employees[0].reason).toMatch(/prior-employer/);
  });
  it('records a failed employee outside its rolled-back transaction and requires a fresh preview to retry',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection());const failedSlip=p.employees[0].months[1].payslipId;
@@ -175,7 +175,7 @@ it('stamps accepted imported wages separately from file statutory totals and req
 it('keeps original item amounts and named affected figures visible when annual opening evidence is unknown',async()=>{
  await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TRA_BUSINESS'}).where(eq(schema.payComponent.id,travel));
  const before=await owner.db.select().from(schema.payslip),preview=await previewTaxBasisRecalculation(ctx,selection()),who=preview.employees[0];
- expect(who.status).toBe('blocked');expect(who.taxable).toBeNull();expect(who.months).toEqual([]);expect(who.partialMonths?.map(month=>month.period)).toEqual(['2026-01','2026-02','2026-03']);
+ expect(who.status).toBe('skipped');expect(who.taxable).toBeNull();expect(who.months).toEqual([]);expect(who.partialMonths?.map(month=>month.period)).toEqual(['2026-01','2026-02','2026-03']);
  expect(who.partialMonths?.[0].items.find(item=>item.code==='TRV')).toMatchObject({amount:500,includedInPcb:true,exemptionCode:'PCB_TRA_BUSINESS'});
  expect(who.missingEvidence).toMatchObject([{field:'priorEmployerExemptionUsage',affects:['taxableWages','exemptWages','optionalDeductions','pcbComparison']}]);
  await expect(confirm(preview)).rejects.toThrow(/eligible/);expect(await owner.db.select().from(schema.payslip)).toEqual(before);

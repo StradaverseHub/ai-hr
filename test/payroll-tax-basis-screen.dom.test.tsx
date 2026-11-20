@@ -16,8 +16,8 @@ import TaxBasisPage from '../app/payroll/income-tax-recalculation/page';
 import TaxBasisBatchPage from '../app/payroll/income-tax-recalculation/[id]/page';
 import type {TaxBasisBatch,TaxBasisEmployee,TaxBasisPreview,TaxBasisSelection} from '../lib/payroll-tax-basis';
 
-const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),recover:vi.fn(),continue:vi.fn(),push:vi.fn(),refresh:vi.fn(),options:vi.fn(),list:vi.fn(),get:vi.fn()}));
-vi.mock('../app/payroll/income-tax-recalculation/actions',()=>({previewTaxBasisAction:mocks.preview,confirmTaxBasisAction:mocks.confirm,recoverTaxBasisAction:mocks.recover,continueTaxBasisAction:mocks.continue}));
+const mocks=vi.hoisted(()=>({preview:vi.fn(),groupPreview:vi.fn(),groupConfirm:vi.fn(),groupProgress:vi.fn(),confirm:vi.fn(),recover:vi.fn(),continue:vi.fn(),push:vi.fn(),refresh:vi.fn(),options:vi.fn(),list:vi.fn(),get:vi.fn()}));
+vi.mock('../app/payroll/income-tax-recalculation/actions',()=>({previewTaxBasisAction:mocks.preview,confirmTaxBasisAction:mocks.confirm,recoverTaxBasisAction:mocks.recover,continueTaxBasisAction:mocks.continue,queueTaxBasisGroupPreviewAction:mocks.groupPreview,taxBasisGroupProgressAction:mocks.groupProgress,queueTaxBasisGroupConfirmationAction:mocks.groupConfirm}));
 vi.mock('../packs/payroll/service',()=>({taxBasisOptions:mocks.options,listTaxBasisBatches:mocks.list,getTaxBasisBatch:mocks.get}));
 vi.mock('../lib/authz',()=>({requirePayrollAccess:async()=>({tenantId:'tenant-a',userId:'actor-a'})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:mocks.push,refresh:mocks.refresh}),notFound:()=>{throw Error('NEXT_NOT_FOUND');}}));
@@ -58,7 +58,7 @@ describe('historical income tax basis review and confirmation',()=>{
     expect(screen.queryByLabelText('X001 · Outside company')).toBeNull();
     await user.click(screen.getByRole('checkbox',{name:'E001 · Aina'}));await generate();
     await user.click(screen.getByRole('checkbox',{name:'E002 · Daniel'}));absent();
-    await generate();await user.selectOptions(screen.getByLabelText('Company'),'company-b');absent();
+    await generate();await user.click(screen.getByRole('button',{name:/^Company/}));await user.click(screen.getByRole('checkbox',{name:'Example Company'}));await user.click(screen.getByRole('checkbox',{name:'Other Company'}));absent();
     expect(screen.queryByRole('checkbox',{name:'E001 · Aina'})).toBeNull();
     expect(screen.getByRole('checkbox',{name:'X001 · Outside company'})).toBeVisible();
     expect(mocks.confirm).not.toHaveBeenCalled();
@@ -72,8 +72,8 @@ describe('historical income tax basis review and confirmation',()=>{
   it('uses company-specific write scope while allowing a switch to an authorized company',async()=>{
     const user=userEvent.setup();show('en',{options:{...options,companies:[{id:'company-a',name:'Example Company',canRecalculate:false},{id:'company-b',name:'Other Company',canRecalculate:true}]}});
     expect(screen.getByRole('button',{name:'Preview Recalculation'})).toBeDisabled();
-    expect(screen.getByLabelText('Company')).toBeEnabled();
-    await user.selectOptions(screen.getByLabelText('Company'),'company-b');
+    expect(screen.getByRole('button',{name:/^Company/})).toBeEnabled();
+    await user.click(screen.getByRole('button',{name:/^Company/}));await user.click(screen.getByRole('checkbox',{name:'Example Company'}));await user.click(screen.getByRole('checkbox',{name:'Other Company'}));
     expect(screen.getByRole('button',{name:'Preview Recalculation'})).toBeEnabled();
     expect(mocks.preview).not.toHaveBeenCalled();expect(mocks.confirm).not.toHaveBeenCalled();
   });

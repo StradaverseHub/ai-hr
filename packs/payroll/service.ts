@@ -91,6 +91,7 @@ export * from '../../core/pay-formula';
 export * from '../../core/pay-formula-runtime';
 export * from '../../core/payroll-formula-inputs';
 export * from '../../core/payroll-tax-basis';
+export {requestTaxBasisGroupPreview,requestTaxBasisGroupConfirmation,readTaxBasisGroupProgress} from '../../core/payroll-tax-basis-group';
 
 export * from '../../core/payroll-employment-eligibility';
 export {draftPayFormula} from '../../core/pay-formula-ai';

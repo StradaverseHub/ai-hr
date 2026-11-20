@@ -1,3 +1,12 @@
+# Grouped income-tax recalculation candidate, 20 November 2026
+
+Candidate `7070_payroll_tax_basis_group_job`, journal index `10470`, timestamp
+`1795028007070`, SQL SHA-256 `12f23a15b7786a8d347bafdb0965a00a3cbf5ea8f9e04d320480df0a6d0d509b`. The staging ledger
+had 1,127 entries through `1795028007040`. The highest timestamp observed in
+registered worktree journal tails was `1795028007060`. Recheck target ledgers
+and competing allocations before staging admission. This registration inserts
+one bulk job kind without new grants or changes to payroll history.
+
 # Payroll Process company access — 20 November 2026
 
 Reserve `7040_payroll_original_employer_row_security`, journal idx 10440, timestamp 1795028007040.

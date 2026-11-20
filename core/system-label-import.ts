@@ -147,7 +147,7 @@ export async function downloadSystemLabelsWithData(ctx:SessionContext,p:SystemLa
   const c=await catalogue(tx),companyIds=[...new Set(p.companyIds)],kinds=[...new Set(p.kinds)];
   if(companyIds.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived))||!kinds.length||kinds.some(kind=>!LABEL_IMPORT_DEFINITIONS.some(d=>d.kind===kind)))throw new Error('Select accessible companies and supported lists.');
   const visible=new Set<string>();
-  for(const kind of ORGANISATION_LABEL_KINDS){
+  for(const kind of ORGANISATION_LABEL_KINDS.filter(kind=>kinds.includes(kind))){
    const table={department:s.department,position:s.position,cost_center:s.costCenter,business_unit:s.businessUnit}[kind];
    for(const row of await tx.select({id:table.id}).from(table).where(visibleLabelIdsCondition(table,kind,companyIds)))visible.add(row.id);
   }
@@ -157,7 +157,7 @@ export async function downloadSystemLabelsWithData(ctx:SessionContext,p:SystemLa
   const id=randomUUID();
   const bytes=await buildSystemLabelWorkbook({kinds,rows:data,includeStatus:p.includeInactive,exportId:id,references:{
    companies:c.companies.filter(co=>!co.archived&&(co.writable||rows.some(r=>r.values.Company===co.name||r.values.Company===co.id))).map(co=>[co.name,co.id]),
-   grades:c.grades.filter(g=>!g.archivedAt).map(g=>[g.code,g.name]),
+   grades:c.grades.filter(g=>!g.archivedAt&&flatScopeVisible(c,g.scopeCompanyIds)).map(g=>[g.code,g.name]),
    employees:c.employees.filter(e=>e.active&&e.code&&c.companies.some(co=>co.id===e.companyId&&co.writable)).map(e=>[e.code!,e.companyId,e.name])}});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-export',aggregateId:id,eventType:'system-labels.exported',actor:actorOf(ctx),payload:{version:1,companyIds,kinds,includeInactive:p.includeInactive,count:rows.length,rows:rows.map(r=>({id:r.id,key:rowKey(r.sheet,r.values),hash:fingerprint(r.values)}))}});
   return bytes;

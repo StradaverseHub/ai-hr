@@ -135,3 +135,36 @@ it('9808e638: retains ALLOW in Summary alongside the actual named earning rows',
  expect(screen.getByText('Meal allowance')).toBeVisible();
  expect(screen.getByText('Allowances').closest('tr')!.compareDocumentPosition(screen.getByText('Summary').closest('tr')!) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
 });
+
+
+describe('13369a07: bonus placement', () => {
+  const bonusSlip = (itemized: boolean): ProcessedPayslipViewRow => ({
+    ...payroll('0.00', false), bonus: itemized ? '0.00' : '150.00',
+    gross: '3150.00', totalDeductions: '347.00', net: '2803.00',
+    statutory: { epfEmployee: 347, ...(itemized ? { componentLines: [
+      {code:'B0001',name:'Angpow',amount:100,displayCategory:'bonus',buckets:[{bucket:'wage',amount:100}]},
+      {code:'B0002',name:'Service bonus',amount:50,displayCategory:'bonus',buckets:[{bucket:'wage',amount:50}]},
+    ] } : {}) },
+  });
+
+  it.each([true,false])('shows a single processed bonus total in Summary (itemized %s)', (itemized) => {
+    const grid = renderGrid([bonusSlip(itemized)]);
+    const rows = Array.from(document.querySelectorAll('tbody tr'));
+    const summary = screen.getByText('Summary').closest('tr')!;
+    const total = screen.getByText('Total BONUS').closest('tr')!;
+    expect(rows.indexOf(total)).toBeGreaterThan(rows.indexOf(summary));
+    expect(within(total).getAllByText('150.00')).toHaveLength(2);
+    for (const [name, amount] of [['Angpow','100.00'],['Service bonus','50.00']]) {
+      const item=screen.queryByText(name)?.closest('tr');
+      if (itemized) {
+        expect(rows.indexOf(item!)).toBeLessThan(rows.indexOf(summary));
+        expect(within(item!).getAllByText(amount)).toHaveLength(2);
+      } else expect(item).toBeUndefined();
+    }
+    const exported=historyGridDisplayRows(filterGridRows(grid.rows,{hideZero:true,hideSystem:false}));
+    expect(exported.filter(r=>historyGridLabelKey(r)==='totalBonus')).toHaveLength(1);
+    for (const [key,amount] of [['gross',3150],['totalDeductions',347],['net',2803]] as const) {
+      expect(exported.find(row=>row.labelKey===key)?.months[7]).toBe(amount);
+    }
+  });
+});

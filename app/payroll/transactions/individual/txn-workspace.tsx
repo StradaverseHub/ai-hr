@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { Badge, Button, Card, EmployeeName, Field, inputCls } from '@/components/ui';
+import { Combobox } from '@/components/ui/combobox';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
 import { formatMoney } from '@/lib/money';
 import { formatDate } from '@/lib/utils';
@@ -85,7 +86,7 @@ const UNITS = ['amount', 'qty', 'hours', 'days', 'units'] as const;
 
 /** Map a Payroll Item Master kind onto one of the ledger kinds. 'allowance' ⇒ earning, 'deduction' ⇒
  *  deduction (the two payable one-off classes). */
-const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', deduction: 'deduction' };
+const COMPONENT_KIND_TO_TXN: Record<string, TxnKind> = { allowance: 'earning', non_payable: 'earning', deduction: 'deduction' };
 
 /** The quantity a calculating pay item needs from the operator, or null when it needs none. Mirrors
  *  core/pay-rule.ts payRuleInputUnit — the SERVER resolves it from the stored rule and hands it down, so
@@ -100,6 +101,8 @@ type ItemOption = {
   label: string;
   kind: TxnKind;
   fromMaster: boolean;
+  nonPayable?: boolean;
+  searchDescription?: string;
   derives: boolean;
   formulaBuilder?: boolean;
   /** aac17dd0 — see TxnPayItem.amountEntryAllowed. */
@@ -172,6 +175,8 @@ export type TxnPayItem = {
   id: string;
   code: string;
   name: string;
+  description?: string | null;
+  nonPayable?: boolean;
   kind: string;
   /** 2da9937a — this item works its own amount out from its rule, so the Amount box is not the
    *  operator's to fill. Resolved on the server (payRuleDerivesAmount) from the stored rule. */
@@ -312,7 +317,6 @@ export function TxnWorkspace({
   payItems,
   payrollCycles,
   processHref,
-  requireComponent,
   currentPeriod,
   panelDefaultOpen,
   panelCookieKey,
@@ -339,27 +343,9 @@ export function TxnWorkspace({
   const effectiveDateHintId = useId();
   const dailyMonthHintId = useId();
 
-  // ── Item picker options (Payroll Item Master + the generic kinds) ──
-  const genericKinds = useMemo<readonly TxnKind[]>(
-    () => (requireComponent ? KINDS.filter((k) => k !== 'earning' && k !== 'deduction') : [...KINDS]),
-    [requireComponent],
-  );
   const [selectedId, setSelectedId] = useState('');
   const itemCompanyId = employees.find(employee => employee.employmentId === selectedId)?.companyId;
   const itemOptions = useMemo<ItemOption[]>(() => {
-    // A generic kind names no pay item, so there is no rule to calculate from — its amount is always typed.
-    const generic: ItemOption[] = genericKinds.map((k) => ({
-      value: `k:${k}`,
-      label: t(`kindLabel.${k}`),
-      kind: k,
-      fromMaster: false,
-      derives: false,
-      inputUnit: null,
-      // c11e81aa — a generic kind names no pay item, so no configuration says its figure is one figure
-      // for the month. Overtime, Unpaid and Leave are the per-day cases this screen exists for.
-      variesByDay: true,
-      readsCalendarDays: false,
-    }));
     const master: ItemOption[] = payItems
       .filter((c) => COMPONENT_KIND_TO_TXN[c.kind] != null && (c.appliedCompanyIds == null || !!itemCompanyId && c.appliedCompanyIds.includes(itemCompanyId)))
       .map((c) => ({
@@ -367,6 +353,8 @@ export function TxnWorkspace({
         label: `${c.code} — ${c.name}`,
         kind: COMPONENT_KIND_TO_TXN[c.kind],
         fromMaster: true,
+        nonPayable: c.nonPayable || c.kind === 'non_payable',
+        searchDescription: c.description ?? undefined,
         derives: c.derives,
         formulaBuilder: c.formulaBuilder===true,
         amountEntryAllowed: c.amountEntryAllowed===true,
@@ -374,12 +362,17 @@ export function TxnWorkspace({
         variesByDay: c.variesByDay,
         readsCalendarDays: c.readsCalendarDays === true,
       }));
-    return [...generic, ...master];
-  }, [payItems, t, genericKinds, itemCompanyId]);
-  const itemByValue = useMemo(() => new Map(itemOptions.map((o) => [o.value, o])), [itemOptions]);
-  const masterEarnings = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'earning'), [itemOptions]);
-  const masterDeductions = useMemo(() => itemOptions.filter((o) => o.fromMaster && o.kind === 'deduction'), [itemOptions]);
-  const defaultItemValue = requireComponent ? (masterEarnings[0]?.value ?? itemOptions[0]?.value ?? 'k:overtime') : 'k:earning';
+    return master;
+  }, [payItems, itemCompanyId]);
+  const itemByValue = useMemo(() => {
+    // Existing componentless ledger rows can still be edited with their original kind.
+    const legacy = KINDS.map((kind): ItemOption => ({
+      value: `k:${kind}`, label: t(`kindLabel.${kind}`), kind, fromMaster: false,
+      derives: false, inputUnit: null, variesByDay: true, readsCalendarDays: false,
+    }));
+    return new Map([...itemOptions, ...legacy].map(option => [option.value, option]));
+  }, [itemOptions, t]);
+  const defaultItemValue = itemOptions.find(option=>option.kind==='earning'&&!option.derives&&!option.formulaBuilder&&!option.nonPayable)?.value??'';
 
   // ── Left panel: filters + selection ──
   // A single-company admin has their one company chosen for them (an initialiser, not an effect —
@@ -1248,7 +1241,9 @@ export function TxnWorkspace({
         return;
       }
       const item = detail.componentId ? `c:${detail.componentId}` : `k:${detail.kind}`;
-      const resolvedItem = itemByValue.has(item) ? item : `k:${detail.kind}`;
+      const resolvedItem = detail.componentId
+        ? (itemByValue.has(item) ? item : '')
+        : mode === 'edit' ? item : '';
       openForm({
         mode: mode === 'edit' ? 'edit' : 'create',
         id: mode === 'edit' ? detail.id : null,
@@ -1267,8 +1262,6 @@ export function TxnWorkspace({
         // The run this row is already ON, for an edit. Null on a Duplicate: a copy is a NEW row and is
         // free to name any cycle, whatever run the row it was copied from happens to sit on.
         attachedBatchId: mode === 'edit' ? detail.batchId : null,
-        // A component that is archived (or hidden by requireComponent) is no longer an offered option;
-        // fall back to the generic kind rather than a select stuck on a value that does not exist.
         item: resolvedItem,
         txnDate: detail.txnDate,
         amount: Number(detail.amount).toString(),
@@ -1289,7 +1282,8 @@ export function TxnWorkspace({
   /** The item as it will be persisted: the picked option's kind + componentId, and (for a named master
    *  item) its label defaulted into the remarks so the specific pay item is readable in the ledger. */
   const resolveItem = (f: FormState) => {
-    const opt = itemByValue.get(f.item) ?? itemOptions[0];
+    const opt = itemByValue.get(f.item);
+    if (!opt) return null;
     return {
       kind: opt.kind,
       componentId: opt.fromMaster ? componentIdOf(opt.value) : null,
@@ -1370,6 +1364,7 @@ export function TxnWorkspace({
   const identicalExisting = useMemo(() => {
     if (!form || form.mode !== 'create') return false;
     const r = resolveItem(form);
+    if (!r) return false;
     // The figure that will be POSTED, which on a calculating item is the derived one — comparing the empty
     // Amount box against the ledger would report every such copy as identical.
     const amt = effectiveAmount;
@@ -1390,6 +1385,7 @@ export function TxnWorkspace({
   const runSave = async (f: FormState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
     const r = resolveItem(f);
+    if (!r || (f.mode === 'create' && !r.componentId)) return { ok: false, error: 'componentRequired' };
     const quantity = f.unit==='amount'||f.quantity.trim() === '' ? null : Number(f.quantity);
     const unit = f.unit === '' ? null : f.unit;
     const common = {
@@ -1452,7 +1448,8 @@ export function TxnWorkspace({
    */
   const runDailySave = async (d: DailyState, confirmed?: TxnScopeConfirm | null): Promise<TxnActionResult & { count?: number }> => {
     if (!selected) return { ok: false, error: 'noEmployeesSelected' };
-    const opt = itemByValue.get(d.item) ?? itemOptions[0];
+    const opt = itemByValue.get(d.item);
+    if (!opt?.fromMaster) return { ok: false, error: 'componentRequired' };
     const componentId = opt.fromMaster ? componentIdOf(opt.value) : null;
     return createIndividualTxnDayGridAction({
       employmentId: selected.employmentId,
@@ -2104,33 +2101,26 @@ export function TxnWorkspace({
                     </Field>
                   )}
                   <Field label={t('colItem')}>
-                    <select value={form.item} onChange={(e) => changeItem(e.target.value)} className={inputCls}>
-                      <optgroup label={t('itemGroupGeneral')}>
-                        {genericKinds.map((k) => (
-                          <option key={k} value={`k:${k}`}>
-                            {t(`kindLabel.${k}`)}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {masterEarnings.length > 0 && (
-                        <optgroup label={t('itemGroupEarnings')}>
-                          {masterEarnings.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {masterDeductions.length > 0 && (
-                        <optgroup label={t('itemGroupDeductions')}>
-                          {masterDeductions.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                    <Combobox
+                      controlled
+                      ariaLabel={t('colItem')}
+                      value={form.item}
+                      onValueChange={changeItem}
+                      placeholder={t('choosePayItem')}
+                      searchPlaceholder={t('searchPayItems')}
+                      noResultsLabel={t('noPayItemsFound')}
+                      legacySuffix=""
+                      options={[
+                      ...(form.mode === 'edit' && form.item.startsWith('k:')
+                        ? [{value:form.item,label:itemByValue.get(form.item)!.label}] : []),
+                        ...itemOptions.map(option => ({
+                          value: option.value,
+                          label: option.label,
+                          keywords: option.searchDescription,
+                          description: option.nonPayable ? t('nonPayableItemOption') : undefined,
+                        })),
+                      ]}
+                    />
                   </Field>
                   <div className="space-y-1.5">
                     <Field label={t('colEffectiveDate')}>
@@ -2239,7 +2229,7 @@ export function TxnWorkspace({
                   </p>
                 )}
                 {derivedError && <p className="text-xs text-destructive">{tErr(derivedError)}</p>}
-                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+
                 {/* c11e81aa — THE BANNER NOW ALSO FIRES WHEN THE NAMED CYCLE HAS NO RUN YET, AND NAMES IT.
                     It used to fire only when the month had no run at all and promise "the regular run";
                     with the cycle chosen up front, a month with a regular run but no Bonus run is exactly
@@ -2380,33 +2370,24 @@ export function TxnWorkspace({
                       exists to keep them out of. Greyed rather than removed: the item is real and the
                       list should not appear to lose entries when the mode changes. */}
                   <Field label={t('colItem')}>
-                    <select value={daily.item} onChange={(e) => changeDailyItem(e.target.value)} className={inputCls}>
-                      <optgroup label={t('itemGroupGeneral')}>
-                        {genericKinds.map((k) => (
-                          <option key={k} value={`k:${k}`}>
-                            {t(`kindLabel.${k}`)}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {masterEarnings.length > 0 && (
-                        <optgroup label={t('itemGroupEarnings')}>
-                          {masterEarnings.map((o) => (
-                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {masterDeductions.length > 0 && (
-                        <optgroup label={t('itemGroupDeductions')}>
-                          {masterDeductions.map((o) => (
-                            <option key={o.value} value={o.value} disabled={!o.variesByDay}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </select>
+                    <Combobox
+                      controlled
+                      ariaLabel={t('colItem')}
+                      value={daily.item}
+                      onValueChange={changeDailyItem}
+                      placeholder={t('choosePayItem')}
+                      searchPlaceholder={t('searchPayItems')}
+                      noResultsLabel={t('noPayItemsFound')}
+                      legacySuffix=""
+                      options={[
+                        ...itemOptions.map(option => ({
+                          value: option.value,
+                          label: option.label,
+                          keywords: option.searchDescription,
+                          description: option.nonPayable ? t('nonPayableItemOption') : undefined, disabled: !option.variesByDay,
+                        })),
+                      ]}
+                    />
                   </Field>
                 </div>
 
@@ -2571,7 +2552,7 @@ export function TxnWorkspace({
                 {pickedItem?.fromMaster && !derives && (
                   <p className="text-xs text-muted-foreground">{t('dayGridNoRuleHint')}</p>
                 )}
-                {requireComponent && <p className="text-xs text-muted-foreground">{t('componentRequiredHint')}</p>}
+
                 {showWaitingNotice && isPeriod(daily.payPeriod) && (
                   <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
                     {resolvedCycle

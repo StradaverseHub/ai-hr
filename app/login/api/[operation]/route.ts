@@ -1,3 +1,4 @@
+import { webSessionChannel } from '@/lib/internal-auth/web-session';
 import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { rotateEntraRefresh, revokeEntraSession, touchEntraSession } from '@/lib/entra/sessions';
 import { EntraError } from '@/lib/entra/model';
@@ -24,7 +25,8 @@ async function reportActivity(request: NextRequest) {
     release = admitActivity();
     const source = trustedRequestSource(request);
     if (source) await takeRequestBudget(['auth-source', source, 'activity'], 600, 60);
-    const activity = await recordWebActivity(request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, {
+    const token = request.cookies.get(INTERNAL_SESSION_COOKIE)?.value;
+    const activity = await recordWebActivity(token, {
       recorders: [touchSession, touchEntraSession],
       liveIdentity: async () => (await import('@/lib/internal-auth/web-session')).currentInternalIdentity(),
     });
@@ -35,7 +37,7 @@ async function reportActivity(request: NextRequest) {
     }
     if (activity.status === 'not-enforced') return NextResponse.json({ step: 'not-enforced' }, { headers: responseHeaders });
     const { status: _status, ...allowance } = activity;
-    return NextResponse.json({ step: 'active', ...allowance }, { headers: responseHeaders });
+    return NextResponse.json({ step: 'active', ...allowance, sessionChannel: webSessionChannel(token) }, { headers: responseHeaders });
   } catch (error) {
     if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,
       headers: { ...responseHeaders, 'retry-after': String(error.retryAfter) } });

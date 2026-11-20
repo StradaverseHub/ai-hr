@@ -64,6 +64,8 @@ export default async function IndividualTransactionPage({
     appliedCompanyIds: c.appliedCompanyIds?.filter(id => scopeIds.includes(id)) ?? null,
     code: c.code,
     name: c.name,
+    description: c.description,
+    nonPayable: c.isNonPayable,
     kind: c.kind,
     formulaBuilder: c.rule?.kind === 'formula_builder',
     // aac17dd0 — whether this item's single Add/Edit form may offer a typed Amount: both formula kinds do
