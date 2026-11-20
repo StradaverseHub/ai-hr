@@ -13,6 +13,28 @@ function discoveryKey(role,path,pass){
 
 const passes=['first','repeat'];
 
+export function summarizeStaticHeadingTimings(observations){
+ const headings=new Map();
+ for(const row of observations){
+  if(!passes.includes(row.pass)||row.outcome!=='heading-visible'||!Number.isSafeInteger(row.headingMs)||row.headingMs<0)continue;
+  const pair=headings.get(row.path)??{};
+  pair[row.pass]=row;
+  headings.set(row.path,pair);
+ }
+ const pairs=[...headings.values()].filter(pair=>pair.first&&pair.repeat&&pair.first.role===pair.repeat.role);
+ const timing=Object.fromEntries(passes.map(pass=>{
+  const samples=pairs.map(pair=>pair[pass].headingMs).sort((a,b)=>a-b);
+  const percentile=fraction=>samples[Math.ceil(samples.length*fraction)-1]??null;
+  return [pass,{p50AcrossRoutesMs:percentile(.50),p95AcrossRoutesMs:percentile(.95),
+   routesAtOrAbove1s:samples.filter(ms=>ms>=1000).length}];
+ }));
+ const slowOnBothPasses=pairs.filter(({first,repeat})=>Math.min(first.headingMs,repeat.headingMs)>=1000)
+  .sort((a,b)=>Math.min(b.first.headingMs,b.repeat.headingMs)-Math.min(a.first.headingMs,a.repeat.headingMs)
+   ||a.first.path.localeCompare(b.first.path))
+  .map(({first,repeat})=>({path:first.path,role:first.role,firstHeadingMs:first.headingMs,repeatHeadingMs:repeat.headingMs}));
+ return {milestone:'visible-heading',routesWithPairedTimings:pairs.length,...timing,slowOnBothPasses};
+}
+
 export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha,recovery}){
  assert.match(sourceSha,/^[a-f0-9]{40}$/);
  assert.match(controllerSha,/^[a-f0-9]{40}$/);
@@ -130,6 +152,7 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha,recov
   releaseEligible:false,sourceSha,controllerSha,buildId:first.buildId,
   ...(recovery&&{recovery:{...recovery,buildId:recoveredBuildId,parts:STATIC_CENSUS_PARTS}}),
   compiledStaticPages:staticPaths.size,staticAttempts:observations.length,staticPagesWithTwoHeadings,byOutcome,
+  staticHeadingTimings:summarizeStaticHeadingTimings(observations),
   staticObservations:observations.sort((a,b)=>a.path.localeCompare(b.path)||a.pass.localeCompare(b.pass)),
   compiledDynamicTemplates:reference.dynamicTemplateCount,dynamicTemplatesWithHeading:dynamicObserved.size,
   dynamicTemplatesWithoutHeading:reference.dynamic.templates.filter(template=>!dynamicObserved.has(template)),
@@ -147,5 +170,7 @@ if(process.argv[1]&&pathToFileURL(process.argv[1]).href===import.meta.url){
  writeFileSync(join(temp,'browser-static-census.json'),JSON.stringify(report,null,2),{mode:0o600});
  console.log(JSON.stringify({compiledStaticPages:report.compiledStaticPages,staticAttempts:report.staticAttempts,
   staticPagesWithTwoHeadings:report.staticPagesWithTwoHeadings,byOutcome:report.byOutcome,
+  staticHeadingTimingSamples:report.staticHeadingTimings.routesWithPairedTimings,
+  staticRoutesSlowOnBothPasses:report.staticHeadingTimings.slowOnBothPasses.length,
   dynamicTemplatesWithHeading:report.dynamicTemplatesWithHeading}));
 }
