@@ -61,7 +61,10 @@ describe('combined Microsoft sign-in and shared idle-session policy',()=>{
  it('keeps a fresh Microsoft cookie on the real activity endpoint rather than returning 401 within seconds',async()=>{
   const session=await createEntraSession(config,object,false);now+=5000;
   const response=await POST(new NextRequest('https://hr.test/login/api/activity',{method:'POST',headers:{origin:'https://hr.test','content-type':'application/json',cookie:`__Host-aihr_internal=${session.access_token}`},body:'{}'}),{params:Promise.resolve({operation:'activity'})});
-  expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'active',idleTimeoutSeconds:900,remainingSeconds:895});
+  expect(response.status).toBe(200);
+  const reply=await response.json();
+  expect(reply).toEqual({step:'active',idleTimeoutSeconds:900,remainingSeconds:895,sessionChannel:expect.stringMatching(/^[a-f0-9]{64}$/)});
+  expect(JSON.stringify(reply)).not.toContain(session.access_token);
   expect(response.cookies.get('__Host-aihr_internal')).toBeUndefined();expect(await readEntraSession(session.access_token)).not.toBeNull();
  });
  it('returns expired through the shared provider contract after Microsoft reaches the organization limit',async()=>{

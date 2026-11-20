@@ -771,7 +771,6 @@ export async function createIndividualTxnAction(
   const { s, scopeIds } = await scopedAdmin();
   if (!input.companyId || !scopeIds.includes(input.companyId)) return { ok: false, error: 'outOfScope' };
   if (!input.employmentId) return { ok: false, error: 'noEmployeesSelected' };
-  if (!input.componentId) return { ok: false, error: 'componentRequired' };
   if (!input.batchId && !isPayPeriod(input.payPeriod)) return { ok: false, error: 'periodInvalid' };
   // 49e7e0a2 — read the target run's status BEFORE the write, so a successful save can report whether it
   // landed on a processed run without re-reading (and possibly re-deciding) afterwards.
