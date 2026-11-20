@@ -3,7 +3,7 @@
 import {use,type ReactNode} from 'react';
 import {NextIntlClientProvider} from 'next-intl';
 import {defaultLocale,isLocale} from './config';
-import {messagesForLocale} from './catalogs';
+import {messagesForLocale} from '@/i18n/catalogs';
 
 /** Public build-static copy travels in cached assets, rather than every personalized RSC response.
  * Only catalogues are cached: the request's locale and all HR data remain independently resolved. */
