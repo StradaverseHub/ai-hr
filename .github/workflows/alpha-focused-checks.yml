@@ -61,7 +61,7 @@ on:
         default: false
         type: boolean
       browser_static_shard:
-        description: Static census shard (0–7), all, split:N to recover shard N, retry-timeouts, or fixture-records for seeded dynamic routes
+        description: Static census shard, route follow-up, or payroll-corrections for the fictional correction round trip
         default: ''
         type: string
       model_eval:
@@ -121,7 +121,7 @@ jobs:
       - name: Validate bounded manifest
         id: selection
         run: |
-          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
+          if [[ -n "$BROWSER_STATIC_SHARD" ]] && { [[ ! "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|retry-timeouts|fixture-records|payroll-corrections)$ ]] || [[ "$BROWSER_BASELINE" != true || "$BROWSER_FIXTURE_ONLY" == true ]]; }; then
             exit 2
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
