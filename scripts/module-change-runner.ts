@@ -26,6 +26,7 @@
 import { and, eq, inArray, isNull, lt, or, sql } from 'drizzle-orm';
 import { createDb, type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
+import { installAttendanceStandardRule } from '../db/attendance-installation';
 import { waitAccessConfigurationExclusiveTx } from '../core/access-exclusive-wait';
 import { activatorsFor, mergeOutcomes, type ActivationOutcome } from '../core/module-activation';
 import { deactivationBlockers, unansweredBlockers } from '../core/module-deactivation';
@@ -251,6 +252,12 @@ export async function applyModuleChange(tx: Tx, req: Request): Promise<Activatio
   // repeat one insert and report the repeats as skips — a false "already present" in the audit event.
   for (const activator of tenantLevel) {
     outcomes.push(await activator({ tx, tenantId: req.tenantId, companyId: null, firstInstall }));
+  }
+  if (req.moduleCode === 'attendance') {
+    const created = await installAttendanceStandardRule(tx, req.tenantId);
+    outcomes.push(created
+      ? { seeded: 1, skipped: 0, detail: ['attendance_rule: seeded Standard'] }
+      : { seeded: 0, skipped: 1, detail: ['attendance_rule: existing configuration preserved'] });
   }
   for (const activator of perCompany) {
     for (const target of targets) {

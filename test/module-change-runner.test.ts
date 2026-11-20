@@ -9,7 +9,7 @@
  * it back on has edited its settings in the meantime. Re-seeding would silently revert their
  * configuration, and it would look like the product losing their work rather than like an install step.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -162,6 +162,37 @@ describe('what the runner refuses, and why refusing beats warning', () => {
 });
 
 describe('install, reactivate, disable', () => {
+  it('installs Standard once at tenant scope and preserves it on Attendance reactivation', async () => {
+    await owner.db.insert(schema.subscriptionLine).values({ tenantId: b.tenantId, moduleCode: 'attendance' });
+    await owner.db.insert(schema.attendancePolicy).values({
+      tenantId: b.tenantId,
+      companyId: b.companyId,
+      workStart: '09:00:50',
+      lateAfter: '09:12:00',
+    }).onConflictDoUpdate({
+      target: schema.attendancePolicy.companyId,
+      set: { workStart: '09:00:50', lateAfter: '09:12:00' },
+    });
+    const rules = () => owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.tenantId, b.tenantId));
+    expect(await rules()).toEqual([]);
+
+    await run(request({ moduleCode: 'attendance', companyId: b.companyId }));
+    const [standard] = await rules();
+    expect(standard).toMatchObject({ name: 'Standard', status: 'active', isDefault: true, lateGracePeriodMinutes: 12 });
+
+    await owner.db.update(schema.attendanceRule).set({ lateGracePeriodMinutes: 17 }).where(eq(schema.attendanceRule.id, standard.id));
+    const reopened = await run(request({ moduleCode: 'attendance', companyId: b.companyId }));
+    expect(reopened.detail).toContain('attendance_rule: existing configuration preserved');
+    expect(await rules()).toEqual([expect.objectContaining({ id: standard.id, lateGracePeriodMinutes: 17 })]);
+
+    const audits = await owner.db.select({ actor: schema.domainEvent.actorType }).from(schema.domainEvent).where(and(
+      eq(schema.domainEvent.tenantId, b.tenantId),
+      eq(schema.domainEvent.aggregateId, standard.id),
+      eq(schema.domainEvent.eventType, 'attendance-rule.created'),
+    ));
+    expect(audits).toEqual([{ actor: 'system' }]);
+  });
+
   it('first install creates the entitlement and reports itself as a first install', async () => {
     const code = uniq('installs');
     await defineModule(code);

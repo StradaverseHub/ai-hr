@@ -48,6 +48,7 @@ import { seedProfileOptions } from '../core/profile-options';
 import {seedEmployeeHomeCardCatalog} from '../core/dashboard-card-config';
 import { seedGuides } from './seed-guides';
 import { lockOwnerTenantCatalogsTx } from './provision-ownership';
+import { installAttendanceStandardRule } from './attendance-installation';
 
 /** Mirrors core/auth.ts INVITE_TTL_DAYS and scripts/auth/bootstrap-invite.ts — one invitation lifetime. */
 export const INVITE_TTL_DAYS = 7;
@@ -375,6 +376,9 @@ export async function provisionTenant(tx: Tx, input: ProvisionInput): Promise<Pr
     }
     if (picked.length) {
       await tx.insert(tenantModule).values(picked.map((moduleCode) => ({ tenantId, moduleCode, status: 'active' })));
+    }
+    if (picked.includes('attendance')) {
+      await installAttendanceStandardRule(tx, tenantId);
     }
 
     // THE SETTINGS AXIS, which this step was missing entirely — written from `defaultOnInstall`, and

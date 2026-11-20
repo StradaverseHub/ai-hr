@@ -606,6 +606,7 @@ describe('0295 — tenant provisioning', () => {
     expect(rows.every((x) => x.status === 'active')).toBe(true);
     // Nothing else was granted: a purchase is exactly what was ticked, and core modules take no row.
     expect(rows).toHaveLength(2);
+    expect(await owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.tenantId, r.tenantId))).toEqual([]);
 
     // …AND THE SETTINGS AXIS, which had no assertion here at all (review r3). Buying `payroll` must
     // land `payroll.individual_txn_pay_enabled = true`, because that key decides whether the one-off
@@ -633,6 +634,19 @@ describe('0295 — tenant provisioning', () => {
       .catch((e) => e);
     expect(packless).toBeInstanceOf(Error);
     expect(await owner.db.select({ id: schema.company.id }).from(schema.company)).toHaveLength(1);
+  });
+
+  it('provisions an Attendance customer with one usable Standard rule before sign-in', async () => {
+    const result = await owner.db.transaction(tx => provisionTenant(tx, {
+      name: 'Attendance Bhd',
+      adminEmail: 'ops@attendance.test',
+      baseUrl: 'https://hr.test',
+      modules: ['attendance'],
+    }));
+    const rules = await owner.db.select().from(schema.attendanceRule).where(eq(schema.attendanceRule.tenantId, result.tenantId));
+    expect(rules).toEqual([expect.objectContaining({
+      name: 'Standard', status: 'active', isDefault: true, lateGracePeriodMinutes: 15,
+    })]);
   });
 
   it('entitlements roll back with the rest when a LATER provisioning step fails', async () => {
