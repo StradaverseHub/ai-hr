@@ -2,7 +2,7 @@ import {performance} from 'node:perf_hooks';
 import {setTimeout as delay} from 'node:timers/promises';
 import {Worker} from 'node:worker_threads';
 import {driverErrorFact,startMeasuredPreflightLockInterval} from './driver-shutdown.mjs';
-import {originalAuditQueryCategory} from './lock-sample-attribution.mjs';
+import {originalProbeQueryCategory} from './lock-sample-attribution.mjs';
 import {measuredClockIdentity,measuredNativeBracket,readMeasuredClockCs} from './measured-lock-clock.mjs';
 
 export const measuredLockSampleLimit=4097; // 4096 accepted rows plus the existing overflow sentinel.
@@ -89,20 +89,22 @@ function decodeCombinedPreflightLocks(rows,categorized){
   &&(entry.granted?entry.blockers===null:Array.isArray(entry.blockers)&&entry.blockers.length<=1024&&entry.blockers.every(validPid)))){
   throw Error('Combined lock probe advisory census refused');
  }
- return {activity,locks:locks.map(row=>({...row,category:originalAuditQueryCategory(row.category)}))};
+ return {activity,locks:locks.map(row=>({...row,category:originalProbeQueryCategory(row.category)}))};
 }
 
 async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,categorized,readClockCs){
  const waitCategories=appWaitCategories(sql,categorized);
  const knownAudit=sql`concat(l.classid,':',l.objid,':',l.objsubid)=any(${auditLocks}::text[])`;
+ const knownAccess=sql`concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[])`;
  // The bounded query prefix stays in PostgreSQL. A label describes the observed statement, not its lock acquisition site.
  const clientOpenedCs=readClockCs();
  const rows=await sql`with opened as materialized (
    select pg_read_file('/proc/uptime',0,64) as uptime where pg_backend_pid()=${pid}::int
   ), backends as materialized (
    select a.* from opened o cross join lateral (
-    select pid,backend_type,state,wait_event_type,wait_event,usename,
-     case when usename='ai_hr_app' then left(query,160) end as app_query
+    select pid,backend_type,state,wait_event_type,wait_event,usename,application_name,
+     case when usename='ai_hr_app' then left(query,320) end as app_query,
+     case when usename in('ai_hr_app','ai_hr_owner','postgres') then left(query,320) end as local_query
     from pg_stat_activity where datname=current_database()
     offset case when o.uptime is not null then 0 else 1 end
    ) a
@@ -119,11 +121,34 @@ async function observeCombinedPreflightLocks(sql,pid,accessLocks,auditLocks,cate
      when a.app_query ~* '^[[:space:]]*select[[:space:]]+app[.]append_auth_event[[:space:]]*[(]' then 'auth-audit-append'
      when a.app_query ~* '^[[:space:]]*select[[:space:]]+app[.]reward_access_observe[[:space:]]*[(]' then 'rewards-access-observe'
      when a.app_query ~* '^[[:space:]]*insert[[:space:]]+into[[:space:]]+((public|"public")[.])?(domain_event|"domain_event")([[:space:]]|[(])' then 'audit-append'
-     else 'unknown' end else 'unknown' end as category
+     else 'unknown' end
+    when ${knownAccess} then case
+     when a.local_query ~* '^[[:space:]]*select[[:space:]]+(pg_catalog[.])?pg_(try_)?advisory_xact_lock_shared[[:space:]]*[(]' then 'access-acquire-shared'
+     when a.local_query ~* '^[[:space:]]*select[[:space:]]+(pg_catalog[.])?pg_(try_)?advisory_xact_lock[[:space:]]*[(]' then 'access-acquire-exclusive'
+     when a.local_query ~* 'app[.]access_(workforce_write|configuration_write|configuration_bounded_wait)_lock[[:space:]]*[(]' then 'access-owner-entry'
+     when a.local_query ~* 'insert[[:space:]]+into[[:space:]]+(public[.])?"?personnel_private_search"?' then 'personnel-search-token'
+     when a.local_query ~* 'app[.]personnel_(search|private_search|list_rows|overview)' then 'personnel-search-read'
+     when a.local_query ~* 'app[.]ai_centre_' then 'ai-control'
+     when a.local_query ~* 'app[.]probation_(write_lock|reconciliation|storage_runner)|probation_reconciliation_(intent|schedule)' then 'probation-reconciliation'
+     when a.local_query ~* 'app[.]reward_review_plan_company_tick' then 'reward-plan-outbox'
+     when a.local_query ~* 'app[.]reward_' then 'rewards-access'
+     when a.local_query ~* '\\m(app[.]attendance_|"?attendance(_[a-z_]+)?"?\\M)' then 'attendance'
+     when a.local_query ~* '\\m(app[.]leave_|"?leave_request"?\\M)' then 'leave'
+     when a.local_query ~* '\\m(app[.]payroll_|"?payroll_batch"?\\M)' then 'payroll'
+     when a.local_query ~* '\\m(app[.]bulk_job_|"?bulk_job"?\\M)' then 'bulk-job'
+     when a.local_query ~* '\\m"?role_assignment"?\\M' then 'role-assignment'
+     when a.local_query ~* '\\m"?(app_user|internal_auth_session)"?\\M' then 'account'
+     when a.local_query ~* '^[[:space:]]*(commit|rollback)\\M' then case
+      when a.application_name='aihr-fixture-mixed-worker' then 'worker-transaction-end'
+      when a.application_name='aihr-fixture-mixed-web' then 'web-transaction-end'
+      else 'transaction-end' end
+     when a.local_query ~* '^[[:space:]]*select[[:space:]]+set_config[[:space:]]*[(]' then 'session-context'
+     else 'unknown' end
+    else 'unknown' end as category
    from pg_locks l join backends a on a.pid=l.pid
    where l.database=(select oid from pg_database where datname=current_database())
     and l.locktype='advisory' and (not l.granted or (
-     (concat(l.classid,':',l.objid,':',l.objsubid)=any(${accessLocks}::text[]) or ${knownAudit}) and l.mode='ExclusiveLock'
+     (${knownAccess} or ${knownAudit}) and l.mode='ExclusiveLock'
     )) order by l.granted,(l.granted and ${knownAudit}),a.pid limit 40
     offset case when o.uptime is not null then 0 else 1 end
    ) locked
