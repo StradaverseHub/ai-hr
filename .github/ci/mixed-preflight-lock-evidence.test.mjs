@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {originalAdvisoryAttribution,projectMixedPreflightLockWaits} from '../../scripts/performance/lock-sample-attribution.mjs';
+import {createPreflightRequestTimeline,originalAdvisoryAttribution,projectMixedPreflightLockWaits} from '../../scripts/performance/lock-sample-attribution.mjs';
 
 const edge={source:'original-sample',family:'audit-chain',waiterMode:'ExclusiveLock',
  blockerMode:'ExclusiveLock',blockerState:'granted',waiterCategory:'auth-audit-append',
@@ -49,4 +49,19 @@ test('retains recognized Access statements and rejects labels from another lock 
  assert.equal(projected.advisoryEdges[0].waiterCategory,'access-acquire-shared');
  assert.equal(projected.advisoryEdges[0].blockerCategory,'worker-transaction-end');
  assert.equal(projected.advisoryEdges[1].blockerCategory,'unknown');
+});
+
+test('reports only allowed request categories overlapping the original sample',()=>{
+ const timeline=createPreflightRequestTimeline();
+ const actor={role:'groupHR',channel:'browser'};
+ timeline.begin({...actor,path:'/login/api/mfa',method:'POST'},100)(130);
+ timeline.begin({...actor,path:'/admin/personnel/e69c7759-ff36-4209-9b03-d088da89e602?search=private',method:'GET'},132)(151);
+ timeline.begin({...actor,path:'/admin/personnel?employeeCode=private',method:'GET'},154);
+ timeline.begin({...actor,path:'/unknown/private',method:'GET'},134);
+ const overlap=timeline.overlapping(136,148);
+ assert.deepEqual(overlap,[{...actor,route:'/admin/personnel/[employmentId]',method:'GET'}]);
+ const [projection]=projectMixedPreflightLockWaits([{...wait,preflightRequestOverlap:[...overlap,
+  {...actor,route:'/unknown/private',method:'GET'},
+ ]}]);
+ assert.deepEqual(projection.requestOverlap,overlap);
 });

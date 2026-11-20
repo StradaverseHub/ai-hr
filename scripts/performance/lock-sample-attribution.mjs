@@ -1,4 +1,40 @@
 /** Optional fictional-run diagnostic. The original blocking sample is already retained. */
+import {routePools} from './system-route-manifest.mjs';
+
+const preflightRoles=new Set(Object.keys(routePools));
+const preflightPaths=new Set([...Object.values(routePools).flat().map(route=>route.split('?',1)[0]),
+ '/login','/login/start','/login/api/login','/login/api/password','/login/api/mfa','/login/api/activity',
+ '/admin/personnel/search','/api/personnel/search','/admin/personnel/[employmentId]']);
+const personnelRecord=/^\/admin\/personnel\/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+export function lockRequestCategory({role,path,method,channel}){
+ if(!preflightRoles.has(role)||!['GET','POST'].includes(method)||!['http','browser'].includes(channel)
+  ||typeof path!=='string')return null;
+ const pathname=path.split('?',1)[0];
+ const route=preflightPaths.has(pathname)?pathname:personnelRecord.test(pathname)?'/admin/personnel/[employmentId]':null;
+ return route?{role,route,method,channel}:null;
+}
+
+export function createPreflightRequestTimeline(){
+ const recent=[];
+ return {
+  begin(raw,started){
+   const request=lockRequestCategory(raw);
+   if(!request)return ()=>{};
+   const row={request,started,ended:Infinity};
+   recent.push(row);
+   if(recent.length>512)recent.shift();
+   return ended=>{row.ended=ended;};
+  },
+  overlapping(started,ended){
+   const byCategory=new Map();
+   for(const row of recent){
+    if(row.started>ended||row.ended<started)continue;
+    byCategory.set(JSON.stringify(row.request),row.request);
+   }
+   return [...byCategory.values()].slice(0,12);
+  },
+ };
+}
 const families=new Set(['access-configuration','ai-control','audit-chain','employment','leave-dependency-configuration','leave-dependency-employment','payroll-history','pay-component-catalog','unclassified']);
 const modes=new Set(['ShareLock','ExclusiveLock']);
 const categories=new Set(['advisory-exclusive','advisory-shared','rewards-authority','rewards-library','rewards-company','audit-append','ai-action-pause','unknown']);
@@ -83,6 +119,8 @@ export function projectMixedPreflightLockWaits(rows){
    activityWaiters:count(row.appConnections.waitingOnLock),
    advisoryWaiters:count(row.appConnections.sampledAdvisoryWaiters),
    waitKinds:waitCounts?Object.fromEntries(waitKinds.map(kind=>[kind,count(waitCounts[kind])])):null,
+   ...(Array.isArray(row.preflightRequestOverlap)&&{requestOverlap:row.preflightRequestOverlap.slice(0,12)
+    .map(request=>lockRequestCategory({...request,path:request?.route})).filter(Boolean)}),
    advisoryEdges:edges.filter(edge=>edge?.source==='original-sample'&&families.has(edge.family)
     &&modes.has(edge.waiterMode)&&modes.has(edge.blockerMode)&&states.has(edge.blockerState))
     .slice(0,maxEdges).map(edge=>({family:edge.family,waiterMode:edge.waiterMode,
