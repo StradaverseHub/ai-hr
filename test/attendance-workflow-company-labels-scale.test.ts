@@ -1,5 +1,8 @@
 import { afterAll, expect, it } from 'vitest';
 import { attendanceWorkflowCompanyLabels, attendanceWorkflowCreationCompanies } from '../app/admin/attendance/approval-workflow/company-labels';
+import { isWorkflowAssignmentField } from '../app/admin/attendance/approval-workflow/assignment-field';
+import { readWorkflowAssignmentOptions } from '../app/admin/attendance/approval-workflow/assignment-options';
+import { attendanceWorkflowCriteriaFields } from '../lib/attendance-workflow';
 import { attendanceApplicationFilterOptions } from '../packs/attendance/service';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 import { closeAll, migrateTestDb, resetDb, seedBase } from './harness';
@@ -28,5 +31,8 @@ it('preserves workflow company labels and scope without fetching employee or app
     expect(await attendanceWorkflowCreationCompanies(session, scope)).toEqual({
       companies: previous.companies, canManageAllCompanies: previous.canManageAllCompanies === true,
     });
+    for (const { key, options } of attendanceWorkflowCriteriaFields(previous, type => type)) {
+      if (isWorkflowAssignmentField(key)) expect(await readWorkflowAssignmentOptions(session, scope, key), key).toEqual(options);
+    }
   }
 }, 120000);

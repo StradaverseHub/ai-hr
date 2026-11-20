@@ -4,11 +4,12 @@ import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui';
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { ATTENDANCE_CRITERIA_GROUP_LIMIT, attendanceCriteriaFromGroups, attendanceCriteriaGroups, type AttendanceCriteriaGroup, type AttendanceWorkflowCriteria } from '@/lib/attendance-workflow';
+import { isWorkflowAssignmentField, type WorkflowAssignmentField } from './assignment-field';
 type Field = { key: keyof AttendanceCriteriaGroup; label: string; options: { id: string; name: string }[] };
 /** Workflow Assignment as OR groups: inside a group every chosen field must match; any group assigns the employee. */
 export function AssignmentGroupsEditor({ criteria, fields, onChange, catalog }: {
   criteria: AttendanceWorkflowCriteria; fields: Field[]; onChange: (criteria: AttendanceWorkflowCriteria) => void;
-  catalog?: { load: () => void; status: ReactNode };
+  catalog?: { load: (field: WorkflowAssignmentField) => void; status: (field: WorkflowAssignmentField) => ReactNode };
 }) {
   const t = useTranslations('attendanceWorkflow'), g = useTranslations('attendanceWorkflow.groups'), choices = useTranslations('admin.leave');
   const groups = attendanceCriteriaGroups(criteria);
@@ -25,8 +26,10 @@ export function AssignmentGroupsEditor({ criteria, fields, onChange, catalog }: 
         <div className="grid gap-4 sm:grid-cols-2">{fields.map(({ key, label, options: items }) => {
           const selected = group[key] ?? [];
           const unavailable = selected.filter(id => !items.some(item => item.id === id));
+          const field = isWorkflowAssignmentField(key) ? key : undefined;
           return <ChipMultiSelect key={key} name={groups.length > 1 ? `${key}-${groupIndex}` : key} label={t(label)}
-            onOpen={key==='employmentTypes'?undefined:catalog?.load} panelStatus={key==='employmentTypes'?undefined:catalog?.status}
+            onOpen={catalog && field ? () => catalog.load(field) : undefined}
+            panelStatus={catalog && field ? catalog.status(field) : undefined}
             options={[...items.map(item => ({ value: item.id, label: item.name })), ...unavailable.map(id => ({ value: id, label: t('unavailable', { value: id }) }))]}
             defaultSelected={selected} addPlaceholder={choices('eligibilityChipAddPlaceholder')} removeLabelFor={value => choices('chipRemoveAria', { name: value })}
             searchPlaceholder={choices('adjustmentsSearchPlaceholder')} selectAllLabel={choices('adjustmentsSelectAll')} clearAllLabel={choices('adjustmentsDeselectAll')}
