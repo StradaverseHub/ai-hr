@@ -7,7 +7,7 @@ import { seedClaimQueueScaleFixture } from './performance/claims-approval-queue-
 beforeAll(migrateTestDb);
 afterAll(closeAll);
 
-it('returns the full ordered Claims task headers with one current check per subject batch', async () => {
+it('measures the full ordered Claims task headers under current authority', async () => {
   const shape = { employees: 250, claimsPerEmployee: 200, managerReports: 40 };
   const fixture = await seedClaimQueueScaleFixture(shape, {}, () => {});
   const subjects = await owner.client<{ id: string }[]>`

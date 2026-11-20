@@ -21,7 +21,7 @@ export async function seedPersonnelNativeFixture(
   const rowsPerWrite=500;
   report.committedFixtureEmployees=0;
   for(let offset=0;offset<count;offset+=5000){
-   const end=offset+5000,personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
+   const end=Math.min(count,offset+5000),personPrefix=randomUUID().slice(0,24),employmentPrefix=randomUUID().slice(0,24);
    report.currentFixtureBatch={from:offset+1,to:end};
    // Keep the 5,000-row ID segment, with shorter complete three-table writes.
    for(let writeStart=offset+1;writeStart<=end;writeStart+=rowsPerWrite){
@@ -45,10 +45,10 @@ export async function seedPersonnelNativeFixture(
     save();
    }
    if(offset===0){
-    for(let n=1;n<=500;n++)organisationTagSample.push(employmentPrefix+String(n).padStart(12,'0'));
+    for(let n=1;n<=Math.min(end,500);n++)organisationTagSample.push(employmentPrefix+String(n).padStart(12,'0'));
     expectedFirst.push(...organisationTagSample.slice(0,25));
    }
-   if(end===count)for(let n=count-24;n<=count;n++)expectedLast.push(employmentPrefix+String(n).padStart(12,'0'));
+   if(end===count)for(let n=Math.max(offset+1,count-24);n<=count;n++)expectedLast.push(employmentPrefix+String(n).padStart(12,'0'));
   }
   const foreignPerson=randomUUID(),foreignEmployment=randomUUID();
   await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${foreignPerson}::uuid,${foreign.tenantId}::uuid,'Fictional outside Personnel',${foreignPerson+'@example.invalid'})`;
