@@ -118,6 +118,8 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  save();
  assert.equal(total,70);
  assert.equal(checked,70);
+ const availableIds=new Set(await companies.evaluateAll(options=>options.map(option=>option.value)));
+ assert.equal(availableIds.size,total,'Company switcher must expose distinct company IDs');
  const clear=companyForm.getByRole('button',{name:'Choose a new selection',exact:true});
  await clear.click({timeout});
  const option=companyForm.getByRole('checkbox',{name:fixture.scaleCompany.name,exact:true});
@@ -135,7 +137,7 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  await switcher.getByText(fixture.scaleCompany.name,{exact:true}).waitFor({state:'visible',timeout});
  await scaleRows.first().waitFor({state:'visible',timeout});
  assert.equal(await groupRows.count(),0);
- assert.equal(await selectedScope(),fixture.scaleCompany.id);
+ assert(await selectedScope()===fixture.scaleCompany.id,'Company scope cookie did not retain the selected company');
  report.groupScopeSteps.push({step:'select-one-company',elapsedMs:Math.round(performance.now()-selected),usable:true});
  save();
  await checkRoster('single-company');
@@ -143,10 +145,17 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeStage='group-scope-restored';
  if(await switcher.getAttribute('aria-expanded')!=='true')await switcher.click({timeout});
  const restored=performance.now();
- await companyForm.getByRole('button',{name:'Select all',exact:true}).click({timeout});
+ const [restoreResponse]=await Promise.all([
+  page.waitForResponse(response=>response.request().method()==='POST'
+   &&new URL(response.url()).pathname==='/admin/personnel',{timeout}),
+  companyForm.getByRole('button',{name:'Select all',exact:true}).click({timeout}),
+ ]);
+ assert.equal(restoreResponse.status(),200);
  await switcher.getByText('All companies',{exact:true}).waitFor({state:'visible',timeout});
  await groupRows.first().waitFor({state:'visible',timeout});
- assert.equal(await selectedScope(),'');
+ const restoredIds=(await selectedScope()).split(',');
+ assert(restoredIds.length===total&&new Set(restoredIds).size===total
+  &&restoredIds.every(id=>availableIds.has(id)),'Company scope cookie did not restore the entire available selection');
  await page.waitForFunction(()=>
   document.querySelectorAll('input[type="checkbox"][name="companyId"]:checked').length===70,
   undefined,{timeout});
