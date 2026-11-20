@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { UploadCloud } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
+import { useClientReady } from '@/components/use-client-ready';
 import { FormRow, SectionCard, noteCls, typeHelpCls } from '@/components/ui/section-card';
 import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedTh, stackedSplitNoteCls, stackedSplitWordCls } from '@/components/ui/stacked-table';
 import { StatCells } from '@/components/ui/stat-cells';
@@ -35,6 +36,7 @@ const fmtSize = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(
 export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }) {
   const t = useTranslations('clockingFile');
   const router = useRouter();
+  const ready = useClientReady();
   const [mappingId, setMappingId] = useState(mappings[0]?.id ?? '');
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState('');
@@ -187,6 +189,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
             id={`${uid}-mapping`}
             className={inputCls}
             value={mappingId}
+            disabled={!ready}
             onChange={(e) => {
               setMappingId(e.target.value);
               reset();
@@ -209,6 +212,7 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
           <input
             ref={fileRef}
             type="file"
+            disabled={!ready}
             accept=".csv,.txt,text/csv,text/plain"
             className="hidden"
             onChange={(e) => {
@@ -230,7 +234,8 @@ export function ClockingImport({ mappings }: { mappings: ImportMappingOption[] }
           ) : (
             <div
               role="button"
-              tabIndex={0}
+              aria-disabled={!ready}
+              tabIndex={ready ? 0 : -1}
               onClick={() => fileRef.current?.click()}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {

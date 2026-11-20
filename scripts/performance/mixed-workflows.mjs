@@ -1,5 +1,6 @@
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {JSDOM} from 'jsdom';
 import {driverErrorFact} from './driver-shutdown.mjs';
 import {setTimeout as pause} from 'node:timers/promises';
@@ -350,6 +351,22 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  if(report.suite==='workflow-preflight')await exerciseConcurrentPayrollClose({context,closeContext,notePrimary,noteEvidence,visit,fixture,db,request,capture,assertProcessed,report,save,withLockWorkload});
  const {importDate}=performanceFixtureCalendar(fixture.today);
  const importText=(user,date)=>clockingFixtureText(fixture.users,user.tenant,user.company,date);
+ async function waitForClockingImport(user,fileName,operationKey){
+  const started=performance.now();
+  const [ack]=await db`select id from bulk_job where tenant_id=${user.tenantId}::uuid and created_by=${user.userId}::uuid
+   and kind='clocking_import' and operation_key=${operationKey}::uuid and source_name=${fileName}`;
+  assert(ack,'Clocking Import did not acknowledge a durable job');
+  while(performance.now()-started<90000){
+   const [job]=await db`select state,result->>'runId' as run_id from bulk_job where id=${ack.id}::uuid`;
+   assert(job&&!['failed','cancelled','discarding'].includes(job.state),'Clocking Import job did not succeed');
+   if(job.state==='completed'){
+    assert(job.run_id,'Completed Clocking Import job has no run');
+    return {runId:job.run_id,completionObservedMs:Math.round(performance.now()-started)};
+   }
+   await pause(250);
+  }
+  throw Error('Clocking Import did not finish within the workflow budget');
+ }
  async function assertImported(user,fileName,date){
   const rows=await db`select id,total_lines,imported_lines,failure_reason from clocking_import_run where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and file_name=${fileName}`;
   assert.equal(rows.length,1);const row=rows[0];assert.equal(row.failure_reason,null);assert.equal(row.total_lines,100);assert.equal(row.imported_lines,100);
@@ -358,19 +375,26 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   for(const line of lines){assert(expected.has(line.employment_id),'import line crossed company/tenant scope');assert.equal(line.result,'imported');}
   const punches=await db`select p.employment_id,p.punch_at::text as punch_at from attendance_punch p join attendance a on a.id=p.attendance_id where a.employment_id=any(${[...expected]}::uuid[])and a.attendance_date=${date}::date and p.method='import' and p.voided_at is null`;
   assert.equal(punches.length,100);for(const id of expected)assert.equal(punches.filter(punch=>punch.employment_id===id).length,2);
+  return row.id;
  }
  {
   const ctx=await context(hr);
   await withContext(ctx,async()=>{
    const page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
    await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption(fixture.tenants[hr.tenant].clockingMappingId);
-   await page.locator('input[type="file"]').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
+   await page.locator('main input[type="file"]:enabled').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
+   await page.getByText(fileName,{exact:true}).waitFor({state:'visible'});
    const before=await db`select count(*)::int as count from clocking_import_run`;
    await capture(page,()=>page.getByRole('button',{name:'Validate',exact:true}).click(),'importValidate');await page.waitForLoadState('networkidle');
    assert.equal((await db`select count(*)::int as count from clocking_import_run`)[0].count,before[0].count,'import preview wrote a run');
-   await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
-   await page.waitForURL(url=>url.pathname.startsWith('/attendance/import/logs/'),{timeout:90000});await assertImported(hr,fileName,date);
-   evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50});save();
+   const commit=await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
+   assert(Array.isArray(commit.fields)&&commit.fields.length===5,'Clocking Import job transport changed');
+   const operationKey=commit.fields[4];
+   assert(typeof operationKey==='string'&&/^[0-9a-f-]{36}$/.test(operationKey),'Clocking Import job operation key missing');
+   const {runId,completionObservedMs}=await waitForClockingImport(hr,fileName,operationKey);
+   await page.waitForURL(url=>url.pathname==='/attendance/import/logs/'+runId,{timeout:90000});
+   assert.equal(await assertImported(hr,fileName,date),runId);
+   evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50,completionObservedMs});save();
   });
  }
  async function sendAttendance(user,template,fields,effect){
@@ -445,8 +469,10 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    if(user.index%50===1){
     const date=importDate(3+iteration),text=importText(user,date),fileName=marker+'.csv';
     await pause(thinkTimeMs);await send(user,templates.importValidate,[fixture.tenants[user.tenant].clockingMappingId,text]);
-    await pause(thinkTimeMs);await send(user,templates.importCommit,[fixture.tenants[user.tenant].clockingMappingId,text,fileName,Buffer.byteLength(text)]);
-    await assertImported(user,fileName,date);report.mixedWorkflows.completed.clockingImport++;
+    const operationKey=randomUUID();
+    await pause(thinkTimeMs);await send(user,templates.importCommit,[fixture.tenants[user.tenant].clockingMappingId,text,fileName,Buffer.byteLength(text),operationKey]);
+    const {runId}=await waitForClockingImport(user,fileName,operationKey);
+    assert.equal(await assertImported(user,fileName,date),runId);report.mixedWorkflows.completed.clockingImport++;
    }
    return true;
   }
