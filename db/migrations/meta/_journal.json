@@ -7918,6 +7918,13 @@
       "when": 1795028007060,
       "tag": "7060_payroll_reprocess_tax_source",
       "breakpoints": true
+    },
+    {
+      "idx": 10470,
+      "version": "7",
+      "when": 1795028007070,
+      "tag": "7070_payroll_tax_basis_group_job",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { webSessionChannel } from '@/lib/internal-auth/web-session';
 import type { Metadata } from 'next';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
@@ -32,7 +33,7 @@ import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
 import { SessionLifecycle } from '@/components/session-lifecycle';
-import { internalSelected } from '@/lib/internal-auth/config';
+import { INTERNAL_SESSION_COOKIE, internalSelected } from '@/lib/internal-auth/config';
 import { idleTimeoutMinutesFor } from '@/lib/session-policy-server';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
@@ -164,6 +165,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   }
   // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
   const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
+  const idleSessionChannel = idleTimeoutSeconds ? webSessionChannel((await cookies()).get(INTERNAL_SESSION_COOKIE)?.value) : undefined;
   if (usesOperatorShell) {
     if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
     const viewer = await viewerIdentity(session);
@@ -171,7 +173,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="h-dvh overflow-hidden font-sans">
         <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
-          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} sessionChannel={idleSessionChannel} />
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
         </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
@@ -544,7 +546,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <ToastFromQuery />
           </Suspense>
           <Toaster />
-          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} sessionChannel={idleSessionChannel} />
         </UiThemeProvider>
         </Providers>
         </CatalogClientProvider></NextIntlClientProvider>

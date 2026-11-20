@@ -48,7 +48,11 @@ type Catalogue = {
   employees:{id:string;code:string|null;companyId:string;name:string;active:boolean}[];groupAdmin:boolean;
 };
 const companyCell=(companies:Catalogue['companies'],id:string)=>{const co=companies.find(x=>x.id===id);return co&&!co.name.includes(';')&&companies.filter(x=>x.name===co.name).length===1?co.name:id;};
-async function catalogue(tx: Tx): Promise<Catalogue> {
+async function catalogue(tx: Tx, exportKinds?: readonly string[]): Promise<Catalogue> {
+  const reads=(...kinds:string[])=>exportKinds===undefined||kinds.some(kind=>exportKinds.includes(kind));
+  const orgKinds=ORGANISATION_LABEL_KINDS.filter(kind=>reads(kind));
+  const optionKinds=PROFILE_LABEL_CATEGORIES.filter(kind=>reads(kind));
+  const selected=<T>(needed:boolean,query:PromiseLike<T[]>)=>needed?query:Promise.resolve([] as T[]);
   const permission = await tx.execute(sql`select app.is_admin() as allowed, app.is_group_admin() as global`) as unknown as {allowed:boolean;global:boolean}[];
   if (!permission[0]?.allowed) throw new Error('Only an administrator may import System Labels.');
   const [companies, departments, positions, costs, units, options, grades, groups, members, assignments, employees] = await Promise.all([
@@ -59,13 +63,15 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
    exists(select 1 from cost_center where cost_center.id=lca.label_id and lca.label_kind='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or
    exists(select 1 from business_unit where business_unit.id=lca.label_id and lca.label_kind='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})
   ))`).orderBy(asc(s.company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.department).where(labelMaintenanceCondition(s.department,'department')).orderBy(asc(s.department.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.position).where(labelMaintenanceCondition(s.position,'position')).orderBy(asc(s.position.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.costCenter).where(labelMaintenanceCondition(s.costCenter,'cost_center')).orderBy(asc(s.costCenter.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.businessUnit).where(labelMaintenanceCondition(s.businessUnit,'business_unit')).orderBy(asc(s.businessUnit.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.profileOption).where(sql`app.system_label_scope_admin(${s.profileOption.scopeCompanyIds})`).orderBy(asc(s.profileOption.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.jobGrade).where(sql`app.system_label_scope_admin(${s.jobGrade.scopeCompanyIds})`).orderBy(asc(s.jobGrade.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.gradeGroup).where(sql`app.system_label_scope_admin(${s.gradeGroup.scopeCompanyIds})`).orderBy(asc(s.gradeGroup.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.labelCompanyAssignment).where(sql`exists(select 1 from department where department.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='department' and ${labelMaintenanceCondition(s.department,'department')}) or exists(select 1 from "position" where "position".id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='position' and ${labelMaintenanceCondition(s.position,'position')}) or exists(select 1 from cost_center where cost_center.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or exists(select 1 from business_unit where business_unit.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})`).orderBy(asc(s.labelCompanyAssignment.id)).limit(50_001),
-    tx.select({id:s.employment.id,code:s.employment.employeeCode,companyId:s.employment.companyId,name:s.person.fullName,active:sql<boolean>`(${employmentStatusSql()}) in ('active','active_serving_notice','probation') and ${s.employment.hiredOn} <= ${todayInKualaLumpur()}::date`})
-      .from(s.employment).innerJoin(s.person,eq(s.person.id,s.employment.personId)).where(sql`app.is_admin_for(${s.employment.companyId})`).orderBy(asc(s.employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    selected(reads('department'),tx.select().from(s.department).where(labelMaintenanceCondition(s.department,'department')).orderBy(asc(s.department.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)), selected(reads('position'),tx.select().from(s.position).where(labelMaintenanceCondition(s.position,'position')).orderBy(asc(s.position.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
+    selected(reads('cost_center'),tx.select().from(s.costCenter).where(labelMaintenanceCondition(s.costCenter,'cost_center')).orderBy(asc(s.costCenter.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)), selected(reads('business_unit'),tx.select().from(s.businessUnit).where(labelMaintenanceCondition(s.businessUnit,'business_unit')).orderBy(asc(s.businessUnit.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
+    selected(optionKinds.length>0,tx.select().from(s.profileOption)
+      .where(and(sql`app.system_label_scope_admin(${s.profileOption.scopeCompanyIds})`,exportKinds?inArray(s.profileOption.category,optionKinds):undefined))
+      .orderBy(asc(s.profileOption.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)), selected(reads('grades','grade_groups'),tx.select().from(s.jobGrade).where(sql`app.system_label_scope_admin(${s.jobGrade.scopeCompanyIds})`).orderBy(asc(s.jobGrade.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
+    selected(reads('grade_groups'),tx.select().from(s.gradeGroup).where(sql`app.system_label_scope_admin(${s.gradeGroup.scopeCompanyIds})`).orderBy(asc(s.gradeGroup.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)), selected(reads('grade_groups'),tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
+    selected(orgKinds.length>0,tx.select().from(s.labelCompanyAssignment).where(and(inArray(s.labelCompanyAssignment.labelKind,orgKinds),sql`exists(select 1 from department where department.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='department' and ${labelMaintenanceCondition(s.department,'department')}) or exists(select 1 from "position" where "position".id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='position' and ${labelMaintenanceCondition(s.position,'position')}) or exists(select 1 from cost_center where cost_center.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or exists(select 1 from business_unit where business_unit.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})`)).orderBy(asc(s.labelCompanyAssignment.id)).limit(50_001)),
+    selected(reads('department','business_unit'),tx.select({id:s.employment.id,code:s.employment.employeeCode,companyId:s.employment.companyId,name:s.person.fullName,active:sql<boolean>`(${employmentStatusSql()}) in ('active','active_serving_notice','probation') and ${s.employment.hiredOn} <= ${todayInKualaLumpur()}::date`})
+      .from(s.employment).innerJoin(s.person,eq(s.person.id,s.employment.personId)).where(sql`app.is_admin_for(${s.employment.companyId})`).orderBy(asc(s.employment.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1)),
   ]);
   for(const rows of [companies,departments,positions,costs,units,options,grades,groups,members,employees])boundedLabelMaintenanceRows(rows);
   if(assignments.length>50_000)throw new Error('System Labels criteria exceed the supported workbook size.');
@@ -144,10 +150,12 @@ function exportRows(c:Catalogue,includeInactive:boolean) {
 }
 export async function downloadSystemLabelsWithData(ctx:SessionContext,p:SystemLabelExportSelection):Promise<Buffer> {
  return withTenant(ctx,async tx=>{
-  const c=await catalogue(tx),companyIds=[...new Set(p.companyIds)],kinds=[...new Set(p.kinds)];
-  if(companyIds.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived))||!kinds.length||kinds.some(kind=>!LABEL_IMPORT_DEFINITIONS.some(d=>d.kind===kind)))throw new Error('Select accessible companies and supported lists.');
+  const companyIds=[...new Set(p.companyIds)],kinds=[...new Set(p.kinds)];
+  if(!kinds.length||kinds.some(kind=>!LABEL_IMPORT_DEFINITIONS.some(d=>d.kind===kind)))throw new Error('Select accessible companies and supported lists.');
+  const c=await catalogue(tx,kinds);
+  if(companyIds.some(id=>!c.companies.some(co=>co.id===id&&co.writable&&!co.archived)))throw new Error('Select accessible companies and supported lists.');
   const visible=new Set<string>();
-  for(const kind of ORGANISATION_LABEL_KINDS){
+  for(const kind of ORGANISATION_LABEL_KINDS.filter(kind=>kinds.includes(kind))){
    const table={department:s.department,position:s.position,cost_center:s.costCenter,business_unit:s.businessUnit}[kind];
    for(const row of await tx.select({id:table.id}).from(table).where(visibleLabelIdsCondition(table,kind,companyIds)))visible.add(row.id);
   }
@@ -157,7 +165,7 @@ export async function downloadSystemLabelsWithData(ctx:SessionContext,p:SystemLa
   const id=randomUUID();
   const bytes=await buildSystemLabelWorkbook({kinds,rows:data,includeStatus:p.includeInactive,exportId:id,references:{
    companies:c.companies.filter(co=>!co.archived&&(co.writable||rows.some(r=>r.values.Company===co.name||r.values.Company===co.id))).map(co=>[co.name,co.id]),
-   grades:c.grades.filter(g=>!g.archivedAt).map(g=>[g.code,g.name]),
+   grades:c.grades.filter(g=>!g.archivedAt&&flatScopeVisible(c,g.scopeCompanyIds)).map(g=>[g.code,g.name]),
    employees:c.employees.filter(e=>e.active&&e.code&&c.companies.some(co=>co.id===e.companyId&&co.writable)).map(e=>[e.code!,e.companyId,e.name])}});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'system-label-export',aggregateId:id,eventType:'system-labels.exported',actor:actorOf(ctx),payload:{version:1,companyIds,kinds,includeInactive:p.includeInactive,count:rows.length,rows:rows.map(r=>({id:r.id,key:rowKey(r.sheet,r.values),hash:fingerprint(r.values)}))}});
   return bytes;

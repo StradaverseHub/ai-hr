@@ -150,7 +150,7 @@ const REFUSAL_NO_WAY_FORWARD = {
   errorValues: { employee: 'Kim Chi', period: '2026-01', scope: 'departments', canAdd: 'no' },
 };
 
-function renderWorkspace(locale = 'en', msgs: unknown = messages, payItems: TxnPayItem[] = []) {
+function renderWorkspace(locale = 'en', msgs: unknown = messages, payItems: TxnPayItem[] = [{id:'bonus',code:'BONUS1',name:'Bonus',kind:'allowance',derives:false,inputUnit:null,variesByDay:true}]) {
   panelMock.mockResolvedValue(EMPTY_PANEL);
   return render(
     <NextIntlClientProvider locale={locale} messages={msgs as never}>
@@ -174,6 +174,8 @@ function renderWorkspace(locale = 'en', msgs: unknown = messages, payItems: TxnP
 async function keyAndSave(user: ReturnType<typeof userEvent.setup>) {
   await user.click(await screen.findByRole('button', { name: /Kim Chi/ }));
   await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
+  await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+  await user.click(screen.getByRole('option',{name:/^BONUS1 —/}));
   await user.type(screen.getByLabelText('Effective date'), '2026-01-15');
   await user.type(screen.getByLabelText('Amount'), '500');
   await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -299,7 +301,8 @@ describe('r256 · one confirmation, two answers', () => {
     renderWorkspace('en', messages, [OT]);
     await user.click(await screen.findByRole('button', { name: /Kim Chi/ }));
     await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot15');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OT1_5 —/ }));
     await user.click(screen.getByRole('radio', { name: 'Day by day' }));
     await user.type(screen.getByLabelText('Effective date'), '2026-01-15');
     await user.type(screen.getByLabelText('Hours'), '2');
@@ -366,6 +369,8 @@ describe.each([
 
     await user.click(await screen.findByRole('button', { name: /Kim Chi/ }));
     await user.click(await screen.findByRole('button', { name: ind.addTxn }));
+    await user.click(screen.getByRole('button',{name:ind.colItem,expanded:false}));
+    await user.click(screen.getByRole('option',{name:/^BONUS1 —/}));
     await user.type(screen.getByLabelText(ind.colEffectiveDate), '2026-01-15');
     await user.type(screen.getByLabelText(ind.amount), '500');
     await user.click(screen.getByRole('button', { name: ind.save }));

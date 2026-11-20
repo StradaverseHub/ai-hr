@@ -154,7 +154,7 @@ export async function GET(req: Request) {
       // A synthetic row's caption is a dynamic key in this same namespace; an item row carries the name the
       // payslip stored. test/history-pivot.test.ts asserts every synthetic key resolves in en.json, which is
       // the coverage a computed t() key cannot get from the static i18n scan.
-      r.labelKey ? (r.labelKey === 'overtime' && r.kind === 'synthetic' ? t('view.grid.row.totalOvertime') : r.name || t(`view.grid.row.${historyGridLabelKey(r)}`)) : r.name,
+      r.labelKey ? r.name || t(`view.grid.row.${historyGridLabelKey(r)}`) : r.name,
       // b240c0ff — the same label the screen prints ("Monthly - By Import" for imported history).
       payrollRunLabel(r, t(`individual.cycle.${r.runType}`)),
       r.company,

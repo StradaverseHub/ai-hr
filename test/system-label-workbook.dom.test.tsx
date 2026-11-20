@@ -100,3 +100,18 @@ describe('System Labels workbook native worksheet structure', () => {
   // Building and parsing 14 native worksheets is CPU work; the full gate runs other files too.
   }, 20000);
 });
+
+
+it('exports each single category first, limiting reference data to that category’s fields',async()=>{
+ const references={companies:[['Example Company','company-id']],employees:[['HEAD_ONLY','company-id','Example Head']],grades:[['GRADE_ONLY','Example Grade']]} as Parameters<typeof buildSystemLabelWorkbook>[0]['references'];
+ for(const kind of ['department','position','nationality']){
+  const rows={department:[{Code:'OPS_ONLY',Description:'Operations'}],position:[{Code:'POSITION_ONLY'}],nationality:[{Code:'NATIONALITY_ONLY'}]};
+  const bytes=await buildSystemLabelWorkbook({kinds:[kind],references,rows,includeStatus:true,exportId:'export-id'});
+  const workbook=XLSX.read(bytes,{type:'buffer'});
+  expect(workbook.SheetNames).toEqual([kind,'Instructions','Reference','_Export']);
+  const values=JSON.stringify(XLSX.utils.sheet_to_json(workbook.Sheets.Reference,{header:1}));
+  expect(values.includes('HEAD_ONLY')).toBe(kind==='department');
+  expect(values).not.toContain('GRADE_ONLY');
+  expect(readSystemLabelWorkbook(bytes).map(row=>row.values.Code)).toEqual([rows[kind as keyof typeof rows][0].Code]);
+ }
+});

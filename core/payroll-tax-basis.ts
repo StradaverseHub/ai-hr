@@ -29,7 +29,7 @@ function fail(s:string):never{throw new PayrollTaxBasisError(s);}
 const nonCashInputs=(value:unknown)=>{const saved=readPcbNonCash(value);return saved?{owned:saved.owned,entries:saved.ownedEntries.map(({sourceId,source,...entry})=>entry),ea:saved.ownedEaEntries.map(({sourceId,source,...entry})=>entry)}:{owned:{bik:0,vola:0},entries:[],ea:[]};};
 const round=(n:number)=>Math.round(n*100)/100;
 const money=(v:unknown):number|null=>{if(typeof v!=='number'&&typeof v!=='string')return null;if(typeof v==='string'&&!v.trim())return null;const n=Number(v);return Number.isFinite(n)&&n>=0&&Number.isSafeInteger(Math.round(n*100))&&Math.abs(n*100-Math.round(n*100))<1e-6?n:null;};
-function validateSelection(v:TaxBasisSelection){if(!v||!uuid.test(v.companyId)||!Number.isInteger(v.year)||v.year<1900||v.year>2999||!Number.isInteger(v.upToMonth)||v.upToMonth<1||v.upToMonth>12||v.employmentIds!==null&&(!Array.isArray(v.employmentIds)||!v.employmentIds.length||v.employmentIds.length>1000||v.employmentIds.some(id=>!uuid.test(id))||new Set(v.employmentIds).size!==v.employmentIds.length))fail('Choose a company, assessment year, final month and valid employees.');}
+function validateSelection(v:TaxBasisSelection,allowEmptySelection=false){if(!v||!uuid.test(v.companyId)||!Number.isInteger(v.year)||v.year<1900||v.year>2999||!Number.isInteger(v.upToMonth)||v.upToMonth<1||v.upToMonth>12||v.employmentIds!==null&&(!Array.isArray(v.employmentIds)||(!allowEmptySelection&&!v.employmentIds.length)||v.employmentIds.length>1000||v.employmentIds.some(id=>!uuid.test(id))||new Set(v.employmentIds).size!==v.employmentIds.length))fail('Choose a company, assessment year, final month and valid employees.');}
 async function permission(tx:Tx,ctx:SessionContext,companyId:string,write=false){
  assertModuleGate(ctx,'payroll');
  if(write&&!await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',companyId))fail('Income-tax recalculation access is unavailable for this company.');
@@ -125,7 +125,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   const slips=cache.slips?.get(who.id)??await tx.execute<SourceSlip>(sql`select p.id,b.pay_period as period,(row_number() over(partition by b.pay_period order by b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id))::integer as "runOrder",p.gross_pay as gross,p.basic_salary as basic,p.allowance,p.overtime_pay as overtime,p.bonus,p.other_deductions as deductions,p.statutory,case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId",b.payroll_cycle_id as "cycleId" from payslip p join payroll_batch b on b.id=p.batch_id where p.employment_id=${who.id}::uuid and b.company_id=${selection.companyId}::uuid and b.pay_period like ${selection.year+'-%'} and b.status in ('processed','closed') order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
   const cutoff=selection.year+'-'+String(selection.upToMonth).padStart(2,'0'),included=slips.filter(s=>s.period<=cutoff);
   if(included.some(slip=>slip.historyAttemptId)){const paid=included.map(slip=>money(slip.statutory.pcb));pcbComparison={state:'unavailable',originalPaid:paid.some(value=>value===null)?null:round(paid.reduce<number>((sum,value)=>sum+(value??0),0)),missingInputs:['originalStatutoryInputs','originalTaxCategoryAndReliefs','originalPriorEmployerIncome']};}
-  if(!included.length)return blocked('No saved payroll history exists in the selected period.');
+  if(!included.length)return {...blocked('No saved payroll history exists in the selected period.'),status:'skipped'};
   // A changed exemption/relief prefix cannot silently reallocate a later saved month.
   const country=cache.country??(await tx.execute<{country:string}>(sql`select country from company where id=${selection.companyId}::uuid`))[0].country;
   const pack=requirePackFor(country);if(!pack.payroll.replayTaxBasis)fail('This country pack does not support historical income-tax corrections.');
@@ -149,7 +149,11 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   const defaultedOpening=opening.state==='missing' && included.some(slip=>slip.historyAttemptId)
     && !hasSavedYearUsage
     && (cache.noTp3Opening??await noTp3OpeningTx(tx,ctx,selection.year,[who.id])).has(who.id);
-  if(opening.state!=='known'&&!defaultedOpening)return heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
+  if(opening.state!=='known'&&!defaultedOpening){
+   const held=heldDetail(opening.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
+   if(opening.state==='conflict')return held;
+   return {...held,status:'skipped',reason:'Saved taxable and exempt values were kept because prior-employer exemption use is unknown.'};
+  }
   const openingExemptionUsed=opening.state==='known'?opening.used:{};
   let replay:ReturnType<typeof pack.payroll.replayTaxBasis>;
   try{replay=pack.payroll.replayTaxBasis({year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod,openingExemptionUsed});}
@@ -228,7 +232,7 @@ export async function replayChangedPayrollHistoryTx(
  const upToMonth=Number(slips.at(-1)!.period.slice(5));
  const replay=await employeeTx(tx,ctx,{companyId:first.companyId,year,upToMonth,employmentIds:[first.employmentId]},
   {id:first.employmentId,employeeNo:'',name:''},settings,hash(settings),cache);
- if(replay.status==='blocked')fail(replay.reason??'The original payroll tax inputs are unavailable.');
+ if(replay.status==='blocked'||replay.status==='skipped')fail(replay.reason??'The original payroll tax inputs are unavailable.');
  const changedIds=new Set(changed.map(source=>source.id));
  const firstChangedPeriod=changed.reduce((min,source)=>source.period<min?source.period:min,first.period);
  for(const month of replay.months){
@@ -241,12 +245,25 @@ export async function replayChangedPayrollHistoryTx(
  return new Map(replay.months.map(month=>[month.payslipId,month.basis]));
 }
 
+async function taxBasisSubjectsTx(tx:Tx,selection:TaxBasisSelection){
+ const {companyId,year,upToMonth,employmentIds}=selection;
+ const current=employmentIds===null?sql``:sql`
+  union select e.id,coalesce(e.employee_code,''),p.full_name from employment e
+  join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+  where e.company_id=${companyId}::uuid and e.id=any(${uuidArray(employmentIds)})`;
+ // Selected former/transferred employees retain original-employer history access even when the selected
+ // cutoff has no slips. The current employment arm adds only explicitly requested, RLS-visible employees.
+ return tx.execute<{id:string;employeeNo:string;name:string}>(sql`
+  select id,"employeeNo",name from app.payroll_tax_basis_subjects(${companyId}::uuid,${employmentIds===null?year:null},${upToMonth})
+  ${employmentIds===null?sql``:sql`where id=any(${uuidArray(employmentIds)})`}
+  ${current} order by "employeeNo",id limit 1001`);
+}
 async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):Promise<Omit<TaxBasisPreview,'previewId'|'previewHash'|'createdAt'|'expiresAt'>>{
  await permission(tx,ctx,selection.companyId);
  const [company]=await tx.execute<{name:string;country:string}>(sql`select legal_name as name,country from company where id=${selection.companyId}::uuid and archived_at is null`);if(!company)fail('Company is unavailable.');
  const settings=await settingsTx(tx);const settingsHash=hash(settings);
- const employees=await tx.execute<{id:string;employeeNo:string;name:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) ${selection.employmentIds===null?sql``:sql`where id=any(${uuidArray(selection.employmentIds)})`} order by "employeeNo",id limit 1001`);
- if(selection.employmentIds!==null&&employees.length!==selection.employmentIds.length)fail('An employee is unavailable, belongs to another company, or has no history in the selected period.');
+ const employees=await taxBasisSubjectsTx(tx,selection);
+ if(selection.employmentIds!==null&&employees.length!==selection.employmentIds.length)fail('An employee is unavailable or belongs to another company.');
  if(employees.length>1000)fail('Select up to 1,000 employees per preview. Split a larger company into selected employee groups.');
  const results:TaxBasisEmployee[]=[],cache:SourceCache=new Map(),started=Date.now();
  cache.country=company.country;cache.slips=new Map(employees.map(employee=>[employee.id,[]]));cache.sourceHashes=new Map();
@@ -279,7 +296,27 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  const ready=results.filter(r=>r.status==='ready');
  const sum=(key:'beforeTaxable'|'taxable'|'beforeExempt'|'exempt')=>ready.some(r=>r[key]===null)?null:round(ready.reduce((n,r)=>n+r[key]!,0));
  const beforeTaxable=sum('beforeTaxable'),taxable=sum('taxable');
- return {companyId:selection.companyId,companyName:company.name,year:selection.year,upToMonth:selection.upToMonth,selection:selection.employmentIds===null?'all':'selected',settingsHash,totals:{beforeTaxable,taxable,difference:beforeTaxable===null||taxable===null?null:round(taxable-beforeTaxable),beforeExempt:sum('beforeExempt'),exempt:sum('exempt')},eligibleCount:ready.length,unchangedCount:results.filter(r=>r.status==='unchanged').length,blockedCount:results.filter(r=>r.status==='blocked').length,recordCount:ready.reduce((n,r)=>n+r.recordCount,0),employees:results};
+ const skippedCount=results.filter(r=>r.status==='skipped').length;
+ return {companyId:selection.companyId,companyName:company.name,year:selection.year,upToMonth:selection.upToMonth,selection:selection.employmentIds===null?'all':'selected',settingsHash,totals:{beforeTaxable,taxable,difference:beforeTaxable===null||taxable===null?null:round(taxable-beforeTaxable),beforeExempt:sum('beforeExempt'),exempt:sum('exempt')},eligibleCount:ready.length,unchangedCount:results.filter(r=>r.status==='unchanged').length,blockedCount:results.filter(r=>r.status==='blocked').length,...(skippedCount?{skippedCount}:{}),recordCount:ready.reduce((n,r)=>n+r.recordCount,0),employees:results};
+}
+/** Current employees may have no saved payroll yet. The historical picker remains the authority
+ * for original-employer records after a transfer. This bounded search adds current matches only. */
+export async function searchCurrentTaxBasisEmployees(ctx:SessionContext,companyIds:string[],query:string){
+ const term=query.trim().slice(0,120).toLowerCase();
+ if(term.length<2||!Array.isArray(companyIds)||!companyIds.length||companyIds.length>500||companyIds.some(id=>!uuid.test(id)))return [];
+ assertModuleGate(ctx,'payroll');
+ return withTenant(ctx,async tx=>[...await tx.execute<{id:string;companyId:string;employeeNo:string;name:string}>(sql`
+  with permitted as materialized (
+   select id from company where id=any(${uuidArray(companyIds)}) and archived_at is null
+    and app.payroll_tax_basis_permission(id,'payroll.tax-basis.view')
+    and app.payroll_tax_basis_permission(id,'payroll.tax-basis.recalculate')
+  )
+  select e.id,e.company_id as "companyId",coalesce(e.employee_code,'') as "employeeNo",p.full_name as name
+   from permitted c join employment e on e.company_id=c.id
+   join person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+   where e.tenant_id=${ctx.tenantId}::uuid
+    and (position(${term} in lower(coalesce(e.employee_code,'')))>0 or position(${term} in lower(p.full_name))>0)
+   order by e.company_id,e.employee_code,e.id limit 30`)]);
 }
 export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,async tx=>{
  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
@@ -299,7 +336,7 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  * the preview record is then saved, in a short transaction that rechecks the caller's authority on the primary.
  * Confirming still recomputes the selection under the history and Access write locks and refuses a preview whose
  * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
-export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection):Promise<TaxBasisPreview>{validateSelection(selection);
+export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{validateSelection(selection,options.allowEmptySelection);
  const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
  const id=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();const previewHash=hash({selection,computed});
  const preview:TaxBasisPreview={...computed,previewId:id,previewHash,createdAt,expiresAt};
@@ -314,6 +351,7 @@ export async function previewTaxBasisRecalculation(ctx:SessionContext,selection:
 async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection){
  const settings=await settingsTx(tx);
  const subjects=await tx.execute<{id:string}>(sql`select id,"employeeNo",name from app.payroll_tax_basis_subjects(${selection.companyId}::uuid,${selection.year},${selection.upToMonth}) order by id`);
+ const selectedSubjects=selection.employmentIds===null?[]:await taxBasisSubjectsTx(tx,selection);
  const [company]=await tx.execute<{country:string;row:string}>(sql`select country,legal_name||':'||coalesce(archived_at::text,'')||':'||xmin::text as row from company where id=${selection.companyId}::uuid`);
  const pack=company?requirePackFor(company.country):null;const rules:unknown[]=[];
  if(pack?.payroll.replayTaxBasis)for(let month=1;month<=selection.upToMonth;month++){
@@ -326,18 +364,19 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
    union all select 'r:'||r.id||':'||r.xmin from payroll_tax_basis_revision r where r.company_id=${selection.companyId}::uuid and r.period like ${year}
    union all select 's:'||s.id from payroll_history_import_snapshot s join payroll_history_import_record h on h.id=s.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}
    union all select 'v:'||v.id from payroll_history_import_revision v join payroll_history_import_record h on h.id=v.record_id where h.company_id=${selection.companyId}::uuid and h.period like ${year}) q`);
- const noTp3Opening=[...await noTp3OpeningTx(tx,ctx,selection.year,subjects.map(subject=>subject.id))].sort();
- return hash({settings,subjects:[...subjects],company:company?.row??null,rules,rows:rows?.d??null,noTp3Opening});
+ const noTp3Opening=[...await noTp3OpeningTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id))].sort();
+ return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,noTp3Opening});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
-async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},resume=false):Promise<{id:string}>{
+async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{resume?:boolean;defer?:boolean;budgetMs?:number;groupReviewed?:true}={}):Promise<{id:string|null}>{
+ const {resume=false,defer=false,budgetMs=40000}=options;
  if(!uuid.test(input.previewId)||!/^[a-f0-9]{64}$/.test(input.previewHash))fail('Choose a valid recalculation preview.');
  type Stored={preview:TaxBasisPreview;selection:TaxBasisSelection;previewHash:string;expired:boolean};
  const storedTx=async(tx:Tx,lock:boolean)=>{
   const [stored]=await tx.execute<Stored>(sql`select preview,selection,preview_hash as "previewHash",expires_at<now() as expired from payroll_tax_basis_preview where id=${input.previewId}::uuid and created_by=${ctx.userId??null}::uuid ${lock?sql`for update`:sql``}`);
   if(!stored||stored.previewHash!==input.previewHash)fail('The recalculation preview is unavailable.');await permission(tx,ctx,stored.selection.companyId,true);
   const [existing]=await tx.execute<{id:string}>(sql`select id from payroll_tax_basis_batch where preview_id=${input.previewId}::uuid`);
-  if(!existing&&stored.expired)fail('The preview expired. Preview the recalculation again.');
+  if(!existing&&stored.expired&&!options.groupReviewed)fail('The preview expired. Preview the recalculation again.');
   return{stored,existing:existing?.id??null};
  };
  // The whole selection is recomputed in one read-only snapshot with no tenant-wide lock (up to 25 s), and refused
@@ -351,9 +390,10 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
    const {stored,existing}=await storedTx(tx,false);
    if(existing)return{stored,existing,digest:''};
    const fresh=await computeTx(tx,ctx,stored.selection);if(hash({selection:stored.selection,computed:fresh})!==stored.previewHash)fail('History, settings, rules or access changed. Preview the recalculation again.');
-   if(!stored.preview.eligibleCount)fail('There are no eligible changed employees to recalculate.');
+   if(!stored.preview.eligibleCount){if(defer)return {stored,existing:null,digest:null};fail('There are no eligible changed employees to recalculate.');}
    return{stored,existing:null,digest:await taxBasisInputsDigestTx(tx,ctx,stored.selection)};
   },{readOnlySnapshot:true});
+  if(snapshot.digest===null)return {id:null};
   if(snapshot.existing){opened={...snapshot.stored,id:snapshot.existing,existing:true};break;}
   opened=await withTenant(ctx,async tx=>{
    await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -364,13 +404,13 @@ async function executeTaxBasisRecalculation(ctx:SessionContext,input:{previewId:
   });
   if(!opened&&round>=2)fail('History, settings, rules or access changed. Preview the recalculation again.');
  }
- if(opened.existing&&!resume)return {id:opened.id};
+ if(defer||opened.existing&&!resume)return {id:opened.id};
  const processed=await withTenant(ctx,async tx=>{await permission(tx,ctx,opened.selection.companyId,true);return tx.execute<{kind:string;employmentId:string|null}>(sql`select kind,employment_id as "employmentId" from payroll_tax_basis_event where batch_id=${opened.id}::uuid`);});
  if(processed.some(e=>['completed','completed_with_errors','failed'].includes(e.kind)))return {id:opened.id};
  const done=new Set(processed.filter(e=>e.employmentId).map(e=>e.employmentId));
  const chunk=opened.preview.employees.filter(e=>e.status==='ready'&&!done.has(e.id)).slice(0,50),started=Date.now(),cache:SourceCache=new Map();
  // Each employee/year commits with all correction rows and its audit event, or none of them.
- for(const reviewed of chunk){if(Date.now()-started>40000)break;
+ for(const reviewed of chunk){if(Date.now()-started>budgetMs)break;
   try{await withTenant(ctx,async tx=>{
    await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await permission(tx,ctx,opened.selection.companyId,true);
    await tx.execute(sql`select id from payroll_tax_basis_batch where id=${opened.id}::uuid for update`);
@@ -420,10 +460,13 @@ export async function recoverTaxBasisBatch(ctx:SessionContext,id:string):Promise
  });
 }
 
-export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string}){return executeTaxBasisRecalculation(ctx,input);}
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string}):Promise<{id:string}>;
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options:{defer:true;groupReviewed:true}):Promise<{id:string|null}>;
+export function confirmTaxBasisRecalculation(ctx:SessionContext,input:{previewId:string;previewHash:string},options?:{defer:true;groupReviewed:true}){return executeTaxBasisRecalculation(ctx,input,options);}
 /** Bounded continuation keeps the reviewed configuration and rechecks each remaining employee. */
-export async function continueTaxBasisBatch(ctx:SessionContext,id:string):Promise<{id:string}>{
+export async function continueTaxBasisBatch(ctx:SessionContext,id:string,options:{budgetMs?:number}={}):Promise<{id:string}>{
  if(!uuid.test(id))fail('Choose a valid recalculation batch.');
  const input=await withTenant(ctx,async tx=>{const [row]=await tx.execute<{companyId:string;previewId:string;previewHash:string}>(sql`select b.company_id as "companyId",p.id as "previewId",p.preview_hash as "previewHash" from payroll_tax_basis_batch b join payroll_tax_basis_preview p on p.id=b.preview_id where b.id=${id}::uuid and b.created_by=${ctx.userId??null}::uuid`);if(!row)fail('Only the initiating payroll operator can continue this batch. Another authorized operator can review an interrupted batch for a fresh preview.');await permission(tx,ctx,row.companyId,true);return row;});
- return executeTaxBasisRecalculation(ctx,input,true);
+ await executeTaxBasisRecalculation(ctx,input,{resume:true,budgetMs:options.budgetMs});
+ return {id};
 }

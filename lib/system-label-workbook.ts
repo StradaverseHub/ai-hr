@@ -329,11 +329,22 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
     ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:formattedEnd,c:columns.length-1}});
     XLSX.utils.book_append_sheet(wb,ws,d.kind);
   }
-  const refRows:unknown[][]=[['Company Name','Company ID','Criteria','','Head Employee Code','Company ID','Grade Code','Label']];
-  const count=Math.max(p.references.companies.length,p.references.employees.length,p.references.grades.length,3);
+  const referencesColumn = (column:string) => definitions.some(definition=>definition.columns.includes(column));
+  const companies = referencesColumn('Company') || referencesColumn('Criteria Companies') ? p.references.companies : [];
+  const employees = referencesColumn('Head Employee Code') ? p.references.employees : [];
+  const grades = referencesColumn('Grade Codes') ? p.references.grades : [];
+  const criteria = referencesColumn('Criteria') ? ['global','companies'] : [];
+  // Keep the column addresses used by validation, leaving unrelated catalogue columns empty.
+  const refRows:unknown[][]=[[
+    companies.length ? 'Company Name' : '',companies.length ? 'Company ID' : '',criteria.length ? 'Criteria' : '','',
+    employees.length ? 'Head Employee Code' : '',employees.length ? 'Company ID' : '',
+    grades.length ? 'Grade Code' : '',grades.length ? 'Label' : '',
+  ]];
+  const count=Math.max(companies.length,employees.length,grades.length,3);
   if(count>10000)throw new Error('Reference lists exceed the supported size. Narrow the selection.');
-  for(let i=0;i<count;i++)refRows.push([p.references.companies[i]?.[0]??'',p.references.companies[i]?.[1]??'',['global','companies'][i]??'','',p.references.employees[i]?.[0]??'',p.references.employees[i]?.[1]??'',p.references.grades[i]?.[0]??'',p.references.grades[i]?.[1]??'']);
+  for(let i=0;i<count;i++)refRows.push([companies[i]?.[0]??'',companies[i]?.[1]??'',criteria[i]??'','',employees[i]?.[0]??'',employees[i]?.[1]??'',grades[i]?.[0]??'',grades[i]?.[1]??'']);
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(refRows),'Reference');
+  if(definitions.length===1)wb.SheetNames.unshift(...wb.SheetNames.splice(1,1));
   if(p.exportId){XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Version','Export ID'],['1',p.exportId]]),LABEL_EXPORT_SHEET);wb.Workbook={Sheets:wb.SheetNames.map(name=>({name,Hidden:name===LABEL_EXPORT_SHEET?2:0}))};}
   const zip=await JSZip.loadAsync(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));
   const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Aptos"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF4F46E5"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"><alignment wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
@@ -353,7 +364,7 @@ export async function buildSystemLabelWorkbook(p:{references:LabelWorkbookRefere
     const d=definitions.find(d=>d.kind===name);
     if(d){
       const validations:string[]=[];
-      const ranges:Record<string,string>={Company:`Reference!$A$2:$A$${Math.max(2,p.references.companies.length+1)}`,Criteria:'Reference!$C$2:$C$3','Criteria Companies':`Reference!$A$2:$A$${Math.max(2,p.references.companies.length+1)}`,'Head Employee Code':`Reference!$E$2:$E$${Math.max(2,p.references.employees.length+1)}`,'Grade Codes':`Reference!$G$2:$G$${Math.max(2,p.references.grades.length+1)}`};
+      const ranges:Record<string,string>={Company:`Reference!$A$2:$A$${Math.max(2,companies.length+1)}`,Criteria:'Reference!$C$2:$C$3','Criteria Companies':`Reference!$A$2:$A$${Math.max(2,companies.length+1)}`,'Head Employee Code':`Reference!$E$2:$E$${Math.max(2,employees.length+1)}`,'Grade Codes':`Reference!$G$2:$G$${Math.max(2,grades.length+1)}`};
       // Cross-sheet list validation uses a quoted INDIRECT reference, supported by Excel and LibreOffice.
       for(const [column,range] of Object.entries(ranges)){
         const at=d.columns.indexOf(column);if(at<0)continue;

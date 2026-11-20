@@ -119,7 +119,8 @@ describe('aac17dd0 · Add transaction on a Calculated by Formula Pay Item', () =
     renderWorkspace();
     await user.click(await screen.findByRole('button', { name: /Fictional Overtime Clerk/ }));
     await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OTFX —/ }));
 
     expect(inputType()).not.toBeDisabled();
     expect(inputType().value).toBe('hours');
@@ -137,7 +138,8 @@ describe('aac17dd0 · Add transaction on a Calculated by Formula Pay Item', () =
     renderWorkspace();
     await user.click(await screen.findByRole('button', { name: /Fictional Overtime Clerk/ }));
     await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Payroll item' }), 'c:ot');
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
+    await user.click(screen.getByRole('option', { name: /^OTFX —/ }));
     await user.selectOptions(inputType(), 'amount');
 
     expect(screen.queryByLabelText('Hours')).not.toBeInTheDocument();
