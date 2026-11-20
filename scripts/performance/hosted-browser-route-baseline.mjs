@@ -1,3 +1,4 @@
+import {measureFixtureRecordCensus} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
@@ -30,8 +31,9 @@ const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
+const censusFixtureRecords=shardInput==='fixture-records';
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||retryCensusTimeouts&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -50,7 +52,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
-const report={kind:retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
+const report={kind:censusFixtureRecords?'FICTIONAL_FIXTURE_RECORD_CENSUS':retryCensusTimeouts?'FICTIONAL_CENSUS_TIMEOUT_FOLLOWUP':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
@@ -1536,12 +1538,20 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!retryCensusTimeouts)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
   await proxy();
-  if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
+  if(censusFixtureRecords){
+   const require=createRequire(join(process.cwd(),'package.json'));
+   browser=await require('playwright').chromium.launch();
+   const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
+   const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
+   const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
+   try{await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save});}
+   finally{await db.end({timeout:5});}
+  }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
    await measureRoutes(fixture);
