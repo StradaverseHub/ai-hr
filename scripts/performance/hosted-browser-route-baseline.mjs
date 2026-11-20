@@ -1555,10 +1555,23 @@ async function measureSavedAssistantHistory({page,user,fixture,report,save}){
 async function measureJobDescriptionEditor({page,user,report,save}){
  const list='/admin/job-descriptions',create=list+'/new';
  report.actionStage='job-description-list-open';
+ const listStarted=performance.now();
+ report.jobEditorSteps=[];
  const response=await page.goto(origin+list,{waitUntil:'commit',timeout:15000});
  assert.equal(response?.status(),200);
  report.actionStage='job-description-list-usable';
- await readyContent(page,user,list,()=>15000);
+ try{
+  await readyContent(page,user,list,()=>15000);
+ }catch(error){
+  report.failureLandmarks=await page.evaluate(()=>{
+   const visible=selector=>Array.from(document.querySelectorAll(selector)).some(node=>node.getClientRects().length>0);
+   return {heading:visible('main h1'),alert:visible('[role="alert"]'),busy:visible('main [aria-busy="true"]'),
+    search:visible('main form input[name="q"]'),create:visible('main a[href="/admin/job-descriptions/new"]')};
+  }).catch(()=>undefined);
+  throw error;
+ }
+ report.jobEditorSteps.push({step:'open-job-description-list',elapsedMs:Math.round(performance.now()-listStarted)});
+ save();
  const main=page.locator('main:visible').first();
  const picker=main.locator('form select[name="company"]');
  const started=performance.now();
@@ -1569,7 +1582,7 @@ async function measureJobDescriptionEditor({page,user,report,save}){
  await picker.waitFor({state:'visible',timeout:15000});
  const label=await picker.locator(`option[value="${user.companyId}"]`).textContent();
  assert(label?.trim());
- report.jobEditorSteps=[{step:'open-company-picker',elapsedMs:Math.round(performance.now()-started)}];
+ report.jobEditorSteps.push({step:'open-company-picker',elapsedMs:Math.round(performance.now()-started)});
  save();
  report.actionStage='job-description-company-selection';
  await picker.selectOption(user.companyId,{timeout:15000});
@@ -1602,6 +1615,7 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
  const card=page.locator('main [data-tour="attendance-day"]');
  const form=card.locator('form');
  const search=form.locator('input[name="q"]');
+ const submit=form.locator('button[type="submit"]');
  report.attendanceStage='select-company';
  await form.locator('select[name="company"]').selectOption(company.companyId,{timeout:15000});
  report.attendanceStage='select-department';
@@ -1624,9 +1638,23 @@ async function measureDailyAttendanceFilters({page,user,fixture,report,save}){
   assert.equal(await form.locator('select[name="dept"]').inputValue(),company.departmentId);
   assert.equal(await form.locator('input[name="date"]').inputValue(),date);
   assert.equal(await search.inputValue(),query);
+  report.attendanceStage=step+'-submit-visible';
+  await submit.waitFor({state:'visible',timeout:15000});
+  assert.equal(await submit.count(),1);
+  assert((await submit.innerText()).trim(),'The native filter submit needs a visible label');
   const started=performance.now();
   report.attendanceStage=step+'-submit-button';
-  await form.getByRole('button',{name:'Apply',exact:true}).click({timeout:15000});
+  try{
+   await submit.click({timeout:15000});
+  }catch(error){
+   report.failureLandmarks=await submit.evaluate(button=>{
+    const rect=button.getBoundingClientRect();
+    const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+    return {disabled:button.disabled,visible:rect.width>0&&rect.height>0,ownsHit:hit!==null&&button.contains(hit),
+     hitInMain:Boolean(hit?.closest('main'))};
+   },undefined,{timeout:500}).catch(()=>undefined);
+   throw error;
+  }
   report.attendanceStage=step+'-navigation';
   await page.waitForURL(matchesSubmission,{waitUntil:'commit',timeout:15000});
   report.attendanceStage=step+'-result';
@@ -2135,6 +2163,7 @@ async function measureActions(fixture){
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
     const step=result.actionStage??result.groupScopeStage??result.joinerStage??result.attendanceStage??result.orgExplorerJourneys?.[0]?.failure?.stage;
     if(typeof step==='string'&&/^[a-z][a-z-]{0,64}$/.test(step))row.failedStep=step;
+    if(result.failureLandmarks)row.failureLandmarks=result.failureLandmarks;
    }
    finally{
     row.serverActionResponses=[...actionRequests.values()].map(({page,matchedWorker,status,elapsedMs})=>
