@@ -1577,3 +1577,11 @@ Exactly 28 digest literals move from `2dcbe0929d2e71097ddbcfd7838367209e64911b28
 The repository owner approved carrying the same 28 provider approvals to `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf`. The source delta from `4e5ec01bde370ddd922115a22d27376ad03b0335` classifies the Deactivate Email server action as a human handoff under Access and Authentication, matching the other email settings actions. It adds no model-executable action, provider field, purpose or transport.
 
 The provider closure contains 1,831 files. Exactly 28 literals change from `0bc0ec1b3ebd8203b8850c1632d0326953ba3c49a32e257f47d38be63af8ffca` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte. Pending and retired records, review metadata and previous evaluations remain as recorded. Staging remains ordered after the existing production release and requires passing release verification.
+
+### Payroll History workbook employee matching, 20 November 2026 MYT
+
+The repository owner explicitly approved carrying the same 28 active provider approvals to fingerprint `b7443d0c379f60b7a95397a58ed200d115c73eb7666a34609fb7768a1088d6d6` for staging. The reviewed application source is `43c37531ab51776e264f74a21c07ae57c54af3ac`. The provider closure contains 1,831 files. The two changed files in that closure update Payroll History employee matching and workbook confirmation. They add no provider fields, purposes, transports or model-executable actions.
+
+Exactly 28 digest literals change from `4aa035f20352aba45c62dc711522c890c571fc3f2330341aedfebc399f30b4bf` to the approved digest. Reversing those substitutions reproduces the prior registry byte for byte, including pending and retired records. The separate module-agent manifest is regenerated after the registry update. Existing evaluations and promotions retain their recorded source identities.
+
+The original release run 44685513441 stopped during build and plan manifest validation. Its independently successful checks retain their original evidence identities. That run contains no release plan, application or browser results, or build packet.

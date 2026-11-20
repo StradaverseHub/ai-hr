@@ -156,7 +156,7 @@ type PlanRecordFacts=Awaited<ReturnType<typeof planRecordFactsTx>>;
 /** The plan's master and authority facts around the per-record ones (companies and cycles in payroll scope, each
  * company's permission, and what `analyze` read for each company of the file). */
 type PlanFacts={companies:unknown[];cycleRows:unknown[];permissions:[string,boolean][];analyze:[string,unknown][];records:PlanRecordFacts};
-export type HistoryPlanFactKeys={permissionCompanies:string[];analyzeCompanies:string[];keys:PlanKey[];maintenance?:boolean;permissionKind?:'import'|'revert'};
+export type HistoryPlanFactKeys={permissionCompanies:string[];analyzeCompanies:string[];keys:PlanKey[];maintenance?:boolean;permissionKind?:'import'|'revert';employeeNosByCompany?:[string,string[]][]};
 const factsDigest=(facts:PlanFacts)=>hash(canonical(facts));
 async function scopeFactsTx(tx:Tx){
  const companies=await tx.select({id:company.id,name:company.legalName,label:company.companyLabel,registration:company.registrationNo,currency:company.currency}).from(company)
@@ -198,8 +198,35 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
  }
  facts.permissions=[...permissionCache].sort(([a],[b])=>byText(a,b));
  // Each group's months, as the commit owner resolves them; then every resolved month's facts in one set of reads.
- const batch=maintenance?await historyAnalyzeBatchTx(ctx,tx,[...new Set([...groups.values()].map(group=>group.company.id))]):undefined;
+ const employeeNosByCompany = new Map<string, Set<string>>();
+ if (maintenance) for (const group of groups.values()) {
+  const employeeNos = employeeNosByCompany.get(group.company.id) ?? new Set<string>();
+  for (const row of group.records) employeeNos.add(key(readHistoryField(row, 'employee_no')));
+  employeeNosByCompany.set(group.company.id, employeeNos);
+ }
+ const batch = maintenance ? await historyAnalyzeBatchTx(ctx, tx, employeeNosByCompany) : undefined;
  if(batch)batch.ruleStates=await importedTaxRulesStatesTx(tx,[...new Set([...groups.values()].flatMap(group=>group.records.map(row=>toIsoPeriod(readHistoryField(row,'payroll_period'))).filter((period):period is string=>!!period)))]);
+ if (batch && maintenance && !maintenance.request) {
+  const seen = new Set<string>();
+  for (const group of groups.values()) {
+   for (const [index, row] of group.records.entries()) {
+    const employeeNo = readHistoryField(row, 'employee_no');
+    const period = toIsoPeriod(readHistoryField(row, 'payroll_period'));
+    const code = readHistoryField(row, 'doe_code');
+    const rowNum = group.indices[index];
+    if (!employeeNo) plan.issues.push({rowNum, reason: 'Employee ID is required.'});
+    if (!period) plan.issues.push({rowNum, reason: 'Enter a valid payroll period.'});
+    if (!batch.codes.has(key(code))) plan.issues.push({rowNum, reason: code ? `Unknown or unavailable Pay Item Code “${code}”.` : 'Pay Item Code is required.'});
+    const inputKey = JSON.stringify([group.company.id, group.cycle.id, key(employeeNo), period, key(code)]);
+    if (seen.has(inputKey)) plan.issues.push({rowNum, reason: 'This employee, period, pay cycle, company and Pay Item Code already appear in the workbook.'});
+    seen.add(inputKey);
+   }
+  }
+  if (plan.issues.length) {
+   plan.counts.invalid = plan.rows.length + new Set(plan.issues.map(issue => issue.rowNum)).size;
+   return sealed();
+  }
+ }
  const maintenancePrepared=maintenance&&attemptId&&batch?await preprocessHistoryMaintenanceTx(tx,ctx,[...groups.values()],maintenance,attemptId,batch):null;
  const analyzed=new Map<string,unknown>();
  const prepared:{group:typeof groups extends Map<string,infer G>?G:never;result:Awaited<ReturnType<typeof preparePayrollHistoryRevisionTx>>}[]=[];
@@ -269,7 +296,8 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
     else if(others.length>1)row.reasons.push('More than one payroll result is on file for this employee, period and Pay Cycle, so the record to overwrite cannot be identified safely.');
     else if(others.length===1){
      const target=others[0];
-     if(target.history||row.recordId)row.reasons.push('An earlier imported result for this identity predates import history and cannot be overwritten safely.');
+     if(maintenance && !target.history && target.status==='closed')row.reasons.push('This workbook row matches a closed payroll result. Closed payroll records cannot be replaced through Import Payroll History.');
+     else if(target.history||row.recordId)row.reasons.push('An earlier imported result for this identity predates import history and cannot be overwritten safely.');
      else{
       const before:ImportedPayrollValues={basicSalary:target.basicSalary,allowance:target.allowance,overtimePay:target.overtimePay,bonus:target.bonus,grossPay:target.grossPay,statutory:target.statutory as Record<string,unknown>,
        otherDeductions:target.otherDeductions,totalDeductions:target.totalDeductions,netPay:target.netPay,employerCost:target.employerCost};
@@ -313,7 +341,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
  plan.companyIds=[...new Set(plan.rows.filter(row=>row.companyId).map(row=>row.companyId))].sort();
  for(const row of plan.rows)plan.counts[row.operation==='create'?'created':row.operation==='replace'?'replaced':row.operation]++;
  if(plan.issues.length&&!plan.counts.invalid)plan.counts.invalid=1;
- return{plan:seal(plan),digest:factsDigest(facts),factKeys:{permissionCompanies:facts.permissions.map(([id])=>id),analyzeCompanies:facts.analyze.map(([id])=>id),keys,...(maintenance?{maintenance:true,permissionKind}: {})}};
+ return{plan:seal(plan),digest:factsDigest(facts),factKeys:{permissionCompanies:facts.permissions.map(([id])=>id),analyzeCompanies:facts.analyze.map(([id])=>id),keys,...(maintenance?{maintenance:true,permissionKind,employeeNosByCompany:[...employeeNosByCompany].map(([companyId, employeeNos])=>[companyId,[...employeeNos]])}: {})}};
 }
 async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],sourceHash:string,maintenance?:MaintenanceOptions,attemptId?:string):Promise<HistoryRevisionPlan>{
  return (await planRowsWithFacts(tx,ctx,records,sourceHash,maintenance,attemptId)).plan;
@@ -324,7 +352,7 @@ async function planRows(tx:Tx,ctx:SessionContext,records:PayrollHistoryRecord[],
 export async function historyPlanFactsDigestTx(tx:Tx,ctx:SessionContext,keys:HistoryPlanFactKeys){
  const {companies,cycleRows}=await scopeFactsTx(tx);
  const facts:PlanFacts={companies:sortBy(companies,c=>c.id),cycleRows:sortBy(cycleRows,c=>c.id),permissions:[],analyze:[],records:await planRecordFactsTx(tx,keys.keys)};
- if(keys.maintenance){const permissionKey=keys.permissionKind==='revert'?'payroll.history.revert':'payroll.history.import',allowed=(await personnelFormulaPermissionsTx(tx,ctx,keys.permissionCompanies,[permissionKey])).get(permissionKey),batch=await historyAnalyzeBatchTx(ctx,tx,keys.analyzeCompanies);for(const id of keys.permissionCompanies)facts.permissions.push([id,allowed?.has(id)===true]);for(const id of keys.analyzeCompanies)facts.analyze.push([id,historyAnalyzeBatchFact(batch,id)]);}
+ if(keys.maintenance){if(!keys.employeeNosByCompany)return '';const permissionKey=keys.permissionKind==='revert'?'payroll.history.revert':'payroll.history.import',allowed=(await personnelFormulaPermissionsTx(tx,ctx,keys.permissionCompanies,[permissionKey])).get(permissionKey),batch=await historyAnalyzeBatchTx(ctx,tx,new Map(keys.employeeNosByCompany.map(([id,codes])=>[id,new Set(codes)])));for(const id of keys.permissionCompanies)facts.permissions.push([id,allowed?.has(id)===true]);for(const id of keys.analyzeCompanies)facts.analyze.push([id,historyAnalyzeBatchFact(batch,id)]);}
  else{for(const id of keys.permissionCompanies)facts.permissions.push([id,await permitted(tx,ctx,id)]);for(const id of keys.analyzeCompanies)facts.analyze.push([id,await historyAnalyzeFactsTx(ctx,tx,id)]);}
  return factsDigest(facts);
 }

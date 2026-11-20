@@ -175,7 +175,7 @@ describe('the reporter\'s migration scenario',()=>{
   expect(committed.imported).toBe(1);
   expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,b.companyId],[TRANSFER,coB]]);
   expect(await companyOf(id)).toBe(coB);
-  // Payroll history: January to June under A, July under B; a July row under A names B.
+  // Dated corrections remain visible independently of the company attributed by the workbook.
   await seedPayrollCycleCatalog(ctx(),b.companyId);await seedPayrollCycleCatalog(ctx(),coB);
   await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Basic salary',kind:'allowance',displayCategory:'basic'});
   const month=(period:string,company:string)=>['BASIC,5000.00','EEEPF,550.00','EESOCSO,24.75','EEEIS,9.90','PCB,0.00','EREPF,650.00','ERSOCSO,86.65','EREIS,9.90'].map(item=>{const [code,amount]=item.split(',');return ['ED-MIG',period,'ME',code,company,amount].join(',');});
@@ -185,8 +185,9 @@ describe('the reporter\'s migration scenario',()=>{
   const underB=await validatePayrollHistoryImport(ctx(),{companyId:coB,records:file(...month('202607','BETA'))});
   expect(underB.months.map(m=>m.ok)).toEqual([true]);
   const julyUnderA=await validatePayrollHistoryImport(ctx(),{companyId:b.companyId,records:file(...month('202607','ACME'))});
-  expect(julyUnderA.months[0].ok).toBe(false);
-  expect(julyUnderA.issues.map(i=>i.description)).toContain('Employee ED-MIG belonged to Beta Fictional Sdn Bhd during 2026-07, not Acme Sdn Bhd. Import this month under Beta Fictional Sdn Bhd.');
+  expect(julyUnderA.months[0]).toMatchObject({ok:true, companyCode:'ACME'});
+  expect(julyUnderA.issues.filter(issue=>issue.type==='Invalid Employee No')).toEqual([]);
+  expect((await versions(id)).map(v=>[v.validFrom,v.companyId])).toEqual([[JOIN,b.companyId],[TRANSFER,coB]]);
  });
  it('repairs a record already corrected the old way (from today): correct from the join date, then import the transfer',async()=>{
   const id=await hire('ED-OLD',JOIN,coB);

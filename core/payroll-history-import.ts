@@ -16,7 +16,7 @@ import {createHash} from 'node:crypto';
 import {importedTaxSettingsTx,importedTaxRulesStateTx,importedTaxRulesStatesTx,projectImportedTaxBasis} from './payroll-import-tax-source';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { entitySegmentRow, mergeCompanySegments, dayAfter, segmentForCompany, type CompanySegment } from './employment-company';
+import { entitySegmentRow, mergeCompanySegments, segmentForCompany, type CompanySegment } from './employment-company';
 import {
   assignment,
   company,
@@ -376,11 +376,10 @@ function analyzeFacts(codes: Map<string, ImportCodeEntry>, inputs: AnalyzeInputs
     employees: [...inputs.employees].sort(byId),
     cycles: [...inputs.cycles].sort(byId),
     placements: [...inputs.placements].sort((a, b) => a.employmentId.localeCompare(b.employmentId) || a.validFrom.localeCompare(b.validFrom) || String(a.companyId).localeCompare(String(b.companyId))),
-    currentCompany: [...inputs.currentCompany].sort((a, b) => a.employmentId.localeCompare(b.employmentId)),
   };
 }
-async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
-      const targets=Array.isArray(companyId)?companyId:[companyId],scope=sql`ARRAY[${sql.join(targets.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+async function readAnalyzeInputs(tx: Tx, companyId: string|string[], employeeNos?: ReadonlySet<string>) {
+      const targets=Array.isArray(companyId)?companyId:[companyId];
       const companies = await tx
         .select({
           id: company.id,
@@ -391,10 +390,15 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
           archivedAt: company.archivedAt,
         })
         .from(company);
+      const payrollCompanies = tx.select({ id: company.id }).from(company).where(sql`app.can_admin_payroll_for(${company.id})`);
+      const authorizedSubject = and(isNull(employment.voidedAt), inArray(employment.companyId, payrollCompanies),
+        employeeNos && sql`upper(btrim(${employment.employeeCode})) in
+          (select jsonb_array_elements_text(${JSON.stringify([...employeeNos])}::jsonb))`);
       const employees = await tx
         .select({
           employmentId: employment.id,
           code: employment.employeeCode,
+          companyId: employment.companyId,
           hiredOn: employment.hiredOn,
           terminatedOn: employment.terminatedOn,
           // leftJoin: the MY statutory profile may be absent, which is exactly the CP39 warning below.
@@ -402,22 +406,15 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
         })
         .from(employment)
         .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-        // Board 4604dccc — everyone this company employs today, and everyone its dated history (assignment
-        // company) places here at some time, so a month is found under the company that employed the person
-        // then. One set-based statement for the import (SCALE rule 2); the employment's own RLS still applies.
-        .where(sql`(${employment.companyId} = any(${scope}) or exists (select 1 from ${assignment} a where a.employment_id = ${employment.id} and a.superseded_at is null and a.company_id = any(${scope})))`);
-      // Their dated company history, in one statement, to place each month under the right company.
-      const ids = employees.map((e) => e.employmentId);
-      const placements = ids.length
-        ? await tx
-            .select({ employmentId: assignment.employmentId, companyId: assignment.companyId, validFrom: assignment.validFrom, validTo: assignment.validTo })
-            .from(assignment)
-            .where(and(inArray(assignment.employmentId, ids), isNull(assignment.supersededAt)))
-            .orderBy(asc(assignment.employmentId), asc(assignment.validFrom))
-        : [];
-      const currentCompany = ids.length
-        ? await tx.select({ employmentId: employment.id, companyId: employment.companyId }).from(employment).where(inArray(employment.id, ids))
-        : [];
+        // A new payroll row requires authority over the visible subject as well as the workbook
+        // company. The existing accepted-record path handles original-employer maintenance separately.
+        .where(authorizedSubject);
+      const placements = await tx
+        .select({employmentId: assignment.employmentId, companyId: assignment.companyId, validFrom: assignment.validFrom, validTo: assignment.validTo})
+        .from(assignment)
+        .innerJoin(employment, eq(employment.id, assignment.employmentId))
+        .where(and(isNull(assignment.supersededAt), authorizedSubject))
+        .orderBy(asc(assignment.employmentId), asc(assignment.validFrom));
       const cycles = await tx
         .select({
           id: payrollCycle.id,
@@ -429,16 +426,24 @@ async function readAnalyzeInputs(tx: Tx, companyId: string|string[]) {
         .from(payrollCycle)
         .where(inArray(payrollCycle.companyId,targets));
       const taxRulesState=await importedTaxRulesStateTx(tx);
-      return { companies, employees, cycles, placements, currentCompany,taxRulesState };
+      return { companies, employees, cycles, placements, taxRulesState };
 }
 
 export type HistoryMaintenanceSubject={recordId:string;companyId:string;employmentId:string;employeeNo:string;period:string;cycleId:string;hiredOn:string|null;terminatedOn:string|null;calendarEvidence?:'retained_segment'|'retained_record'|'unavailable';unavailableReason?:string|null;segment?:{companyId:string;from:string;to:string}|null};
 export type HistoryAnalyzeBatchContext={codes:Map<string,ImportCodeEntry>;inputs:Map<string,AnalyzeInputs>;taxSettings:Awaited<ReturnType<typeof importedTaxSettingsTx>>;rules:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;ruleStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
 /** One set of scoped source reads for all requested companies, then canonical per-company views. */
-export async function historyAnalyzeBatchTx(ctx:SessionContext,tx:Tx,companyIds:string[]):Promise<HistoryAnalyzeBatchContext>{
- const codes=await resolveImportCodes(ctx,tx),all=await readAnalyzeInputs(tx,companyIds),inputs=new Map<string,AnalyzeInputs>();
- for(const id of companyIds){const members=new Set([...all.currentCompany.filter(row=>row.companyId===id).map(row=>row.employmentId),...all.placements.filter(row=>row.companyId===id).map(row=>row.employmentId)]);inputs.set(id,{...all,employees:all.employees.filter(row=>members.has(row.employmentId)),cycles:all.cycles.filter(row=>row.companyId===id),placements:all.placements.filter(row=>members.has(row.employmentId)),currentCompany:all.currentCompany.filter(row=>members.has(row.employmentId))});}
- return{codes,inputs,taxSettings:await importedTaxSettingsTx(tx),rules:new Map()};
+export async function historyAnalyzeBatchTx(ctx: SessionContext, tx: Tx, employeeNosByCompany: ReadonlyMap<string, ReadonlySet<string>>): Promise<HistoryAnalyzeBatchContext> {
+ const employeeNos = new Set([...employeeNosByCompany.values()].flatMap(codes => [...codes]));
+ const codes = await resolveImportCodes(ctx, tx);
+ const all = await readAnalyzeInputs(tx, [...employeeNosByCompany.keys()], employeeNos);
+ const inputs = new Map<string, AnalyzeInputs>();
+ for (const [companyId, employeeNos] of employeeNosByCompany) {
+  const employees = all.employees.filter(employee => employeeNos.has(up(employee.code ?? '')));
+  const employeeIds = new Set(employees.map(employee => employee.employmentId));
+  inputs.set(companyId, {...all, employees, cycles: all.cycles.filter(row => row.companyId === companyId),
+   placements: all.placements.filter(row => employeeIds.has(row.employmentId))});
+ }
+ return {codes, inputs, taxSettings: await importedTaxSettingsTx(tx), rules: new Map()};
 }
 export function historyAnalyzeBatchFact(context:HistoryAnalyzeBatchContext,companyId:string){return analyzeFacts(context.codes,context.inputs.get(companyId)!);}
 
@@ -452,7 +457,7 @@ async function analyze(
   for(const entry of options.retainedCodes??[])codes.set(up(entry.code),entry);
   const read = <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => options.transaction ? fn(options.transaction) : withTenant(ctx, fn);
 
-  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements, currentCompany,taxRulesState } = await read(
+  const { companyKeys, targetCompany, employees, cycles, statutoryVersion, placements, taxRulesState } = await read(
     async (tx) => {
       const inputs = options.batch?.inputs.get(companyId)??await readAnalyzeInputs(tx, companyId);
       options.facts?.(analyzeFacts(originalCodes, inputs));
@@ -475,29 +480,23 @@ async function analyze(
         }
       }
 
-      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, companies, placements: inputs.placements, currentCompany: inputs.currentCompany,taxRulesState };
+      return { companyKeys, targetCompany, employees, cycles, statutoryVersion, placements: inputs.placements, taxRulesState };
     },
   );
 
-  // ── Employee lookup by code, within THIS company. `employment_employee_code_uq` (tenant, code) already
-  // makes a code unique tenant-wide, so a within-company collision is impossible today — the guard stays
-  // because the code is now load-bearing for money and a future relaxation of that index must not turn
-  // into a silent mis-posting.
-  // Resolve the whole recorded timeline. A recorded-history gap is an error, never today's-company fallback.
-  const companyNameOf = new Map(companies.map((c) => [c.id, c.legalName]));
-  const currentOf = new Map(currentCompany.map((r) => [r.employmentId, r.companyId]));
-  const rowsOf = new Map<string, { companyId: string; validFrom: string; validTo: string | null }[]>();
-  for (const p of placements) if (p.companyId) rowsOf.set(p.employmentId, [...(rowsOf.get(p.employmentId) ?? []), { companyId: p.companyId, validFrom: p.validFrom, validTo: p.validTo }]);
-  const segmentsDuring = (emp: (typeof employees)[number], from: string, to: string): CompanySegment[] => {
-    const current = currentOf.get(emp.employmentId);
-    if (!current) return [];
-    // Later payments resolve the final recorded employer on the leaving day. This is dated
-    // evidence, not today's employer filling a missing history interval.
-    const afterLeaving=emp.terminatedOn!==null&&emp.terminatedOn<from;
-    const winFrom = afterLeaving ? emp.terminatedOn! : emp.hiredOn > from ? emp.hiredOn : from, winTo = emp.terminatedOn && emp.terminatedOn < to ? emp.terminatedOn : to;
-    if (winFrom > winTo) return [];
-    const entity = (rowsOf.get(emp.employmentId) ?? []).map(entitySegmentRow);
-    return mergeCompanySegments(entity, current, winFrom, winTo, {requireRecordedHistory:true});
+  // Dated assignments can provide a payslip segment. Employee matching and workbook attribution
+  // are independent of whether a segment can be established.
+  const rowsOf = new Map<string, ReturnType<typeof entitySegmentRow>[]>();
+  for (const placement of placements) {
+    if (!placement.companyId) continue;
+    const rows = rowsOf.get(placement.employmentId) ?? [];
+    rows.push(entitySegmentRow({...placement, companyId: placement.companyId}));
+    rowsOf.set(placement.employmentId, rows);
+  }
+  const segmentsDuring = (emp: (typeof employees)[number], first: string, last: string): CompanySegment[] => {
+    const from = emp.hiredOn > first ? emp.hiredOn : first;
+    const to = emp.terminatedOn && emp.terminatedOn < last ? emp.terminatedOn : last;
+    return mergeCompanySegments(rowsOf.get(emp.employmentId) ?? [], emp.companyId, from, to, {requireRecordedHistory: true});
   };
   const coverageOf = new Map<string,{companyId:string;from:string;to:string}>();
   const employeesByCode = new Map<string, typeof employees>();
@@ -593,48 +592,36 @@ async function analyze(
       }
     }
 
-    // Employee No — by employee code within the resolved company, effective for the period.
+    // Prefer the retained identity for a reviewed correction. A reused Employee ID
+    // must never redirect a correction to a different employment.
     let employmentId = '';
     if (employeeNo) {
       const hits = employeesByCode.get(up(employeeNo)) ?? [];
-      const historical=(options.historical??[]).filter(row=>up(row.employeeNo)===up(employeeNo)&&row.companyId===companyId&&row.period===period&&cycleKeys.get(up(cycle))?.has(row.cycleId));
-      if(historical.length===1&&!hits.some(hit=>hit.employmentId!==historical[0].employmentId)&&period){
-        const h=historical[0],segment=h.segment,{first,last}=periodBounds(period);
-        if(h.calendarEvidence==='unavailable'||!h.calendarEvidence||(segment&&(segment.companyId!==companyId||segment.from<first||segment.to<segment.from||segment.to>last)))issues.push(issue(ref,'Invalid Employee No',h.unavailableReason??'The retained original-employer calendar evidence is unavailable or conflicts with the accepted period.'));
-        else{employmentId=h.employmentId;if(segment)coverageOf.set(h.employmentId+':'+period,{...segment});}
-      } else if(historical.some(row=>hits.some(hit=>hit.employmentId!==row.employmentId))){issues.push(issue(ref,'Invalid Employee No','The retained employee code now identifies a different employment. Review the original identity.'));}
-      else if (hits.length === 0) {
-        issues.push(issue(ref, 'Invalid Employee No', `Employee does not exist in Employee Master for this company`));
+      const historical = (options.historical ?? []).filter(row =>
+        up(row.employeeNo) === up(employeeNo) && row.companyId === companyId && row.period === period && cycleKeys.get(up(cycle))?.has(row.cycleId));
+      const retained = historical[0];
+      if (historical.length > 1 || (retained && hits.some(hit => hit.employmentId !== retained.employmentId))) {
+        issues.push(issue(ref, 'Invalid Employee No', 'The retained Employee ID is ambiguous or now identifies a different employment.'));
+      } else if (retained && period) {
+        employmentId = retained.employmentId;
+        const {first, last} = periodBounds(period);
+        const segment = retained.segment;
+        if (segment && retained.calendarEvidence === 'retained_segment' && segment.companyId === companyId
+          && segment.from >= first && segment.to >= segment.from && segment.to <= last) {
+          coverageOf.set(employmentId + ':' + period, segment);
+        }
+      } else if (hits.length === 0) {
+        issues.push(issue(ref, 'Invalid Employee No', 'Employee ID does not exist in Employee Master or is outside your payroll scope.'));
       } else if (hits.length > 1) {
         issues.push(issue(ref, 'Invalid Employee No', `Employee No “${employeeNo}” matches ${hits.length} employments`));
-      } else if (period) {
-        const { first, last } = periodBounds(period);
-        const emp = hits[0];
-        if (emp.hiredOn > last) {
-          issues.push(
-            issue(ref, 'Invalid Employee No', `Employee was not employed during ${period} (joined ${emp.hiredOn}${emp.terminatedOn ? `, left ${emp.terminatedOn}` : ''})`),
-          );
-        } else {
-          const segments = segmentsDuring(emp, first, last);
-          const winFrom = emp.terminatedOn && emp.terminatedOn < first ? emp.terminatedOn : emp.hiredOn > first ? emp.hiredOn : first;
-          const winTo = emp.terminatedOn && emp.terminatedOn < last ? emp.terminatedOn : last;
-          const complete = segments.length > 0 && segments[0].from === winFrom && segments.at(-1)!.to === winTo
-            && segments.every((segment,index)=>index === 0 || dayAfter(segments[index-1].to) === segment.from);
-          const mine = segmentForCompany(segments,companyId);
-          if (!complete) {
-            issues.push(issue(ref,'Invalid Employee No',`Dated company history does not fully cover ${period}. Correct Employment History before importing this month; the current company is not used to fill missing dates.`));
-          } else if (!mine) {
-            const names = [...new Set(segments.map(segment=>companyNameOf.get(segment.companyId) ?? 'another company'))].join(', ');
-            issues.push(issue(ref,'Invalid Employee No',`Employee ${employeeNo} belonged to ${names} during ${period}, not ${targetCompany?.legalName ?? 'this company'}. Import this month under ${names}.`));
-          } else if (mine.split) {
-            issues.push(issue(ref,'Invalid Employee No',`This employee has separate non-adjacent periods with this company in ${period}. Reconcile those periods before importing a single company-month.`));
-          } else {
-            employmentId = emp.employmentId;
-            coverageOf.set(emp.employmentId+':'+period,{companyId,from:mine.from,to:mine.to});
-          }
-        }
       } else {
-        employmentId = hits[0].employmentId;
+        const emp = hits[0];
+        employmentId = emp.employmentId;
+        if (period) {
+          const {first, last} = periodBounds(period);
+          const segment = segmentForCompany(segmentsDuring(emp, first, last), companyId);
+          if (segment && !segment.split) coverageOf.set(employmentId + ':' + period, {companyId, from: segment.from, to: segment.to});
+        }
       }
     }
 

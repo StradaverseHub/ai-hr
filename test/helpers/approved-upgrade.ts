@@ -467,11 +467,12 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10410,when:1795028007010,tag:'7010_payroll_history_point_read_plan'},
  {idx:10411,when:1795028007011,tag:'7011_payroll_tax_basis_picker_set'},
  {idx:10440,when:1795028007040,tag:'7040_payroll_original_employer_row_security'},
- {idx:10441,when:1795028007041,tag:'7041_payroll_read_authorization'},
+ {idx:10450,when:1795028007050,tag:'7050_payroll_history_workbook_company'},
+ {idx:10451,when:1795028007051,tag:'7051_payroll_read_authorization'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '7041_payroll_read_authorization':'de2c9597fbf2dfa341270b00d05b0b7336a6ea56700fd5800f2b281b361f983a',
+ '7051_payroll_read_authorization':'de2c9597fbf2dfa341270b00d05b0b7336a6ea56700fd5800f2b281b361f983a',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
@@ -479,6 +480,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7010_payroll_history_point_read_plan':'aab79f0fad212e57e740e38f1667c2b811889287a409fb2a95adc69676e4eebc',
  '7011_payroll_tax_basis_picker_set':'55dc3af4efef833fc6d1208557b48219d0e0c534144a868ec72450ce7ed48d08',
  '7040_payroll_original_employer_row_security':'c74f60e1f0a25c721c6b4a1b03b73cc001acd33eed980e89060f9d745cf53115',
+ '7050_payroll_history_workbook_company':'cd945c7e0f7c85a15853219b3f191ba2aa14e0a565508b8220dea556d9cc8af6',
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
  '6501_contract_company_scope_retention':'3790725363457523357f24369be874a54440bb14d63c1ba1abeed30666a3bdfd',
  '6442_contract_probation_business_partner_owner':'056eb347fbd5aef43d86ff55b8968d1ab4144436c3ac5baa7e8d21efaaf37c99',
