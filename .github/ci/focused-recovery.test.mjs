@@ -38,8 +38,8 @@ test('Exact-source DB recovery retains the original failed process and validates
  assert.equal(c.units.filter(u=>u.kind==='focused-recovery').length,1);assert.equal(f.plan.sha,f.focused[0].report.sha);
  assert.equal(c.pendingDatabaseOrdering,true);assert.throws(()=>validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run));
 });
-function orderingFixture(){
- const controller='7f7b7a9e686a1bd63b004a802248f064d1978da0', candidate='a'.repeat(40), start=time(3);
+function orderingFixture(controller='7f7b7a9e686a1bd63b004a802248f064d1978da0'){
+ const candidate='a'.repeat(40), start=time(3);
  const producer={id:301,run_id:200,name:'selected-tests',head_sha:controller,steps:[{name:'Classify and execute only selected files',status:'completed',conclusion:'success',started_at:start}]};
  const report={sha:candidate,controller,runId:'200',files:['test/contract-shared-decision-db.test.ts']};
  const log=[
@@ -60,6 +60,10 @@ test('Duration ordering is bound to the authenticated producing job, step and se
  assert.equal(validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run),true);
  delete c.focusedSources[0].databaseOrdering;
  assert.throws(()=>validateRecoveryGrantEvidence({...c,recovery:c,fingerprint:hash(c)},f.run),/ordering evidence/);
+});
+test('Duration ordering accepts the published main producer with the same focused workflow',()=>{
+ const fixture=orderingFixture('b08925ba1eedc828b9f2023d026e7e972bbdb90e');
+ assert.equal(validateFocusedDbOrdering(fixture).logSha256,recoverySourceDigest(fixture.log));
 });
 for(const [name,mutate] of [
  ['disabled ordering',f=>f.log=Buffer.from(f.log.toString().replace('ORDER: true','ORDER: false'))],

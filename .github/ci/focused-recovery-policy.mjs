@@ -80,13 +80,16 @@ export function validateFocusedMetadata({run,jobs,artifacts,expected,now=Date.no
 }
 // The published producer at this commit forwards the Actions step environment to
 // Vitest unchanged for duration ordering. Other producers need equivalent review.
-const ORDER_LOG_CONTROLLER='7f7b7a9e686a1bd63b004a802248f064d1978da0';
+const ORDER_LOG_CONTROLLERS=new Set([
+ '7f7b7a9e686a1bd63b004a802248f064d1978da0',
+ 'b08925ba1eedc828b9f2023d026e7e972bbdb90e',
+]);
 const ORDER_STEP='Classify and execute only selected files';
 const ORDER_COMMAND='##[group]Run node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-focused"';
 export function validateFocusedDbOrdering({log,producer,report}){
  assert(Buffer.isBuffer(log)&&log.length>0&&log.length<=32*1024**2,'Bounded GitHub job log required');
  assert(positive(producer.id)&&positive(producer.run_id)&&producer.name==='selected-tests'
-   &&producer.head_sha===ORDER_LOG_CONTROLLER&&report.controller===producer.head_sha
+   &&ORDER_LOG_CONTROLLERS.has(producer.head_sha)&&report.controller===producer.head_sha
    &&report.runId===String(producer.run_id)&&sha(report.sha),'Exact reviewed duration-order producer required');
  const steps=producer.steps?.filter(step=>step.name===ORDER_STEP)??[];
  assert(steps.length===1&&steps[0].status==='completed'&&steps[0].conclusion==='success','Successful focused execution step required');
