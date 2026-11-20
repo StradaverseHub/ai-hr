@@ -922,6 +922,38 @@ async function measureWalkthrough({page,user,report,save}){
  save();
 }
 
+async function measureRosterExceptions({page,user,fixture,report,save}){
+ const started=performance.now(),deadline=started+15000;
+ const timeout=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ const response=await page.goto(origin+'/roster',{waitUntil:'commit',timeout:timeout()});
+ assert.equal(response?.status(),200);
+ assert.equal(page.url(),origin+'/roster');
+ assert.equal(await readyContent(page,user,'/roster',timeout,undefined,fixture),'usable-content');
+ report.rosterExceptionSteps=[{step:'schedule-visible',elapsedMs:Math.round(performance.now()-started)}];
+ save();
+ const link=page.locator('main a[href^="/roster/exceptions?"]');
+ const count=link.locator('[data-roster-exception-count="ready"]');
+ await count.waitFor({state:'visible',timeout:timeout()});
+ const expected=(await count.textContent()).match(/^Exceptions \(([0-9]+)\)$/)?.[1];
+ assert(expected!==undefined,'Roster exception count has no numeric label');
+ report.rosterExceptionSteps.push({step:'exception-count-visible',elapsedMs:Math.round(performance.now()-started)});
+ save();
+ const target=new URL(await link.getAttribute('href'),origin);
+ assert.equal(target.origin,origin);
+ assert.equal(target.pathname,'/roster/exceptions');
+ assert(target.searchParams.has('month')&&target.searchParams.has('view'));
+ const clicked=performance.now();
+ await link.click({timeout:15000});
+ await page.waitForURL(target.href,{timeout:15000});
+ const main=page.locator('main:visible');
+ await main.getByRole('heading',{name:'Roster exceptions',exact:true}).waitFor({state:'visible',timeout:15000});
+ const total=main.locator('[data-ui-section-count]').filter({hasText:new RegExp('^\\('+expected+'\\)$')});
+ await total.waitFor({state:'visible',timeout:15000});
+ await assertContentAvailable(page);
+ report.rosterExceptionSteps.push({step:'open-matching-exceptions',elapsedMs:Math.round(performance.now()-clicked)});
+ save();
+}
+
 async function measureActions(fixture){
  const {node,edge}=JSON.parse(readFileSync('.next/server/server-reference-manifest.json','utf8'));
  const declaredActions=new Set([...Object.keys(node??{}),...Object.keys(edge??{})]);
@@ -932,6 +964,7 @@ async function measureActions(fixture){
  const postgres=require('postgres');
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
+  ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
