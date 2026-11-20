@@ -35,5 +35,9 @@ class FocusedExtraction(unittest.TestCase):
     def test_symlink(self):
         info=zipfile.ZipInfo('ui-screenshots/link.png');info.create_system=3;info.external_attr=(stat.S_IFLNK|0o777)<<16
         self.assertNotEqual(self.invoke([(info,b'/etc/passwd')])[0],0)
-    def test_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(129)])[0],0)
+    def test_measured_nodb_screenshot_inventory_is_not_extracted(self):
+        screens=[(f'ui-screenshots/{i}.{extension}',b'fixture') for i in range(156) for extension in ('png','json')]
+        self.assertEqual(self.invoke(screens),(0,['focused.json','nodb.vitest.json']))
+    def test_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(385)])[0],0)
+    def test_database_member_count(self):self.assertNotEqual(self.invoke([(f'ui-screenshots/{i}.json','{}') for i in range(129)],database=True)[0],0)
 if __name__=='__main__':unittest.main()

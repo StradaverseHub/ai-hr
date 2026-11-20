@@ -7,7 +7,7 @@ role='personnel-draft-discard-premigration-role-prerequisites.json'
 runtime_role='personnel-draft-discard-role-prerequisites.json'
 with zipfile.ZipFile(archive) as z:
     entries=z.infolist()
-    if len(entries)>128 or sum(i.file_size for i in entries)>128*1024*1024:
+    if len(entries)>384 or sum(i.file_size for i in entries)>128*1024*1024:
         raise ValueError('Focused artifact exceeds bounds')
     names=set()
     for i in entries:
@@ -21,6 +21,10 @@ with zipfile.ZipFile(archive) as z:
         raise ValueError('Focused recovery JSON missing')
     report=json.loads(z.read('focused.json'))
     database=bool(report.get('groups',{}).get('DB'))
+    # Keep the database limit. No-DB browser fixtures retain up to 384
+    # archive members, with the same byte bounds and no screenshot extraction.
+    if database and len(entries)>128:
+        raise ValueError('Focused database artifact exceeds member bound')
     if bool(report.get('groups',{}).get('NODB'))==database:
         raise ValueError('One homogeneous recovery partition required')
     result='db.vitest.json' if database else 'nodb.vitest.json'
