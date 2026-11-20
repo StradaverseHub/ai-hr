@@ -330,11 +330,14 @@ function retainMixedDriverStage(path){
 
 // The driver snapshots contain private SQL text and session details. Publish only
 // fixed category names and aggregate counters for its bounded statement sample.
-function retainMixedStatementSummary(driverEvidence){
+function summarizeMixedStatements(statements){
+ if(!Array.isArray(statements)||statements.length===0||statements.length>35)return null;
  const categories=[
   ['offboarding-posting-access',/\boffboarding_posting_queue_access\b/i],
   ['access-lock',/\b(?:pg_advisory_xact_lock(?:_shared)?|access_workforce_write_lock)\b/i],
   ['session-context',/\b(?:set_config|reset role|set local role)\b/i],
+  ['principal-proof',/\b(?:principal_snapshot_current|current_grants)\b/i],
+  ['module-entitlements',/\b(?:tenant_module|tenant_setting|setting_definition)\b/i],
   ['authentication',/\b(?:auth_(?:session|account|identity)\w*|principal)\b/i],
   ['audit',/\baudit_(?:log|event|chain)\w*\b/i],
   ['delegations',/\b(?:access_)?delegation\w*\b/i],
@@ -358,35 +361,60 @@ function retainMixedStatementSummary(driverEvidence){
   const number=Number(value);
   return Number.isFinite(number)&&number>=0&&number<=Number.MAX_SAFE_INTEGER?number:0;
  };
+ const groups=new Map();
+ for(const statement of statements){
+  if(typeof statement?.normalized_query!=='string')continue;
+  const category=categories.find(([,pattern])=>pattern.test(statement.normalized_query))?.[0]??'unclassified';
+  const group=groups.get(category)??{
+   category,statements:0,...Object.fromEntries(Object.keys(metrics).map(key=>[key,0])),
+  };
+  group.statements++;
+  for(const [metric,columns] of Object.entries(metrics)){
+   for(const column of columns)group[metric]+=counter(statement[column]);
+  }
+  groups.set(category,group);
+ }
+ if(groups.size===0)return null;
+ const rows=[...groups.values()].sort((a,b)=>(b.executionMs+b.planningMs)-(a.executionMs+a.planningMs));
+ for(const row of rows){
+  for(const metric of Object.keys(metrics))row[metric]=Math.round(row[metric]);
+ }
+ return rows;
+}
+
+function retainMixedStatementSummary(driverEvidence){
  for(const snapshot of ['loaded','failure','loaded-progress']){
   const path=join(driverEvidence,'database-'+snapshot+'.json');
   try{
    const metadata=statSync(path);
    if(!metadata.isFile()||metadata.size>1024*1024)continue;
    const {statements}=JSON.parse(readFileSync(path,'utf8'));
-   if(!Array.isArray(statements)||statements.length===0||statements.length>35)continue;
-   const groups=new Map();
-   for(const statement of statements){
-    if(typeof statement?.normalized_query!=='string')continue;
-    const category=categories.find(([,pattern])=>pattern.test(statement.normalized_query))?.[0]??'unclassified';
-    const group=groups.get(category)??{
-     category,statements:0,...Object.fromEntries(Object.keys(metrics).map(key=>[key,0])),
-    };
-    group.statements++;
-    for(const [metric,columns] of Object.entries(metrics)){
-     for(const column of columns)group[metric]+=counter(statement[column]);
-    }
-    groups.set(category,group);
-   }
-   if(groups.size===0)continue;
-   const rows=[...groups.values()].sort((a,b)=>(b.executionMs+b.planningMs)-(a.executionMs+a.planningMs));
-   for(const row of rows){
-    for(const metric of Object.keys(metrics))row[metric]=Math.round(row[metric]);
-   }
-   return {snapshot,scope:'up to 35 statements ranked by combined cumulative execution and planning time',categories:rows};
+   const categories=summarizeMixedStatements(statements);
+   if(categories)return {snapshot,scope:'up to 35 statements ranked by combined cumulative execution and planning time',categories};
   }catch{/* Diagnostic snapshots are optional and never change the workload verdict. */}
  }
  return null;
+}
+
+function readMixedRootStatements(name,dockerConfig){
+ // Run after the driver settles so this probe consumes no measured capacity.
+ // Include only the application role's direct statements to avoid counting
+ // their nested SQL a second time.
+ const query=`select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
+   from (select calls,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
+     jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800) as normalized_query
+     from pg_stat_statements
+     where dbid=(select oid from pg_database where datname=current_database())
+       and userid=(select oid from pg_roles where rolname='ai_hr_app') and toplevel
+     order by total_exec_time+total_plan_time desc limit 35) sample`;
+ try{
+  const result=execFileSync('/usr/bin/docker',[
+   '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
+   '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
+  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:256*1024,stdio:['ignore','pipe','pipe']});
+  const categories=summarizeMixedStatements(JSON.parse(result));
+  return categories?{scope:'up to 35 top-level statements executed under the application role',categories}:null;
+ }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
 async function measureMixedLoad(command){
@@ -435,6 +463,7 @@ async function measureMixedLoad(command){
    // Failure or startup snapshots before that reset would mix in preflight work.
    if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
     report.mixedDatabaseProfile.loadedStatements=retainMixedStatementSummary(driverEvidence);
+    if(data.trafficSettled===true)report.mixedDatabaseProfile.applicationRootStatements=readMixedRootStatements(name,dockerConfig);
    }
    const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
    const counts=(obj,keys)=>Object.fromEntries(keys.map(key=>[key,nonnegative(obj?.[key])]));
