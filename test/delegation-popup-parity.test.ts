@@ -30,9 +30,11 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 describe('Delegation popup ↔ page parity (29fe2d45)', () => {
   it('renders the shared DelegationManager on BOTH surfaces', () => {
     expect(PAGE.includes('<DelegationManager')).toBe(true);
-    expect(COMMAND_BAR.includes('<DelegationManager')).toBe(true);
-    // The popup passes its surface, the page passes its own — same component, different workspace size.
-    expect(COMMAND_BAR.includes('surface="popup"')).toBe(true);
+    expect(COMMAND_BAR).toContain("<state.Manager surface=\"popup\"");
+    expect(COMMAND_BAR).toContain("Promise.all([import('@/components/delegation-manager'), loadDelegationContextAction(false)])");
+    expect(COMMAND_BAR).toContain('Manager: DelegationManager');
+    expect(COMMAND_BAR).not.toMatch(/from ['"]@\/components\/delegation-manager['"]/);
+    // The page renders the same manager directly.
     expect(PAGE.includes('surface="page"')).toBe(true);
   });
 

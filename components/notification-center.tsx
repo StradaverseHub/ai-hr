@@ -1,15 +1,15 @@
 'use client';
 
 import { ActionButton } from '@/components/ui/action-button';
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { startTransition, useActionState, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
 import { useIsMonolith } from '@/components/ui-theme-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
+import type { NotificationBellView } from '@/app/notification-bell-view';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
 type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'linkPath'|'createdAt'|'readAt'>&Partial<Pick<StoredNotificationRow,'kind'>>;
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
@@ -60,15 +60,16 @@ function relTime(d: Date): string {
 }
 
 export function NotificationCenter({
-  unread,
-  items,
+  unread:initialUnread,
+  items:initialItems,
   tasks:baseTasks = [],
-  taskNotifications = [],
+  taskNotifications:initialTaskNotifications = [],
+  notificationTaskCount = 0,
   taskQueueLinks = [],
   taskCount:baseTaskCount = 0,
   claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
-  readItems = [],
+  readItems:initialReadItems = [],
   canApprove = false,
 }: {
   /** Unread informational (non-action) notifications — the Notification tab badge. */
@@ -83,6 +84,7 @@ export function NotificationCenter({
   taskQueueLinks?:NotificationTaskQueueLink[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
+  notificationTaskCount?: number;
   /** Exact claim total when the shell supplies a bounded preview. */
   claimTaskCount?:number;
   /** Present when the authenticated shell loads the Claims rows on demand. */
@@ -91,10 +93,28 @@ export function NotificationCenter({
   readItems?: NotificationRow[];
   canApprove?: boolean;
 }) {
+  type BellCommand = { source: NotificationRow[]; id?: string };
+  type BellResult = { source: NotificationRow[]; view: NotificationBellView | null; failed: boolean };
+  const [result,mark,marking]=useActionState(async (previous:BellResult|null,command:BellCommand):Promise<BellResult>=>{
+    const last=previous?.source===command.source?previous.view:null;
+    try {
+      const view=command.id===undefined?await markAllNotificationsReadAction():await markNotificationReadAction(command.id);
+      return {source:command.source,view:view??last,failed:false};
+    } catch {
+      return {source:command.source,view:last,failed:true};
+    }
+  },null);
+  const committed=result?.source===initialItems?result:undefined;
+  const view=committed?.view;
+  const unread=view?.unread??initialUnread;
+  const items=view?.items??initialItems;
+  const taskNotifications=view?.taskNotifications??initialTaskNotifications;
+  const readItems=view?.readItems??initialReadItems;
+  const bellTaskCount=baseTaskCount-notificationTaskCount+(view?.notificationTaskCount??notificationTaskCount);
   const approvals=useShellApprovalFacts()?.result;
   const tasksKnown=!approvals||approvals.state==='ready';
   const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
-  const taskCount=approvals?.state==='ready'?baseTaskCount+approvals.total:baseTaskCount;
+  const taskCount=approvals?.state==='ready'?bellTaskCount+approvals.total:bellTaskCount;
   const claimTaskCount=approvals?.state==='ready'?approvals.claimTotal:baseClaimTaskCount;
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
@@ -131,7 +151,6 @@ export function NotificationCenter({
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
     ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder','letter.returned','letter.rejected','letter.approved','letter.acknowledged','letter.signed','letter.created'].includes(item.kind)
     ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText,bulkJobText,reviewPlanText]);
-  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');
   const [query, setQuery] = useState('');
@@ -177,10 +196,9 @@ export function NotificationCenter({
     return () => controller.abort();
   }, [loadClaimPreview, claimPreviewRevision]);
 
-  const [marking, start] = useTransition();
+  const markRead = (id: string) => startTransition(() => mark({source:initialItems,id}));
+  const markAll = () => startTransition(() => mark({source:initialItems}));
 
-  const markRead = (id: string) => start(async () => { await markNotificationReadAction(id); router.refresh(); });
-  const markAll = () => start(async () => { await markAllNotificationsReadAction(); router.refresh(); });
 
   // ── Task tab: merge the approvals queue with the action notifications, newest first. ──
   const taskEntries = useMemo(() => {
@@ -224,6 +242,7 @@ export function NotificationCenter({
     return entries.filter((e) => (q ? e.text.includes(q) : true)).sort((a, b) => b.at - a.at);
   }, [readItems, approvalHistory, canApprove, query, notificationText]);
 
+  // Opening the bell should not fetch linked cases, payroll or approval screens.
   const notifRow = (n: NotificationRow) => {
     const copy=notificationText(n);
     const onClick = () => {
@@ -245,7 +264,7 @@ export function NotificationCenter({
     return (
       <li key={`n-${n.id}`} className={n.readAt ? '' : 'bg-primary/5'}>
         {n.linkPath ? (
-          <Link href={n.linkPath} onClick={onClick} className="block hover:bg-accent">
+          <Link prefetch={false} href={n.linkPath} onClick={onClick} className="block hover:bg-accent">
             {inner}
           </Link>
         ) : (
@@ -259,7 +278,7 @@ export function NotificationCenter({
 
   const taskQueueRow = (task: NotificationTaskItem) => (
     <li key={`t-${task.id}`}>
-      <Link href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
+      <Link prefetch={false} href={task.linkPath} onClick={() => setOpen(false)} className="block hover:bg-accent">
         <div className="flex gap-2.5 px-4 py-2.5">
           <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
           <div className="min-w-0 flex-1">
@@ -333,6 +352,7 @@ export function NotificationCenter({
 
   return (
     <div className="relative">
+      {committed?.failed&&<span role="alert" className="sr-only">{tLoad('loadError')}</span>}
       <button
         type="button"
         onClick={() => {
@@ -412,11 +432,11 @@ export function NotificationCenter({
                 </ul>
               ))}
 
-            {tab==='tasks'&&taskQueueLinks.length>0&&<nav aria-label={t('ownerQueues')} className="border-t border-border px-4 py-3 space-y-2">{taskQueueLinks.map(queue=><Link key={queue.href} href={queue.href} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 text-xs font-medium text-primary hover:underline"><span>{queue.label}</span><span className="tabular-nums">{queue.count}</span></Link>)}</nav>}
+            {tab==='tasks'&&taskQueueLinks.length>0&&<nav aria-label={t('ownerQueues')} className="border-t border-border px-4 py-3 space-y-2">{taskQueueLinks.map(queue=><Link prefetch={false} key={queue.href} href={queue.href} onClick={()=>setOpen(false)} className="flex items-center justify-between gap-3 text-xs font-medium text-primary hover:underline"><span>{queue.label}</span><span className="tabular-nums">{queue.count}</span></Link>)}</nav>}
 
             {tab==='tasks'&&tasksKnown&&availableClaimCount>shownClaimCount&&(
               <div className="border-t border-border px-4 py-2.5 text-center">
-                <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
+                <Link prefetch={false} href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
                   {tApprovals('claims')} ({availableClaimCount})
                 </Link>
               </div>
@@ -452,7 +472,7 @@ export function NotificationCenter({
                 )}
                 {canApprove && (
                   <div className="border-t border-border px-4 py-2.5 text-center">
-                    <Link
+                    <Link prefetch={false}
                       href="/approvals/history"
                       onClick={() => setOpen(false)}
                       className="text-xs font-medium text-primary hover:underline"
@@ -463,7 +483,7 @@ export function NotificationCenter({
                 )}
               </>
             )}
-            <div className="border-t border-border px-4 py-2.5 text-center"><Link href="/me/notifications" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">{t('emailPreferences')}</Link></div>
+            <div className="border-t border-border px-4 py-2.5 text-center"><Link prefetch={false} href="/me/notifications" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">{t('emailPreferences')}</Link></div>
           </div>
         </>
       )}

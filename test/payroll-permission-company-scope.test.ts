@@ -8,7 +8,8 @@ import * as s from '../db/schema';
 import {assignRole,revokeRole} from '../core/admin';
 import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {resolvePayrollPermission,setPayrollPermissionGrant,deletePayrollPermissionGrant,createBatch,generatePayslips,closeBatch,PayrollPermissionDeniedError} from '../packs/payroll/service';
-import {masterReportFieldsTx} from '../core/employee-master-access';
+import {masterReportCatalogue,masterReportFieldsTx,MasterReportAccessError} from '../core/employee-master-access';
+import {observeNativeRead} from './helpers/native-read-observer';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {requirePackFor} from '../localization/registry';
@@ -25,6 +26,30 @@ describe('actual company-effective granular Payroll authority',()=>{
  it('retains roles-only fallback ONLY when grants absent; explicit empty/scoped-unmatched carriers never fall back to ctx.roles',async()=>{expect(await permission('payroll.close',b.companyId,adminCtx(b))).toBe(true);expect(await withTenant(group(),async tx=>({empty:await resolvePayrollPermission(tx,{...group(),grants:[],roles:['super_admin']},'payroll.close',b.companyId),unmatched:await resolvePayrollPermission(tx,{...group(),grants:[{role:'hr_admin',companyId:companyB}],roles:['hr_admin']},'payroll.close',b.companyId)}))).toEqual({empty:false,unmatched:false});expect(await permission('payroll.close',null)).toBe(false);});
  it('rechecks actual current principal after canonical grant revocation rather than retaining a stale claim',async()=>{expect(await permission('payroll.close')).toBe(true);await revokeRole(group(),{roleAssignmentId:hrRoleId});const current=await owner.db.select().from(s.roleAssignment).where(and(eq(s.roleAssignment.appUserId,ctx.userId!),eq(s.roleAssignment.role,'hr_admin')));expect(current).toEqual([]);expect(await permission('payroll.close')).toBe(false);});
  it('keeps field-level report filtering company-bound using the existing intentionally narrowed report carrier',async()=>{await overrides('report.read.compensation');const fields=await withTenant(ctx,tx=>masterReportFieldsTx(tx,ctx,[b.companyId]));expect(fields.length).toBeGreaterThan(0);expect(fields.some(field=>field.sensitivity==='payroll')).toBe(false);});
+ it('reads the 70-company report catalogue in one permission batch and intersects company overrides',async()=>{
+  const actor={...await entitledCtx(b,['hr_admin']),grants:group().grants};
+  const companies=await owner.db.insert(s.company).values(Array.from({length:69},(_,index)=>({
+   tenantId:b.tenantId,legalName:`Fictional report company ${index}`,
+  }))).returning({id:s.company.id});
+  const ids=[b.companyId,...companies.map(company=>company.id)];
+  const single=await masterReportCatalogue(actor,[b.companyId]);
+  expect(single.some(field=>field.sensitivity==='payroll')).toBe(true);
+  await setPayrollPermissionGrant(group(),{companyId:ids[69],permissionKey:'report.read.compensation',role:'hr_admin',allowed:false});
+  const tail=await masterReportCatalogue(actor,[ids[69]]);
+  const probe=observeNativeRead({captureQueries:true});
+  try{
+   const fields=await masterReportCatalogue(actor,ids);
+   const tailFields=new Set(tail.map(field=>field.id));
+   expect(fields.map(field=>field.id)).toEqual(single.filter(field=>tailFields.has(field.id)).map(field=>field.id));
+   expect(fields.some(field=>field.sensitivity==='payroll')).toBe(false);
+   expect(probe.queries.filter(query=>query.sql.includes('from payroll_permission_grant'))).toHaveLength(1);
+   expect(probe.queries.length).toBeLessThanOrEqual(4);
+  }finally{probe.restore();}
+  const foreign=await seedBase();
+  await expect(masterReportCatalogue(actor,[b.companyId,foreign.companyId])).rejects.toBeInstanceOf(MasterReportAccessError);
+  await expect(withTenant({...actor,roles:['employee']},tx=>masterReportFieldsTx(tx,actor,[b.companyId])))
+   .rejects.toBeInstanceOf(MasterReportAccessError);
+ });
  it('actual ordinary close refuses mixed-company permission before any close/release effect on a genuinely processed batch',async()=>{const [year,month]=todayInKualaLumpur().split('-').map(Number),period=new Date(Date.UTC(year,month-2,1)).toISOString().slice(0,7),hiredOn=period.slice(0,4)+'-01-01';const employee=await hireEmployee(group(),{person:{fullName:'Fictional paid employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn});await setCompensation(group(),{employmentId:employee.employmentId,basicSalary:5000,effectiveFrom:hiredOn});await requirePackFor('MY').statutory.set(group(),{personId:employee.personId,icNumber:'900101019776'});const {batchId}=await createBatch(group(),{companyId:b.companyId,payPeriod:period});await generatePayslips(group(),{batchId});await overrides('payroll.close');const [before]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));expect(before.status).toBe('processed');const events=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,batchId)).orderBy(s.domainEvent.id);await expect(closeBatch(ctx,{batchId})).rejects.toBeInstanceOf(PayrollPermissionDeniedError);expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId))).toEqual([before]);expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,batchId)).orderBy(s.domainEvent.id)).toEqual(events);});
  it('captures config input before actual held Access and persists only that original selection after release',async()=>{const value={companyId:b.companyId,permissionKey:'payroll.close',role:'hr_admin',allowed:false},expected={...value},before=await state();let ready!:()=>void,release!:()=>void;const start=new Promise<void>(yes=>{ready=yes;}),finish=new Promise<void>(yes=>{release=yes;}),holder=withTenant(group(),async tx=>{await lockAccessConfigurationWriteTx(tx,b.tenantId);ready();await finish;});await start;const worker=setPayrollPermissionGrant(group(),value);void worker.catch(()=>undefined);try{let waiting=false;for(let n=0;n<100;n++){const [row]=await owner.db.execute<{waiting:boolean}>(sql`select exists(select 1 from pg_locks where not granted and locktype='advisory' and classid=((hashtextextended(${'access-configuration:'+b.tenantId},0)>>32)&4294967295)::oid and objid=(hashtextextended(${'access-configuration:'+b.tenantId},0)&4294967295)::oid) as waiting`);if(row.waiting){waiting=true;break;}await new Promise(yes=>setTimeout(yes,10));}expect(waiting).toBe(true);expect(await state()).toEqual(before);value.companyId=companyB;value.role='payroll_partner';value.allowed=true;}finally{release();await holder;}await worker;const after=await state(),added=after.grants.filter(row=>!before.grants.some(old=>old.id===row.id));expect(added).toHaveLength(1);expect(added[0]).toMatchObject(expected);});
  it('keeps ordinary config deletion API/event and rejects stale admin write after actual revocation without widening scope',async()=>{const grant=await setPayrollPermissionGrant(group(),{companyId:b.companyId,permissionKey:'payroll.close',role:'hr_admin',allowed:true});await revokeRole(group(),{roleAssignmentId:hrRoleId});const before=await state();await expect(deletePayrollPermissionGrant(ctx,{id:grant.id})).rejects.toThrow();expect(await state()).toEqual(before);expect(await deletePayrollPermissionGrant(group(),{id:grant.id})).toEqual({deleted:true});});

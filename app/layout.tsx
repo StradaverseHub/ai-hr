@@ -52,8 +52,7 @@ import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
 import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
-import {readShellNavigationAccess} from '@/core/shell-navigation-access';
-import { companyContextForPage } from '@/lib/scope';
+import { readShellNavigationContext } from '@/lib/shell-navigation-context';
 import {pendingTaskSummary} from '@/core/approvals-inbox';
 import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
@@ -65,11 +64,12 @@ import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
-import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
+import {notificationBellScope} from './notification-bell-view';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
-import { toursForRoles, WELCOME_TOUR_ID } from '@/lib/onboarding-tour';
+import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
+import { tourSteps } from '@/lib/onboarding-tour';
 import { isModuleEnabledOrFalse, settingEnabledOrDefault } from '@/core/entitlements';
 import { currentUiTheme } from '@/lib/ui-theme-server';
 import { UiThemeProvider } from '@/components/ui-theme-context';
@@ -171,7 +171,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <NextIntlClientProvider messages={null}><CatalogClientProvider locale={locale}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
-          <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
+          <OnboardingTour/>
           <Toaster/>
         </UiThemeProvider></Providers></CatalogClientProvider></NextIntlClientProvider>
       </body>
@@ -180,7 +180,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const { allowed, scopeIds } = await companyContextForPage(session);
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
   // fdc20776: the per-group nav_*_open cookies are gone — flyout panels are show-on-demand, so
@@ -192,9 +191,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const [viewer,{accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}]=await Promise.all([
-    viewerIdentity(session),readShellNavigationAccess(session,!isAdmin(session),isAdmin(session)),
-  ]);
+  const [{allowed,scopeIds},viewer,navigationAccess]=await readShellNavigationContext(session);
+  const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const letterDestinations=isModuleEnabledOrFalse(session,'employees')
     ? await letterNavigation(session,scopeIds) : [];
   const rewardDestinations = isModuleEnabledOrFalse(session, 'rewards')
@@ -202,7 +200,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       rewardNavigation(session),
     ).catch(() => [])
     : [];
-  const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   const canOpenAdminRail=isAdmin(session)||canManagePayroll(session)||canManagePerfComp(session);
   const shellScopeKey=personnelImportBrowserKey(session,scopeIds);
@@ -214,10 +211,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // `entitlementsError` on the session precisely so the app stays navigable. See the helper: it
   // swallows ONLY EntitlementsResolutionFailedError (the infrastructure state), and still throws for a
   // malformed or mis-attributed context, which is a wiring bug and must stay loud.
-  const notifEnabled = isModuleEnabledOrFalse(session, 'notifications');
-  const letterNotificationCompanies=scopeIds.filter(id=>isModuleEnabledOrFalse(session,'notifications',id));
-  const notificationScope = notifEnabled ? {} :
-    letterNotificationCompanies.length > 0 ? { letterCompanyIds: letterNotificationCompanies } : null;
+  const notificationScope = notificationBellScope(session, scopeIds);
+  const notifEnabled = notificationScope !== null && notificationScope.letterCompanyIds === undefined;
   const catchUpNotifications = notifEnabled && isAdmin(session) && (session.grants === undefined || isGroupAdmin(session));
   // D-P1-32 PT-X5 — where the sidebar's Performance admin entry opens: the admin area's first tab for the latest
   // cycle this OneHR administrator administers, started here so it overlaps other shell reads. No cycle, a
@@ -236,17 +231,31 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,onboardingQueue,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleEnabled?onboardingTasks(session):Promise.resolve([]),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
-  ]);
-  const onboardingAccess=onboardingNav.module;
-  const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
-  const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
-  const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
-  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
+  // Resolve optional navigation through the same owners without holding the first page frame.
+  const scopedLifecycleNavigation = withBackgroundReadWork(session.tenantId, () => lifecycleModuleNavigation(session))
+    .catch(() => ({
+      probation: { page: false, configure: false, intake: false, access: false },
+      contractStaff: { page: false, configure: false, intake: false, automation: false, postings: false },
+    }));
+  const legacyLifecycleNavigation = lifecycleEnabled
+    ? withBackgroundReadWork(session.tenantId, () => Promise.all([
+      onboardingNavigation(session).catch(() => null),
+      offboardingPostingAccess(session).catch(() => false),
+    ])).catch(() => [null, false] as const)
+    : Promise.resolve([null, false] as const);
+  const lifecycleNavigation = Promise.all([legacyLifecycleNavigation, scopedLifecycleNavigation])
+    .then(([[onboarding, offboardingPostingsAccess], scoped]) => ({
+      probationAccess: scoped.probation,
+      contractStaffAccess: scoped.contractStaff,
+      offboardingPostingsAccess,
+      onboardingAccess: onboarding?.module,
+      onboardingV9Access: onboarding?.v9,
+      onboardingV9Navigation: onboarding?.v9Navigation,
+      onboardingJoinerCount: onboarding?.joiners,
+      onboardingChecklistCount: onboarding?.checklists,
+      onboardingMaster: onboarding?.master,
+      onboardingRequisitionsAccess: onboarding?.requisitions,
+    }));
   // Navigation and the floating launcher share the current Assistant grant read.
   // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
   // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
@@ -267,7 +276,24 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the
   // page's own sections are read once; another identity or an incompatible owner keeps its own transaction.
-  const approvalFacts:Promise<ShellApprovalResult> = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
+  // Lifecycle task previews are passive too. Share their result between the bell and rail
+  // without making case queries a condition for rendering navigation or the page.
+  // Admission is for runnable database work. Wait for the navigation dependency
+  // before taking an inbox permit.
+  const lifecycleWork = scopedLifecycleNavigation.then(navigation => withBackgroundReadWork(session.tenantId, async () => {
+    const [queue, inbox] = await Promise.all([
+      lifecycleEnabled ? onboardingTasks(session) : [],
+      lifecycleModuleInbox(session, navigation),
+    ]);
+    return {
+      tasks: [...queue.map(onboardingNotificationTask), ...inbox.items],
+      taskQueueLinks: inbox.queueLinks,
+      taskCount: queue.length + inbox.count,
+      myTasksCount: queue.length + inbox.myTasksCount,
+      approvalCount: inbox.approvalCount,
+    };
+  }));
+  const approvals = withBackgroundReadWork(session.tenantId,() => withSharedReadSnapshot(session,() => pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
@@ -277,15 +303,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
     recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
-  }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
+  }, { deferClaimPreview: true }),undefined,requestReadScope()));
+  const approvalFacts:Promise<ShellApprovalResult> = Promise.all([approvals, lifecycleWork]).then(([approvalSummary, lifecycle]):ShellApprovalResult=>({
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
+    approvalCount:approvalSummary.approvalCount+lifecycle.approvalCount,
+    lifecycleTaskCount:lifecycle.myTasksCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycle.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
@@ -341,17 +369,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleMyTasksCount}
-              onboardingAccess={onboardingAccess}
-              probationAccess={scopedLifecycleNavigation.probation}
-              contractStaffAccess={scopedLifecycleNavigation.contractStaff}
-              offboardingPostingsAccess={offboardingPostingsAccess}
-              onboardingV9Access={onboardingNav.v9}
-              onboardingV9Navigation={onboardingNav.v9Navigation}
-              onboardingJoinerCount={onboardingNav.joiners}
-              onboardingChecklistCount={onboardingNav.checklists}
-              onboardingMaster={onboardingNav.master}
-              onboardingRequisitionsAccess={onboardingNav.requisitions}
+              lifecycleNavigationSource={lifecycleNavigation}
               // ADR-0077 slice 4 — which module-owned rows the rail may advertise. A plain string array
               // (or null), never the snapshot itself: Sidebar is a client component, and passing the
               // entitlement context would drag the resolver into the client bundle. null means "no
@@ -495,10 +513,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       scope={notificationScope}
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
-                      tasks={lifecycleTasks}
-                      taskQueueLinks={lifecycleInbox.queueLinks}
+                      lifecycleWork={lifecycleWork}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
-                      taskCount={lifecycleTaskCount}
                       canApprove={canApprove}
                     />
                   </Suspense>
@@ -528,7 +544,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </AiAskAvailability>
           </NavIndexProvider>
-          <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
+          <OnboardingTour initialSteps={onboarded || (pathname==='/'&&!isAdmin(session)) ? undefined : tourSteps(WELCOME_TOUR_ID, session.roles)} />
           <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
           </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is

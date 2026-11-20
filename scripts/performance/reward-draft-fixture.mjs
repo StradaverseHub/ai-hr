@@ -4,10 +4,9 @@ import {randomUUID} from 'node:crypto';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
 import {saveRewardPlanConfiguration,saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
-import {setCompensation} from '../../core/comp.ts';
 import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
 
-export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,includeOrgExplorerMember,expectedCompanyEmploymentIds}){
+export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,companies,company,today,actor,includeOrgExplorerMember,expectedCompanyEmploymentIds,phase=(_name,run)=>run()}){
  const suite=process.env.PERF_HTTP_SUITE;
  assert(suite==='workflow-preflight'||suite==='whole-system','Rewards fixture requires an isolated browser workload');
  assert.equal(process.env.GITHUB_ACTIONS,'true');
@@ -28,21 +27,36 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  const unit={id:rewardTarget.businessUnitId};
  // The approved plan uses independently checked company structure and library/PAT facts.
  // This employee has no credentials and is created after the baseline Payroll fixture runs close.
- const person=await establishRewardMembership(ctx,{
+ const person=await phase('membership',()=>establishRewardMembership(ctx,{
   tenantId:tenant.tenantId,companyId:company.companyId,businessUnitId:unit.id,departmentId:company.departmentId,year,
   ...(includeOrgExplorerMember?{hiredOn:today}:{}),
+ }));
+ // The base load fixture inserts starting salaries as data. This additional hire
+ // also has no prior salary or payslip. Keep the salary mutation separate from setup.
+ await phase('compensation-seed',async()=>{
+  const salaries=await owner.client`
+   insert into public.compensation (tenant_id,employment_id,basic_salary,valid_from)
+   select e.tenant_id,e.id,5000,${today}::date
+   from public.employment e
+   where e.tenant_id=${tenant.tenantId}::uuid and e.company_id=${company.companyId}::uuid
+    and e.id=${person.employmentId}::uuid and e.hired_on<=${today}::date and e.terminated_on is null
+    and not exists(select 1 from public.compensation c where c.tenant_id=e.tenant_id and c.employment_id=e.id)
+    and not exists(select 1 from public.payslip p where p.tenant_id=e.tenant_id and p.employment_id=e.id)
+   returning id
+  `;
+  assert.equal(salaries.length,1,'The Rewards fixture requires a new, unpaid employment');
  });
- await setCompensation(ctx,{employmentId:person.employmentId,basicSalary:5000,effectiveFrom:today});
  const maker={...ctx,userId:actor.userId,personId:actor.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
- const fixtures=approvedRewardFixtures(owner),checker=await fixtures.setupChecker(maker);
- await fixtures.setupCompanyStructureFixture(maker,targets,today,checker);
- const {policy,salary,bonus}=await fixtures.setupRewardLibrariesFixture(maker,year,undefined,checker);
- await fixtures.confirmFixturePat(maker,company.companyId,year,{targetCents:policy.patTarget,forecastCents:null,actualCents:policy.patActual,targetMonthsBp:policy.targetMonthsBp},checker);
+ const fixtures=approvedRewardFixtures(owner);
+ const checker=await phase('checker',()=>fixtures.setupChecker(maker));
+ await phase('company-structure',()=>fixtures.setupCompanyStructureFixture(maker,targets,today,checker));
+ const {policy,salary,bonus}=await phase('libraries',()=>fixtures.setupRewardLibrariesFixture(maker,year,undefined,checker));
+ await phase('pat',()=>fixtures.confirmFixturePat(maker,company.companyId,year,{targetCents:policy.patTarget,forecastCents:null,actualCents:policy.patActual,targetMonthsBp:policy.targetMonthsBp},checker));
  const name='Fictional Rewards draft '+randomUUID();
- const source=await saveRewardPlanConfiguration(maker,{groupId:null,expectedRevision:0,name,policy,targets:[{companyId:company.companyId,businessUnitId:unit.id}]});
- const revision=await saveRewardSetupPlan(maker,{versionId:source.versionId,expectedRevision:0,cycleName:name,snapshotDate:today,bindings:[{companyId:company.companyId,businessUnitId:unit.id,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'}],reason:'Independently reviewed fictional browser fixture'});
- await submitRewardSetupPlan(maker,source.versionId,revision);
- await approveRewardSetupPlan(checker,source.versionId,revision+1);
+ const source=await phase('draft',()=>saveRewardPlanConfiguration(maker,{groupId:null,expectedRevision:0,name,policy,targets:[{companyId:company.companyId,businessUnitId:unit.id}]}));
+ const revision=await phase('setup',()=>saveRewardSetupPlan(maker,{versionId:source.versionId,expectedRevision:0,cycleName:name,snapshotDate:today,bindings:[{companyId:company.companyId,businessUnitId:unit.id,salaryVersionId:salary,bonusVersionId:bonus,branchAcknowledged:policy.bonusStructure==='branch'}],reason:'Independently reviewed fictional browser fixture'}));
+ await phase('submit',()=>submitRewardSetupPlan(maker,source.versionId,revision));
+ await phase('approve',()=>approveRewardSetupPlan(checker,source.versionId,revision+1));
  // Company structure applies to all currently employed company members. The expected roster
  // is derived from the fixture's explicit hires, not from the Rewards projection under test.
  const rewardDraft={companyId:company.companyId,businessUnitId:unit.id,employmentId:person.employmentId,year,snapshotDate:today,

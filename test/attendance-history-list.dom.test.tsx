@@ -10,7 +10,7 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentP
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
-vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
+vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceHistoryFilterOptions: options }));
 vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
 // The Offline punches tab (draft 0647) reads the database; without the draft it is absent, which this suite pins.
 // Its own rendering is covered by test/offline-claims-review.dom.test.tsx.

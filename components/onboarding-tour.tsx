@@ -4,8 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Check } from 'lucide-react';
-import { completeOnboardingAction } from '@/app/onboarding-actions';
-import { START_TOUR_EVENT, type TourStep } from '@/lib/onboarding-tour';
+import { completeOnboardingAction, readTourStepsAction } from '@/app/onboarding-actions';
+import type { TourStep } from '@/lib/onboarding-tour';
+import { START_TOUR_EVENT, WELCOME_TOUR_ID, takePendingTour } from '@/lib/onboarding-tour-events';
 import { btnGhost, btnPrimary } from '@/components/ui';
 
 const PAD = 8; // spotlight padding around the target
@@ -22,17 +23,16 @@ type Box = { top: number; left: number; width: number; height: number };
  * appear. Lives in the layout so it survives navigation. Finishing/skipping persists completion.
  */
 export function OnboardingTour({
-  tours,
-  autoStartTourId,
+  initialSteps = [],
 }: {
-  tours: Record<string, TourStep[]>;
-  autoStartTourId: string | null;
+  initialSteps?: readonly TourStep[];
 }) {
   const t = useTranslations('onboarding');
   const router = useRouter();
   const pathname = usePathname();
-  const [activeTourId, setActiveTourId] = useState<string | null>(autoStartTourId);
+  const [steps, setSteps] = useState(initialSteps);
   const [index, setIndex] = useState(0);
+  const launchGeneration = useRef(0);
   const [box, setBox] = useState<Box | null>(null);
   const bubbleRef = useRef<HTMLDivElement>(null);
   const [bubbleHeight, setBubbleHeight] = useState(240);
@@ -47,9 +47,8 @@ export function OnboardingTour({
     return () => window.removeEventListener('resize', resize);
   }, []);
 
-  const steps = activeTourId ? (tours[activeTourId] ?? []) : [];
   const step = steps[index];
-  const open = activeTourId !== null && steps.length > 0;
+  const open = steps.length > 0;
   const isLast = index === steps.length - 1;
 
   // A long section or a small screen must not place Next/Done below the viewport.
@@ -65,15 +64,32 @@ export function OnboardingTour({
 
   // External (re)start with a chosen tour id.
   useEffect(() => {
+    let current = true;
+    const launch = (id: string) => {
+      const generation = ++launchGeneration.current;
+      void readTourStepsAction(id).then(selected => {
+        if (!current || generation !== launchGeneration.current) return;
+        if (!selected.length) return;
+        setSteps(selected);
+        setIndex(0);
+      }).catch(() => {
+        // Keep the current page available if the optional read fails.
+      });
+    };
     const onStart = (e: Event) => {
-      const id = (e as CustomEvent<{ tourId?: string }>).detail?.tourId ?? 'welcome';
-      if (!tours[id]?.length) return;
-      setActiveTourId(id);
-      setIndex(0);
+      launch(takePendingTour() ?? (e as CustomEvent<{ tourId?: string }>).detail?.tourId ?? WELCOME_TOUR_ID);
     };
     window.addEventListener(START_TOUR_EVENT, onStart as EventListener);
-    return () => window.removeEventListener(START_TOUR_EVENT, onStart as EventListener);
-  }, [tours]);
+    queueMicrotask(() => {
+      if (!current) return;
+      const pendingTour = takePendingTour();
+      if (pendingTour) launch(pendingTour);
+    });
+    return () => {
+      current = false;
+      window.removeEventListener(START_TOUR_EVENT, onStart as EventListener);
+    };
+  }, []);
 
   // Navigate to the step's route if we're not already there.
   useEffect(() => {
@@ -132,7 +148,8 @@ export function OnboardingTour({
   }, [open, step, pathname]);
 
   const finish = useCallback(() => {
-    setActiveTourId(null);
+    launchGeneration.current++;
+    setSteps([]);
     setBox(null);
     void completeOnboardingAction(); // idempotent — first finish marks the user onboarded
   }, []);

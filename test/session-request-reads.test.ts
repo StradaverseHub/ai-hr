@@ -15,6 +15,8 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 
 const state=vi.hoisted(()=>({scope:null as null|Map<unknown,Map<string,unknown>>,cookie:undefined as string|undefined}));
+const embeddedIdentity=vi.hoisted(()=>vi.fn());
+vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:embeddedIdentity}));
 const db=vi.hoisted(()=>({calls:[] as string[],principals:new Map<string,unknown>(),blocked:new Set<string>(),failPrincipal:0,failSnapshot:0}));
 // One request's scope: `cache` memoises by function and argument until the request ends; with no scope it is a passthrough.
 vi.mock('react',async importOriginal=>{
@@ -33,6 +35,7 @@ vi.mock('../db/client',()=>{
   if(text.includes('app.principal(')){db.calls.push('principal:'+String(values[0]));
    if(db.failPrincipal>0){db.failPrincipal--;throw new Error('Fictional connection failure');}
    const row=db.principals.get(String(values[0]));return row?[row]:[];}
+  if(text.includes('app.principal_by_identity(')){db.calls.push('embedded-principal');return [...db.principals.values()];}
   if(text.includes('app.login_blocked(')){db.calls.push('blocked:'+String(values[0]));return [{blocked:db.blocked.has(String(values[0]))}];}
   throw new Error('Unexpected statement: '+text);
  },{begin:async(fn:(tx:{unsafe:(q:string,params?:unknown[])=>Promise<unknown[]>})=>unknown)=>{
@@ -42,11 +45,14 @@ vi.mock('../db/client',()=>{
  }});
  // This unit owns request memoization. Physical admission/cancellation is exercised by
  // database-admission-integration against PostgreSQL; keep this fake SQL boundary explicit.
- return {client,withPoolWork:async<T>(_tenant:string,work:()=>PromiseLike<T>)=>await work()};
+ return {client,withPoolWork:async<T>(_tenant:string,work:()=>PromiseLike<T>)=>await work(),
+  withTenant:async<T>(_ctx:unknown,work:(tx:{execute:()=>Promise<{allowed:boolean}[]>})=>Promise<T>)=>
+   work({execute:async()=>{db.calls.push('email-authority');return [{allowed:true}];}})};
 });
 
 import {getBrowserCommandSession,getSession} from '../lib/session';
 import {AuthRequiredError} from '../lib/auth-errors';
+import {canConfigureIdentityEmail} from '../lib/identity/email-settings';
 
 const TENANT='00000000-0000-4000-8000-0000000000aa',ALICE='00000000-0000-4000-8000-0000000000a1',UNKNOWN='00000000-0000-4000-8000-0000000000ff';
 const count=(prefix:string)=>db.calls.filter(call=>call===prefix).length;
@@ -54,7 +60,8 @@ const count=(prefix:string)=>db.calls.filter(call=>call===prefix).length;
 async function inRequest<T>(run:()=>Promise<T>):Promise<T>{state.scope=new Map();try{return await run();}finally{state.scope=null;}}
 
 beforeEach(()=>{
- db.calls=[];db.principals=new Map([[ALICE,{tenant_id:TENANT,person_id:'00000000-0000-4000-8000-0000000000b1',grants:[{role:'hr_admin',companyId:null}]}]]);
+ db.calls=[];db.principals=new Map([[ALICE,{app_user_id:ALICE,tenant_id:TENANT,person_id:'00000000-0000-4000-8000-0000000000b1',grants:[{role:'hr_admin',companyId:null}]}]]);
+ embeddedIdentity.mockReset();
  db.blocked=new Set();db.failPrincipal=0;db.failSnapshot=0;state.cookie=ALICE;state.scope=null;
  vi.stubEnv('DEV_USER_ID',ALICE);vi.stubEnv('AUTH_PROVIDER','');vi.stubEnv('ALLOW_DEMO_SESSION','');
  vi.spyOn(console,'error').mockImplementation(()=>undefined);
@@ -122,5 +129,26 @@ describe('one request, two session carriers',()=>{
   expect(command.entitlements).toEqual({tenantId:TENANT,enabledModules:['payroll'],scopedModules:{},settings:{},tenantStatus:'active'});
   expect(command.entitlementsError).toBeUndefined();
   expect(count('snapshot')).toBe(2);
+ });
+});
+
+describe('embedded sign-in on an authenticated render',()=>{
+ it('reuses the verified login for email navigation and checks its authority for each render',async()=>{
+  vi.stubEnv('AUTH_PROVIDER','internal');
+  embeddedIdentity.mockResolvedValue({issuer:'https://login.example.test',subject:'fictional-login',
+   email:'viewer@example.test',emailVerified:true});
+  const render=()=>inRequest(async()=>{
+   const ctx=await getSession();
+   expect(ctx.userId).toBe(ALICE);
+   expect(await canConfigureIdentityEmail(ctx)).toBe(true);
+  });
+  await render();
+  expect(embeddedIdentity).toHaveBeenCalledTimes(1);
+  expect(count('embedded-principal')).toBe(1);
+  expect(count('email-authority')).toBe(1);
+  await render();
+  expect(embeddedIdentity).toHaveBeenCalledTimes(2);
+  expect(count('embedded-principal')).toBe(2);
+  expect(count('email-authority')).toBe(2);
  });
 });

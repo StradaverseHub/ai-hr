@@ -3,14 +3,14 @@ import { currentProviderSession } from './provider';
 import { sql } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import { withTenant, type SessionContext } from '@/db/client';
-import { getSession } from '@/lib/session';
+import { currentEmbeddedIdentityForRequest, getSession } from '@/lib/session';
 import { keycloakSelected } from './config';
 import { identityEmailRequest } from './email-ipc';
 import { EmailSettingsError, type EmailSettingsView, type IdentityEmailActor } from './email-model';
 export async function canConfigureIdentityEmail(ctx: SessionContext): Promise<boolean> {
   if((!keycloakSelected() && !internalSelected()) || !ctx.userId) return false;
   if(internalSelected()) {
-    const identity=await currentProviderSession();
+    const identity=await currentEmbeddedIdentityForRequest();
     if(!identity?.emailVerified) return false;
     return withTenant(ctx,async tx=>{const result=await tx.execute(sql`select app.internal_auth_email_operator(${identity.issuer},${identity.subject},${identity.email}) allowed`) as unknown as {allowed:boolean}[];return result[0]?.allowed===true;});
   }

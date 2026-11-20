@@ -43,11 +43,11 @@ describe('assigned Employee-role decision feedback',()=>{
  it('preserves the filtered inbox and confirmation while another actual assignment remains',async()=>{
   const f=await fixture();let date=add(f.date,1);while([0,6].includes(new Date(date+'T12:00:00Z').getUTCDay()))date=add(date,1);
   const other=await requestLeave(adminCtx(b),{employmentId:f.employee.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
-  await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/approvals?category=leave&sort=oldest&toast=Leave+approved&approvalSeal=1'});
+  await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/approvals?category=leave&sort=oldest&successNotice=Leave+approved&approvalSeal=1'});
   expect((await owner.db.select().from(s.leaveRequest).where(eq(s.leaveRequest.id,other.leaveRequestId)))[0].status).toBe('pending');
  });
  it('keeps an administrator on the inbox after completing the same canonical workflow',async()=>{
   const f=await fixture();session.current=adminCtx(b);
-  await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/approvals?category=leave&sort=oldest&toast=Leave+approved&approvalSeal=1'});
+  await expect(approveLeaveAction(f.form)).rejects.toMatchObject({url:'/approvals?category=leave&sort=oldest&successNotice=Leave+approved&approvalSeal=1'});
  });
 });

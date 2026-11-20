@@ -123,10 +123,14 @@ async function correctionCounts(
   return { attendance: pick(false), overtime: pick(true) };
 }
 
-async function claimCounts(tx: Tx): Promise<DecidedStatusCounts> {
+async function claimCounts(tx: Tx, ctx: SessionContext): Promise<DecidedStatusCounts> {
   const rows = await tx
     .select({ status: claimRequest.status, count })
     .from(claimRequest)
+    .where(and(
+      eq(claimRequest.tenantId, ctx.tenantId),
+      inArray(claimRequest.status, ['approved', 'paid', 'rejected', 'cancelled']),
+    ))
     .groupBy(claimRequest.status);
   const m = toMap(rows);
   return {
@@ -188,7 +192,7 @@ export async function decidedStatusCounts(
       case 'overtime':
         return (await correctionCounts(tx, scopeIds)).overtime;
       case 'claim':
-        return claimCounts(tx);
+        return claimCounts(tx, ctx);
       case 'resignations':
         return resignationCounts(tx);
       case 'managerReviews':
@@ -206,7 +210,7 @@ export async function decidedStatusCounts(
           await cancellationCounts(tx, ctx, scopeIds),
           await replacementLeaveCounts(tx, scopeIds),
           ...(Object.values(await correctionCounts(tx, scopeIds)) as DecidedStatusCounts[]),
-          await claimCounts(tx),
+          await claimCounts(tx, ctx),
           ...(admin ? [await resignationCounts(tx)] : []),
         ];
         return parts.reduce<DecidedStatusCounts>(

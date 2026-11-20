@@ -272,7 +272,9 @@ export const getSession = cache(resolveSession);
  */
 export const getBrowserCommandSession = cache(() => resolveWebSession(true));
 
-const internalIdentityOnce = perRequest(async () => (await import('./internal-auth/web-session')).currentInternalIdentity());
+/** Share the embedded identity read with shell presentation checks in the same render. */
+export const currentEmbeddedIdentityForRequest = perRequest(async () =>
+  (await import('./internal-auth/web-session')).currentInternalIdentity());
 const keycloakIdentityOnce = perRequest(async () => (await import('./identity/session')).currentIdentitySession());
 const workosSessionOnce = perRequest(async () => (await import('./workos')).currentWorkosSession());
 const readPrincipalByIdentity = (issuer:string,subject:string) => withPoolWork('authentication',()=>
@@ -298,7 +300,7 @@ async function resolveSession(): Promise<SessionContext> {
 
 async function resolveWebSession(requireSelectedDevCookie: boolean): Promise<SessionContext> {
   if (internalSelected()) {
-    const identity = await internalIdentityOnce();
+    const identity = await currentEmbeddedIdentityForRequest();
     if (!identity) throw new AuthRequiredError('No active session.');
     const lookup = () => principalByIdentityOnce(identity.issuer, identity.subject);
     return withEntitlements(await resolveWorkosPrincipal(lookup, identity.subject));

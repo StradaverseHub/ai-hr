@@ -29,7 +29,8 @@ import {
  * /approvals?category=X (preserving the current ?sort=), so switching categories is ordinary navigation —
  * no client state, no change to the main system sidebar. Every count here is handed down from the SAME
  * in-memory pending lists the page sections render, so a panel badge always equals its section heading.
- * Icons reuse the lucide set the main sidebar already draws from.
+ * Each category reads the inbox under its own filters. Load it when selected so
+ * background prefetch does not compete with the open queue or a decision refresh.
  */
 
 type PanelCategory = Exclude<ApprovalCategory, 'all'>;
@@ -114,6 +115,7 @@ export async function CategoryPanel({
       <Link
         key={cat}
         href={itemHref(cat, sort)}
+        prefetch={false}
         aria-current={selected ? 'page' : undefined}
         className={cn(
           'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors',

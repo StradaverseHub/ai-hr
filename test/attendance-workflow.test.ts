@@ -18,7 +18,7 @@ import { todayInKualaLumpur } from '../lib/hr-date';
 import { attendanceClockData } from '../core/attendance-clock-data';
 import { AttendancePayrollClosedError } from '../core/attendance-punch-change';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, listAttendanceWorkflows, previewAttendanceWorkflow } from '../core/attendance-workflow';
-import { listAttendanceApplicationHistory, attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
+import { listAttendanceApplicationHistory, attendanceApplicationDetail, attendanceApplicationFilterOptions, attendanceHistoryFilterOptions } from '../core/attendance-application-history';
 import { createBatch, generatePayslips } from '../packs/payroll/service';
 import { setCompensation } from '../core/comp';
 import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
@@ -512,6 +512,10 @@ describe('all history filters and protected cancellation', () => {
         const options = await attendanceApplicationFilterOptions(a, [b.companyId]);
         expect(options.businessUnits.map(row => row.id)).toContain(unit.id);
         expect(options.grades.map(row => row.id)).toContain(grade.id);
+        const history = await attendanceHistoryFilterOptions(a, [b.companyId]);
+        for (const field of ['companies', 'departments', 'businessUnits', 'grades', 'divisions', 'employees'] as const) {
+            expect(history[field], field).toEqual(options[field]);
+        }
     });
     it('does not grant same-tenant sibling-company history from a forged company list', async () => {
         const { a, worker } = await fixture();

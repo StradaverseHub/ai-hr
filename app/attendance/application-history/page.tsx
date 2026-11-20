@@ -7,7 +7,7 @@ import { AttendanceHistoryTable } from '@/components/attendance-history-table';
 import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { publicErrorMessage } from '@/lib/public-error';
 import { scopedAdmin } from '@/lib/scope';
-import { listAttendanceApplicationHistory, attendanceApplicationFilterOptions, type AttendanceHistoryFilter } from '@/packs/attendance/service';
+import { listAttendanceApplicationHistory, attendanceHistoryFilterOptions, type AttendanceHistoryFilter } from '@/packs/attendance/service';
 import { PageHeader, Card, ErrorBanner, pageWideCls, inputCls } from '@/components/ui';
 import { OfflineClaimsReview } from './offline-review';
 import { loadOfflineReview, offlineReviewTabCount } from './offline-data';
@@ -33,7 +33,7 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
   // The Offline punches tab (draft 0647): null without the draft, and then there is no tab and no ?view=offline.
   const [result, options, offlineCount] = await Promise.all([
     listAttendanceApplicationHistory(s, scopeIds, f).then(data => ({ data, error: null as string | null })).catch(e => ({ data: { rows: [], total: 0, counts: emptyCounts, page: 1, pageSize: 25 }, error: publicErrorMessage(e) })),
-    attendanceApplicationFilterOptions(s, scopeIds),
+    attendanceHistoryFilterOptions(s, scopeIds),
     offlineReviewTabCount(s, scopeIds),
   ]);
   const offlineView = sp.view === 'offline' && offlineCount !== null;

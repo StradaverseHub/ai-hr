@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ChevronDown } from 'lucide-react';
@@ -17,9 +16,8 @@ import { useIsMonolith } from '@/components/ui-theme-context';
  * allowed ids. So there is no persisted "zero companies" state — empty and all-ticked both resolve
  * to all.
  *
- * - Select all SUBMITS (one click back to the full view). It is a bulk PROGRAMMATIC change, so the
- *   new checked state must be committed to the DOM before requestSubmit() serialises the form —
- *   hence flushSync. Without it the post would carry the stale prior subset.
+ * - Select all submits the explicit all-companies intent. The server clears the scope cookie and
+ *   the normal read derives the list from current company permissions.
  * - Deselect all does NOT submit. An empty post writes an empty cookie, which the resolver turns
  *   straight back into every company; the re-resolved `selected` prop would then silently re-tick
  *   every box — the opposite of the button's promise. Instead it is a client-side "start fresh"
@@ -58,7 +56,10 @@ export function CompanySwitcher({
   const personalCredits = pathname === '/leave/credit-details';
   const inquiryReturnPath = pathname === '/leave/employee-balances' || pathname === '/leave/employee-records' ? pathname : undefined;
   const [open, setOpen] = useState(false);
+  const [interactive, setInteractive] = useState(false);
+  useEffect(() => { setInteractive(true); }, []);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const allCompaniesSubmitter = useRef<HTMLButtonElement>(null);
   const [sel, setSel] = useState<Set<string>>(() => new Set(selected));
   const t = useTranslations('topbar');
   const monolith = useIsMonolith();
@@ -101,6 +102,7 @@ export function CompanySwitcher({
         ref={triggerRef}
         data-company-switcher
         type="button"
+        disabled={!interactive}
         onClick={() => {
           // Reset the pending picks when the popover OPENS. Deselect all does not submit, so an
           // abandoned clear would otherwise linger on reopen.
@@ -153,13 +155,13 @@ export function CompanySwitcher({
                   setSel(new Set());
                   return; // client-side clear only — see the docblock
                 }
-                flushSync(() => setSel(new Set(companies.map((c) => c.id))));
-                form?.requestSubmit();
+                if (allCompaniesSubmitter.current) form?.requestSubmit(allCompaniesSubmitter.current);
               }}
               className="mb-0.5 flex w-full items-center rounded-md px-2 py-1.5 text-left text-xs font-medium text-primary transition-colors hover:bg-muted"
             >
               {allSelected ? t('chooseCompanies') : t('selectAll')}
             </button>
+            <button ref={allCompaniesSubmitter} type="submit" name="scopeMode" value="all" hidden />
             {sel.size === 0 && <p role="status" className="px-2 py-2 text-xs text-muted-foreground">{t('pendingCompanySelection')}</p>}
             <div className="-mx-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain px-1.5">
               {companies.map((c) => (
@@ -180,7 +182,11 @@ export function CompanySwitcher({
                       if (e.currentTarget.checked) next.add(c.id);
                       else next.delete(c.id);
                       setSel(next);
-                      if (next.size > 0) form?.requestSubmit();
+                      if (allCompaniesSubmitter.current && companies.every(company => next.has(company.id))) {
+                        form?.requestSubmit(allCompaniesSubmitter.current);
+                      } else if (next.size > 0) {
+                        form?.requestSubmit();
+                      }
                     }}
                     className="size-4 shrink-0 accent-[var(--color-primary)]"
                   />

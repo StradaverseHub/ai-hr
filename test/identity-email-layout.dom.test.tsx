@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,onboardingTasks:vi.fn(),onboardingNavigation:vi.fn(),lifecycleRead:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -15,7 +15,7 @@ vi.mock('../lib/demo-mode',()=>({demoSwitcherEnabled:()=>true,isDemoDeployment:(
 vi.mock('../lib/scope',()=>({companyContextForPage:async()=>({allowed:[],scopeIds:m.scopeIds})}));
 vi.mock('../lib/ui-theme-server',()=>({currentUiTheme:async()=>m.theme}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[],listApprovalHistory:async()=>[]}));
-vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:async()=>[],onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:async()=>({module:false,master:false,requisitions:false,joiners:0,checklists:0})}));
+vi.mock('../packs/lifecycle/service',()=>({onboardingTasks:m.onboardingTasks,onboardingNoticeSummary:async()=>({unread:[],read:[],unreadCount:0}),onboardingNavigation:m.onboardingNavigation}));
 vi.mock('../components/onboarding-tour',()=>({OnboardingTour:()=>null}));
 vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:false,launcher:null})}));
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
@@ -26,8 +26,9 @@ vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async(
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
+vi.mock('../packs/personnel-postings/service',()=>({offboardingPostingAccess:async()=>false}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
-vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>{await m.lifecycleRead();return {count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]};}}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
 // this no-database shell test sent it to the closed CI port, and postgres.js's shared reconnect backoff made each
 // later Layout call wait longer, up to the 5 s timeout (run 41626195537). The owner's rule has its own DB tests.
@@ -48,7 +49,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.onboardingTasks.mockReset();m.onboardingTasks.mockResolvedValue([]);m.onboardingNavigation.mockReset().mockResolvedValue({module:false,master:false,requisitions:false,joiners:0,checklists:0});m.lifecycleRead.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -181,18 +182,82 @@ describe('root layout assigned Attendance inbox navigation',()=>{
 
 it('keeps exact Claims totals and accepted Lifecycle inbox counts together in the shared shell',async()=>{
  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});m.operator.mockResolvedValue(false);
- m.module.mockImplementation((_ctx:unknown,module:string)=>module==='claims');
+ m.module.mockImplementation((_ctx:unknown,module:string)=>['claims','lifecycle','notifications'].includes(module));
+ m.onboardingTasks.mockResolvedValue([{id:'onboarding-fixture',title:'Review checklist',joiner:'Fictional hire'}]);
+ m.notificationBell.mockResolvedValue({unread:0,taskCount:2,items:[],tasks:[],read:[]});
  const items=[{id:'leave-preview',kind:'leave',subjectName:'Fictional colleague',createdAt:new Date().toISOString(),linkPath:'/approvals'}];
  m.tasks.mockResolvedValue(items);m.summaryOverride={items,total:10002,approvalCount:10001,claimTotal:10000};m.lifecycleCount=7;
  const tree=await Layout({children:null});
  await vi.waitFor(()=>expect(m.tasks).toHaveBeenCalledTimes(1));
- await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000});
- expect(sidebarProps(tree)?.taskCount).toBe(7);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',items,total:10002,approvalCount:10001,claimTotal:10000,lifecycleTaskCount:8});
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
  const bell=await bellElement(tree);
- expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
+ expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(10);
  expect(propsOf(bell,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
- expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([]);
+ expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([{id:'onboarding-fixture',kind:'onboarding',subjectName:'Review checklist · Fictional hire',linkPath:'/tasks'}]);
+ expect(m.onboardingTasks).toHaveBeenCalledOnce();
+});
+
+it('returns the main shell while Lifecycle navigation checks its permission owners', async () => {
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+  m.operator.mockResolvedValue(false);
+  m.module.mockImplementation((_session, code) => code === 'lifecycle');
+  let finish!: (facts: object) => void;
+  m.onboardingNavigation.mockImplementation(() => {
+    expect(currentDatabaseWorkload()).toBe('background');
+    return new Promise(resolve => { finish = resolve; });
+  });
+  const layout = Layout({children:<main>Available before Lifecycle navigation</main>});
+  try {
+    const tree = await layout;
+    const source = sidebarProps(tree)?.lifecycleNavigationSource;
+    expect(source).toBeInstanceOf(Promise);
+    finish({module:true,master:true,requisitions:true,joiners:7,checklists:2});
+    await expect(source).resolves.toMatchObject({onboardingAccess:true,onboardingMaster:true,
+      onboardingRequisitionsAccess:true,onboardingJoinerCount:7,onboardingChecklistCount:2});
+  } finally {
+    finish?.({});
+  }
+}, 3_000);
+
+it('returns the interactive shell while the passive Lifecycle inbox is still pending',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+ m.operator.mockResolvedValue(false);
+ m.lifecycleCount=7;
+ let finish!:()=>void;
+ const held=new Promise<void>(resolve=>{finish=resolve;});
+ let workload:ReturnType<typeof currentDatabaseWorkload>|undefined;
+ m.lifecycleRead.mockImplementation(()=>{
+  workload=currentDatabaseWorkload();
+  return held;
+ });
+ let returned=false;
+ const layout=Layout({children:<main>Available before Lifecycle inbox</main>}).then(tree=>{returned=true;return tree;});
+ try{
+  await vi.waitFor(()=>expect(m.lifecycleRead).toHaveBeenCalledOnce());
+  await vi.waitFor(()=>expect(returned).toBe(true));
+  expect(workload).toBe('background');
+ }finally{finish();await layout;}
+ const tree=await layout;
+ expect(sidebarProps(tree)).toBeDefined();
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',lifecycleTaskCount:7});
+ expect(propsOf(await bellElement(tree),NotificationCenter)?.taskCount).toBe(7);
+});
+
+it('keeps account notifications available if the passive Lifecycle inbox fails',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'hr',roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]});
+ m.operator.mockResolvedValue(false);
+ m.module.mockImplementation((_session,module)=>module==='notifications');
+ m.lifecycleRead.mockRejectedValueOnce(Error('Private Lifecycle failure'));
+ m.notificationBell.mockResolvedValue({unread:4,taskCount:2,items:[],tasks:[],read:[]});
+ const log=vi.spyOn(console,'error').mockImplementation(()=>{});
+ try{
+  const tree=await Layout({children:<main>Available despite Lifecycle failure</main>});
+  expect(sidebarProps(tree)).toBeDefined();
+  await expect(approvalSource(tree)).resolves.toEqual({state:'unavailable'});
+  expect(propsOf(await bellElement(tree),NotificationCenter)).toMatchObject({unread:4,taskCount:2});
+  expect(log).toHaveBeenCalledExactlyOnceWith('Shared shell approval facts unavailable');
+ }finally{log.mockRestore();}
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{
@@ -229,14 +294,15 @@ describe('personal Home opens without automatic overlays',()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});m.operator.mockResolvedValue(false);
   m.pathname='/';m.onboarded=false;
   const tree=await Layout({children:<main>Personal Home</main>});
-  expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBeNull();expect(propsOf(tree,NoticePopupSlot)).toBeUndefined();
+  expect(propsOf(tree,OnboardingTour)?.initialSteps).toBeUndefined();expect(propsOf(tree,NoticePopupSlot)).toBeUndefined();
  });
  it('retains existing overlays on other routes and on the administrator workbench',async()=>{
   for(const [pathname,roles] of [['/me',['employee']],['/',['hr_admin']]] as const){
    m.session.mockResolvedValue({tenantId:'tenant',userId:'login',roles:[...roles],grants:[]});m.operator.mockResolvedValue(false);
    m.pathname=pathname;m.onboarded=false;
    const tree=await Layout({children:null});
-   expect(propsOf(tree,OnboardingTour)?.autoStartTourId).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
+   const initialSteps=propsOf(tree,OnboardingTour)?.initialSteps as {id:string}[]|undefined;
+   expect(initialSteps?.[0]?.id).toBe(WELCOME_TOUR_ID);expect(propsOf(tree,NoticePopupSlot)).toBeDefined();
   }
  });
 });

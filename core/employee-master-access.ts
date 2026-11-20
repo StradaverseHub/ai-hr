@@ -2,7 +2,7 @@
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx, type Grant } from '../db/client';
 import { PERSONNEL_FIELDS, type PersonnelFieldDescriptor, type PersonnelFieldSensitivity } from '../lib/personnel-field-registry';
-import { resolvePayrollPermission } from '../packs/payroll/service';
+import { companyPayrollPermissionsTx } from './pay-formula-personnel-permissions';
 import { isModuleEnabled } from './entitlements';
 
 export const MASTER_REPORT_CATEGORIES=['personnel','compensation','identity','bank','statutory','confidential_hr'] as const;
@@ -20,23 +20,14 @@ export async function assertReportPrincipalTx(tx:Tx,ctx:SessionContext):Promise<
 export async function masterReportFieldsTx(tx:Tx,ctx:SessionContext,companyIds:readonly string[]):Promise<PersonnelFieldDescriptor[]>{
   if(!ctx.userId||!companyIds.length)return [];
   await assertReportPrincipalTx(tx,ctx);
-  const access=new Map<string,Set<MasterReportCategory>>();
-  for(const companyId of companyIds){
-    const [scope]=await tx.execute(sql`select exists(select 1 from company where id=${companyId}::uuid and tenant_id=app.current_tenant_id()) as allowed`) as unknown as {allowed:boolean}[];
-    if(!scope?.allowed)throw new MasterReportAccessError();
-    // The existing granular resolver accepts role names. Strip grants that do not cover THIS company
-    // before passing them; a role in another company must not satisfy this company's report category.
-    const rows=await tx.execute(sql`select role from unnest(app.current_roles()) as role where app.has_role_for(role,${companyId}::uuid)`) as unknown as {role:string}[];
-    const roles=rows.map(row=>row.role), scopedContext={...ctx,roles,grants:ctx.grants?.filter(grant=>roles.includes(grant.role))};
-    const allowed=new Set<MasterReportCategory>();
-    for(const category of MASTER_REPORT_CATEGORIES)if(await resolvePayrollPermission(tx,scopedContext,`report.read.${category}`,companyId))allowed.add(category);
-    if(!allowed.has('personnel'))throw new MasterReportAccessError();
-    access.set(companyId,allowed);
-  }
+  const keys=MASTER_REPORT_CATEGORIES.map(category=>`report.read.${category}` as const);
+  // The explicit current session role intersection is part of the report's carrier.
+  const access=await companyPayrollPermissionsTx(tx,ctx,companyIds,keys,{requireSessionRoles:true});
+  if(companyIds.some(companyId=>!access.get('report.read.personnel')?.has(companyId)))throw new MasterReportAccessError();
   return PERSONNEL_FIELDS.filter(field=>companyIds.every(companyId=>{
-    if(!access.get(companyId)?.has(CATEGORY[field.sensitivity]))return false;
+    if(!access.get(`report.read.${CATEGORY[field.sensitivity]}`)?.has(companyId))return false;
     // Employment history is confidential HR; its monetary cells require compensation as well.
-    if(['movement','movementComparison','hireCorrection'].includes(field.owner)&&['basicSalary','originalValue','correctedValue'].includes(field.ownerField)&&!access.get(companyId)?.has('compensation'))return false;
+    if(['movement','movementComparison','hireCorrection'].includes(field.owner)&&['basicSalary','originalValue','correctedValue'].includes(field.ownerField)&&!access.get('report.read.compensation')?.has(companyId))return false;
     const module=MODULE[field.sensitivity];return !module||isModuleEnabled(ctx,module,companyId);
   }));
 }

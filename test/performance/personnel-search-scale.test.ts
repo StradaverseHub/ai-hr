@@ -3,8 +3,8 @@
  * route runs (createPersonnelPrivateSearch, as the group HR administrator over every company) and the Personnel page
  * that the search opens, one at a time and four at a time (the staging box has two vCPUs, so four concurrent searches
  * keep it CPU-bound), for selective terms, terms that match everyone and a column filter without a term, and reports
- * p50/p95/max. No term search may be refused or reach the 20-second Personnel statement limit; a selective search
- * stays under a second up to 10,000 employments. Column filters without a term are measured (with any refusal) only. At 1,000 employments it also times the search exactly as release f7ee5177 shipped it (the
+ * p50/p95/max. No tested search or selective identity-only filter may be refused or reach the 20-second Personnel statement limit.
+ * A selective search stays under a second up to 10,000 employments. At 1,000 employments it also times the search exactly as release f7ee5177 shipped it (the
  * pre-5121 owners and the verbatim legacy search), which staging timed out on. Measurements are written to the focused
  * evidence directory when one is set. Fictional data only. */
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -75,14 +75,9 @@ it('searches thousands to tens of thousands of employments over 76 companies, al
    }
    entry[kind]={search:summary(alone),page:page.length?summary(page):null,[`search${CONCURRENCY}Concurrent`]:summary(together),searchesWithMatches:matched,refusals};
    save();
-   // The owner's bar for the search terms: no term search is refused or reaches the 20-second Personnel statement
-   // limit, alone or under load. Column filters without a term read the exact list owner (app.personnel_list_rows)
-   // for the whole population; that reader is measured and reported, not asserted here.
-   if(kind!=='filter'){
-    expect(refusals,`${count} employments: ${kind} searches`).toEqual([]);
-    expect(Math.max(...alone,...together),`${count} employments: ${kind} searches finish`).toBeLessThan(20_000);
-    expect(matched).toBeGreaterThan(0);
-   }
+   expect(refusals,`${count} employments: ${kind} searches`).toEqual([]);
+   expect(Math.max(...alone,...together),`${count} employments: ${kind} searches finish`).toBeLessThan(20_000);
+   expect(matched).toBeGreaterThan(0);
    if(kind==='selective'&&count<=10_000)expect(summary(alone).p95,`${count} employments: selective search p95`).toBeLessThan(1000);
   }
 

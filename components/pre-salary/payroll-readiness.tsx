@@ -1,3 +1,5 @@
+import type {ReactNode} from 'react';
+import type {PayrollApprovalPreview} from '@/core/pre-salary/person-items';
 import {dateTimeFormatter} from '@/lib/date-time-formatter';
 import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
@@ -105,19 +107,16 @@ const OWN_GROUPS:readonly PayrollItemGroup[]=['attendance','overtime','leave','c
 /** "My payroll readiness" (its own page, /me/payroll-readiness): every item grouped, each group done or not for the
  * month, and what waits on the person as an approver. The missed clock-out Confirm card is drawn in its group.
  * `headingLevel` 1: the page's own title. */
-export async function MyPayrollReadiness({readiness,locale,headingLevel=2}:{readiness:PayrollReadiness|null;locale:string;headingLevel?:1|2}){
- const [t,pagination,dashboard]=await Promise.all([getTranslations('payrollReadiness'),getTranslations('pagination'),getTranslations('dashboard')]);
+export async function MyPayrollReadiness({readiness,locale,headingLevel=2,children}:{readiness:PayrollReadiness|null;locale:string;headingLevel?:1|2;children?:ReactNode}){
+ const t=await getTranslations('payrollReadiness');
  const Heading=headingLevel===1?'h1':'h2',headingCls=headingLevel===1?'text-xl font-semibold tracking-tight':'text-base font-semibold';
  if(!readiness)return <section id="my-payroll-readiness" aria-labelledby="my-payroll-readiness-heading" data-payroll-readiness="none" className="space-y-2">
   <Heading id="my-payroll-readiness-heading" className={headingCls}>{t('insightsTitle')}</Heading>
   <p className="text-sm text-muted-foreground">{t('notInUse')}</p>
  </section>;
- const shownClaims=readiness.approvals.filter(row=>row.kind==='approve_claim').length;
- const claimTotal=readiness.approvalClaimTotal??shownClaims;
  const month=formatPayPeriodMonth(readiness.period.payPeriod,locale);
  const status=new Map(readiness.groups.map(row=>[row.group,row.status]));
  const groups=OWN_GROUPS.filter(group=>status.get(group)!=='off');
- const approvals=status.get('approvals')!=='off'&&(readiness.approvals.length>0||status.get('approvals')==='unknown');
  const pending=readiness.items.some(row=>row.state==='todo');
  return <section id="my-payroll-readiness" aria-labelledby="my-payroll-readiness-heading" data-payroll-readiness="ready" className="scroll-mt-4 space-y-4">
   <div className="space-y-1">
@@ -140,19 +139,29 @@ export async function MyPayrollReadiness({readiness,locale,headingLevel=2}:{read
      {cards.length>0&&<ul className="mt-2 space-y-2"><LoopCards cards={cards} locale={locale}/></ul>}
     </li>;})}
   </ul>
-  {approvals&&<section aria-labelledby="payroll-approvals-heading" data-payroll-group="approvals" data-payroll-status={status.get('approvals')} className="rounded-xl border border-border bg-card p-4">
-   <div className="flex flex-wrap items-center justify-between gap-2">
-    <h3 id="payroll-approvals-heading" className="text-sm font-semibold">{t('groups.approvals')}</h3>
-    <span className={cn(PILL,TONE[status.get('approvals')??'unknown'])}>{t(`status.${status.get('approvals')??'unknown'}`)}</span>
-   </div>
-   <p className="mt-1 text-xs text-muted-foreground">{t('approvalsHelp')}</p>
-   {readiness.approvals.length>0&&<ul className="mt-1 divide-y divide-border">{readiness.approvals.map(row=><ItemRow key={row.key} t={t} locale={locale} row={row} todayConfirm={false}/>)}</ul>}
-   {claimTotal>shownClaims&&<div className="mt-3 space-y-2 border-t border-border pt-3" aria-label={t('groups.claims')}>
-    <p className="text-sm font-medium">{t('groups.claims')}</p>
-    <p className="text-sm text-muted-foreground">{pagination('truncated',{shown:shownClaims,total:claimTotal})}</p>
-    <Link href="/approvals?category=claim" className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{dashboard('viewAll')}</Link>
-   </div>}
-  </section>}
+  {children}
   <p className="text-xs text-muted-foreground">{t('notCovered')}</p>
+ </section>;
+}
+
+
+export async function MyPayrollApprovalPreview({result,locale}:{result:Promise<PayrollApprovalPreview|null>;locale:string}){
+ const preview=await result;
+ if(!preview||preview.status==='off'||(!preview.items.length&&preview.status!=='unknown'))return null;
+ const [t,pagination,dashboard]=await Promise.all([getTranslations('payrollReadiness'),getTranslations('pagination'),getTranslations('dashboard')]);
+ const shownClaims=preview.items.filter(row=>row.kind==='approve_claim').length;
+ return <section aria-labelledby="payroll-approvals-heading" data-payroll-group="approvals" data-payroll-status={preview.status} className="rounded-xl border border-border bg-card p-4">
+  <div className="flex flex-wrap items-center justify-between gap-2">
+   <h3 id="payroll-approvals-heading" className="text-sm font-semibold">{t('groups.approvals')}</h3>
+   <span className={cn(PILL,TONE[preview.status])}>{t(`status.${preview.status}`)}</span>
+  </div>
+  <p className="mt-1 text-xs text-muted-foreground">{t('approvalsHelp')}</p>
+  {preview.status==='unknown'&&<p data-read-unavailable role="status" className="text-sm text-muted-foreground">{t('unavailable')}</p>}
+  {preview.items.length>0&&<ul className="mt-1 divide-y divide-border">{preview.items.map(row=><ItemRow key={row.key} t={t} locale={locale} row={row} todayConfirm={false}/>)}</ul>}
+  {preview.claimTotal>shownClaims&&<div className="mt-3 space-y-2 border-t border-border pt-3" aria-label={t('groups.claims')}>
+   <p className="text-sm font-medium">{t('groups.claims')}</p>
+   <p className="text-xs text-muted-foreground">{pagination('truncated',{shown:shownClaims,total:preview.claimTotal})}</p>
+   <Link href="/approvals?category=claim" className={cn(LINK,'border border-input bg-card hover:bg-accent')}>{dashboard('viewAll')}</Link>
+  </div>}
  </section>;
 }

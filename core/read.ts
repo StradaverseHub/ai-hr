@@ -2681,10 +2681,18 @@ export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
  *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
  *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
  *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
-export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
-  return withTenant(ctx, (tx) =>
+export async function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+  const breakdowns = await leaveRequestDateBreakdowns(ctx, [leaveRequestId]);
+  const [dates] = breakdowns.values();
+  return dates ?? [];
+}
+
+/** Read date breakdowns for the bounded request list displayed by the inbox in one authorized query. */
+export async function leaveRequestDateBreakdowns(ctx: SessionContext, leaveRequestIds: readonly string[]) {
+  const rows = leaveRequestIds.length === 0 ? [] : await withTenant(ctx, (tx) =>
     tx
       .select({
+        requestId: leaveRequestDate.leaveRequestId,
         id: leaveRequestDate.id,
         leaveDate: leaveRequestDate.leaveDate,
         days: leaveRequestDate.days,
@@ -2696,9 +2704,17 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
       .from(leaveRequestDate)
       .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
       .leftJoin(person, eq(person.id, employment.personId))
-      .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
-      .orderBy(leaveRequestDate.leaveDate),
+      .where(inArray(leaveRequestDate.leaveRequestId, leaveRequestIds))
+      .orderBy(leaveRequestDate.leaveRequestId, leaveRequestDate.leaveDate),
   );
+  type DateRow = Omit<(typeof rows)[number], 'requestId'>;
+  const breakdowns = new Map<string, DateRow[]>();
+  for (const { requestId, ...row } of rows) {
+    const existing = breakdowns.get(requestId);
+    if (existing) existing.push(row);
+    else breakdowns.set(requestId, [row]);
+  }
+  return breakdowns;
 }
 
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card
@@ -3703,6 +3719,7 @@ export async function leaveBalanceInquiryMembershipTx(tx: Tx, ctx: SessionContex
 function leaveInquiryMembershipTypesTx(tx:Tx){
  return tx.select({ id: leaveType.id, name: leaveType.name, code: leaveType.code, i18n: leaveType.i18n, eligibility: leaveType.eligibility, archivedAt: leaveType.archivedAt }).from(leaveType);
 }
+export const LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE=2000;
 /** The catalogue is private to this physical transaction/read invocation. It is
  * neither caller-provided eligibility nor a cross-request authorization cache. */
 export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx:Tx,asOf:string,locale:string){
@@ -3710,7 +3727,7 @@ export async function createLeaveInquiryMembershipReaderTx(ctx:SessionContext,tx
  const types=await leaveInquiryMembershipTypesTx(tx);
  return (employmentIds:readonly string[])=>{
   const ids=employmentIds.slice();
-  if(ids.length>100)throw new Error('Inquiry membership chunk exceeds 100 employments');
+  if(ids.length>LEAVE_INQUIRY_MEMBERSHIP_BATCH_SIZE)throw new RangeError('Inquiry membership batch exceeds 2,000 employments');
   return ids.length?leaveBalanceInquiryMembershipRowsTx(tx,ids,asOf,locale,types):Promise.resolve([]);
  };
 }
@@ -5575,6 +5592,7 @@ export function leaveEntitlementBreakdowns(
   locale?: string,
   existingTx?: Tx,
   inputs?: OwnLeaveInputs,
+  opts: {derivation?:boolean} = {},
 ): Promise<(LeaveEntitlementBreakdown | null)[]> {
   if (items.length === 0) return Promise.resolve([]);
   const read = async (tx: Tx) => {
@@ -5603,7 +5621,7 @@ export function leaveEntitlementBreakdowns(
     }
     return Promise.all(
       items.map((i) =>
-        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, {}, {
+        leaveEntitlementBreakdownTx(tx, employmentId, i.leaveTypeId, i.asOf, locale, opts, {
           type: typeById.get(i.leaveTypeId),
           emp,
           templates: resolverByAsOf.get(i.asOf)!,
