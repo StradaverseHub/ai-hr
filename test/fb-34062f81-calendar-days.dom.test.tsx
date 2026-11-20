@@ -151,7 +151,7 @@ function renderWorkspace() {
 async function openDayGrid(user: ReturnType<typeof userEvent.setup>, lineCount: number) {
   await user.click(await screen.findByRole('button', { name: /Fictional Person/ }));
   await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-  await user.click(screen.getByRole('button', { name: 'Payroll item' }));
+  await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
     await user.click(screen.getByRole('option', { name: /^UPL —/ }));
   await user.click(screen.getByRole('radio', { name: 'Day by day' }));
   for (let i = 1; i < lineCount; i++) await user.click(screen.getByRole('button', { name: 'Add date' }));

@@ -119,7 +119,7 @@ describe('aac17dd0 · Add transaction on a Calculated by Formula Pay Item', () =
     renderWorkspace();
     await user.click(await screen.findByRole('button', { name: /Fictional Overtime Clerk/ }));
     await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-    await user.click(screen.getByRole('button', { name: 'Payroll item' }));
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
     await user.click(screen.getByRole('option', { name: /^OTFX —/ }));
 
     expect(inputType()).not.toBeDisabled();
@@ -138,7 +138,7 @@ describe('aac17dd0 · Add transaction on a Calculated by Formula Pay Item', () =
     renderWorkspace();
     await user.click(await screen.findByRole('button', { name: /Fictional Overtime Clerk/ }));
     await user.click(await screen.findByRole('button', { name: '+ Add new transaction' }));
-    await user.click(screen.getByRole('button', { name: 'Payroll item' }));
+    await user.click(screen.getByRole('button', {name: 'Payroll item', expanded: false}));
     await user.click(screen.getByRole('option', { name: /^OTFX —/ }));
     await user.selectOptions(inputType(), 'amount');
 

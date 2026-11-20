@@ -372,7 +372,7 @@ export function TxnWorkspace({
     }));
     return new Map([...itemOptions, ...legacy].map(option => [option.value, option]));
   }, [itemOptions, t]);
-  const defaultItemValue = itemOptions.find(option=>option.kind==='earning'&&!option.derives&&!option.formulaBuilder&&!option.nonPayable)?.value??'';
+  const defaultItemValue = '';
 
   // ── Left panel: filters + selection ──
   // A single-company admin has their one company chosen for them (an initialiser, not an effect —
@@ -1295,7 +1295,7 @@ export function TxnWorkspace({
   const formInvalid = (f: FormState): string | null => {
     if (!isPeriod(f.payPeriod)) return 'periodInvalid';
     const opt = itemByValue.get(f.item);
-    if (!opt) return 'rowIncomplete';
+    if (!opt) return 'componentRequired';
     if (!f.txnDate) return 'rowIncomplete';
     if (!isTransactionEffectiveDate(f.txnDate)) return 'invalidEffectiveDate';
     // ad6ed930 — after the last day. An edit that keeps a row's own stored date is left to the server, as it is
@@ -1343,7 +1343,7 @@ export function TxnWorkspace({
   );
   const dailyInvalid = (d: DailyState): string | null => {
     if (!isPeriod(d.payPeriod)) return 'periodInvalid';
-    if (!itemByValue.get(d.item)) return 'rowIncomplete';
+    if (!itemByValue.get(d.item)?.fromMaster) return 'componentRequired';
     if (d.lines.length === 0) return 'dayGridEmpty';
     if (leftOn && d.lines.some((l) => l.txnDate > leftOn)) return 'txnAfterLeavingDate';
     if (dailyDerivedCurrent?.error) return dailyDerivedCurrent.error;

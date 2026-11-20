@@ -146,6 +146,8 @@ async function openAddForm(user: ReturnType<typeof userEvent.setup>) {
 
 /** Fill the two boxes a plain earning row needs, so Save is reachable. */
 async function fillRow(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button',{name:'Payroll item',expanded:false}));
+  await user.click(screen.getByRole('option',{name:/^MEAL —/}));
   await user.type(screen.getByLabelText('Effective date'), '2026-08-12');
   await user.type(screen.getByLabelText('Amount'), '150');
 }

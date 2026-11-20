@@ -134,7 +134,7 @@ describe('ad6ed930 · New transaction for a former employee', () => {
     const user = userEvent.setup();
     renderWorkspace();
     await openCreate(user, /Fictional Leaver/);
-    await user.click(screen.getByRole('button', { name: ind.colItem }));
+    await user.click(screen.getByRole('button', {name: ind.colItem, expanded: false}));
     await user.click(screen.getByRole('option', { name: /^MANUAL_OT —/ }));
     fireEvent.change(dateInput(), { target: { value: '2026-10-31' } });
     await user.type(screen.getByLabelText(ind.colAmount), '50');
@@ -149,7 +149,7 @@ describe('ad6ed930 · New transaction for a former employee', () => {
     renderWorkspace();
     createMock.mockResolvedValue({ ok: false, error: 'txnAfterLeavingDate', errorValues: { leftOn: '2026-10-27' } });
     await openCreate(user, /Fictional Leaver/);
-    await user.click(screen.getByRole('button', { name: ind.colItem }));
+    await user.click(screen.getByRole('button', {name: ind.colItem, expanded: false}));
     await user.click(screen.getByRole('option', { name: /^MANUAL_OT —/ }));
     await user.type(screen.getByLabelText(ind.colAmount), '50');
     await user.click(screen.getByRole('button', { name: ind.save }));
@@ -163,7 +163,7 @@ describe('ad6ed930 · New transaction for a former employee', () => {
     renderWorkspace();
     previewOneMock.mockResolvedValue({ ok: false, error: 'txnAfterLeavingDate', errorValues: { leftOn: '2026-10-29' } });
     await openCreate(user, /Fictional Leaver/);
-    await user.click(screen.getByRole('button', { name: ind.colItem }));
+    await user.click(screen.getByRole('button', {name: ind.colItem, expanded: false}));
     await user.click(screen.getByRole('option', { name: /^ONOR —/ }));
     await user.type(screen.getByLabelText(ind.quantity), '9');
     expect(await screen.findByText(NAMED)).toBeInTheDocument();
