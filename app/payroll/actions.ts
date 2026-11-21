@@ -91,16 +91,27 @@ import {
  * without it is bounced back with an error so the confirm can never be skipped client-side.
  */
 export async function generateAction(formData: FormData) {
-  const s = await getSession();
   const batchId = String(formData.get('batchId'));
   // r253 — THE RUN SCREEN THIS RETURNS TO KEEPS THE OPERATOR'S FILTER SELECTION. The form posts the same
   // `from` its own Back is built from; without it, generating from a January-filtered list landed on a
   // run screen whose Back went to a bare `/payroll`, i.e. the current period. See `withPayrollFrom`.
   const home = withPayrollFrom(`/payroll/${batchId}`, formData.get('from'));
+  const receipt = await admitPayrollProcessing(batchId, formData);
+  if (receipt.status === 'refused') redirect(withQueryParam(home, 'error', receipt.message));
+  revalidatePath(`/payroll/${batchId}`);
+  redirect(withQueryParam(home, 'toast', receipt.message));
+}
+
+/** The hydrated form confirms the durable job before requesting an updated register. */
+export async function requestPayrollProcessingReceipt(formData: FormData) {
+  return admitPayrollProcessing(String(formData.get('batchId')), formData);
+}
+
+async function admitPayrollProcessing(batchId: string, formData: FormData) {
+  const s = await getSession();
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
   let errMsg: string | null = null;
-  let toastMsg = '';
   try {
     const checks = await preProcessAdvisory(s, batchId);
     // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
@@ -147,7 +158,7 @@ export async function generateAction(formData: FormData) {
       // admits it and moves the run to 'processing'. The run screen shows its progress; who was skipped is on the
       // run once it is processed, and the operator gets the completion notice.
       await requestPayrollProcessing(s, { batchId });
-      toastMsg = t('processingStarted');
+      return { status: 'queued' as const, message: t('processingStarted') };
     }
   } catch (e) {
     errMsg =
@@ -160,9 +171,7 @@ export async function generateAction(formData: FormData) {
           ? t('generateBlockedByCounterpartClosed', { n: e.employmentIds.length })
           : (await payrollNonCashErrorMessage(e)) ?? await payrollTaxSchemeErrorMessage(e);
   }
-  if (errMsg) redirect(withQueryParam(home, 'error', errMsg));
-  revalidatePath(`/payroll/${batchId}`);
-  redirect(withQueryParam(home, 'toast', toastMsg));
+  return { status: 'refused' as const, message: errMsg ?? t('preChecksNotReady') };
 }
 
 export async function setPayrollInputAction(formData: FormData) {
