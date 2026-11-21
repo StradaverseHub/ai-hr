@@ -4,7 +4,6 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
 import {createHash,randomBytes} from 'node:crypto';
-import {PROJECT_INSTALLED_OWNERSHIP} from '../../test/helpers/installed-owner-projection.ts';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import {createServer,request as httpsRequest} from 'node:https';
@@ -563,38 +562,37 @@ async function withMixedOffboardingComparison(work){
  const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{statement_timeout:'90s',lock_timeout:'3s'}});
  const readFunction=async sql=>{
   const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
-   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition
+   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition,md5(p.prosrc) as "bodyHash"
    from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure`;
   return row;
  };
  try{
-  await owner.begin(async tx=>{
-   const [{exists}]=await tx`select exists(select 1 from pg_roles where rolname='ai_hr_owner')`;
-   if(!exists)await tx.unsafe('create role ai_hr_owner nologin nosuperuser nobypassrls nocreatedb nocreaterole noreplication');
-   // A deployed migration owner can log in. These attributes define which
-   // privileges it lacks, independent of how a runner connects.
-   const [role]=await tx`select rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication from pg_roles where rolname='ai_hr_owner'`;
-   assert(role&&!role.rolsuper&&!role.rolbypassrls&&!role.rolcreaterole&&!role.rolcreatedb&&!role.rolreplication,
-    'Expected the restricted fictional owner');
-   if((await readFunction(tx)).owner==='postgres')await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
-   assert.equal((await readFunction(tx)).owner,'ai_hr_owner');
-  });
-  const {definition:original,...boundary}=await readFunction(owner);
+  const {definition:original,bodyHash,...boundary}=await readFunction(owner);
+  assert.equal(bodyHash,'0b244f4aa1621807d85b8bc27d5dc41e','Expected the original fixture function');
+  assert(['postgres','ai_hr_owner'].includes(boundary.owner));
   const install=(statement,expected)=>owner.begin(async tx=>{
-   await tx.unsafe('set local role ai_hr_owner');
+   if(boundary.owner==='ai_hr_owner')await tx.unsafe('set local role ai_hr_owner');
    await tx.unsafe(statement);
-   const {definition,...observed}=await readFunction(tx);
+   const {definition,bodyHash:observedBody,...observed}=await readFunction(tx);
    assert.deepEqual(observed,boundary);
-   if(expected==='original')assert.equal(definition,original);
+   if(expected==='original'){
+    assert.equal(definition,original);
+    assert.equal(observedBody,bodyHash);
+   }
    else assert.notEqual(definition,original);
   });
-  report.mixedOffboarding={variant:offboardingVariant,restrictedOwner:true,replacementInstalled:false,restored:false};
+  report.mixedOffboarding={variant:offboardingVariant,fixtureFunctionOwner:boundary.owner,replacementInstalled:false,restored:false};
   try{
    if(offboardingVariant==='optimized'){
     const replacement=readFileSync(new URL('../../test/fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
     const digest=createHash('sha256').update(replacement).digest('hex');
     assert.equal(digest,'98377e8ad38ce15950965f7def886f52642a65e8b153cbaacb02c162b2616539');
-    await install(replacement,'optimized');
+    // The separate restricted-owner rehearsal verifies the same replacement.
+    // Preserve this browser fixture's existing schema ownership in both arms.
+    const marker='\nCREATE OR REPLACE FUNCTION app.offboarding_posting_queue_access()';
+    const start=replacement.indexOf(marker);
+    assert(start>0&&start===replacement.lastIndexOf(marker));
+    await install(replacement.slice(start),'optimized');
     report.mixedOffboarding.replacementSha256=digest;
     report.mixedOffboarding.replacementInstalled=true;
    }
