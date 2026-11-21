@@ -1634,7 +1634,19 @@ try{
    const path=join(privateDir,'import-history-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['principal','personnel','payroll','fixed-transaction','individual-transaction','complete'].includes(stage))report.importHistorySeedStage=stage;
+    if(['principal','personnel','payroll','fixed-transaction','individual-workbook','individual-submit',
+     'individual-worker','individual-job','individual-attempt','complete'].includes(stage))report.importHistorySeedStage=stage;
+    const factsPath=join(privateDir,'individual-import-seed-facts.json');
+    if(existsSync(factsPath)){
+     const {role,state,hasAttempt,error}=JSON.parse(readFileSync(factsPath,'utf8'));
+     if(['groupHR','companyHR'].includes(role)&&typeof hasAttempt==='boolean'){
+      report.individualImportSeed={
+       role,hasAttempt,
+       state:['pending','validating','ready','failed'].includes(state)?state:null,
+       error:['noValidRows','templateMismatch','importAccessDenied','fileReadError','importFailed'].includes(error)?error:null,
+      };
+     }
+    }
     save();
    }
   }

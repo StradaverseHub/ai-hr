@@ -108,18 +108,28 @@ try{
   fixed[key]={id,file,missingEmployee};
  }
  await assert.rejects(fixedImports.readFixedTransactionImport(companyContext,fixed.groupHR.id,scope),/Job unavailable/);
- mark('individual-transaction');
  const individual={};
  const unknownEmployee='PERF-UNKNOWN-INDIVIDUAL';
  for(const {key,author} of [{key:'groupHR',author:ctx},{key:'companyHR',author:companyContext}]){
+  mark('individual-workbook');
   const id=randomUUID(),file='fictional-individual-'+key+'.xlsx';
   const content=Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.monthly],[
    [unknownEmployee,'',fixture.month,'ME','BONUS',fixture.month+'-01','amount','','100','fictional row'],
   ]));
+  mark('individual-submit');
   await individualJobs.submitIndividualImportJob(author,{id,name:file,content,method:'monthly',scopeIds:scope});
+  mark('individual-worker');
   assert(await runIndividualImportTick(owner.client,async session=>({...session,entitlements:author.entitlements})));
+  mark('individual-job');
   const job=await individualJobs.readIndividualImportJob(author,id,scope);
+  writeFileSync(resultPath('individual-import-seed-facts.json'),JSON.stringify({
+   role:key,
+   state:job?.state,
+   hasAttempt:!!job?.attempt_id,
+   error:job?.error,
+  }),{mode:0o600});
   assert(job?.attempt_id&&job.state==='failed'&&job.error==='noValidRows');
+  mark('individual-attempt');
   const attempt=await payroll.readIndividualImport(author,job.attempt_id,scope);
   assert.equal(attempt.written,0);
   assert.equal(attempt.preview.invalid,1);
