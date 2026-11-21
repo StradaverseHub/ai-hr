@@ -110,10 +110,22 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   const original = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
   const deterministic = { correct: 0, abstained: 0, gains: 0, regressions: 0 };
   const candidate = { correct: 0, rejected: 0 };
+  const retrievalFirst = {
+    correct: 0, rejected: 0, modelCalls: 0,
+    versusFocused: { gains: 0, regressions: 0 },
+  };
   for (const fixture of cases) {
     const past = await choose(call, fixture, false);
     const next = await choose(call, fixture, true);
     const fixed = deterministicChoice(fixture);
+    // Both policies would send the identical focused request on a retrieval abstention.
+    // Reuse that observed response to attribute accuracy and calls without extra sampling.
+    const routed = fixed === null ? next : fixed === fixture.expected ? 'correct' : 'incorrect';
+    if (fixed === null) retrievalFirst.modelCalls++;
+    if (routed === 'correct') retrievalFirst.correct++;
+    if (routed === 'rejected') retrievalFirst.rejected++;
+    if (routed === 'correct' && next !== 'correct') retrievalFirst.versusFocused.gains++;
+    if (routed !== 'correct' && next === 'correct') retrievalFirst.versusFocused.regressions++;
     if (past === 'correct') original.correct++;
     if (past === 'rejected') original.rejected++;
     if (next === 'correct') candidate.correct++;
@@ -130,7 +142,7 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
     evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
     holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
     comparator: 'canonical_english_explanation_retrieval_v2', cases: cases.length, minimumGain: spec.minimumGain,
-    original, deterministic, candidate, confirmedGain,
+    original, deterministic, candidate, retrievalFirst, confirmedGain,
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
     budget,
   };
