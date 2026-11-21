@@ -68,6 +68,10 @@ on:
         description: Verify the collector against a known wait in the disposable database and stop before load
         default: false
         type: boolean
+      browser_lock_log_short_window:
+        description: Attribute shorter PostgreSQL waits in the disposable load fixture
+        default: false
+        type: boolean
       browser_replacement_catalogue:
         description: Controlled fictional comparison of replacement leave type presence (absent or present)
         default: ''
@@ -143,6 +147,9 @@ jobs:
           if [[ "$LOCK_LOG_CALIBRATION_ONLY" == true && "$REUSE_BUILD" != true ]]; then
             exit 2
           fi
+          if [[ "$LOCK_LOG_SHORT_WINDOW" == true && ( "$REUSE_BUILD" != true || "$LOCK_LOG_CALIBRATION_ONLY" == true ) ]]; then
+            exit 2
+          fi
           if [[ -n "$REPLACEMENT_CATALOGUE" ]] && {
             [[ ! "$REPLACEMENT_CATALOGUE" =~ ^(absent|present)$ || "$ESTABLISHED_ATTENDANCE" != true || "$REUSE_BUILD" != true ]];
           }; then exit 2; fi
@@ -158,6 +165,7 @@ jobs:
           BROWSER_FIXTURE_ONLY: ${{ inputs.browser_fixture_only }}
           ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           LOCK_LOG_CALIBRATION_ONLY: ${{ inputs.browser_lock_log_calibration_only }}
+          LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
           RUN_BUILD: ${{ inputs.run_build }}
@@ -294,6 +302,7 @@ jobs:
           AIHR_BROWSER_MIXED_LOAD: ${{ inputs.browser_mixed_load }}
           AIHR_BROWSER_ESTABLISHED_ATTENDANCE: ${{ inputs.browser_established_attendance }}
           AIHR_BROWSER_LOCK_LOG_CALIBRATION_ONLY: ${{ inputs.browser_lock_log_calibration_only }}
+          AIHR_BROWSER_LOCK_LOG_SHORT_WINDOW: ${{ inputs.browser_lock_log_short_window }}
           AIHR_BROWSER_REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}

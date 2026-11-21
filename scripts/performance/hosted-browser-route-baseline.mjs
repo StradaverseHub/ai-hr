@@ -548,13 +548,13 @@ async function measureMixedLoad(command,fixture){
   '--format','{{.Id}} {{index .Config.Labels "aihr-owner"}}',name,
  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim().split(' ');
  assert(/^[0-9a-f]{64}$/.test(containerId)&&owner===name,'PostgreSQL container identity differs from the workload owner');
- const configured=execFileSync('/usr/bin/docker',[
-  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-U','postgres','-p','5433',
-  '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',
-  `select current_setting('fsync')='on' and current_setting('synchronous_commit')='on'
-    and current_setting('full_page_writes')='on' and current_setting('log_lock_waits')='on'
-    and exists(select 1 from pg_stat_statements)`,
+ const databaseControl=statement=>execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',containerId,'psql','-U','postgres','-p','5433',
+  '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',statement,
  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000}).trim();
+ const configured=databaseControl(`select current_setting('fsync')='on' and current_setting('synchronous_commit')='on'
+    and current_setting('full_page_writes')='on' and current_setting('log_lock_waits')='on'
+    and exists(select 1 from pg_stat_statements)`);
  report.mixedDatabaseProfile={durableAndStatementStatistics:configured==='t'};
  save();
  assert.equal(configured,'t','The workload database lacks its required durability or statement instrumentation');
@@ -564,6 +564,23 @@ async function measureMixedLoad(command,fixture){
   assert(report.mixedDatabaseProfile.accessServerLogCalibration.matchedKnownWait,'PostgreSQL lock log calibration did not match the known wait');
   return;
  }
+ const shortLogWindow=env.AIHR_BROWSER_LOCK_LOG_SHORT_WINDOW==='true';
+ const readLockThreshold=()=>Number(databaseControl("select setting from pg_settings where name='deadlock_timeout' and unit='ms'"));
+ if(shortLogWindow){
+  assert(report.mixedDatabaseProfile.accessServerLogCalibration.matchedKnownWait,'The collector must recognize a known wait before tracing shorter waits');
+  // containerId was verified against the job label. No installation or shared
+  // database is reachable here. The outer cleanup removes the test container.
+  databaseControl("alter system set deadlock_timeout='100ms'");
+  assert.equal(databaseControl('select pg_reload_conf()'),'t');
+  const deadline=performance.now()+2000;
+  while(readLockThreshold()!==100&&performance.now()<deadline)await pause(50);
+  assert.equal(readLockThreshold(),100,'The job-owned database must adopt the attribution threshold');
+ }
+ const deadlockThresholdMs=readLockThreshold();
+ assert(Number.isSafeInteger(deadlockThresholdMs)&&deadlockThresholdMs>0);
+ report.mixedDatabaseProfile.deadlockThresholdMs=deadlockThresholdMs;
+ report.mixedDatabaseProfile.attributionOnly=shortLogWindow;
+ save();
 
  const clockTicks=execFileSync('/usr/bin/getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}).trim();
  assert(/^[1-9][0-9]*$/.test(clockTicks));
