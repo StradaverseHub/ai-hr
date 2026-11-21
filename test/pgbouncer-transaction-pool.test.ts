@@ -10,7 +10,9 @@ import {sql} from 'drizzle-orm';
 import postgres from 'postgres';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {DatabaseAdmissionError} from '../db/admission';
-import {createDb, type SessionContext} from '../db/client';
+import {accountTaskStatement, accountTaskStatementSections} from '../core/account-task-bundle';
+import {createDb, type SessionContext, type Tx} from '../db/client';
+import {isSharedCarrierTransaction} from '../db/shared-read';
 import {actorOf, appendEvent} from '../db/events';
 import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
 import {isDatabaseCapacityFailure} from '../db/read-retry';
@@ -111,6 +113,60 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       expect(backends.size).toBeGreaterThan(0);
       expect(backends.size).toBeLessThanOrEqual(target!.serverConnections);
     } finally { await pool.client.end({timeout: 5}); }
+  });
+
+  it('confines generic shell-task plans to their statement across reused server connections', async () => {
+    const pool = appPool(target!, 8);
+    const modules = { attendance: false, claims: false, performance: false, rewards: false, lifecycle: false };
+    const scopes = [a, b].map(base => ({ ctx: adminCtx(base), companyIds: [base.companyId] }));
+    const backends = new Set<number>();
+    try {
+      for (let round = 0; round < 6; round++) {
+        await Promise.all(Array.from({ length: 8 }, (_, lane) => {
+          const { ctx, companyIds } = scopes[(round + lane) % scopes.length];
+          const task = (tx: Tx) => accountTaskStatement(accountTaskStatementSections(tx, ctx, modules,
+            { companyIds, personal: false, notices: false }), ctx);
+          const session = (phase: string) => pool.withTenant(ctx, tx => {
+            expect(isSharedCarrierTransaction(tx)).toBe(true);
+            return tx.execute<{ phase: string; mode: string; pid: number; tenant: string }>(sql`
+              select ${phase}::text as phase, current_setting('plan_cache_mode') as mode,
+                pg_backend_pid() as pid, current_setting('app.tenant_id') as tenant
+            `);
+          });
+          return pool.withSharedReadSnapshot(ctx, async () => {
+            const [[before], [result], [sibling], [after]] = await Promise.all([
+              session('before'),
+              pool.readPreparedTenantRows(ctx, tx => {
+                expect(isSharedCarrierTransaction(tx)).toBe(true);
+                return sql`select data.*, current_setting('plan_cache_mode') as mode, pg_backend_pid() as pid
+                  from (${task(tx)}) data`;
+              }),
+              pool.withTenant(ctx, tx => tx.execute(task(tx))),
+              session('after'),
+            ]);
+            const { mode, pid, ...rows } = result;
+            expect(mode).toBe('force_generic_plan');
+            expect(rows.principal).toBe(true);
+            expect(rows).toEqual(sibling);
+            expect([before, after]).toEqual([
+              { phase: 'before', mode: 'auto', pid, tenant: ctx.tenantId },
+              { phase: 'after', mode: 'auto', pid, tenant: ctx.tenantId },
+            ]);
+            backends.add(before.pid);
+          });
+        }));
+      }
+      expect(backends.size).toBeGreaterThanOrEqual(Math.min(2, target!.serverConnections));
+      expect(backends.size).toBeLessThanOrEqual(target!.serverConnections);
+      await expect(pool.withSharedReadSnapshot(scopes[0].ctx, () =>
+        pool.readPreparedTenantRows(scopes[0].ctx, () => sql`select ${'invalid uuid'}::uuid`))).rejects.toThrow();
+      const [clean] = await pool.client<{ mode: string; tenant: string | null }[]>`
+        select current_setting('plan_cache_mode') as mode, nullif(current_setting('app.tenant_id',true),'') as tenant
+      `;
+      expect(clean).toEqual({ mode: 'auto', tenant: null });
+    } finally {
+      await pool.client.end({ timeout: 5 });
+    }
   });
 
   it('holds a transaction advisory lock across clients and releases it at commit', async () => {
