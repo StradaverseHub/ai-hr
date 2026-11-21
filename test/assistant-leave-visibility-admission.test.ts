@@ -18,6 +18,7 @@ import {prepareAssistantConversation} from '../core/assistant-provider-input';
 import {preparePrivateAiTask} from '../core/ai-governance';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {assertAiCentreRunningTx} from '../core/ai-centre-control';
+import {lockLeaveDependencyReadConfigurationTx} from '../core/leave-dependency-lock';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
 import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
@@ -75,14 +76,16 @@ describe('actual Mine flags bind current provider input and historical source di
    return {...reservation,plan,evidence:[{name:'my_leave_balances',input:{},digest:assistantSourceDigest(result)}]};
   }
   // Model-free rehearsal only. Serving still uses its currently approved admission path.
-  async function persistLocalLeave(draft:Awaited<ReturnType<typeof prepareLocalLeave>>){
+  async function persistLocalLeave(draft:Awaited<ReturnType<typeof prepareLocalLeave>>,afterReplay?:()=>Promise<void>){
    const exchangeId=randomUUID(),answer=JSON.stringify(draft.plan);
    const binding={tenantId:base.tenantId,userId,exchangeId,question,answer};
    try {
     await withTenant(ctx,async tx=>{
      await assertAiCentreRunningTx(tx,ctx);
+     await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
      const valid=await withAssistantAdmissionReadsTx(ctx,tx,read=>assistantSourceReplay(ctx,read)(draft.evidence));
      if(!valid)throw Error('The canonical leave source changed.');
+     await afterReplay?.();
      const disclosureReceipt=sealAssistantDisclosure(binding,draft.evidence,draft.plan);
      if(!disclosureReceipt)throw Error('The current source did not yield a disclosure receipt.');
      await tx.insert(schema.assistantExchange).values({id:exchangeId,tenantId:base.tenantId,appUserId:userId,
@@ -95,13 +98,16 @@ describe('actual Mine flags bind current provider input and historical source di
    } finally {retireAssistantConversationStrategyCapability(draft.strategy.capability);}
    return exchangeId;
   }
-  const visible=await persistLocalLeave(await prepareLocalLeave());
+  const hideBalance=()=>updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  const visible=await persistLocalLeave(await prepareLocalLeave(),async()=>{
+   await expect(hideBalance()).rejects.toMatchObject({name:'LeaveDependencyUnavailable',reason:'busy'});
+  });
   const before=await loadAiWorkspace(ctx,{selectedExchangeId:visible,includeGovernance:false});
   expect(before.history[0].grounded?.mode).toBe('grounded');
   expect(JSON.stringify(before.history[0].grounded)).toContain('113.75');
 
   const stale=await prepareLocalLeave();
-  await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  await hideBalance();
   await expect(persistLocalLeave(stale)).rejects.toThrow('The canonical leave source changed.');
   await expect(askAssistant(ctx,{question})).rejects.toMatchObject({code:'budget_daily'});
   expect(transport).not.toHaveBeenCalled();
