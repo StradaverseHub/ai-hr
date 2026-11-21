@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import * as access from '../core/access-configuration-lock';
+import { assignRole, revokeRole } from '../core/admin';
 import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
@@ -255,6 +256,25 @@ describe('editLeaveRequest — pending edit', () => {
 });
 
 describe('cancelOwnLeave — pending withdraw', () => {
+  async function withdrawWithSharedAccess(ctx: SessionContext, leaveRequestId: string) {
+    // Substitute only the first lock acquisition in a scripted call. The
+    // production subject dependency, permission, ledger and event all still run.
+    const lock = vi.spyOn(access, 'lockAccessConfigurationWriteTx').mockImplementationOnce(async (tx, tenantId) => {
+      await access.lockAccessConfigurationTx(tx, tenantId);
+      const [principal] = await tx.execute<{ valid: boolean }>(sql`
+        select app.principal_snapshot_current() and app.is_self_person(${ctx.personId ?? null}::uuid) as valid
+      `);
+      if (principal?.valid !== true) throw new Error('Withdrawal principal is no longer current');
+    });
+    try {
+      return await cancelOwnLeave(ctx, { leaveRequestId });
+    } finally {
+      const calls = lock.mock.calls.length;
+      lock.mockRestore();
+      expect(calls).toBe(1);
+    }
+  }
+
   it('withdraws a pending leave (→ cancelled), no ledger movement, appends leave-request.self-cancelled', async () => {
     const id = await pendingThreeDay();
     const out = await cancelOwnLeave(subjectCtx, { leaveRequestId: id });
@@ -328,29 +348,39 @@ describe('cancelOwnLeave — pending withdraw', () => {
     await withTenant(otherCtx, async holder => {
       await access.lockAccessConfigurationReadTx(holder, b.tenantId);
       await lockLeaveDependenciesTx(holder, b.tenantId, [other.employmentId]);
-      // Substitute the single production acquisition in this scripted call. The
-      // production authorization, subject dependency, ledger and event still run.
-      const lock = vi.spyOn(access, 'lockAccessConfigurationWriteTx').mockImplementationOnce(async (tx, tenantId) => {
-        await access.lockAccessConfigurationTx(tx, tenantId);
-        const [principal] = await tx.execute<{ valid: boolean }>(sql`
-          select app.principal_snapshot_current() and app.is_self_person(${subject.personId}::uuid) as valid
-        `);
-        if (principal?.valid !== true) throw new Error('Withdrawal principal is no longer current');
+      await expect(withdrawWithSharedAccess(subjectCtx, id)).resolves.toEqual({
+        previousStatus: 'pending', restoredDays: 0,
       });
-      try {
-        await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).resolves.toEqual({
-          previousStatus: 'pending', restoredDays: 0,
-        });
-        expect(lock).toHaveBeenCalledTimes(1);
-        expect(await access.accessLockModeHeldTx(holder, b.tenantId)).toBe('S');
-      } finally {
-        lock.mockRestore();
-      }
+      expect(await access.accessLockModeHeldTx(holder, b.tenantId)).toBe('S');
     });
     expect((await rowOf(id)).status).toBe('cancelled');
     expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
     expect((await eventTypesFor(b.tenantId, id)).filter(type => type === 'leave-request.self-cancelled'))
       .toEqual(['leave-request.self-cancelled']);
+  });
+
+  it('refuses a withdrawn role snapshot before the shared-lock path changes the request', async () => {
+    const id = await pendingThreeDay();
+    const administrator = adminCtx(b);
+    const { userId } = subjectCtx;
+    if (!userId) throw new Error('The employee fixture needs a persisted account');
+    const grant = await assignRole(administrator, { appUserId: userId, role: 'manager' });
+    const stale: SessionContext = {
+      ...subjectCtx,
+      roles: ['employee', 'manager'],
+      grants: [{ role: 'employee', companyId: null }, { role: 'manager', companyId: null }],
+    };
+    const [before] = await withTenant(stale, tx =>
+      tx.execute<{ valid: boolean }>(sql`select app.principal_snapshot_current() as valid`));
+    expect(before.valid).toBe(true);
+    await revokeRole(administrator, { roleAssignmentId: grant.id });
+    await expect(withdrawWithSharedAccess(stale, id)).rejects.toThrow('Withdrawal principal is no longer current');
+    expect((await rowOf(id)).status).toBe('pending');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect(await eventTypesFor(b.tenantId, id)).not.toContain('leave-request.self-cancelled');
+    await expect(withdrawWithSharedAccess(subjectCtx, id)).resolves.toEqual({
+      previousStatus: 'pending', restoredDays: 0,
+    });
   });
 
   it('refuses to self-cancel an APPROVED leave (routed to the give-back flow instead)', async () => {
