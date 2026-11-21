@@ -60,8 +60,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44845333202,artifactId:14683043052,
-  sourceSha:'a458ecc0087722ec939b67a673f6c0ef017ba332'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44897803593,artifactId:14705041556,
+  sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -407,26 +407,31 @@ function readMixedRootStatements(name,dockerConfig){
  // Run after the driver settles so this probe consumes no measured capacity.
  // Include only the application role's direct statements to avoid counting
  // their nested SQL a second time.
- const query=`select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
+ const query=`select jsonb_build_object(
+  'routines',(select coalesce(jsonb_agg(distinct p.proname),'[]'::jsonb) from pg_proc p
+    join pg_namespace n on n.oid=p.pronamespace where n.nspname='app'),
+  'relations',(select coalesce(jsonb_agg(distinct c.relname),'[]'::jsonb) from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('app','public') and c.relkind in ('r','p','v','m')),
+  'statements',(select coalesce(jsonb_agg(to_jsonb(sample)),'[]'::jsonb)
    from (select calls,plans,total_exec_time,total_plan_time,shared_blks_read,temp_blks_written,
      jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,8000) as normalized_query
      from pg_stat_statements
      where dbid=(select oid from pg_database where datname=current_database())
        and userid=(select oid from pg_roles where rolname='ai_hr_app') and toplevel
-     order by total_exec_time+total_plan_time desc limit 35) sample`;
+     order by total_exec_time+total_plan_time desc limit 35) sample))`;
  try{
   const result=execFileSync('/usr/bin/docker',[
    '--config',dockerConfig,'--host','unix:///var/run/docker.sock','exec',name,'psql','-X','-U','postgres','-p','5433',
    '-d','ai_hr_dev','-Atq','-v','ON_ERROR_STOP=1','-c',query,
   ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,maxBuffer:2*1024*1024,stdio:['ignore','pipe','pipe']});
-  const statements=JSON.parse(result);
+  const {statements,routines,relations}=JSON.parse(result);
   // Keep the category comparison on the same prefix as the earlier run.
   const categories=summarizeMixedStatements(statements.map(statement=>({
    ...statement,normalized_query:statement.normalized_query.slice(0,1800),
   })));
   return categories?{
    scope:'up to 35 top-level statements executed under the application role',
-   categories, rankedWork:projectMixedRootStatementWork(statements),
+   categories, rankedWork:projectMixedRootStatementWork(statements,{routines,relations}),
   }:null;
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }

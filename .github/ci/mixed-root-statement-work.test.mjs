@@ -33,3 +33,28 @@ test('recognizes the task bundle and quoted relations without publishing identif
     calls: 100, plans: 98, planningMs: 125, executionMs: 50,
   });
 });
+
+test('attributes unclassified root work using only names in the disposable catalog', () => {
+  const [row] = projectMixedRootStatementWork([{
+    ...defaults,
+    normalized_query: 'select "app"."load_session"($1), app.load_session($1), app.unknown_fn($1), '
+      + "'select app.literal_fn() from public.secret_table' from public.payroll_policy p "
+      + 'join app.scope_projection s on true join external.secret_table e on true',
+  }], { routines: ['load_session', 'literal_fn'], relations: ['payroll_policy', 'scope_projection', 'secret_table'] });
+  assert.deepEqual(row, {
+    sourceMarkers: [], statementKind: 'select', appRoutines: ['load_session'], relations: ['payroll_policy', 'scope_projection'],
+    calls: 100, plans: 98, planningMs: 125, executionMs: 50,
+  });
+});
+
+test('ignores comments, dollar-quoted values and catalog entries requiring redaction', () => {
+  const [row] = projectMixedRootStatementWork([{
+    ...defaults,
+    normalized_query: '/* select app.hidden() */ with x as (select $payload$ FROM role_assignment $payload$) '
+      + 'select * from public.approvals_table -- app.hidden()',
+  }], { routines: ['hidden', 'private sensitive value'], relations: ['approvals_table', 'role_assignment'] });
+  assert.equal(row.statementKind, 'with');
+  assert.deepEqual(row.appRoutines, []);
+  assert.deepEqual(row.relations, ['approvals_table']);
+  assert.equal(JSON.stringify(row).includes('private sensitive value'), false);
+});

@@ -28,9 +28,41 @@ function counter(value) {
     ? number : null;
 }
 
-/** Retain bounded counters and fixed source markers from the disposable application-role snapshot. */
-export function projectMixedRootStatementWork(statements) {
+const identifier = /^[a-z_][a-z0-9_]{0,62}$/;
+const kindPattern = /^\s*(select|with|insert|update|delete|merge|begin|commit|rollback|set|show)\b/i;
+const appRoutine = /\b(?:app|"app")\s*\.\s*"?([a-z_][a-z0-9_]{0,62})"?\s*\(/gi;
+const relation = /\b(?:from|join|update|into)\s+(?:(?:"(?:public|app)"|public|app)\s*\.\s*)?(?:"([a-z_][a-z0-9_]{0,62})"|([a-z_][a-z0-9_]{0,62})\b)(?!\s*\.)/gi;
+
+function catalogSet(names) {
+  return new Set(Array.isArray(names) && names.length <= 10000
+    ? names.filter(name => typeof name === 'string' && identifier.test(name)) : []);
+}
+
+function references(query, pattern, catalog) {
+  const found = new Set();
+  for (const match of query.matchAll(pattern)) {
+    const name = (match[1] ?? match[2]).toLowerCase();
+    if (catalog.has(name)) found.add(name);
+    if (found.size === 12) break;
+  }
+  return [...found];
+}
+
+function projectCatalogReferences(query, catalog) {
+  const sqlShape = query.replace(/'(?:''|[^'])*'|\$([a-z_][a-z0-9_]*|)\$[\s\S]*?\$\1\$|\/\*[\s\S]*?\*\/|--[^\n]*/gi, ' ');
+  return {
+    statementKind: kindPattern.exec(sqlShape)?.[1].toLowerCase() ?? 'other',
+    appRoutines: references(sqlShape, appRoutine, catalog.routines),
+    relations: references(sqlShape, relation, catalog.relations),
+  };
+}
+
+/** Retain counters and catalog-backed names without exporting any SQL text. */
+export function projectMixedRootStatementWork(statements, nativeCatalog) {
   if (!Array.isArray(statements) || statements.length > 35) return [];
+  const catalog = nativeCatalog && {
+    routines: catalogSet(nativeCatalog.routines), relations: catalogSet(nativeCatalog.relations),
+  };
   return statements.flatMap(statement => {
     if (typeof statement?.normalized_query !== 'string') return [];
     const calls = counter(statement.calls);
@@ -40,6 +72,7 @@ export function projectMixedRootStatementWork(statements) {
     if ([calls, plans, planningMs, executionMs].some(value => value === null)) return [];
     return [{
       sourceMarkers: markers.filter(([, pattern]) => pattern.test(statement.normalized_query)).map(([name]) => name),
+      ...(catalog && projectCatalogReferences(statement.normalized_query, catalog)),
       calls, plans, planningMs: Math.round(planningMs), executionMs: Math.round(executionMs),
     }];
   }).sort((a, b) => (b.planningMs + b.executionMs) - (a.planningMs + a.executionMs)).slice(0, 12);
