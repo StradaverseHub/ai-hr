@@ -80,7 +80,8 @@ try{
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
 
  mark('tax-basis-component');
- const year=Number(fixture.month.slice(0,4))-1;
+ // Match the verified assessment-year rules used in payroll-tax-basis.test.ts.
+ const year=2026;
  const taxPeriod=year+'-02';
  const componentCode='PERFHISTTRAVEL';
  const [travel]=await owner.client`insert into pay_component
@@ -102,8 +103,10 @@ try{
  assert(employment,'Expected the fictional import employee for recalculation');
  mark('tax-basis-preview');
  const taxPreview=await payroll.previewTaxBasisRecalculation(ctx,{companyId:group.companyId,year,upToMonth:2,employmentIds:[employment.id]});
+ const taxReason=taxPreview.employees[0]?.reason;
  writeFileSync(resultPath('tax-basis-seed-facts.json'),JSON.stringify({
   eligible:taxPreview.eligibleCount,blocked:taxPreview.blockedCount,records:taxPreview.recordCount,
+  reason:!taxReason?null:taxReason.includes('assessment-year rules are unavailable')?'rules-unavailable':'other',
  }),{mode:0o600});
  assert.equal(taxPreview.eligibleCount,1);
  assert.equal(taxPreview.recordCount,1);
