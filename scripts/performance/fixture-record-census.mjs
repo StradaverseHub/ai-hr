@@ -486,11 +486,16 @@ async function verifyFormulaSample(page, main, source, value, row) {
   const timeout = 15000;
   row.step = 'formula-source';
   assert.equal(await main.locator('[data-formula-source-panel] textarea').inputValue({ timeout }), source);
-  row.step = 'formula-sample';
+  row.step = 'formula-page-hydration';
+  await page.locator('button[data-tour="account"]:enabled').waitFor({ state: 'visible', timeout });
+  row.step = 'formula-sample-tab';
   await main.getByRole('tab', { name: 'Sample values', exact: true }).click({ timeout });
   const sample = main.locator('#formula-test-sample');
+  await sample.waitFor({ state: 'visible', timeout });
+  row.step = 'formula-sample-input';
   await sample.getByRole('textbox', { name: 'Input (for example hours or days)', exact: true })
     .fill(value, { timeout });
+  row.step = 'formula-sample-response';
   const started = performance.now();
   const action = page.waitForResponse(result =>
     result.request().method() === 'POST' && Boolean(result.request().headers()['next-action']),
@@ -498,6 +503,7 @@ async function verifyFormulaSample(page, main, source, value, row) {
   await sample.getByRole('button', { name: 'Run test', exact: true }).click({ timeout });
   const result = await action;
   assert.equal(result?.status(), 200, 'Expected the native formula sample Server Action');
+  row.step = 'formula-sample-result';
   const outcome = sample.getByRole('status');
   await outcome.getByText('Test passed', { exact: true }).waitFor({ state: 'visible', timeout });
   await outcome.getByText(/^25(?:\.0+)?$/).waitFor({ state: 'visible', timeout });
