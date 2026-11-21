@@ -6,15 +6,23 @@
  * server connections, so that server connections really are shared between tenants.
  */
 import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
+import {PgDialect} from 'drizzle-orm/pg-core';
 import postgres from 'postgres';
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {DatabaseAdmissionError} from '../db/admission';
 import {createDb, type SessionContext} from '../db/client';
 import {actorOf, appendEvent} from '../db/events';
-import {adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base} from './harness';
+import {adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base} from './harness';
 import {isDatabaseCapacityFailure} from '../db/read-retry';
-import {poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
+import {POOLER_PREPARED_STATEMENT_LIMIT, poolerTarget, SHORT_WAIT_POOLER, type PoolerTarget} from './helpers/pgbouncer-target';
+import {ACCOUNT_TASK_CLAIM_PREVIEW, accountTaskStatement, accountTaskStatementSections, readAccountTaskBundle} from '../core/account-task-bundle';
+import {assignRole, revokeRole} from '../core/admin';
+import {createClaimType} from '../packs/claims/service';
+import {arrayScope} from './helpers/account-task-scope-array';
+import {buildScaleFixture} from './helpers/ai-centre-scale-fixture';
 
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return {promise, resolve}; };
 const appPool = (target: PoolerTarget, max: number, admissionWaitMs?: number) => {
@@ -112,6 +120,260 @@ describe.skipIf(!available)('web transactions through PgBouncer transaction pool
       expect(backends.size).toBeLessThanOrEqual(target!.serverConnections);
     } finally { await pool.client.end({timeout: 5}); }
   });
+
+  it('reuses one array-scoped task plan across pooled clients, scopes and backend recovery', async () => {
+    const tenant = await seedBase();
+    const otherTenant = await seedBase();
+    for (const base of [tenant, otherTenant]) {
+      for (const module of ['attendance', 'claims', 'performance', 'rewards']) {
+        await setModule(base.tenantId, module, 'active');
+      }
+    }
+    const fixture = await buildScaleFixture(tenant, {employments: 1000, events: 0});
+    expect(fixture.companyIds).toHaveLength(71);
+    expect(fixture.employmentIds).toHaveLength(1000);
+    const claimType = await createClaimType(fixture.personas.group, {
+      code: 'POOLEDPLAN', name: 'Fictional pooled task comparison', defaultTaxable: false, requiresReceipt: false,
+    });
+    await owner.client`
+      insert into claim_request (tenant_id, employment_id, claim_type_id, amount, incurred_on, description, status)
+      select e.tenant_id, e.id, ${claimType.id}::uuid, '12.50', '2026-02-02', 'Fictional pending claim', 'pending'
+      from employment e cross join generate_series(1, 10)
+      where e.tenant_id = ${tenant.tenantId}::uuid and e.terminated_on is null
+    `;
+    await owner.client`analyze claim_request`;
+
+    const modules = {attendance: true, claims: true, performance: true, rewards: true, lifecycle: false};
+    const read = {companyIds: fixture.companyIds, personal: false, notices: true};
+    const dialect = new PgDialect();
+    type TaskRow = {principal: boolean; claims: {snapshot: boolean; total: number}};
+    const sessions = [fixture.personas.group, fixture.personas.single, await entitledCtx(otherTenant), fixture.personas.group];
+    const clients = sessions.map(() => appPool(shortWait ?? target!, 1));
+    const samples = [];
+    try {
+      for (const [index, session] of sessions.entries()) {
+        const sample = await clients[index].withTenant(session, async tx => {
+          const companyIds = index === 1 ? [fixture.singleCompanyId] : read.companyIds;
+          const scopedRead = {...read, companyIds};
+          const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, scopedRead), session);
+          const query = arrayScope(dialect.sqlToQuery(statement), companyIds);
+          const [backend] = await tx.execute<{pid: number; mode: string}>(sql`
+            select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode
+          `);
+          expect(backend.mode).toBe('auto');
+          const unpreparedStart = performance.now();
+          const expected = await tx.execute<TaskRow>(statement);
+          const unpreparedMs = performance.now() - unpreparedStart;
+          expect(expected[0]?.principal).toBe(true);
+          expect(expected[0]?.claims.snapshot).toBe(true);
+          const planUses = async () => {
+            const [counts] = await tx.execute<{uses: number}>(sql`
+              select coalesce(sum(generic_plans), 0)::int as uses
+              from pg_prepared_statements where statement = ${query.statement}
+            `);
+            return counts.uses;
+          };
+          const previousUses = await planUses();
+          await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+          // Measure the pinned driver protocol on the same authorized transaction as the normal query.
+          const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+          const preparedStart = performance.now();
+          const actual = await connection.unsafe<TaskRow[]>(query.statement, query.params, {prepare: true});
+          const preparedMs = performance.now() - preparedStart;
+          expect([...actual]).toEqual([...expected]);
+          expect(await planUses()).toBe(previousUses + 1);
+          return {pid: backend.pid, previousUses, claimTotal: actual[0].claims.total, unpreparedMs, preparedMs};
+        }, {readOnlySnapshot: true});
+        samples.push(sample);
+      }
+    } finally {
+      await Promise.all(clients.map(client => client.client.end({timeout: 5})));
+    }
+    expect(new Set(samples.map(sample => sample.pid)).size).toBe(1);
+    expect(samples[0].claimTotal).toBeGreaterThan(samples[1].claimTotal);
+    expect(samples[1].claimTotal).toBeGreaterThan(ACCOUNT_TASK_CLAIM_PREVIEW);
+    expect(samples[1].previousUses).toBe(1);
+    expect(samples[2].claimTotal).toBe(0);
+    expect(samples[3].claimTotal).toBe(samples[0].claimTotal);
+    expect(samples[3].previousUses).toBeGreaterThanOrEqual(2);
+
+    // Run the same SQL with overlapping transactions on the standard three-backend pool.
+    // Use separate statement names for the two planning modes and reverse their order in the second pass.
+    const primaryScopes = [
+      {name: 'group-all', session: fixture.personas.group, scope: read},
+      {name: 'group-selected', session: fixture.personas.group, scope: {...read, companyIds: [fixture.singleCompanyId]}},
+      {name: 'company', session: fixture.personas.single, scope: read},
+      {name: 'foreign', session: sessions[2], scope: read},
+    ];
+    const otherWidths = [2, 17, 35, 71].map(width => ({
+      name: 'group-' + width, session: fixture.personas.group, scope: {...read, companyIds: fixture.companyIds.slice(0, width)},
+    }));
+    const lanes = [...primaryScopes, ...otherWidths].map(scope => ({...scope, client: appPool(target!, 1)}));
+    type Mode = 'unnamed' | 'named-auto' | 'named-generic';
+    const prefix = (mode: Mode) => '/* fixture-task-plan-' + mode + ' */ ';
+    const concurrentRounds = [];
+    let pooledPlanCounts: {backends: number; autoUses: number; forcedUses: number} | undefined;
+    try {
+      const readTask = (lane: typeof lanes[number], mode: Mode) => lane.client.withTenant(lane.session, async tx => {
+        const statement = accountTaskStatement(accountTaskStatementSections(tx, lane.session, modules, lane.scope), lane.session);
+        if (mode === 'unnamed') return [...await tx.execute<TaskRow>(statement)];
+        if (mode === 'named-generic') await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+        const query = arrayScope(dialect.sqlToQuery(statement), lane.scope.companyIds);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        return [...await connection.unsafe<TaskRow[]>(prefix(mode) + query.statement, query.params, {prepare: true})];
+      }, {readOnlySnapshot: true});
+      const expected = await Promise.all(lanes.map(lane => readTask(lane, 'unnamed')));
+      expect(expected.slice(0, 4).map(rows => rows[0]?.principal)).toEqual([true, true, true, true]);
+      expect(expected.slice(0, 4).map(rows => rows[0]?.claims.total)).toEqual([
+        samples[0].claimTotal, samples[1].claimTotal, samples[1].claimTotal, 0,
+      ]);
+
+      const modes = ['unnamed', 'named-auto', 'named-generic'] as const;
+      for (const mode of modes) await Promise.all(lanes.map(lane => readTask(lane, mode)));
+      for (const mode of [...modes, ...[...modes].reverse()]) {
+        const phaseStarted = performance.now();
+        const timings = [];
+        for (let round = 0; round < 4; round++) {
+          timings.push(...await Promise.all(lanes.map(async (lane, index) => {
+            const started = performance.now();
+            const result = await readTask(lane, mode);
+            const elapsedMs = performance.now() - started;
+            expect(result).toEqual(expected[index]);
+            return {scope: lane.name, elapsedMs};
+          })));
+        }
+        concurrentRounds.push({mode, elapsedMs: performance.now() - phaseStarted, timings});
+      }
+
+      const backends = await Promise.all(lanes.map(lane => lane.client.withTenant(lane.session, async tx => {
+        const [facts] = await tx.execute<{pid: number; autoUses: number; forcedUses: number; forcedCustom: number}>(sql`
+          select pg_backend_pid() as pid, pg_sleep(0.05),
+            coalesce(sum(generic_plans + custom_plans) filter (where starts_with(statement, ${prefix('named-auto')})), 0)::int as "autoUses",
+            coalesce(sum(generic_plans) filter (where starts_with(statement, ${prefix('named-generic')})), 0)::int as "forcedUses",
+            coalesce(sum(custom_plans) filter (where starts_with(statement, ${prefix('named-generic')})), 0)::int as "forcedCustom"
+          from pg_prepared_statements
+        `);
+        return facts;
+      }, {readOnlySnapshot: true})));
+      const unique = [...new Map(backends.map(row => [row.pid, row])).values()];
+      expect(unique.length).toBe(target!.serverConnections);
+      expect(unique.every(row => row.autoUses > 0 && row.forcedUses > 0 && row.forcedCustom === 0)).toBe(true);
+      pooledPlanCounts = {
+        backends: unique.length,
+        autoUses: unique.reduce((sum, row) => sum + row.autoUses, 0),
+        forcedUses: unique.reduce((sum, row) => sum + row.forcedUses, 0),
+      };
+    } finally {
+      await Promise.all(lanes.map(lane => lane.client.client.end({timeout: 5})));
+    }
+
+    // Change a real role while the server retains the same prepared statement.
+    const scoped = fixture.personas.single;
+    const [grant] = await owner.client<{id: string}[]>`
+      select id from role_assignment
+      where app_user_id = ${scoped.userId!}::uuid and tenant_id = ${scoped.tenantId}::uuid
+        and role = 'hr_admin' and company_id = ${fixture.singleCompanyId}::uuid
+    `;
+    expect(grant?.id).toBeTruthy();
+    await assignRole(fixture.personas.group, {appUserId: scoped.userId!, role: 'employee'});
+    const employeeGrant = {role: 'employee', companyId: null} as const;
+    const stale = {...scoped, roles: ['hr_admin', 'employee'], grants: [...scoped.grants!, employeeGrant]};
+    const fresh = {...scoped, roles: ['employee'], grants: [employeeGrant]};
+    const pool = appPool(shortWait ?? target!, 1);
+    const rollback = new Error('fictional prepared read rollback');
+    try {
+      const inspect = (session: SessionContext, abort = false, companyIds: readonly string[] = read.companyIds) => pool.withTenant(session, async tx => {
+        const scopedRead = {...read, companyIds};
+        const statement = accountTaskStatement(accountTaskStatementSections(tx, session, modules, scopedRead), session);
+        const query = arrayScope(dialect.sqlToQuery(statement), companyIds);
+        const text = '/* fixture-task-plan-revocation */ ' + query.statement;
+        const [before] = await tx.execute<{pid: number; mode: string; uses: number}>(sql`
+          select pg_backend_pid() as pid, current_setting('plan_cache_mode') as mode,
+            coalesce(sum(generic_plans), 0)::int as uses from pg_prepared_statements where statement = ${text}
+        `);
+        expect(before.mode).toBe('auto');
+        const expected = [...await tx.execute<TaskRow>(statement)];
+        await tx.execute(sql`set local plan_cache_mode=force_generic_plan`);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        const rows = [...await connection.unsafe<TaskRow[]>(text, query.params, {prepare: true})];
+        expect(rows).toEqual(expected);
+        if (abort) throw rollback;
+        return {backend: before.pid, previousUses: before.uses, row: rows[0]};
+      }, {readOnlySnapshot: true});
+
+      const beforeRevocation = await inspect(stale);
+      expect(beforeRevocation.row.principal).toBe(true);
+      expect(beforeRevocation.row.claims.total).toBe(samples[1].claimTotal);
+      await expect(inspect(stale, true, [fixture.singleCompanyId])).rejects.toBe(rollback);
+      await revokeRole(fixture.personas.group, {roleAssignmentId: grant.id});
+      const afterRevocation = await inspect(stale);
+      expect(afterRevocation.backend).toBe(beforeRevocation.backend);
+      expect(afterRevocation.previousUses).toBe(beforeRevocation.previousUses + 2);
+      expect(afterRevocation.row.principal).toBe(false);
+      await expect(readAccountTaskBundle(stale, modules, read)).resolves.toBeNull();
+      const refreshed = await inspect(fresh);
+      expect(refreshed.row.principal).toBe(true);
+      expect(refreshed.row.claims.total).toBe(0);
+      const beforeEviction = await inspect(fresh);
+      expect(beforeEviction.previousUses).toBeGreaterThan(0);
+
+      // Fill the server's statement cache with newer entries without disconnecting the web client.
+      const evictionBackend = await pool.withTenant(fresh, async tx => {
+        const [backend] = await tx.execute<{pid: number}>(sql`select pg_backend_pid() as pid`);
+        const connection = Reflect.get(Reflect.get(tx, 'session'), 'client') as postgres.TransactionSql;
+        for (let index = 0; index < POOLER_PREPARED_STATEMENT_LIMIT; index++) {
+          await connection.unsafe(`select $1::int + ${index}`, [index], {prepare: true});
+        }
+        return backend.pid;
+      }, {readOnlySnapshot: true});
+      const afterEviction = await inspect(fresh, false, [fixture.singleCompanyId]);
+      expect(afterEviction.backend).toBe(evictionBackend);
+      expect(afterEviction.backend).toBe(beforeEviction.backend);
+      expect(afterEviction.previousUses).toBe(0);
+      expect(afterEviction.row).toEqual(refreshed.row);
+
+      // Recycle only the idle backend just observed in this test worker's database.
+      const direct = postgres(process.env.TEST_DATABASE_URL!, {max: 1});
+      try {
+        const [stopped] = await direct<{terminated: boolean}[]>`
+          select pg_terminate_backend(pid, 5000) as terminated
+          from pg_stat_activity
+          where datname = current_database() and usename = current_user
+            and state = 'idle' and pid = ${afterEviction.backend} and pid <> pg_backend_pid()
+        `;
+        expect(stopped?.terminated).toBe(true);
+      } finally { await direct.end({timeout: 5}); }
+
+      const afterReconnect = await inspect(fresh);
+      expect(afterReconnect.backend).not.toBe(afterEviction.backend);
+      expect(afterReconnect.previousUses).toBe(0);
+      expect(afterReconnect.row).toEqual(refreshed.row);
+      expect((await inspect(stale)).row).toEqual(afterRevocation.row);
+    } finally {
+      await pool.client.end({timeout: 5});
+    }
+
+    const timings = (mode: Mode) => {
+      const values = concurrentRounds.filter(round => round.mode === mode)
+        .flatMap(round => round.timings.map(sample => sample.elapsedMs)).sort((left, right) => left - right);
+      const percentile = (fraction: number) => Math.round(values[Math.ceil(values.length * fraction) - 1]);
+      return {samples: values.length, p50Ms: percentile(0.5), p95Ms: percentile(0.95)};
+    };
+    console.info('ACCOUNT_TASK_ARRAY_POOL_PROFILE', JSON.stringify({
+      scopes: lanes.map(lane => lane.scope.companyIds.length),
+      unnamed: timings('unnamed'), namedAuto: timings('named-auto'), namedGeneric: timings('named-generic'), pooledPlanCounts,
+      evictionRecovered: true, backendReplaced: true, revocationEnforced: true,
+    }));
+    const evidence = process.env.AIHR_FOCUSED_EVIDENCE_DIR;
+    if (evidence) writeFileSync(join(evidence, 'account-task-pooler-plan.json'), JSON.stringify({
+      source: process.env.AIHR_CI_HEAD,
+      companies: fixture.companyIds.length,
+      employments: fixture.employmentIds.length,
+      samples: samples.map(({pid: _pid, ...sample}) => sample),
+      concurrentRounds,
+      pooledPlanCounts,
+    }));
+  }, 120_000);
 
   it('holds a transaction advisory lock across clients and releases it at commit', async () => {
     const pool = appPool(target!, 4);
