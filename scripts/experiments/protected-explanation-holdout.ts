@@ -223,7 +223,7 @@ export async function scoreFreshExplanationRouting(input: {
   const english = prepareExplanationHoldout(input.english, plan.englishSha256, input.developmentReport, modelDigest);
   const malay = prepareExplanationHoldout(input.malay, plan.malaySha256, input.developmentReport, modelDigest);
   if (english.locale !== 'en' || malay.locale !== 'ms') throw Error('Supply separate English and Malay routing holdouts.');
-  const exposed = explanationCases().map(({module, focus, expected}) => ({module, focus, expected}));
+  const exposed: ExposureCase[] = explanationCases();
   for (const key of ['english', 'malay', 'challenge'] as const) {
     const prior = holdout.parse(readFrozenHoldoutJson(input.exposures[key], EXPLANATION_ROUTING_EXPOSURES[key]));
     if (prior.modelDigest !== modelDigest || prior.developmentReportDigest !== english.spec.developmentReportDigest)
