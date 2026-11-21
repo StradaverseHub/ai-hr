@@ -11,6 +11,7 @@ import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage,serverActionPageMatcher} from './system-route-manifest.mjs';
 import {actionCensusIdentity} from './browser-action-census.mjs';
+import {createRouteHandlerInventory,successfulHandlerReceipts} from './browser-route-handler-coverage.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -2117,6 +2118,8 @@ async function measureActions(fixture){
  assert(registrations.size>0,'The measured build must have registered Server Actions');
  const routesManifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
  const actionPageFor=serverActionPageMatcher(appPathRoutes,routesManifest);
+ const routeHandlers=createRouteHandlerInventory(appPathRoutes,routesManifest);
+ report.registeredRouteHandlers=routeHandlers.registered;
  const {identity,ordinals}=actionCensusIdentity(registrations);
  report.serverActionCensus=identity;
  const acceptedByAction=new Map();
@@ -2239,11 +2242,14 @@ async function measureActions(fixture){
     if(result.assistantStartup)row.startup=result.assistantStartup;
     save();
    };
-   const actionRequests=new Map();
+   const actionRequests=new Map(),handlerRequests=new Map();
    const observeRequest=request=>{
-    if(request.method()!=='POST')return;
     const url=new URL(request.url());
     if(url.origin!==origin)return;
+    const method=request.method();
+    const template=routeHandlers.match(url.pathname,method);
+    if(template)handlerRequests.set(request,{template,method,started:performance.now()});
+    if(method!=='POST')return;
     const id=request.headers()['next-action'];
     if(registrations.has(id)){
      const page=actionPageFor(url.pathname);
@@ -2251,6 +2257,8 @@ async function measureActions(fixture){
     }
    };
    const observeResponse=response=>{
+    const handler=handlerRequests.get(response.request());
+    if(handler)handler.status=response.status();
     const activity=actionRequests.get(response.request());
     if(activity){
      activity.status=response.status();
@@ -2261,6 +2269,10 @@ async function measureActions(fixture){
     const page=await context.newPage();
     page.on('request',observeRequest);
     page.on('response',observeResponse);
+    page.on('requestfinished',request=>{
+     const handler=handlerRequests.get(request);
+     if(handler)handler.completionMs=Math.round(performance.now()-handler.started);
+    });
     await action.run({base:origin,user,page,fixture,report:result,save:retain,phase:'baseline',db,evidenceDirectory:fixtureEvidenceDir});
     if(action.name==='saved-report-draft')assert.equal(result.browserSavedReportJourneys?.[0]?.persisted,true);
     row.status='observed';
@@ -2273,6 +2285,7 @@ async function measureActions(fixture){
      acceptedByAction.set(id,destinations);
     }
     row.serverActionsAccepted=successful.size;
+    row.routeHandlerResponses=successfulHandlerReceipts(handlerRequests.values());
    }catch(error){
     row.status='failed';
     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
