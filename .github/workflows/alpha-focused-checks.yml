@@ -187,7 +187,7 @@ jobs:
             direct) ;;
             transaction-pool)
               [[ "$SHELL_PERMISSION_VARIANT" == none && "$BROWSER_MIXED_LOAD" == true ]] || exit 2
-              [[ "$REUSE_BUILD" == true || "$EXPECTED_SHA" == 1f501d78de37ab30c98e3af9c608df0c17fabb64 ]] || exit 2
+              [[ "$REUSE_BUILD" == true || "$EXPECTED_SHA" == efc609d6df2080504e7e7f5eda9042a72f251ac2 ]] || exit 2
               ;;
             *) exit 2 ;;
           esac
