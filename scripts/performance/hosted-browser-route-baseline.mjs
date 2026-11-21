@@ -149,16 +149,25 @@ async function proxy(){
  await once(server,'listening');
 }
 async function waitForApp(){
- for(let attempt=0;attempt<120;attempt++){
+ const deadline=performance.now()+90000;
+ while(performance.now()<deadline){
   assert(app.exitCode===null&&app.signalCode===null,'Application stopped during startup');
   try{
-   const response=await fetch(`http://127.0.0.1:${appPort}/login`,{redirect:'manual',signal:AbortSignal.timeout(2000)});
-   await response.arrayBuffer();
-   if(response.status===200)return;
+   const status=execFileSync('/usr/bin/curl',['--noproxy','*','--silent','--max-time','2','--output','/dev/null',
+    '--write-out','%{http_code}',`http://127.0.0.1:${appPort}/login`],{
+    encoding:'utf8',timeout:2500,maxBuffer:1024,stdio:['ignore','pipe','pipe'],
+   });
+   if(status==='200')return;
   }catch{/* The started child may still be opening its socket. */}
   await pause(500);
  }
  throw Error('Application startup deadline exceeded');
+}
+
+function markRewardsLibraryStartup(stage){
+ if(!rewardsLibraries)return;
+ report.rewardsLibraryStartup=stage;
+ save();
 }
 
 const payrollHistoryPath='/payroll/transaction-view';
@@ -736,11 +745,14 @@ async function seedRewardsUploadOptions(owner,fixture){
 
 async function measureRewardsLibraries(fixture){
  const require=createRequire(join(process.cwd(),'package.json'));
- browser=await require('playwright').chromium.launch();
+ markRewardsLibraryStartup('chromium-launch');
+ browser=await require('playwright').chromium.launch({timeout:20000});
+ markRewardsLibraryStartup('sign-in');
  const actor=fixture.users[0];
  assert.equal(actor.role,'groupHR');
  report.rewardsLibraries=[];
  const context=await signedInContext(actor);
+ markRewardsLibraryStartup('rendered-visits');
  try{
   const page=await context.newPage();
   await page.addInitScript(observeStartup);
@@ -1711,9 +1723,11 @@ try{
  report.fixtureVerified=true;
  if(!fixtureOnly){
   if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!rewardsUpload&&!rewardsLibraries)await seedNotificationReads(fixture);
+  markRewardsLibraryStartup('application-login');
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
+  markRewardsLibraryStartup('proxy');
   await proxy();
   if(censusFixtureRecords){
    const require=createRequire(join(process.cwd(),'package.json'));
