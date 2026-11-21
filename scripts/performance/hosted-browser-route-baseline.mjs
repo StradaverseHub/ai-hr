@@ -1,3 +1,4 @@
+import {measureLeaveBalanceReadiness} from './leave-balance-readiness.mjs';
 import {measureRewardsRecords} from './rewards-record-census.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
@@ -36,7 +37,8 @@ const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusRewards=shardInput==='rewards-records';
 const censusLifecycle=shardInput==='fixture-records';
-const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
+const censusLeaveBalances=shardInput==='leave-balances';
+const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards||censusLeaveBalances;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1557,7 +1559,7 @@ try{
   }
   retainSeedPhases();
  }
- if(!censusRewards)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+ if(!censusRewards&&!censusLeaveBalances)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusLifecycle),
   });
@@ -1613,7 +1615,7 @@ try{
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- if(!censusRewards){
+ if(!censusRewards&&!censusLeaveBalances){
   assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
   report.fixture.joinersSeeded=true;
  }
@@ -1633,6 +1635,7 @@ try{
    try{
     const options={db,fixture,origin,compiledPages,signedInContext,report,save};
     if(censusRewards)await measureRewardsRecords(options);
+    else if(censusLeaveBalances)await measureLeaveBalanceReadiness(options);
     else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
     if(censusLifecycle)await measureLifecycleRecordActions(options);
    }
