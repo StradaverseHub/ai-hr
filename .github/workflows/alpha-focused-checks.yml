@@ -169,9 +169,14 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]] ||
-            [[ "$EXPECTED_SHA" != b00e2b2738312d87d5bea6f0ac7c877517d0b75d && "$EXPECTED_SHA" != a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55 ]];
+            [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]];
           }; then exit 2; fi
+          if [[ "$REUSE_BUILD" == true ]]; then
+            case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
+              false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:497768e0210433bcf6723f42182d7f2b46111241) ;;
+              *) exit 2 ;;
+            esac
+          fi
           case "$SHELL_PERMISSION_VARIANT" in
             none) ;;
             control|optimized) [[ "$REUSE_BUILD" == true ]] || exit 2 ;;
