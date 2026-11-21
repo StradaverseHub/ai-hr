@@ -13,18 +13,33 @@ import { readFrozenHoldoutJson } from './protected-work-summary-holdout';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const finding = z.enum(SPECIALIST_FINDINGS).refine(value => value !== 'scope_current_caller');
+const explanationCase = z.strictObject({
+  module: z.enum(AGENT_MODULE_CODES),
+  choices: z.array(finding).min(2).max(8),
+  focus: z.string().min(8).max(180).regex(/^[\p{L}\p{M} '?.,’\-]+$/u),
+  expected: finding,
+});
 const holdout = z.strictObject({
   version: z.literal(1),
   locale: z.enum(['en', 'ms']).optional(),
   modelDigest: digest,
   developmentReportDigest: digest,
   minimumGain: z.number().int().min(1),
-  cases: z.array(z.strictObject({
-    module: z.enum(AGENT_MODULE_CODES),
-    choices: z.array(finding).min(2).max(8),
-    focus: z.string().min(8).max(180).regex(/^[\p{L}\p{M} '?.,’\-]+$/u),
-    expected: finding,
-  })).min(4).max(32),
+  cases: z.array(explanationCase).min(4).max(32),
+});
+
+const freshPlan = z.strictObject({
+  version: z.literal(1),
+  minimumMargin: z.literal(5),
+  englishSha256: digest,
+  malaySha256: digest,
+});
+
+// These were inspected before the margin was selected, including the same-author challenge.
+const EXPLANATION_ROUTING_EXPOSURES = Object.freeze({
+  english: 'f9bb960dc5820c6341c64ada9751720c91ce157bdfd718689877facf9dc95028',
+  malay: '461a48971f6b590f309c7553724bc7d77584c1fb2b094ce5daba168c5997dc24',
+  challenge: 'e5cc3268ec367856ce402f83b6e5b2d1483b4c6ca09e816731df664934e4b4b4',
 });
 
 const score = z.strictObject({ correct: z.number().int().min(0), rejected: z.number().int().min(0) });
@@ -77,10 +92,7 @@ function deterministicChoice({ choices, focus }: ExplanationCase, locale: 'en' |
   return {choice: margin > 0 ? ranked[0].choice : null, margin};
 }
 
-/** Evaluator-owned fictional cases, scored against both the original model
- * contract and a fixed lexical selector that receives the same focus. */
-export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSha: string, developmentReport: Buffer,
-  modelDigest: string, model: PilotModel) {
+function prepareExplanationHoldout(bytes: Buffer, expectedSha: string, developmentReport: Buffer, modelDigest: string) {
   const parsedSpec = holdout.safeParse(readFrozenHoldoutJson(bytes, expectedSha));
   if (!parsedSpec.success) throw Error('Invalid frozen explanation holdout.');
   const spec = parsedSpec.data;
@@ -121,12 +133,16 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
     return fixture;
   });
   if (freshCatalogues.size < 2) throw Error('Use at least two distinct fresh explanation catalogues.');
+  return {spec, locale, cases, expectedSha};
+}
 
+async function evaluateExplanationHoldout(prepared: ReturnType<typeof prepareExplanationHoldout>, model: PilotModel, margins: readonly number[]) {
+  const {spec, locale, cases, expectedSha} = prepared;
   const { call, budget } = observeModel(model);
   const original = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
   const deterministic = { correct: 0, abstained: 0, gains: 0, regressions: 0 };
   const candidate = { correct: 0, rejected: 0 };
-  const retrievalMargins = [1, 2, 3, 4, 5, 6, 8].map(minimumMargin => ({
+  const retrievalMargins = margins.map(minimumMargin => ({
     minimumMargin,
     correct: 0, rejected: 0, modelCalls: 0,
     versusFocused: { gains: 0, regressions: 0 },
@@ -173,4 +189,64 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
     budget,
   };
+}
+
+/** Evaluator-owned fictional cases, scored against both the original model
+ * contract and a fixed lexical selector that receives the same focus. */
+export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSha: string, developmentReport: Buffer,
+  modelDigest: string, model: PilotModel) {
+  return evaluateExplanationHoldout(prepareExplanationHoldout(bytes, expectedSha, developmentReport, modelDigest),
+    model, [1, 2, 3, 4, 5, 6, 8]);
+}
+
+type ExposureCase = Pick<ExplanationCase, 'module' | 'focus' | 'expected'>;
+
+export function assertFreshExplanationCases(exposed: readonly ExposureCase[], fresh: readonly ExposureCase[]) {
+  const questionKey = (row: ExposureCase) => routingDigest([row.module, normalize(row.focus)]);
+  const findingKey = (row: ExposureCase) => routingDigest([row.module, row.expected]);
+  const questions = new Set(exposed.map(questionKey));
+  const seenFindings = new Set(exposed.map(findingKey));
+  for (const row of fresh) {
+    const question = questionKey(row);
+    const finding = findingKey(row);
+    if (questions.has(question) || seenFindings.has(finding)) throw Error('Fresh routing cases repeat a prior question or expected finding.');
+    questions.add(question);
+    seenFindings.add(finding);
+  }
+}
+
+export async function scoreFreshExplanationRouting(input: {
+  plan: Buffer; planSha256: string; developmentReport: Buffer; english: Buffer; malay: Buffer;
+  exposures: Record<keyof typeof EXPLANATION_ROUTING_EXPOSURES, Buffer>;
+}, modelDigest: string, model: PilotModel) {
+  const plan = freshPlan.parse(readFrozenHoldoutJson(input.plan, input.planSha256));
+  const english = prepareExplanationHoldout(input.english, plan.englishSha256, input.developmentReport, modelDigest);
+  const malay = prepareExplanationHoldout(input.malay, plan.malaySha256, input.developmentReport, modelDigest);
+  if (english.locale !== 'en' || malay.locale !== 'ms') throw Error('Supply separate English and Malay routing holdouts.');
+  const exposed = explanationCases().map(({module, focus, expected}) => ({module, focus, expected}));
+  for (const key of ['english', 'malay', 'challenge'] as const) {
+    const prior = holdout.parse(readFrozenHoldoutJson(input.exposures[key], EXPLANATION_ROUTING_EXPOSURES[key]));
+    if (prior.modelDigest !== modelDigest || prior.developmentReportDigest !== english.spec.developmentReportDigest)
+      throw Error('Fresh routing must use the model and parent that produced the frozen routing choice.');
+    exposed.push(...prior.cases.map(row => ({...row, expected: `specialist_finding:${row.expected}` as const})));
+  }
+  // An additional paraphrase or translation of a known expected finding is not a new case.
+  assertFreshExplanationCases(exposed, [...english.cases, ...malay.cases]);
+
+  const locales = [];
+  for (const prepared of [english, malay]) {
+    const result = await evaluateExplanationHoldout(prepared, model, [plan.minimumMargin]);
+    locales.push({locale: result.locale, holdoutDigest: result.holdoutDigest, cases: result.cases,
+      minimumGain: result.minimumGain, original: result.original, deterministic: result.deterministic,
+      focused: result.candidate, candidate: result.retrievalMargins[0], budget: result.budget});
+  }
+  const preservesQuality = locales.every(({candidate}) => candidate.rejected === 0 &&
+    [candidate.versusOriginal, candidate.versusFocused, candidate.versusDeterministic].every(row => row.regressions === 0));
+  const improvesOnBaselines = locales.every(({candidate, minimumGain}) =>
+    candidate.versusOriginal.gains >= minimumGain && candidate.versusDeterministic.gains >= minimumGain);
+  const savesCalls = locales.some(row => row.candidate.modelCalls < row.cases);
+  return {evidence: 'offline_fresh_explanation_routing', releaseAuthorized: false, planSha256: input.planSha256,
+    developmentReportDigest: english.spec.developmentReportDigest, exposedHoldoutDigests: EXPLANATION_ROUTING_EXPOSURES,
+    minimumMargin: plan.minimumMargin, preservesQuality, improvesOnBaselines, savesCalls,
+    passedOfflineScreen: preservesQuality && improvesOnBaselines && savesCalls, locales};
 }

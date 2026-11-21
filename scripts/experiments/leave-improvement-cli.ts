@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
-import { isAbsolute, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { runProtectedLeaveComparison } from './protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
@@ -8,7 +8,7 @@ import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
 import { PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout } from './protected-work-summary-holdout';
-import { scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
+import { scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationRevisionSchema,
   runProtectedExplanationImprovement, runProtectedExplanationPriority,
@@ -19,13 +19,24 @@ import { localOutputPath, REPO_ROOT, writeLocalOutput } from '../teras/output';
 const baseUrl = 'http://127.0.0.1:11434';
 const generationOptions = EXPLANATION_GENERATION_OPTIONS;
 
+function readHoldoutInput(filename: string, outsideCheckout: boolean) {
+  const path = realpathSync(filename);
+  const location = relative(realpathSync(REPO_ROOT), path);
+  const stat = statSync(path);
+  if (!stat.isFile() || stat.size > PROTECTED_HOLDOUT_LIMIT_BYTES ||
+      (outsideCheckout && !isAbsolute(location) && !location.startsWith('..' + sep)))
+    throw Error('Use bounded evaluator files outside the checkout for cases and plans.');
+  return readFileSync(path);
+}
+
 async function main() {
   const [model, outfile, ...args] = process.argv.slice(2);
-  const explanationHoldout = args[0] === '--protected-explanation-holdout';
+  const freshRouting = args[0] === '--fresh-explanation-routing';
+  const explanationHoldout = freshRouting || args[0] === '--protected-explanation-holdout';
   const holdoutMode = explanationHoldout || args[0] === '--protected-holdout';
   const [, holdoutPath, holdoutSha, developmentReportPath] = args;
   if (holdoutMode && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
-    throw Error('Use the holdout flag with FILE SHA256 DEVELOPMENT_REPORT and an evaluator-held fictional case file.');
+    throw Error('Supply FILE SHA256 DEVELOPMENT_REPORT for a holdout or DIRECTORY PLAN_SHA256 DEVELOPMENT_REPORT for fresh routing.');
   const flags = holdoutMode ? [] : args;
   const runners = {
     '--protected': runProtectedLeaveComparison,
@@ -51,18 +62,18 @@ async function main() {
     throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary | --protected-explanation-priority | --improve-protected-explanation]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   const target = localOutputPath(outfile);
-  let holdout: { cases: Buffer; developmentReport: Buffer } | undefined;
-  if (holdoutMode) {
-    const path = realpathSync(holdoutPath);
-    const location = relative(realpathSync(REPO_ROOT), path);
-    const stat = statSync(path);
-    const developmentStat = statSync(developmentReportPath);
-    if ((!isAbsolute(location) && !location.startsWith('..' + sep)) || !stat.isFile() ||
-        stat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || !developmentStat.isFile() ||
-        developmentStat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || existsSync(target))
-      throw Error('Use a holdout outside the checkout and a new report path.');
-    holdout = { cases: readFileSync(path), developmentReport: readFileSync(developmentReportPath) };
-  }
+  if (holdoutMode && existsSync(target)) throw Error('Use a new report path.');
+  const developmentReport = holdoutMode ? readHoldoutInput(developmentReportPath, false) : null;
+  const cases = holdoutMode && !freshRouting ? readHoldoutInput(holdoutPath, true) : null;
+  const freshInput = freshRouting && developmentReport ? {
+    plan: readHoldoutInput(join(holdoutPath, 'plan.json'), true), planSha256: holdoutSha, developmentReport,
+    english: readHoldoutInput(join(holdoutPath, 'en.json'), true), malay: readHoldoutInput(join(holdoutPath, 'ms.json'), true),
+    exposures: {
+      english: readHoldoutInput(join(holdoutPath, 'exposed-en.json'), true),
+      malay: readHoldoutInput(join(holdoutPath, 'exposed-ms.json'), true),
+      challenge: readHoldoutInput(join(holdoutPath, 'exposed-challenge.json'), true),
+    },
+  } : null;
   const deadline = AbortSignal.timeout(30 * 60_000);
   const request = async (path: string, init?: RequestInit) => {
     const response = await fetch(baseUrl + path, { ...init, redirect: 'error', signal: AbortSignal.any([deadline, AbortSignal.timeout(90_000)]) });
@@ -100,7 +111,9 @@ async function main() {
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
   const scoreHoldout = explanationHoldout ? scoreProtectedExplanationHoldout : scoreProtectedWorkSummaryHoldout;
-  const report = holdout ? await scoreHoldout(holdout.cases, holdoutSha, holdout.developmentReport, modelDigest, generate) : await run(generate);
+  const report = freshInput ? await scoreFreshExplanationRouting(freshInput, modelDigest, generate)
+    : cases && developmentReport ? await scoreHoldout(cases, holdoutSha, developmentReport, modelDigest, generate)
+    : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
   const answerFormatDigest = routingDigest(explanationPriority ? EXPLANATION_ANSWER_FORMAT :
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);

@@ -6,7 +6,7 @@ import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
-import { scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
+import { assertFreshExplanationCases, scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
 import { assessExplanationRouting } from '../scripts/experiments/assess-explanation-routing';
 import { historicalExplanationCases } from '../scripts/experiments/write-historical-explanation-cases';
 import {
@@ -148,6 +148,32 @@ describe('evaluator-held explanation choices', () => {
     expect(result.deterministic.correct).toBeGreaterThan(0);
     expect(result.retrievalFirst.modelCalls).toBeLessThan(localized.length);
   });
+
+  it('refuses substitutions of the fixed margin or exposure bytes before inference', async () => {
+    const developmentReport = bytes(report);
+    const english = spec(developmentReport);
+    const malay = bytes({...JSON.parse(english.toString()), locale: 'ms'});
+    const run = (minimumMargin: number) => {
+      const plan = bytes({version: 1, minimumMargin, englishSha256: sha(english), malaySha256: sha(malay)});
+      return scoreFreshExplanationRouting({plan, planSha256: sha(plan), developmentReport, english, malay,
+        exposures: {english, malay, challenge: english}}, modelDigest, async () => { throw Error('Unexpected model call'); });
+    };
+    await expect(run(4)).rejects.toThrow();
+    await expect(run(5)).rejects.toThrow('Invalid frozen protected holdout');
+  });
+});
+
+it('rejects repeated wording and translated expected findings in either fresh locale', () => {
+  const prior = {
+    module: 'claims', focus: 'Is this claim still a draft?', expected: 'specialist_finding:claim_draft_not_submitted',
+  } as const;
+  const fresh = {
+    module: 'claims', focus: 'Adakah tuntutan yang diluluskan sudah dibayar?', expected: 'specialist_finding:claim_approved_not_paid',
+  } as const;
+  expect(() => assertFreshExplanationCases([prior], [fresh])).not.toThrow();
+  expect(() => assertFreshExplanationCases([prior], [{...fresh, focus: 'Is this CLAIM still a draft.'}])).toThrow('repeat');
+  expect(() => assertFreshExplanationCases([prior], [{...prior, focus: 'Adakah tuntutan ini masih draf?'}])).toThrow('repeat');
+  expect(() => assertFreshExplanationCases([prior], [fresh, {...fresh, focus: 'Did the payment actually go through?'}])).toThrow('repeat');
 });
 
 describe('paired English and Malay routing evidence', () => {
