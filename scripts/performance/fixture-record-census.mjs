@@ -394,6 +394,47 @@ async function payrollCorrectionRoutes(db, fixture) {
   ];
 }
 
+async function payrollRegisterRoutes(db, fixture) {
+  const [group, company] = fixture.users;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(group.companyId, company.companyId);
+  const subject = fixture.users.find(user => user.role === 'employee' && user.companyId === company.companyId);
+  assert(subject, 'Expected an employee on the fictional payroll');
+  const { batchId } = fixture.tenants[0].companies[0];
+  const [record] = await db`
+    select s.net_pay::text as net_pay, v.disposition
+    from payslip s
+    join payroll_anomaly_verdict v on v.batch_id = s.batch_id and v.employment_id = s.employment_id
+      and v.tenant_id = s.tenant_id and v.superseded_at is null
+    where s.tenant_id = ${group.tenantId}::uuid and s.batch_id = ${batchId}::uuid
+      and s.employment_id = ${subject.employmentId}::uuid
+  `;
+  assert(record?.net_pay && record.disposition, 'Expected a saved payslip and live verdict for the employee');
+  const basePath = '/payroll/' + batchId;
+  const netPay = 'RM ' + Number(record.net_pay).toLocaleString('en-US', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const query = new URLSearchParams({ q: subject.name });
+  const batchForm = `form:has(input[name="batchId"][value="${batchId}"])`;
+  const registerRows = `div:has(> form[role="search"][action="${basePath}"]) table tbody tr`;
+  return [
+    ...[group, company].flatMap(actor => [
+      { actor, template: '/payroll/[batchId]', path: basePath,
+        witness: `${registerRows} a[href*="employmentId="]`, scenario: 'processed register' },
+      { actor, template: '/payroll/[batchId]', path: basePath + '?' + query,
+        witness: `${registerRows}:has(a:text-is(${JSON.stringify(subject.name)})) td:text-is(${JSON.stringify(netPay)})`,
+        scenario: 'register search' },
+      { actor, template: '/payroll/[batchId]/anomalies', path: basePath + '/anomalies',
+        exactHeading: 'Payroll exceptions', content: subject.name,
+        witness: `${batchForm} button:text-is("Check again")` },
+    ]),
+    { actor: group, template: '/payroll/[batchId]/close', path: basePath + '/close',
+      exactHeading: 'Close batch', content: 'This publishes 50 payslip(s)',
+      witness: `${batchForm}:has(input[name="surface"][value="close-screen"]) button[type="submit"]` },
+  ];
+}
+
 async function personnelMovementRoutes(db, fixture) {
   return Promise.all(['groupHR', 'companyHR'].map(async role => {
     const actor = fixture.users.find(user => user.role === role && user.tenant === 0);
@@ -510,13 +551,14 @@ async function attendanceRecordRoutes(db, fixture) {
   ];
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords }) {
-  const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords, payrollRegisterRecords }) {
+  const before = payrollCorrections || payrollRegisterRecords ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : importHistory ? importHistoryRoutes(fixture)
     : personnelDirectory ? personnelDirectoryRoutes(fixture)
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
+    : payrollRegisterRecords ? await payrollRegisterRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -580,8 +622,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     }
   }
   if (before) {
-    assert.deepEqual(await payrollCorrectionState(db, fixture), before, 'Opening correction forms must preserve the run');
-    report.payrollCorrectionRunPreserved = true;
+    assert.deepEqual(await payrollCorrectionState(db, fixture), before, 'Opening payroll records must preserve the run');
+    if (payrollRegisterRecords) report.payrollRegisterRunPreserved = true;
+    else report.payrollCorrectionRunPreserved = true;
     save();
   }
   assert.equal(rows.length, cases.length * 2);

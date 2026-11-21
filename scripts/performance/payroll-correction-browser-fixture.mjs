@@ -1,4 +1,4 @@
-/** Process one payroll run in the disposable browser database before opening correction forms. */
+/** Process one payroll run in the disposable browser database before opening the payroll records. */
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
@@ -40,6 +40,11 @@ try{
  await setTenantSetting(ctx,{key:'payroll.reset_enabled',value:true});
  mark('calculate');
  await generatePayslips(ctx,{batchId:company.batchId});
+ if(env.PERF_PAYROLL_REGISTER_RECORDS==='true'){
+  mark('anomalies');
+  const {evaluateBatchAnomalies}=await source('core/payroll-anomaly.ts');
+  await evaluateBatchAnomalies(ctx,{batchId:company.batchId});
+ }
  mark('complete');
 }catch(error){
  const code=error?.cause?.code??error?.code;

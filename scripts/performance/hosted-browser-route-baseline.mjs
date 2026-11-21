@@ -38,8 +38,9 @@ const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
 const censusImportHistory=shardInput==='import-history';
 const censusPersonnelDirectory=shardInput==='personnel-directory';
 const censusAttendanceRecords=shardInput==='attendance-records';
+const censusPayrollRegisterRecords=shardInput==='payroll-register-records';
 const censusFullFixtureRecords=shardInput==='fixture-records';
-const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords;
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation||censusImportHistory||censusPersonnelDirectory||censusAttendanceRecords||censusPayrollRegisterRecords;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1565,15 +1566,16 @@ try{
   }finally{await owner.end({timeout:5});}
  }
  if(censusPayrollCorrections&&!report.verifiedBuildArtifact)report.verifiedBuildArtifact={runId:44749573012,artifactId:14634664620,sourceSha:report.sourceSha};
- if(censusPayrollCorrections){
+ if(censusPayrollCorrections||censusPayrollRegisterRecords){
   try{
    await run('seed-payroll-correction-run',process.execPath,
-    ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],dbEnv);
+    ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-correction-browser-fixture.mjs'],
+    {...dbEnv,PERF_PAYROLL_REGISTER_RECORDS:String(censusPayrollRegisterRecords)});
   }finally{
    const path=join(privateDir,'payroll-correction-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['module','principal','reset-setting','calculate','complete'].includes(stage)){
+    if(['module','principal','reset-setting','calculate','anomalies','complete'].includes(stage)){
      report.payrollCorrectionSeedStage=stage;
     }
    }
@@ -1634,7 +1636,7 @@ try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory,personnelDirectory:censusPersonnelDirectory,
-     attendanceRecords:censusAttendanceRecords});
+     attendanceRecords:censusAttendanceRecords,payrollRegisterRecords:censusPayrollRegisterRecords});
     if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
