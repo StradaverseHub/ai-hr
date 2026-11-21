@@ -226,6 +226,21 @@ The router failed the zero-regression gate. It matched the focused model on ever
 
 The offline router selects one explanation from fictional wording and finding codes. The serving Assistant resolves intent locally and sends a catalogue of authorized references. Its promotion contract recognizes the two source-owned strategy variants `baseline_v1` and `focused_v1`. A future routing candidate must earn its result using the serving catalogue and pass that contract's review before trial admission. [Offline selector](../../scripts/experiments/protected-explanation-priority.ts) · [Serving catalogue](../../lib/ai/provider-assistant-policy.ts) · [Strategy contract](../../lib/ai/assistant-conversation-candidate.ts)
 
+### Canonical explanations as model input
+
+On 22 November the pinned Granite model reproduced the first proposal, including the improvement from one to two correct selections on the two replacement-credit validation cases. The repeat made nine calls. Report SHA-256 `da5e39fb5be64546f1a2538e23eb25959c4a7ab74361d438bf248bfb82833bf6`.
+
+The frozen follow-up tested a hand-authored input change on 15 historical English and 15 historical Malay development questions. Each case used the same model, ordered codes and output schema. The candidate added the canonical localized wording for every choice to the focused request. The score required at least two paired gains, zero losses against the original and focused strategies, and zero rejected candidate replies in each language.
+
+| Language | Original correct | Focused correct | Candidate correct | Gains vs focused | Losses vs focused | Focused / candidate input tokens |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| English | 4/15 | 11/15 | 11/15 | 2 | 2 | 1,851 / 3,042 |
+| Malay | 4/15 | 9/15 | 10/15 | 4 | 3 | 2,091 / 3,827 |
+
+The candidate failed both language gates. All 90 calls returned admissible replies. Supplying every meaning raised candidate input tokens by 74% versus the focused strategy. Preserve the focused strategy as the development comparison. The questions are public and previously examined. The two locales reuse business semantics. Independently held cases and trial acceptance remain necessary for an improvement claim.
+
+Reproduce with `node --import tsx scripts/experiments/leave-improvement-cli.ts granite3.3:2b NEW_REPORT.json --compare-explanation-meanings`. Report SHA-256 `fd21a7f3eabc1645362bd6dfbd06641980d0da6f6aeb040a0a6b04ecc8d55423`. [Frozen experiment](https://github.com/StradaverseHub/ai-hr/commit/4b22bc9be13fb55a96ab0c48e72ef26e5cfb583b) · [Hosted tooling checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44947243848)
+
 ### Serving-catalogue experiment for explicit leave counts
 
 At `78731e264`, the experiment compared the two reviewed strategy prompts with a local deterministic candidate on the same serving catalogue. The candidate selects only the exact available, pending or taken count when the existing local intent names that field and the protected catalogue contains one selected leave card and one eligible matching fact. Both production answer adjudicators still validate the result. Ambiguous, missing or unrelated references defer to the existing path.
