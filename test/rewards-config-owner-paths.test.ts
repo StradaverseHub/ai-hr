@@ -211,8 +211,9 @@ it('keeps Rewards upload choices and their order for group and company HR on a g
    select gen_random_uuid() as person_id,n, (ARRAY[${sql.join(companyIds.map(companyId=>sql`${companyId}::uuid`),sql`, `)}])[1+(n-1)%70] as company_id
    from generate_series(1,1000) as source(n)
   ), people as (
-   insert into person (id,tenant_id,full_name)
-   select person_id,${b.tenantId}::uuid,'Fictional upload worker '||n from workforce returning id
+   insert into person (id,tenant_id,full_name,primary_email)
+   select person_id,${b.tenantId}::uuid,'Fictional upload worker '||n,'upload-worker-'||n||'@example.invalid'
+   from workforce returning id
   )
   insert into employment (tenant_id,person_id,company_id,employee_code,hired_on)
   select ${b.tenantId}::uuid,people.id,workforce.company_id,'UP-'||workforce.n,date '2024-01-01'
