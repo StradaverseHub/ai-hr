@@ -6,10 +6,27 @@ import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/prote
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
+import { runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
 import { guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
+
+it('separates source-resolved findings from genuinely competing explanations', async () => {
+  const report = await runProtectedExplanationPriority(async ({ mode, prompt }) => {
+    expect(mode).toBe('answer');
+    const request = JSON.parse(prompt);
+    expect(Object.keys(request).sort()).toEqual(request.focus ? ['choices', 'focus', 'module'] : ['choices', 'module']);
+    expect(request.choices).toHaveLength(2);
+    expect(prompt).not.toMatch(/2026-|470|480|expected|scope_current_caller/);
+    return { text: JSON.stringify({ choice: request.choices[0] }), inputTokens: 1, outputTokens: 1 };
+  });
+  expect(report).toMatchObject({
+    originalCasesWithUniqueDomainExplanation: 7, cases: 6,
+    arms: { withoutFocus: { correct: 3, rejected: 0 }, withFocus: { correct: 3, rejected: 0 } },
+    budget: { calls: 12, inputTokens: 12, outputTokens: 12 },
+  });
+});
 
 describe('evaluator-held protected answer cases', () => {
   const modelDigest = 'a'.repeat(64);
