@@ -587,7 +587,8 @@ async function measureShellPrefetchAfterIntent(fixture){
  try{
   const page=await context.newPage();
   const activePath=origin+row.route;
-  const home=page.locator('aside[data-app-sidebar] a[href="/"][aria-label="AIHR home"]:visible');
+  const home=page.locator('aside[data-app-sidebar][data-shell-navigation-ready="true"] a[href="/"][aria-label="AIHR home"]:visible');
+  const opened=performance.now();
   const deadline=performance.now()+45000;
   const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
   const matchesRouteData=(request,path)=>{
@@ -602,20 +603,24 @@ async function measureShellPrefetchAfterIntent(fixture){
   });
   stage='payroll-content';
   assert.equal(await readyContent(page,actor,row.route,remaining),'usable-content');
-  stage='persistent-link';
+  stage='interactive-persistent-link';
   await home.waitFor({state:'visible',timeout:remaining()});
+  row.shellReadyMs=Math.round(performance.now()-opened);
   const node=await home.elementHandle({timeout:remaining()});
   assert(node,'The persistent home link is unavailable');
   stage='router-ready';
   await page.waitForFunction(()=>typeof window.next?.router?.refresh==='function',null,{timeout:remaining()});
+  await page.locator('main:visible').first().hover({position:{x:12,y:12},timeout:remaining()});
   stage='hover-prefetch';
   phase='duringHover';
+  const intentStarted=performance.now();
   const [prefetched]=await Promise.all([
    page.waitForResponse(response=>matchesRouteData(response.request(),row.destination),{timeout:remaining()}),
    home.hover({timeout:remaining()}),
   ]);
   assert(prefetched.ok(),'The intentional prefetch must receive a successful response');
   assert.equal(await prefetched.finished(),null);
+  row.intentResponseMs=Math.round(performance.now()-intentStarted);
   stage='leave-link';
   await page.locator('main:visible').first().hover({position:{x:12,y:12},timeout:remaining()});
   phase='afterPointerLeave';
