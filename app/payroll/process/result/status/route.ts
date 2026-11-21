@@ -1,11 +1,11 @@
-import {requireAdmin} from '@/lib/authz';
+import {requirePayrollAccess} from '@/lib/authz';
 import {readRunGroup} from '@/core/payroll-run-group-store';
 export const runtime='nodejs';
 const headers={'Cache-Control':'private, no-store'};
 /** The wizard run group's progress for the result screen's panel: each company's processing job while any runs,
- * and `done` once every company has its outcome. Only the group's creator can read it. */
+ * and `done` once every visible company has its outcome. */
 export async function GET(request:Request){
- const ctx=await requireAdmin();
+ const ctx=await requirePayrollAccess();
  const id=new URL(request.url).searchParams.get('g')??'';
  try{
   const view=await readRunGroup(ctx,id);

@@ -1,3 +1,14 @@
+# Company-scoped payroll run review, 22 November 2026
+
+Reserve `7100_payroll_run_company_review`, journal index `10500`, timestamp `1795280007100`,
+SQL SHA-256 `558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6`. Both staging and production reported 1,134 applied entries
+through `1795028007090` before allocation. Recheck both watermarks and competing
+reservations before installation.
+
+The migration adds a read-only function that returns the authorized companies
+of one sealed run. The raw group, job, cancellation and settlement policies keep
+their existing ownership and grants.
+
 # Report delivery history ordering, 21 November 2026
 
 Reserve `7090_report_delivery_history_order`, journal index `10490`, timestamp `1795028007090`,
