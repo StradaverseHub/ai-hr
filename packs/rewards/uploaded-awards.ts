@@ -37,5 +37,44 @@ export async function adjustUploadedAward(ctx:SessionContext,id:string,entryId:s
  // Each step keeps its own reason and the next signatory approves the new digest. A prior approval cannot be reused.
  if(unit.status!=='draft'){const current=await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId,id));const {rewardReviewDigest}=await import('./service');const [freshUnit]=await tx.select().from(rewardUnit).where(eq(rewardUnit.id,id));await tx.update(rewardUnit).set({approvedDigest:rewardReviewDigest(freshUnit,current)}).where(eq(rewardUnit.id,id));}
  });}
-export async function uploadedRewardChoices(ctx:SessionContext){return withRewardsTenant(ctx,async tx=>{const companies=await tx.execute<{id:string;name:string}>(sql`select id,legal_name as name from company where tenant_id=app.current_tenant_id() and archived_at is null and app.reward_setup_allowed(id,'manage') order by legal_name`);if(!companies.length)throw Error('Group Rewards upload creation authority is required.');const units=await tx.execute<{id:string;companyId:string|null;name:string}>(sql`select id,company_id as "companyId",coalesce(nullif(trim(label),''),code) as name from business_unit where tenant_id=app.current_tenant_id() and archived_at is null and(is_global or app.reward_setup_allowed(company_id,'manage')) order by code`);const cycles=await tx.execute<{id:string;name:string;year:number}>(sql`select id,name,year from reward_cycle where tenant_id=app.current_tenant_id() order by year desc,name`);const [creation]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(NULL,'manage') as allowed`);return{companies,units,cycles,canCreateCycle:!!creation?.allowed};});}
+export function uploadedRewardChoices(ctx:SessionContext){
+ return withRewardsTenant(ctx,async tx=>{
+  const [choices]=await tx.execute<{
+   companies:{id:string;name:string}[];
+   units:{id:string;companyId:string;name:string}[];
+   cycles:{id:string;name:string;year:number}[];
+   canCreateCycle:boolean;
+  }>(sql`
+   with company_choices as materialized (
+    select id,legal_name as name from company
+    where tenant_id=app.current_tenant_id() and archived_at is null
+   ), unit_choices as materialized (
+    select id,company_id,code,is_global,coalesce(nullif(trim(label),''),code) as name
+    from business_unit where tenant_id=app.current_tenant_id() and archived_at is null
+   ), candidate_companies as (
+    select id from company_choices
+    union
+    select company_id from unit_choices where is_global is not true
+   ), admitted_companies as materialized (
+    select id from candidate_companies where app.reward_setup_allowed(id,'manage')
+   )
+   select coalesce((
+    select jsonb_agg(jsonb_build_object('id',c.id,'name',c.name) order by c.name,c.id)
+    from company_choices c join admitted_companies a on a.id=c.id
+   ),'[]'::jsonb) as companies,
+   coalesce((
+    select jsonb_agg(jsonb_build_object('id',u.id,'companyId',u.company_id,'name',u.name) order by u.code,u.id)
+    from unit_choices u left join admitted_companies a on a.id=u.company_id
+    where u.is_global or a.id is not null
+   ),'[]'::jsonb) as units,
+   coalesce((
+    select jsonb_agg(jsonb_build_object('id',c.id,'name',c.name,'year',c.year) order by c.year desc,c.name,c.id)
+    from reward_cycle c where c.tenant_id=app.current_tenant_id()
+   ),'[]'::jsonb) as cycles,
+   coalesce(app.reward_setup_allowed(null::uuid,'manage'),false) as "canCreateCycle"
+  `);
+  if(!choices?.companies.length)throw Error('Group Rewards upload creation authority is required.');
+  return choices;
+ });
+}
 export async function refreshUploadedRewardSources(ctx:SessionContext,id:string,revision:number,reason:string){const why=z.string().trim().min(10).max(2000).parse(reason);return withRewardReviewExtension(ctx,id,true,async(tx,{unit,roles})=>{await assertRewardCapabilityTx(tx,id,'snapshot.refresh');if(unit.status!=='draft'||!roles.includes('gr')||unit.revision!==revision)throw Error('Reload the current BU-stage review before refreshing Payroll sources.');await tx.execute(sql`select app.reward_refresh_uploaded_sources(${id}::uuid,${revision},${why})`);});}
