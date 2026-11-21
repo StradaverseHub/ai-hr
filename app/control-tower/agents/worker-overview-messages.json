@@ -17,7 +17,11 @@
     "featureActivity": "{count, plural, =0 {No admitted model requests in 30 days} one {# admitted model request in 30 days} other {# admitted model requests in 30 days}}",
     "featureIssues": "{failed} failed · {blocked} blocked",
     "openReviews": "Candidate reviews",
-    "moreFeatures": "Show {count} more features"
+    "moreFeatures": "Show {count} more features",
+    "assistantActions": "Assistant actions · Last 30 days",
+    "actionCounts": "{prepared, number} prepared · {completed, number} completed",
+    "actionCountsEmpty": "No actions prepared in 30 days",
+    "actionDetails": "View action outcomes"
   },
   "ms": {
     "title": "Ringkasan aktiviti",
@@ -37,7 +41,11 @@
     "featureActivity": "{count} permintaan model dibenarkan dalam 30 hari",
     "featureIssues": "{failed} gagal · {blocked} disekat",
     "openReviews": "Semakan calon",
-    "moreFeatures": "Tunjukkan {count} lagi fungsi"
+    "moreFeatures": "Tunjukkan {count} lagi fungsi",
+    "assistantActions": "Tindakan Pembantu · 30 hari lalu",
+    "actionCounts": "{prepared, number} disediakan · {completed, number} selesai",
+    "actionCountsEmpty": "Tiada tindakan disediakan dalam 30 hari",
+    "actionDetails": "Lihat hasil tindakan"
   },
   "zh": {
     "title": "活动概览",
@@ -57,7 +65,11 @@
     "featureActivity": "30 天内有 {count} 个获准的模型请求",
     "featureIssues": "{failed} 次失败 · {blocked} 次被拦截",
     "openReviews": "候选方案审核",
-    "moreFeatures": "再显示 {count} 项功能"
+    "moreFeatures": "再显示 {count} 项功能",
+    "assistantActions": "助手操作 · 过去 30 天",
+    "actionCounts": "已准备 {prepared, number} 项 · 已完成 {completed, number} 项",
+    "actionCountsEmpty": "过去 30 天没有准备任何操作",
+    "actionDetails": "查看操作结果"
   },
   "vi": {
     "title": "Tổng quan hoạt động",
@@ -77,7 +89,11 @@
     "featureActivity": "{count} yêu cầu mô hình được phép trong 30 ngày",
     "featureIssues": "{failed} thất bại · {blocked} bị chặn",
     "openReviews": "Đánh giá phương án",
-    "moreFeatures": "Hiện thêm {count} tính năng"
+    "moreFeatures": "Hiện thêm {count} tính năng",
+    "assistantActions": "Hành động của trợ lý · 30 ngày qua",
+    "actionCounts": "{prepared, number} đã chuẩn bị · {completed, number} đã hoàn tất",
+    "actionCountsEmpty": "Không có hành động nào được chuẩn bị trong 30 ngày",
+    "actionDetails": "Xem kết quả hành động"
   },
   "th": {
     "title": "ภาพรวมกิจกรรม",
@@ -97,7 +113,11 @@
     "featureActivity": "คำขอโมเดลที่ได้รับอนุญาต {count} รายการใน 30 วัน",
     "featureIssues": "ล้มเหลว {failed} รายการ · ถูกบล็อก {blocked} รายการ",
     "openReviews": "ตรวจสอบตัวเลือก",
-    "moreFeatures": "แสดงอีก {count} ฟีเจอร์"
+    "moreFeatures": "แสดงอีก {count} ฟีเจอร์",
+    "assistantActions": "การดำเนินการของผู้ช่วย · 30 วันที่ผ่านมา",
+    "actionCounts": "เตรียมแล้ว {prepared, number} รายการ · เสร็จสิ้น {completed, number} รายการ",
+    "actionCountsEmpty": "ไม่มีการเตรียมการดำเนินการใน 30 วันที่ผ่านมา",
+    "actionDetails": "ดูผลการดำเนินการ"
   },
   "ta": {
     "title": "செயல்பாட்டுச் சுருக்கம்",
@@ -117,6 +137,10 @@
     "featureActivity": "30 நாட்களில் அனுமதிக்கப்பட்ட மாதிரி கோரிக்கைகள்: {count}",
     "featureIssues": "{failed} தோல்வி · {blocked} தடுக்கப்பட்டன",
     "openReviews": "மேம்பாட்டுப் பரிந்துரைகளை மதிப்பாய்வு செய்",
-    "moreFeatures": "மேலும் {count} அம்சங்களைக் காட்டு"
+    "moreFeatures": "மேலும் {count} அம்சங்களைக் காட்டு",
+    "assistantActions": "உதவியாளர் செயல்கள் · கடந்த 30 நாட்கள்",
+    "actionCounts": "{prepared, number} தயாரிக்கப்பட்டன · {completed, number} முடிக்கப்பட்டன",
+    "actionCountsEmpty": "30 நாட்களில் எந்தச் செயலும் தயாரிக்கப்படவில்லை",
+    "actionDetails": "செயல் முடிவுகளைப் பார்க்கவும்"
   }
 }

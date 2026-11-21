@@ -73,6 +73,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const recentFeatureActivity = modelActivity ? [...modelActivity.entries()]
     .filter(([, use]) => use.runs > 0 || use.blocked > 0)
     .sort(([, a], [, b]) => b.runs - a.runs || b.blocked - a.blocked) : [];
+  const actionActivity = inventory?.scope === 'full' ? inventory.rows.reduce((totals, row) => {
+    if (row.kind === 'action' && row.runtime.outcomes) {
+      totals.prepared += row.runtime.outcomes.prepared;
+      totals.completed += row.runtime.outcomes.completed;
+    }
+    return totals;
+  }, {prepared: 0, completed: 0}) : null;
   const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
   const overviewLocale = section === 'features' ? await getLocale() : null;
   const workerOverview = overviewLocale === null ? null : createTranslator({
@@ -260,6 +267,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
                 <ul className="divide-y divide-border">{recentFeatureRows.slice(3)}</ul>
               </details>}
             </dd>}
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('assistantActions')}</dt>
+            <dd className="text-muted-foreground">{actionActivity
+              ? workerOverview(actionActivity.prepared === 0 ? 'actionCountsEmpty' : 'actionCounts', actionActivity)
+              : workerOverview('unavailable')}</dd>
+            {actionActivity && <dd><a href="#ai-inventory-actions" className={btnGhost}>{workerOverview('actionDetails')}</a></dd>}
           </div>
           <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
             <dt className="font-medium">{workerOverview('scheduled')}</dt>
