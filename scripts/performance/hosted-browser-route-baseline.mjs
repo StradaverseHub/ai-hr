@@ -1649,9 +1649,11 @@ try{
     }
     const taxFactsPath=join(privateDir,'tax-basis-seed-facts.json');
     if(existsSync(taxFactsPath)){
-     const {eligible,blocked,records,reason}=JSON.parse(readFileSync(taxFactsPath,'utf8'));
+     const {eligible,blocked,records,employeeRecords,reason}=JSON.parse(readFileSync(taxFactsPath,'utf8'));
      if([eligible,blocked,records].every(count=>Number.isSafeInteger(count)&&count>=0&&count<=1000)){
-      report.taxBasisSeed={eligible,blocked,records,reason:['rules-unavailable','other'].includes(reason)?reason:null};
+      const reasons=['rules-unavailable','source-reconciliation','pay-item-ownership','tax-classification','source-provenance','prior-employer-evidence','other'];
+      report.taxBasisSeed={eligible,blocked,records,reason:reasons.includes(reason)?reason:null,
+       employeeRecords:Number.isSafeInteger(employeeRecords)&&employeeRecords>=0&&employeeRecords<=1000?employeeRecords:null};
      }
     }
     const grantPath=join(privateDir,'individual-import-grant-probe');

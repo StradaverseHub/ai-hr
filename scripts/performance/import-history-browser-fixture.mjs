@@ -103,10 +103,20 @@ try{
  assert(employment,'Expected the fictional import employee for recalculation');
  mark('tax-basis-preview');
  const taxPreview=await payroll.previewTaxBasisRecalculation(ctx,{companyId:group.companyId,year,upToMonth:2,employmentIds:[employment.id]});
- const taxReason=taxPreview.employees[0]?.reason;
+ const taxEmployee=taxPreview.employees[0];
+ const taxReason=taxEmployee?.reason;
+ const taxRefusalPatterns=[
+  ['rules-unavailable',/rules are unavailable|rules belong to a different assessment year/],
+  ['source-reconciliation',/do not reconcile to original payroll totals|exact non-negative monetary amount/],
+  ['pay-item-ownership',/import mapping|Pay Item ownership|Pay Item codes|monetary kind/],
+  ['tax-classification',/tax classification|exemption .* unsupported|exemption classification/],
+  ['source-provenance',/retained import source|original source row|immutable source|original Pay Item detail|original import|source binding/],
+  ['prior-employer-evidence',/prior-employer/],
+ ];
  writeFileSync(resultPath('tax-basis-seed-facts.json'),JSON.stringify({
   eligible:taxPreview.eligibleCount,blocked:taxPreview.blockedCount,records:taxPreview.recordCount,
-  reason:!taxReason?null:taxReason.includes('assessment-year rules are unavailable')?'rules-unavailable':'other',
+  employeeRecords:taxEmployee?.recordCount,
+  reason:!taxReason?null:taxRefusalPatterns.find(([,pattern])=>pattern.test(taxReason))?.[0]??'other',
  }),{mode:0o600});
  assert.equal(taxPreview.eligibleCount,1);
  assert.equal(taxPreview.recordCount,1);
