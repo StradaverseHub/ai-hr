@@ -140,7 +140,36 @@ describe('protected work summary comparison', () => {
       const blocks = [{ kind: 'fact', read: 0, card: 0, fact: catalogue.intent === 'claim_statuses' ? 4 : 0 }];
       return { text: JSON.stringify({ version: 1, mode: 'answer', blocks }), inputTokens: 1, outputTokens: 1 };
     });
-    expect(report.comparisons.filter(row => row.id === 'claims:two-statuses').map(row => row.outcome)).toEqual(['rejected', 'rejected']);
-    expect(report.comparisons.filter(row => row.id === 'attendance:late').map(row => row.outcome)).toEqual(['wrong_selection', 'wrong_selection']);
+    const claims = report.comparisons.filter(row => row.id === 'claims:two-statuses');
+    expect(claims).toHaveLength(2);
+    for (const row of claims) expect(row).toMatchObject({ outcome: 'rejected', reason: 'outside_catalogue' });
+    const attendance = report.comparisons.filter(row => row.id === 'attendance:late');
+    expect(attendance).toHaveLength(2);
+    for (const row of attendance) expect(row).toMatchObject({
+      outcome: 'wrong_selection',
+      missing: [
+        { kind: 'fact', read: 0, card: 0, fact: 2 },
+        { kind: 'explanation', read: 0, card: null, code: 'specialist_finding:attendance_exception_recorded' },
+      ],
+      extra: [{ kind: 'fact', read: 0, card: 0, fact: 0 }],
+      orderOnly: false,
+    });
+  });
+
+  it('identifies ordering failures and drops malformed reply text from the report', async () => {
+    const report = await runProtectedWorkSummaryComparison(async ({ prompt }) => {
+      const catalogue = JSON.parse(prompt);
+      const answer = { version: 1, mode: 'answer', blocks: [
+        { kind: 'fact', read: 0, card: 1, fact: 0 },
+        { kind: 'fact', read: 0, card: 0, fact: 0 },
+      ] };
+      return { text: catalogue.intent === 'claim_statuses' ? JSON.stringify(answer) : 'fictional untrusted prose', inputTokens: 1, outputTokens: 1 };
+    });
+    const claims = report.comparisons.filter(row => row.id === 'claims:two-statuses');
+    expect(claims).toHaveLength(2);
+    for (const row of claims) expect(row).toMatchObject({ outcome: 'wrong_selection', missing: [], extra: [], orderOnly: true });
+    const other = report.comparisons.filter(row => row.id !== 'claims:two-statuses');
+    expect(other.every(row => row.outcome === 'rejected' && row.reason === 'invalid_plan')).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('fictional untrusted prose');
   });
 });
