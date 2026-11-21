@@ -21,7 +21,7 @@ export async function aiCentreControlReads(session:SessionContext){
  ]);
 }
 
-export async function AiCentreControls({session}:{session:SessionContext}){
+export async function aiCentreControlSections(session:SessionContext){
  const t=await getTranslations('aiCentre.controls');
  const features=await getTranslations('aiManagement');
  const workers=await getTranslations('aiCentre.registry');
@@ -29,8 +29,7 @@ export async function AiCentreControls({session}:{session:SessionContext}){
  const functions=aiCentreFunctions();
  const label=(name:string)=>name.replaceAll('_',' ').replaceAll('.',' ');
  const functionName=(row:(typeof functions)[number])=>row.key.startsWith('feature:')&&features.has('features.'+row.name)?features('features.'+row.name):row.key.startsWith('worker:')&&workers.has('workers.'+row.key.slice(7))?workers('workers.'+row.key.slice(7)):label(row.name);
- return <>
-  <Card id="ai-centre-stop" className="scroll-mt-4 space-y-3 p-5">
+ const stop = <Card id="ai-centre-stop" className="scroll-mt-4 space-y-3 p-5">
    <SectionHeader title={t('stopTitle')}/>
    <p role="status" className="text-sm" data-ai-centre-state={state?state.stopped?'stopped':'running':'unknown'}>{state?t(state.stopped?'stopped':'running'):t('unknown')}</p>
    <p className="max-w-4xl text-sm text-muted-foreground">{t('stopHelp')}</p>
@@ -42,7 +41,8 @@ export async function AiCentreControls({session}:{session:SessionContext}){
     </form>
    </>}
    <p className="text-xs text-muted-foreground">{t('resumeHelp')}</p>
-  </Card>
+  </Card>;
+ const settings = <>
   <Card id="ai-centre-functions" className="scroll-mt-4 space-y-3 p-5">
    <SectionHeader title={t('inventoryTitle')}/><p className="text-sm text-muted-foreground">{t('inventoryHelp',{count:functions.length})}</p>
    <details><summary className="min-h-11 cursor-pointer py-3 text-sm font-medium">{t('allFunctions')}</summary>
@@ -68,4 +68,5 @@ export async function AiCentreControls({session}:{session:SessionContext}){
    </li>)}</ul>}
   </Card>
  </>;
+ return {stop,settings};
 }

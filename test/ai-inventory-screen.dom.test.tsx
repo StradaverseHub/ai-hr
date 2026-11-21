@@ -56,7 +56,11 @@ import {AiManagementScreen} from '../app/control-tower/agents/screen';
 afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.actionActivity=true;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
- const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
+ const workerControls=state.group&&section==='features'?{
+  stop:<section id="ai-centre-stop">Pause control</section>,
+  settings:<section id="ai-centre-jobs">Scheduled job controls</section>,
+ }:undefined;
+ const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams),workerControls});
  return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
 };
 
@@ -67,6 +71,8 @@ describe('AI inventory in six rendered locales',()=>{
   const overview=screen.getByRole('region',{name:'Activity overview'});
   const details=view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!;
   expect(details.open).toBe(false);
+  expect(details).not.toContainElement(screen.getByText('Pause control'));
+  expect(details).toContainElement(screen.getByText('Scheduled job controls'));
   const moreFeatures=overview.querySelector<HTMLDetailsElement>('details')!;
   expect(moreFeatures.open).toBe(false);
   expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
@@ -95,10 +101,10 @@ describe('AI inventory in six rendered locales',()=>{
   expect(Boolean(row.queryByRole('link',{name:'View action outcomes'}))).toBe(!inventoryUnavailable);
  });
 
- it('reveals a bookmarked worker section on entry',async()=>{
+ it.each(['#ai-inventory','#ai-centre-jobs'])('reveals a bookmarked worker section on entry at %s',async hash=>{
   const location=window.location.href;
   try {
-   window.history.replaceState(null,'','#ai-inventory');
+   window.history.replaceState(null,'',hash);
    const view=await renderPage('en','features');
    expect(view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')?.open).toBe(true);
   } finally {

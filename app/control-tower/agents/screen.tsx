@@ -36,7 +36,8 @@ export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
-export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
+export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry,workerControls}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
+  workerControls?:Readonly<{stop:ReactNode;settings:ReactNode}>;
   /** AI centre step 5: the worker registry, for group administrators only (the features page reads it). */
   registry?:Readonly<{rows:readonly WorkerRow[];summary:OutcomeSummary|null;detail:WorkerDetail|null}>|null}) {
   const sp = await searchParams;
@@ -301,7 +302,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         </div>
       </dl>
     </section>}
-    {section==='features'&&children}
+    {section==='features'&&workerControls?.stop}
     {workerOverview && <WorkerDetails label={workerOverview('details')} initiallyOpen={Boolean(sp.worker || sp.toast || sp.error)}>
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
@@ -342,6 +343,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
     {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
+    {workerControls?.settings}
     </WorkerDetails>}
     {view.section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
