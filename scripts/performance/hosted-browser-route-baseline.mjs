@@ -514,7 +514,7 @@ function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture
 }
 
 function captureApplicationAdmission(driverEvidence){
- const scope='Application timing windows contained in the loaded lock-observer interval. Start delay includes admission, a connection checkout, BEGIN and callback scheduling. Raw pool wait measures application admission before checkout.';
+ const scope='Application timing windows contained in the loaded lock-observer interval. Start delay includes admission, a connection checkout, BEGIN and callback scheduling. Raw pool wait measures application admission before checkout. After-entry timing includes downstream checkout and work.';
  try{
   const bounds=loadedObservationBounds(driverEvidence);
   if(!bounds||statSync(transactionTimingPath).size>1024*1024)return {available:false,scope};
@@ -545,8 +545,16 @@ function captureApplicationAdmission(driverEvidence){
    observedMaxPendingTransactions:observedMax(row=>row.pending),
    observedMaxHeldTransactions:observedMax(row=>row.holding),
    eventLoopDelay:summarize(row=>({count:row.eventLoopDelay?.samples,p95Ms:row.eventLoopDelay?.p95Ms})),
-   passiveReadAdmission:summarize(row=>row.passiveRead?.queueWait),
-   rawPoolAdmission:summarize(row=>row.rawPoolWork?.queueWait),
+   passiveReadAdmission:{
+    ...summarize(row=>row.passiveRead?.queueWait),
+    afterEntry:summarize(row=>row.passiveRead?.afterAdmission),
+    observedMaxPending:observedMax(row=>row.passiveRead?.pending),
+   },
+   rawPoolAdmission:{
+    ...summarize(row=>row.rawPoolWork?.queueWait),
+    afterEntry:summarize(row=>row.rawPoolWork?.afterAdmission),
+    observedMaxPending:observedMax(row=>row.rawPoolWork?.pending),
+   },
    preAdmissionExits:{
     scope:'Work that ended before the instrumentation recorded entry. Includes cancellation and setup failures as well as admission refusals. Counts are attempts, and one request can enter multiple gates.',
     transaction:sumPreAdmissionExits('transaction'),
