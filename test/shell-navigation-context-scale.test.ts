@@ -1,6 +1,7 @@
+import { performance } from 'node:perf_hooks';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
-import { withIndependentTransactions, type SessionContext } from '../db/client';
+import { client, withIndependentTransactions, withSharedReadSnapshot, type SessionContext } from '../db/client';
 import { lifecycleModuleNavigation } from '../app/lifecycle/workflow-availability';
 import { onboardingNavigation } from '../packs/lifecycle/service';
 import { offboardingPostingAccess } from '../packs/personnel-postings/service';
@@ -94,3 +95,62 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
     hooks.__aihrPerfSharedRead = oldHook;
   }
 });
+
+
+it('compares split and combined signed-in reads on the same host', async () => {
+  browser.companyScope = undefined;
+  // All four roles in this fixture have Lifecycle enabled. Reproduce the two
+  // original startup phases, holding the owners and fixture constant.
+  const readSplit = async (session: SessionContext) => {
+    const shell = await withSharedReadSnapshot(session, async () => {
+      const context = await readShellNavigationContext(session);
+      const features = await readShellFeatureNavigation(session, context[0].scopeIds);
+      return { context, features };
+    });
+    const [onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess] = await Promise.all([
+      onboardingNavigation(session),
+      lifecycleModuleNavigation(session),
+      offboardingPostingAccess(session).catch(() => false),
+    ]);
+    return { ...shell, lifecycleEnabled: true, onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess };
+  };
+  const readers = { split: readSplit, combined: readSignedInShellNavigation };
+  const roles = [group.personas.group, group.personas.single, group.personas.multi, employee];
+  const results = [];
+  for (const size of [1, 4, 12]) {
+    const sessions = Array.from({ length: size }, (_, index) => roles[index % roles.length]);
+    const run = (design: keyof typeof readers) => Promise.all(sessions.map(session => readers[design](session)));
+    expect(await run('combined')).toEqual(await run('split'));
+    const samples = { split: [] as number[], combined: [] as number[] };
+    const statements = { split: [] as number[], combined: [] as number[] };
+    for (let pair = 0; pair < 8; pair++) {
+      let split, combined;
+      for (const design of pair % 2 ? ['combined', 'split'] as const : ['split', 'combined'] as const) {
+        const prior = client.options.debug;
+        let count = 0;
+        client.options.debug = () => { count++; };
+        const started = performance.now();
+        try {
+          const value = await run(design);
+          samples[design].push(performance.now() - started);
+          statements[design].push(count);
+          if (design === 'split') split = value;
+          else combined = value;
+        } finally {
+          client.options.debug = prior;
+        }
+      }
+      expect(combined).toEqual(split);
+    }
+    const median = (values: number[]) => {
+      const ordered = [...values].sort((a, b) => a - b);
+      return Math.round((ordered[3] + ordered[4]) * 50) / 100;
+    };
+    results.push({
+      concurrentRequests: size, pairs: samples.split.length,
+      splitMedianMs: median(samples.split), combinedMedianMs: median(samples.combined),
+      splitMedianStatements: median(statements.split), combinedMedianStatements: median(statements.combined),
+    });
+  }
+  console.info('SHELL_STARTUP_SAME_RUNNER ' + JSON.stringify(results));
+}, 120000);
