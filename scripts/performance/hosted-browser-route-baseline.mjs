@@ -67,11 +67,15 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
+const reusedActionPin=env.AIHR_BROWSER_REUSED_ACTION_BUILD==='true'
+ ? JSON.parse(readFileSync(new URL('./browser-action-builds.json',import.meta.url),'utf8'))[sha]
+ : undefined;
+assert(env.AIHR_BROWSER_REUSED_ACTION_BUILD!=='true'||reusedActionPin,'No archive pinned for this action build');
 const report={kind:actionLane?'FICTIONAL_SCRIPTED_ACTIONS':surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(actionLane&&{actionLane}),
- ...(env.AIHR_BROWSER_REUSED_ACTION_BUILD==='true'&&{
-  verifiedBuildArtifact:{runId:44927404845,artifactId:14716484117,sourceSha:sha},
+ ...(reusedActionPin&&{
+  verifiedBuildArtifact:{runId:reusedActionPin.runId,artifactId:reusedActionPin.artifactId,sourceSha:sha},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
