@@ -62,6 +62,15 @@ for lock in pnpm-lock.yaml package.json; do cmp -s "$source/$lock" "$live/$lock"
 sudo -n -l /usr/bin/systemctl restart aihr >/dev/null
 mkdir "$stage/previous-source"
 source_rsync --link-dest="$live" "$live/" "$stage/previous-source/"
+# The retained applied SQL is authenticated as a single-link original. Keep
+# independent copies in the rollback snapshot even when other files share inodes.
+for file in "$stage/previous-source/.github/ci/historical-migrations/"*.sql; do
+  [[ -f "$file" ]] || continue
+  copy=$(mktemp "$(dirname "$file")/.backup.XXXXXX")
+  cp --preserve=mode,timestamps -- "$file" "$copy"
+  cmp -s -- "$file" "$copy"
+  mv -fT -- "$copy" "$file"
+done
 
 rollback() {
   local code=$?
