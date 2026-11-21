@@ -78,23 +78,32 @@ try{
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
  if(env.PERF_LIFECYCLE_RECORDS==='true'){
-  const {createCycle,openCycle}=await source('packs/performance/service.ts');
+  const {createCycle,openCycle,previewEligibleCount}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
   setStage('performance-cycle-create');
   const {cycleId}=await createCycle(ctx,{
    companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',assessmentWorkflow:true,
   });
+  setStage('performance-cycle-participants');
+  const {count}=await previewEligibleCount(ctx,{companyId:company.companyId,assessmentWorkflow:true});
+  assert(count>0,'Expected eligible fictional Performance participants');
   setStage('performance-cycle-open');
   const opened=await openCycle(ctx,{cycleId});
-  assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
+  assert.equal(opened.reviewsSpawned,count,'Expected the populated OneHR roster to match the native preview');
   fixture.performanceRecords={cycleId,name};
  }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
  setStage('complete');
 }catch(error){
- const code=error?.code;
- const category=typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code)?code:'unclassified';
+ const knownKinds=new Set(['DrizzleQueryError','PostgresError','PerfError','ZodError','TypeError']);
+ let category='unclassified';
+ for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
+  const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
+  if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code)){category=code;break;}
+  if(knownKinds.has(current.name))category=current.name;
+  current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
+ }
  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
  throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

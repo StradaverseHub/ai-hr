@@ -1553,14 +1553,16 @@ try{
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
-    'lifecycle-asset','lifecycle-asset-request','performance-cycle-create','performance-cycle-open','complete'].includes(stage)){
+    'lifecycle-asset','lifecycle-asset-request','performance-cycle-create','performance-cycle-participants','performance-cycle-open','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
   }
   const failurePath=join(privateDir,'record-fixture-failure');
   if(existsSync(failurePath)){
    const failure=readFileSync(failurePath,'utf8');
-   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|unclassified)$/.test(failure))report.recordFixtureFailure=failure;
+   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|DrizzleQueryError|PostgresError|PerfError|ZodError|TypeError|unclassified)$/.test(failure)){
+    report.recordFixtureFailure=failure;
+   }
   }
   save();
  }
