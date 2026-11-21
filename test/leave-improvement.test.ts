@@ -6,7 +6,7 @@ import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
-import { runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
+import { runProtectedExplanationImprovement, runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
 import type { ProtectedAnswerFixture } from '../scripts/experiments/protected-answer-comparison';
 import { guidanceContractDigest, guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
@@ -28,6 +28,35 @@ it('separates source-resolved findings from genuinely competing explanations', a
     originalCasesWithUniqueDomainExplanation: 7, cases: 6,
     arms: { withoutFocus: { correct: 3, rejected: 0 }, withFocus: { correct: 3, rejected: 0 } },
     budget: { calls: 12, inputTokens: 12, outputTokens: 12 },
+  });
+});
+
+it('compares one model-proposed explanation revision on an unseen development module', async () => {
+  let proposed = false;
+  const report = await runProtectedExplanationImprovement(async ({ mode, prompt }) => {
+    const request = JSON.parse(prompt);
+    let reply;
+    if (mode === 'revise') {
+      expect(request.development).toEqual({ cases: 4, correct: 2, rejected: 0 });
+      expect(prompt).not.toMatch(/toil|attendance|notifications|expired|payslip|expected/);
+      proposed = true;
+      reply = { change: 'include_source_focus' };
+    } else {
+      expect(request.module === 'toil').toBe(proposed);
+      expect(prompt).not.toContain('expected');
+      const choice = request.focus?.includes('expired')
+        ? request.choices.find((item: string) => item.endsWith('credit_expired_not_available'))
+        : request.focus
+          ? request.choices.find((item: string) => item.endsWith('credit_pay_conversion_not_payslip'))
+          : request.choices[0];
+      reply = { choice };
+    }
+    return { text: JSON.stringify(reply), inputTokens: 2, outputTokens: 1 };
+  });
+  expect(report).toMatchObject({
+    validationCases: 2, baseline: { correct: 1 }, candidate: { correct: 2, rejected: 0 },
+    revision: 'include_source_focus', regressions: 0, advanced: true, releaseAuthorized: false,
+    budget: { calls: 9, inputTokens: 18, outputTokens: 9 },
   });
 });
 

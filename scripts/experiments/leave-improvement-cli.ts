@@ -8,7 +8,7 @@ import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
 import { PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout } from './protected-work-summary-holdout';
-import { runProtectedExplanationPriority } from './protected-explanation-priority';
+import { explanationRevisionSchema, runProtectedExplanationImprovement, runProtectedExplanationPriority } from './protected-explanation-priority';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
 import { localOutputPath, REPO_ROOT, writeLocalOutput } from '../teras/output';
 
@@ -27,6 +27,7 @@ async function main() {
     '--protected-work-summary': runProtectedWorkSummaryComparison,
     '--improve-protected-work-summary': runProtectedWorkSummaryImprovement,
     '--protected-explanation-priority': runProtectedExplanationPriority,
+    '--improve-protected-explanation': runProtectedExplanationImprovement,
   };
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
@@ -34,14 +35,15 @@ async function main() {
   const useCatalogueFormat = holdoutMode || flags.includes('--catalogue-schema');
   const useStaticSchema = flags.includes('--schema');
   const useIndexedFormat = flags.includes('--indexed-catalogue');
-  const explanationPriority = benchmark === '--protected-explanation-priority';
+  const improveExplanation = benchmark === '--improve-protected-explanation';
+  const explanationPriority = benchmark === '--protected-explanation-priority' || improveExplanation;
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
       flags.some(flag => !['--schema', '--catalogue-schema', '--indexed-catalogue'].includes(flag) && !isBenchmark(flag)) ||
       new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && !holdoutMode && (!benchmark || useStaticSchema)) ||
       (explanationPriority && (useStaticSchema || useCatalogueFormat)) ||
       (useIndexedFormat && (benchmark !== '--protected-work-summary' || useStaticSchema || useCatalogueFormat)))
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary | --protected-explanation-priority]');
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary | --protected-explanation-priority | --improve-protected-explanation]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   const target = localOutputPath(outfile);
   let holdout: { cases: Buffer; developmentReport: Buffer } | undefined;
@@ -74,7 +76,7 @@ async function main() {
   const generate: PilotModel = async ({ mode, system, prompt }) => {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
     const revisionFormat = benchmark === '--improve-protected-work-summary' ? protectedGuidanceProposalSchema : 'json';
-    const format = explanationPriority ? {
+    const format = mode === 'revise' && improveExplanation ? explanationRevisionSchema : explanationPriority ? {
       type: 'object', additionalProperties: false, required: ['choice'],
       properties: { choice: { type: 'string', enum: JSON.parse(prompt).choices } },
     } : mode !== 'answer' ? revisionFormat : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
