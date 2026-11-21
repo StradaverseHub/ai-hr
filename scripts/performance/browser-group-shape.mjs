@@ -17,6 +17,9 @@ export async function seedBrowserGroupShape(owner,fixture){
  const tenantId=group.tenantId;
 
  const {companies,counts}=await owner.begin(async tx=>{
+  // The mixed fixture has published organisation data. Its assignment guard
+  // requires the same transaction-local tenant binding as a normal write.
+  await tx`select set_config('app.tenant_id',${tenantId},true)`;
   const companies=await tx`
    insert into company (tenant_id,legal_name,country,parent_company_id)
    select ${tenantId}::uuid,${companyPrefix} || lpad(n::text,2,'0'),'MY',${group.companyId}::uuid
