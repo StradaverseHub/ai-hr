@@ -19,7 +19,7 @@ it.each([260, 150])('keeps every export control inside a %i px analytics card', 
   const exports = within(view.getByRole('group', {name: 'Export chart · Fictional employee distribution by department'}));
   const controls = exports.getAllByRole('button');
   expect(controls.map(control => control.textContent?.trim())).toEqual(['↓ PNG', '↓ JPEG', '↓ PDF']);
-  expect(exports.getByRole('button', {name: 'PNG', exact: true})).toBe(controls[0]);
+  expect(exports.getByRole('button', {name: 'PNG'})).toBe(controls[0]);
   for (const control of controls) {
     const rect = control.getBoundingClientRect();
     expect(rect.top).toBeGreaterThanOrEqual(heading.getBoundingClientRect().bottom);

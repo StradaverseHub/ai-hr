@@ -267,7 +267,7 @@ describe('Generate Entitlement stays all-or-nothing on the job (staged batches, 
    await tickUntil(job.id,async()=>await appliedSteps(job.id,'open')>=3);
    expect(await runJob(job.id)).toBe('failed');
   }finally{await dropFailure('test_fail_open');}
-  expect((await readLeaveCohortJob(adminCtx(b),job.id))!.error).toMatch(/refused by a safeguard/);
+  expect((await readLeaveCohortJob(adminCtx(b),job.id))!.error).toMatch(/A system rule prevented this change\..*DB-R-[0-9A-F]{6}/);
   expect((await snapshot()).state).toEqual(pristine);
   const [{n}]=await owner.client<{n:number}[]>`select count(*)::int as n from leave_ledger where tenant_id=${b.tenantId}::uuid and stage_id is not null`;
   expect(n).toBe(0);
