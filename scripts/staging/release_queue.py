@@ -21,7 +21,7 @@ def command(args, cwd=None):
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('action', choices=['status', 'submit', 'prepare', 'claim', 'block', 'unblock', 'cancel', 'requeue', 'phase', 'finish', 'abort', 'recover'])
+    p.add_argument('action', choices=['status', 'observe', 'submit', 'prepare', 'claim', 'block', 'unblock', 'cancel', 'requeue', 'phase', 'finish', 'abort', 'recover'])
     p.add_argument('--request', type=Path, help='Private JSON request; see docs/STAGING-RELEASE-QUEUE.md')
     p.add_argument('--actor', required=True, help='Stable session/operator identity; model name is advisory')
     p.add_argument('--ssh-config', type=Path, default=os.environ.get('AIHR_SSH_CONFIG'))

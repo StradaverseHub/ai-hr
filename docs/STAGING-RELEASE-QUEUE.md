@@ -46,6 +46,10 @@ Commissioned server entry points additionally guard deployment, state mutation a
 The publisher holds the same guard during snapshots and runtime capture. The application directories,
 service and private production installation are not alternative queue targets.
 
+## Migration-free cutover
+
+After the ingress bridge and observer are commissioned on shared staging, ordinary migration-free tickets enter the cutover lane in the existing queue. [The cutover operator flow](../deploy/cutover/README.md#shared-staging) prepares and warms the exact build before claiming the lease. The queue verifies arrival through ingress, and handback requires the same build on the reconciled canonical backend. This keeps the existing upgrade and capture paths available. Releases with migrations or changed runtime dependencies use the upgrade path.
+
 ## Session protocol
 
 Read `CLAUDE.md`, the repository/environment policy and production release handoff first. Use Actions
