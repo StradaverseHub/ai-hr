@@ -61,9 +61,22 @@ describe('AI inventory in six rendered locales',()=>{
   expect(details.open).toBe(false);
   expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('0 blocked attempts');
   expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
+  expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
+  expect(within(overview).getByRole('link',{name:'Candidate reviews'})).toHaveAttribute('href','/control-tower/agents/assistant#ai-reviews-heading');
   expect(within(overview).getByRole('link',{name:'Run history'})).toHaveAttribute('href','/control-tower/agents/runs');
   fireEvent.click(within(details).getByText('Worker details and settings'));
   expect(details.open).toBe(true);
+ });
+
+ it('reveals a bookmarked worker section on entry',async()=>{
+  const location=window.location.href;
+  try {
+   window.history.replaceState(null,'','#ai-inventory');
+   const view=await renderPage('en','features');
+   expect(view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')?.open).toBe(true);
+  } finally {
+   window.history.replaceState(null,'',location);
+  }
  });
 
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: group administrator sees every component group, the pause control, alerts and the data register',async locale=>{

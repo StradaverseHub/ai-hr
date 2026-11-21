@@ -14,7 +14,9 @@
     "qualityHelp": "Review recorded corrections, outcomes and proposed changes.",
     "openQuality": "Open AI quality",
     "details": "Worker details and settings",
-    "featureActivity": "{count, plural, =0 {No admitted model requests in 30 days} one {# admitted model request in 30 days} other {# admitted model requests in 30 days}}"
+    "featureActivity": "{count, plural, =0 {No admitted model requests in 30 days} one {# admitted model request in 30 days} other {# admitted model requests in 30 days}}",
+    "featureIssues": "{failed} failed · {blocked} blocked",
+    "openReviews": "Candidate reviews"
   },
   "ms": {
     "title": "Ringkasan aktiviti",
@@ -31,7 +33,9 @@
     "qualityHelp": "Semak pembetulan, hasil dan cadangan perubahan yang direkodkan.",
     "openQuality": "Buka kualiti AI",
     "details": "Butiran dan tetapan pekerja",
-    "featureActivity": "{count} permintaan model dibenarkan dalam 30 hari"
+    "featureActivity": "{count} permintaan model dibenarkan dalam 30 hari",
+    "featureIssues": "{failed} gagal · {blocked} disekat",
+    "openReviews": "Semakan calon"
   },
   "zh": {
     "title": "活动概览",
@@ -48,7 +52,9 @@
     "qualityHelp": "查看已记录的更正、结果和改进建议。",
     "openQuality": "打开 AI 质量",
     "details": "工作程序详情和设置",
-    "featureActivity": "30 天内有 {count} 个获准的模型请求"
+    "featureActivity": "30 天内有 {count} 个获准的模型请求",
+    "featureIssues": "{failed} 次失败 · {blocked} 次被拦截",
+    "openReviews": "候选方案审核"
   },
   "vi": {
     "title": "Tổng quan hoạt động",
@@ -65,7 +71,9 @@
     "qualityHelp": "Xem các chỉnh sửa, kết quả và đề xuất thay đổi đã ghi nhận.",
     "openQuality": "Mở chất lượng AI",
     "details": "Chi tiết và cài đặt tác vụ",
-    "featureActivity": "{count} yêu cầu mô hình được phép trong 30 ngày"
+    "featureActivity": "{count} yêu cầu mô hình được phép trong 30 ngày",
+    "featureIssues": "{failed} thất bại · {blocked} bị chặn",
+    "openReviews": "Đánh giá phương án"
   },
   "th": {
     "title": "ภาพรวมกิจกรรม",
@@ -82,7 +90,9 @@
     "qualityHelp": "ตรวจสอบรายการแก้ไข ผลลัพธ์ และข้อเสนอการเปลี่ยนแปลงที่บันทึกไว้",
     "openQuality": "เปิดคุณภาพ AI",
     "details": "รายละเอียดและการตั้งค่างาน",
-    "featureActivity": "คำขอโมเดลที่ได้รับอนุญาต {count} รายการใน 30 วัน"
+    "featureActivity": "คำขอโมเดลที่ได้รับอนุญาต {count} รายการใน 30 วัน",
+    "featureIssues": "ล้มเหลว {failed} รายการ · ถูกบล็อก {blocked} รายการ",
+    "openReviews": "ตรวจสอบตัวเลือก"
   },
   "ta": {
     "title": "செயல்பாட்டுச் சுருக்கம்",
@@ -99,6 +109,8 @@
     "qualityHelp": "பதிவான திருத்தங்கள், முடிவுகள், பரிந்துரைக்கப்பட்ட மாற்றங்களைப் பார்க்கவும்.",
     "openQuality": "AI தரத்தைத் திற",
     "details": "பணி விவரங்களும் அமைப்புகளும்",
-    "featureActivity": "30 நாட்களில் அனுமதிக்கப்பட்ட மாதிரி கோரிக்கைகள்: {count}"
+    "featureActivity": "30 நாட்களில் அனுமதிக்கப்பட்ட மாதிரி கோரிக்கைகள்: {count}",
+    "featureIssues": "{failed} தோல்வி · {blocked} தடுக்கப்பட்டன",
+    "openReviews": "மேம்பாட்டுப் பரிந்துரைகளை மதிப்பாய்வு செய்"
   }
 }
