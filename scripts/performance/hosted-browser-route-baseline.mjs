@@ -42,7 +42,10 @@ const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
-assert(!groupScale||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
+const combinedGroupCandidate='5175d387846c18fcc83ef96091cb1b4e1b538241';
+const freshCombinedGroup=env.AIHR_CI_HEAD===combinedGroupCandidate&&groupScale&&establishedAttendance
+ &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
+assert(!groupScale||(mixedLoad&&(env.AIHR_BROWSER_REUSED_BUILD==='true'||freshCombinedGroup)&&!fixtureOnly));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
 const webDatabaseConnections=8;
@@ -570,7 +573,7 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
 
 async function withMixedContractNavigationComparison(work){
  if(shellPermissionVariant==='none')return work();
- assert.equal(sha,'cddd7cebf757d0392ed06bead78300732fd54256');
+ assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||(freshCombinedGroup&&sha===combinedGroupCandidate));
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));

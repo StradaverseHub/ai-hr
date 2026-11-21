@@ -177,20 +177,27 @@ jobs:
               *) exit 2 ;;
             esac
           fi
+          fresh_group_build=false
+          if [[ "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 && "$MIXED_GROUP_SCALE" == true &&
+                "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
+                "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
+                "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
+            fresh_group_build=true
+          fi
           case "$SHELL_PERMISSION_VARIANT" in
             none) ;;
             contract-control|contract-optimized)
-              [[ "$REUSE_BUILD" == true && "$BROWSER_MIXED_LOAD" == true && "$MIXED_GROUP_SCALE" == true && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool ]] || exit 2
-              [[ "$EXPECTED_SHA" == cddd7cebf757d0392ed06bead78300732fd54256 ]] || exit 2
+              [[ ( "$REUSE_BUILD" == true || "$fresh_group_build" == true ) && "$BROWSER_MIXED_LOAD" == true && "$MIXED_GROUP_SCALE" == true && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool ]] || exit 2
+              [[ "$EXPECTED_SHA" == cddd7cebf757d0392ed06bead78300732fd54256 || "$fresh_group_build" == true ]] || exit 2
               ;;
             *) exit 2 ;;
           esac
           case "$MIXED_DATABASE_TOPOLOGY" in
             direct) ;;
-            transaction-pool) [[ "$REUSE_BUILD" == true ]] || exit 2 ;;
+            transaction-pool) [[ "$REUSE_BUILD" == true || "$fresh_group_build" == true ]] || exit 2 ;;
             *) exit 2 ;;
           esac
-          if [[ "$MIXED_GROUP_SCALE" == true && "$REUSE_BUILD" != true ]]; then
+          if [[ "$MIXED_GROUP_SCALE" == true && "$REUSE_BUILD" != true && "$fresh_group_build" != true ]]; then
             exit 2
           fi
           node .github/ci/focused-checks.mjs selection
