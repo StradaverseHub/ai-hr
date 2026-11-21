@@ -62,7 +62,7 @@ export function ChartCard({
                 onClick={() => onExport(fmt)}
                 className="rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
               >
-                ↓ {label}
+                <span aria-hidden="true">↓ </span>{label}
               </ActionButton>
             ))}
           </div>
