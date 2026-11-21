@@ -697,6 +697,10 @@ async function measureMixedLoad(command,fixture){
    if(loadedPayroll)report.mixedLoadedPayrollJobs=loadedPayroll;
    const payrollUi=projectPayrollUiPreflight(data.mixedWorkflows?.payrollUiPreflight);
    if(payrollUi)report.mixedPayrollUiPreflight=payrollUi;
+   const receiptTransport=data.mixedWorkflows?.payrollUiPreflightTransport;
+   if(['unknown','receipt','fallback'].includes(receiptTransport?.channel)&&[200,303].includes(receiptTransport.status)){
+    report.mixedPayrollUiPreflightTransport={channel:receiptTransport.channel,status:receiptTransport.status};
+   }
    const payrollTimeouts=projectTimedOutPayrollResponses(data.requestErrors,data.measurementWindow?.startPerformanceMs,
     new Map(fixture.users.filter(user=>user.role==='groupHR').map(user=>[user.index,user.tenant])));
    if(payrollTimeouts.length)report.mixedPayrollTimeouts=payrollTimeouts;
