@@ -754,12 +754,13 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
 
  const matches=(url,next)=>url.origin===origin&&url.pathname===path&&url.searchParams.get('companyId')===own.companyId
   &&url.searchParams.get('query')===query&&url.searchParams.get('status')===next;
- const empty=table.getByText('No applications match these filters.',{exact:true});
+ const empty=main.getByText('No applications match these filters.',{exact:true});
  started=performance.now();
  await Promise.all([
   page.waitForURL(url=>matches(url,'pending'),{waitUntil:'commit',timeout:15000}),
   main.getByRole('button',{name:'Apply filters',exact:true}).click({timeout:15000}),
  ]);
+ mark('query-response-committed',started);
  await empty.waitFor({state:'visible',timeout:15000});
  mark('query-results-ready',started);
 
@@ -769,6 +770,7 @@ async function measureAttendanceHistory({page,user,fixture,report,save}){
   page.waitForURL(url=>matches(url,'approved'),{waitUntil:'commit',timeout:15000}),
   approved.click({timeout:15000}),
  ]);
+ mark('approved-response-committed',started);
  await approved.and(status.locator('[aria-current="page"]')).waitFor({state:'visible',timeout:15000});
  await empty.waitFor({state:'visible',timeout:15000});
  mark('approved-with-filters-ready',started);
@@ -2380,7 +2382,9 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
- await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+ // The isolated Rewards probe uses the whole-system fixture for its approved plan.
+ const seedJoiners=surfaceProbe!=='rewards';
+ if(seedJoiners)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
@@ -2400,8 +2404,10 @@ try{
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
- report.fixture.joinersSeeded=true;
+ if(seedJoiners){
+  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
+  report.fixture.joinersSeeded=true;
+ }
  if(surfaceProbe==='rewards'){
   const rewards=fixture.tenants[0].rewardDraft;
   assert(rewards?.planVersionId&&Number.isInteger(rewards.year),'Missing fictional approved Rewards plan');
