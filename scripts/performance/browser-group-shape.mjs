@@ -45,7 +45,7 @@ export async function seedBrowserGroupShape(owner,fixture){
     returning id,full_name
    ), employments as (
     insert into employment (tenant_id,person_id,company_id,employee_code,hired_on)
-    select ${tenantId}::uuid,people.id,workforce.company_id,'PERF-SCALE-' || lpad(n::text,3,'0'),date '2022-01-01'
+    select ${tenantId}::uuid,people.id,workforce.company_id,'PERFZ-SCALE-' || lpad(n::text,3,'0'),date '2022-01-01'
     from workforce join people on people.id=workforce.person_id
     returning id,company_id,person_id
    ), assignments as (
