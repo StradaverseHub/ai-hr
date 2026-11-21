@@ -1209,6 +1209,8 @@ async function measureMobileTaskTrace(fixture){
 }
 
 const censusPanelTitles={
+ '/admin/users/access':'Security & permissions',
+ '/assistant/rewards/calendar':'Edit Rewards deadlines',
  '/assistant/rewards/cancel':'Cancel a Rewards review',
  '/assistant/rewards/return':'Return annual Rewards review',
 };
@@ -1239,11 +1241,17 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
     const globalFault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/});
     const rewardsFault=page.getByRole('alert').getByRole('heading',{name:'Reward review unavailable',exact:true});
     const fault=globalFault.or(rewardsFault).first();
-    await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
+    const main=page.locator('main:visible');
+    const unavailable=path==='/assistant/rewards/calendar'
+     ?main.locator('[data-read-unavailable]:visible').or(main.getByRole('alert').filter({
+      hasText:/^Unavailable\. Reopen the native Rewards screen\.$/,
+     }))
+     :main.locator('[data-read-unavailable]:visible');
+    await heading.or(fault).or(unavailable).first().waitFor({state:'visible',timeout:remaining()});
     if(!redirected()){
-     row.headingMs=Math.round(performance.now()-start);
+     if(await heading.isVisible())row.headingMs=Math.round(performance.now()-start);
      row.outcome=await fault.isVisible()?'render-error':
-      await page.locator('main [data-read-unavailable]:visible').count()?'read-unavailable':'heading-visible';
+      await unavailable.count()?'read-unavailable':'heading-visible';
      if(path==='/mobile-preview'&&row.outcome==='heading-visible'){
       const builder=page.locator('[data-mobile-builder]');
       await builder.getByRole('textbox',{name:'App brand name',exact:true}).waitFor({state:'visible',timeout:remaining()});
