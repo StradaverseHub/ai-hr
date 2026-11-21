@@ -20884,6 +20884,8 @@
           "exhausted": "Percubaan mencapai had soalan.",
           "rolledBack": "Percubaan telah ditarik balik.",
           "start": "Mulakan percubaan baki cuti",
+          "outcomes": "Aktiviti percubaan saya: {retainedExchanges} interaksi disimpan · {modelFreeAnswers} jawapan tanpa model · {modelResponses} interaksi dengan respons model.",
+          "retention": "Bilangan ini boleh berkurang apabila sejarah atau metadata percubaan dipadam.",
           "usage": "{used} daripada {maximum} soalan percubaan diterima"
         }
       },

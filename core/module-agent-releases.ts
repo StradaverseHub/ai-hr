@@ -697,6 +697,7 @@ async function localLeaveTrialReviewTx(tx:Tx,ctx:SessionContext,providerFingerpr
  const rows=await tx.execute<{
   id:string; version:number; authorId:string; candidateDigest:string; baselineDigest:string; sourceDigest:string;
   promotionId:string|null; receipt:string|null; used:number|null; maximum:number|null; expired:boolean; retired:boolean;
+  retainedExchanges:number|null; modelFreeAnswers:number|null; modelResponses:number|null;
  }>(sql`with candidates as (
    select id,tenant_id,version,author_user_id,candidate_digest,baseline_digest,source_digest,created_at
    from public.ai_agent_candidate where tenant_id=${ctx.tenantId}::uuid and kind='assistant_answer_prompt_v1'
@@ -706,13 +707,28 @@ async function localLeaveTrialReviewTx(tx:Tx,ctx:SessionContext,providerFingerpr
   select c.id,c.version,c.author_user_id as "authorId",c.candidate_digest as "candidateDigest",
     c.baseline_digest as "baselineDigest",c.source_digest as "sourceDigest",
     p.id as "promotionId",p.receipt,p.used_jobs as used,p.max_jobs as maximum,
+    observed."retainedExchanges",observed."modelFreeAnswers",observed."modelResponses",
     coalesce(p.expires_at<=statement_timestamp(),false) as expired,
     exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=c.tenant_id) as retired
    from candidates c
    left join lateral (
-    select p.id,p.receipt,p.used_jobs,p.max_jobs,p.expires_at from public.ai_agent_promotion p
-    where p.tenant_id=c.tenant_id and p.candidate_id=c.id order by p.created_at desc,p.id desc limit 1
+    select p.id,p.receipt,p.used_jobs,p.max_jobs,p.expires_at,p.created_at,p.owner_user_id
+    from public.ai_agent_promotion p where p.tenant_id=c.tenant_id and p.candidate_id=c.id
+    order by p.created_at desc,p.id desc limit 1
    ) p on true
+   left join lateral (
+    select count(*)::int as "retainedExchanges",
+      count(*) filter(where e.turn_count=0 and e.provider is null and e.model is null
+       and e.input_tokens=0 and e.output_tokens=0 and e.cached_input_tokens=0
+       and e.stop='end' and e.error is null and e.answer is not null and e.disclosure_receipt is not null)::int as "modelFreeAnswers",
+      count(*) filter(where e.turn_count>0 and e.provider is not null)::int as "modelResponses"
+    from public.assistant_exchange e join public.ai_assistant_answer_strategy_use u
+     on u.exchange_id=e.id and u.tenant_id=e.tenant_id and u.user_id=e.app_user_id
+    where p.owner_user_id=app.current_user_id() and e.tenant_id=c.tenant_id and e.app_user_id=p.owner_user_id
+     and e.asked_at>=p.created_at and e.asked_at<=p.expires_at and e.content_retired_at is null
+     and u.promotion_id=p.id and u.candidate_digest=c.candidate_digest
+     and u.state='completed' and u.expires_at>statement_timestamp()
+   ) observed on p.owner_user_id=app.current_user_id()
    order by c.created_at desc,c.id desc`);
  return rows.map(row=>{
   const current=row.sourceDigest===MODULE_AGENT_SOURCE_DIGEST&&row.baselineDigest===conversationBaselineDigest;
@@ -734,6 +750,9 @@ async function localLeaveTrialReviewTx(tx:Tx,ctx:SessionContext,providerFingerpr
   }else state=evidence.approverId===ctx.userId&&row.authorId!==ctx.userId?'ready':'needsApprover';
   const promotion=row.promotionId&&row.used!==null&&row.maximum!==null?{
    id:row.promotionId, used:row.used, maximum:row.maximum, retired:row.retired,
+   ownOutcomes:row.retainedExchanges===null||row.modelFreeAnswers===null||row.modelResponses===null?null:{
+    retainedExchanges:row.retainedExchanges,modelFreeAnswers:row.modelFreeAnswers,modelResponses:row.modelResponses,
+   },
   }:null;
   const evaluationBinding=state==='needsEvidence'&&row.authorId===ctx.userId?{
    tenantId:ctx.tenantId,authorId:row.authorId,candidateDigest:row.candidateDigest,

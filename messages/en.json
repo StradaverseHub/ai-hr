@@ -20884,6 +20884,8 @@
           "exhausted": "Trial reached its question limit.",
           "rolledBack": "Trial rolled back.",
           "start": "Start leave balance trial",
+          "outcomes": "My trial activity: {retainedExchanges} retained exchanges · {modelFreeAnswers} answers without a model · {modelResponses} exchanges with a model response.",
+          "retention": "These counts can decrease after history or trial metadata is cleared.",
           "usage": "{used} of {maximum} trial questions admitted"
         }
       },

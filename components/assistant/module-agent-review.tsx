@@ -105,6 +105,10 @@ async function ConversationCandidateReview({view}:{view:View}){
      <span>{t('leaveTrial.usage',{used:row.promotion.used,maximum:row.promotion.maximum})}</span>
      {!row.promotion.retired&&<ActionButton type="submit" className="min-h-11 px-3 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{shared('rollback')}</ActionButton>}
     </form>}
+    {row.promotion?.ownOutcomes&&<div className="space-y-1 text-xs text-muted-foreground">
+     <p>{t('leaveTrial.outcomes',row.promotion.ownOutcomes)}</p>
+     <p>{t('leaveTrial.retention')}</p>
+    </div>}
    </li>)}</ul>
   </section>}
   <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('erase')} className="min-h-11 text-sm underline"/>

@@ -23,7 +23,7 @@ import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '..
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
-import {agentReviewWorkspaceTx,createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
+import {agentReviewWorkspaceTx,createConversationAgentCandidate,eraseOwnConversationStrategyMetadata,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
 import {leaveEvaluationCaseSetDigest,signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
 import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../lib/ai/assistant-conversation-candidate';
@@ -111,7 +111,7 @@ describe('actual Mine flags bind current provider input and historical source di
    const trial=(actor:SessionContext)=>review(actor).then(view=>view?.localLeaveTrials.find(row=>row.id===created.candidateId));
    expect(await review(employee)).toBeNull();
    expect((await review(ctx))?.conversationCandidates.map(row=>row.id)).toEqual([old.candidateId]);
-   const request={candidateId:created.candidateId,maxJobs:3,hours:1};
+   const request={candidateId:created.candidateId,maxJobs:4,hours:1};
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
    expect(await trial(promoter)).toEqual({id:created.candidateId,version:2,state:'needsEvidence',promotion:null,evaluationBinding:null});
@@ -150,7 +150,7 @@ describe('actual Mine flags bind current provider input and historical source di
    await expect(promoteConversationAgentCandidate(ctx,request)).rejects.toThrow();
    await expect(promoteConversationAgentCandidate(reviewer,request)).rejects.toThrow();
    const promotion=await promoteConversationAgentCandidate(promoter,request);
-   expect(promotion).toMatchObject({coverage:'paired-offline-leave-routing',maxJobs:3});
+   expect(promotion).toMatchObject({coverage:'paired-offline-leave-routing',maxJobs:4});
    expect(Date.parse(promotion.expiresAt)).toBe(Date.parse(expiresAt));
 
    const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
@@ -165,11 +165,27 @@ describe('actual Mine flags bind current provider input and historical source di
     from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${authorId}::uuid`);
    expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
    expect(await trial(promoter)).toMatchObject({state:'windowOpen',
-    promotion:{id:promotion.promotionId,used:1,maximum:3,retired:false}});
+    promotion:{id:promotion.promotionId,used:1,maximum:4,retired:false,ownOutcomes:null}});
    expect((await review(promoter))?.conversationPromotions).toEqual([]);
+   expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:1,modelFreeAnswers:1,modelResponses:0});
    const history=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
    expect(history.history[0].grounded?.mode).toBe('grounded');
    expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
+
+   transport.mockImplementationOnce(async(_config,args)=>{
+    const turn=args.turns[0];
+    if(turn?.role!=='user')throw Error('Expected a protected work catalogue.');
+    const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
+    if(local.operation!=='conversation')throw Error('Expected a protected conversation.');
+    for(const read of local.reads)for(const card of read.cards){
+     const fact=card.facts.find(candidate=>candidate.available);
+     if(fact)return {...response,text:JSON.stringify({version:1,mode:'answer',
+      blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]})};
+    }
+    throw Error('Expected a fictional capability fact.');
+   });
+   await expect(askAssistant(ctx,{question:'show assistant capabilities'})).resolves.toMatchObject({turns:1});
+   expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:2,modelFreeAnswers:1,modelResponses:1});
 
    // Capture a native capability before withdrawing the pinned evidence.
    const inflight=await withTenant(ctx,async tx=>{
@@ -180,10 +196,11 @@ describe('actual Mine flags bind current provider input and historical source di
    });
    expect(inflight.provenance.mode).toBe('promoted');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
-   expect(await trial(promoter)).toMatchObject({state:'withdrawn',promotion:{used:2,maximum:3}});
+   expect(await trial(promoter)).toMatchObject({state:'withdrawn',promotion:{used:3,maximum:4}});
    try{
     await expect(withTenant(ctx,tx=>recheckAssistantConversationStrategyTx(tx,ctx,inflight.capability))).rejects.toThrow();
    }finally{retireAssistantConversationStrategyCapability(inflight.capability);}
+   expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:2,modelFreeAnswers:1,modelResponses:1});
    transport.mockImplementation(async(_config,args)=>{
     const turn=args.turns[0];
     if(turn?.role!=='user')throw Error('Expected a protected fallback catalogue.');
@@ -196,12 +213,15 @@ describe('actual Mine flags bind current provider input and historical source di
    await expect(ask()).resolves.toMatchObject({turns:1});
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE',bundle);
    await rollbackAssistantPromotion(promoter,{promotionId:promotion.promotionId,reason:'human'});
-   expect(await trial(promoter)).toMatchObject({state:'rolledBack',promotion:{used:2,retired:true}});
+   expect(await trial(promoter)).toMatchObject({state:'rolledBack',promotion:{used:3,retired:true}});
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
    await expect(ask()).resolves.toMatchObject({turns:1});
-   expect(transport).toHaveBeenCalledTimes(2);
+   expect(transport).toHaveBeenCalledTimes(3);
+   expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:2,modelFreeAnswers:1,modelResponses:1});
+   await eraseOwnConversationStrategyMetadata(ctx);
+   expect((await trial(ctx))?.promotion?.ownOutcomes).toEqual({retainedExchanges:0,modelFreeAnswers:0,modelResponses:0});
    const [used]=await owner.db.execute(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);
-   expect(used).toEqual({used:2});
+   expect(used).toEqual({used:3});
   }finally{
    // Vitest can reuse this worker's database. Remove the local candidate and restore the exact original CHECK.
    await resetDb();

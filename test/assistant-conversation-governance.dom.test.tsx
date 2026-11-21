@@ -50,8 +50,8 @@ it.each(['en','ms','zh','ta','th','vi'])('%s keeps the independent trial outside
  input.localLeaveTrials=[
   {id:waitingId,version:3,state:'needsApprover',promotion:null,evaluationBinding:null},
   {id:readyId,version:4,state:'ready',promotion:null,evaluationBinding:null},
-  {id:'withdrawn',version:5,state:'withdrawn',promotion:{id:'withdrawn-promotion',used:1,maximum:5,retired:false},evaluationBinding:null},
-  {id:'retired',version:6,state:'rolledBack',promotion:{id:'retired-promotion',used:2,maximum:5,retired:true},evaluationBinding:null},
+  {id:'withdrawn',version:5,state:'withdrawn',promotion:{id:'withdrawn-promotion',used:1,maximum:5,retired:false,ownOutcomes:null},evaluationBinding:null},
+  {id:'retired',version:6,state:'rolledBack',promotion:{id:'retired-promotion',used:2,maximum:5,retired:true,ownOutcomes:{retainedExchanges:2,modelFreeAnswers:1,modelResponses:1}},evaluationBinding:null},
  ];
  render(await ModuleAgentReview({view:input}),{wrapper:intl});
  const conversation=within(screen.getByRole('region',{name:copy.title}));
@@ -61,6 +61,8 @@ it.each(['en','ms','zh','ta','th','vi'])('%s keeps the independent trial outside
  expect(trial.getByText(copy.leaveTrial.needsApprover)).toBeTruthy();
  expect(trial.getByText(copy.leaveTrial.withdrawn)).toBeTruthy();
  expect(trial.getByText(copy.leaveTrial.rolledBack)).toBeTruthy();
+ expect(trial.getAllByText(copy.leaveTrial.retention)).toHaveLength(1);
+ expect(trial.getByText(copy.leaveTrial.outcomes.replace('{retainedExchanges}','2').replace('{modelFreeAnswers}','1').replace('{modelResponses}','1'))).toBeTruthy();
  const start=trial.getByRole('button',{name:copy.leaveTrial.start}).closest('form')!;
  expect(new FormData(start).get('candidateId')).toBe(readyId);
  for(const label of [copy.evaluate,copy.promote]){

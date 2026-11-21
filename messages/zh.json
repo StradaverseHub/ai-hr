@@ -20884,6 +20884,8 @@
           "exhausted": "试用已达到问题数量上限。",
           "rolledBack": "试用已回滚。",
           "start": "启动休假余额试用",
+          "outcomes": "我的试用活动：保留 {retainedExchanges} 次对话 · {modelFreeAnswers} 条回答未使用模型 · {modelResponses} 次对话收到模型响应。",
+          "retention": "清除历史记录或试用元数据后，这些数字可能减少。",
           "usage": "已受理 {used} 个试用问题，上限为 {maximum} 个"
         }
       },

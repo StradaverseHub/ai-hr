@@ -20884,6 +20884,8 @@
           "exhausted": "Thử nghiệm đã đạt giới hạn câu hỏi.",
           "rolledBack": "Thử nghiệm đã được hoàn tác.",
           "start": "Bắt đầu thử nghiệm số dư ngày phép",
+          "outcomes": "Hoạt động thử nghiệm của tôi: {retainedExchanges} lượt trao đổi được lưu · {modelFreeAnswers} câu trả lời không dùng mô hình · {modelResponses} lượt trao đổi có phản hồi từ mô hình.",
+          "retention": "Các số liệu này có thể giảm sau khi xóa lịch sử hoặc siêu dữ liệu thử nghiệm.",
           "usage": "Đã tiếp nhận {used} trong số {maximum} câu hỏi thử nghiệm"
         }
       },
