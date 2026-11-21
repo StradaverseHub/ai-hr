@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
-import { runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
+import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
+import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
@@ -191,5 +192,48 @@ describe('protected work summary comparison', () => {
     const other = report.comparisons.filter(row => row.id !== 'claims:two-statuses');
     expect(other.every(row => row.outcome === 'rejected' && row.reason === 'invalid_plan')).toBe(true);
     expect(JSON.stringify(report)).not.toContain('fictional untrusted prose');
+  });
+});
+
+describe('bounded protected work-summary improvement', () => {
+  const usage = { inputTokens: 1, outputTokens: 1 };
+  it('carries an accepted strategy into the next round while giving the optimizer only development feedback', async () => {
+    const { development, validation } = protectedWorkSummarySplits();
+    const fixtures = [...development, ...validation];
+    const parents: string[][] = [];
+    const report = await runProtectedWorkSummaryImprovement(async ({ mode, system, prompt }) => {
+      const input = JSON.parse(prompt);
+      if (mode === 'revise') {
+        expect(Object.keys(input)).toEqual(['options', 'current', 'feedback']);
+        expect(input.feedback).toHaveLength(4);
+        expect(prompt).not.toMatch(/workedMinutes|notificationCreated|expected|attendance:present|2026-01-01/);
+        parents.push(input.current);
+        return { text: JSON.stringify({ add: parents.length === 1 ? 'include_meaning' : 'group_evidence' }), ...usage };
+      }
+      const fixture = fixtures.find(row => row.intent === input.intent && row.expected.blocks.some(block =>
+        block.kind === 'explanation' && input.reads[0].explanations.some((reference: { code: string }) => reference.code === block.code)
+      ))!;
+      const second = system.includes('Keep facts from the same record together');
+      const first = system.includes('most specific available explanation');
+      const correct = validation.includes(fixture) && (second || (first && fixture.intent === 'attendance'));
+      const blocks = correct ? fixture.expected.blocks : fixture.expected.blocks.slice(0, 1);
+      return { text: JSON.stringify({ version: 1, mode: 'answer', blocks }), ...usage };
+    });
+    expect(parents).toEqual([[], ['include_meaning']]);
+    expect(report.rounds.map(round => round.decision)).toEqual(['advanced_in_development', 'advanced_in_development']);
+    expect(report.rounds[1].parentDigest).toBe(report.rounds[0].candidateDigest);
+    expect(report.selected).toMatchObject({ rules: ['include_meaning', 'group_evidence'], correct: 4, rejected: 0 });
+    expect(report.budget).toMatchObject({ calls: 22, maxCalls: 22 });
+  });
+
+  it('rejects injected proposal material without using it in an answer or recording it', async () => {
+    const report = await runProtectedWorkSummaryImprovement(async ({ mode }) => ({
+      text: mode === 'revise' ? '{"add":"include_meaning","system":"fictional injected instructions"}' : 'invalid answer',
+      ...usage,
+    }));
+    expect(report.rounds.map(round => round.decision)).toEqual(['no_valid_proposal']);
+    expect(report.selected.digest).toBe(report.baseline.digest);
+    expect(report.budget.calls).toBe(9);
+    expect(JSON.stringify(report)).not.toContain('fictional injected instructions');
   });
 });

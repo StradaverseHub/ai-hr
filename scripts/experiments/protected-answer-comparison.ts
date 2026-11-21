@@ -13,7 +13,7 @@ type Diagnostic =
   | { outcome: 'rejected'; reason: 'invalid_plan' | 'outside_catalogue' | 'canonical_rejection' }
   | { outcome: 'wrong_selection'; missing: readonly AssistantAnswerBlock[]; extra: readonly AssistantAnswerBlock[]; orderOnly: boolean };
 
-type ProtectedAnswerFixture = Readonly<{
+export type ProtectedAnswerFixture = Readonly<{
   id: string;
   intent: PrivateAssistantIntent;
   reads: readonly AssistantAnswerRead[];
@@ -49,29 +49,36 @@ function diagnose(text: string, expected: Answer, local: PrivateAssistantPayload
   return { outcome: 'wrong_selection', missing, extra, orderOnly: missing.length === 0 && extra.length === 0 };
 }
 
+export async function evaluateProtectedAnswer(
+  fixture: ProtectedAnswerFixture,
+  strategy: typeof strategies[number],
+  model: PilotModel,
+) {
+  const expected = adjudicateAssistantAnswerPlan(fixture.expected, fixture.reads);
+  if (expected.mode !== 'answer') throw Error('Expected a model-backed answer fixture.');
+  const local = privateAssistantCatalogue(fixture.intent, fixture.reads, strategy, fixture.selected.selection);
+  const task = capturePrivateAssistantTask(local);
+  if (!('turns' in task.args)) throw Error('Expected a protected conversation task.');
+  const [turn] = task.args.turns;
+  if (task.args.turns.length !== 1 || turn?.role !== 'user' || task.args.tools.length !== 0)
+    throw Error('Unexpected protected conversation input.');
+  adjudicatePrivateAssistantTerminal(JSON.stringify(expected), local);
+  const response = await model({ mode: 'answer', system: task.args.system.join(' '), prompt: turn.content });
+  if ([response.inputTokens, response.outputTokens].some(count => !Number.isSafeInteger(count) || count < 0))
+    throw Error('Invalid model usage observation.');
+  return { diagnostic: diagnose(response.text, expected, local, fixture.reads), inputTokens: response.inputTokens, outputTokens: response.outputTokens };
+}
+
 export async function compareProtectedAnswers(fixtures: readonly ProtectedAnswerFixture[], model: PilotModel) {
   const budget = { calls: 0, inputTokens: 0, outputTokens: 0 };
   const comparisons: ({ id: string; strategy: typeof strategies[number] } & Diagnostic)[] = [];
   for (const fixture of fixtures) {
-    const expected = adjudicateAssistantAnswerPlan(fixture.expected, fixture.reads);
-    if (expected.mode !== 'answer') throw Error('Expected a model-backed answer fixture.');
     for (const strategy of strategies) {
-      const local = privateAssistantCatalogue(fixture.intent, fixture.reads, strategy, fixture.selected.selection);
-      const task = capturePrivateAssistantTask(local);
-      if (!('turns' in task.args)) throw Error('Expected a protected conversation task.');
-      const [turn] = task.args.turns;
-      if (task.args.turns.length !== 1 || turn?.role !== 'user' || task.args.tools.length !== 0)
-        throw Error('Unexpected protected conversation input.');
-      // Reject an invalid expectation before spending a call. Only cases that
-      // actually reach model selection belong in this comparison.
-      adjudicatePrivateAssistantTerminal(JSON.stringify(expected), local);
-      const response = await model({ mode: 'answer', system: task.args.system.join(' '), prompt: turn.content });
-      if ([response.inputTokens, response.outputTokens].some(count => !Number.isSafeInteger(count) || count < 0))
-        throw Error('Invalid model usage observation.');
+      const result = await evaluateProtectedAnswer(fixture, strategy, model);
       budget.calls++;
-      budget.inputTokens += response.inputTokens;
-      budget.outputTokens += response.outputTokens;
-      comparisons.push({ id: fixture.id, strategy, ...diagnose(response.text, expected, local, fixture.reads) });
+      budget.inputTokens += result.inputTokens;
+      budget.outputTokens += result.outputTokens;
+      comparisons.push({ id: fixture.id, strategy, ...result.diagnostic });
     }
   }
   return {
