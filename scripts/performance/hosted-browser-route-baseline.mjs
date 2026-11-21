@@ -534,6 +534,11 @@ function captureApplicationAdmission(driverEvidence){
    const values=windows.map(select).map(nonnegative).filter(value=>value!==null);
    return values.length?Math.max(...values):null;
   };
+  function sumPreAdmissionExits(lane){
+   const counts=windows.map(row=>row.preAdmissionExits?.[lane]);
+   return counts.every(value=>Number.isSafeInteger(value)&&value>=0)
+    ?counts.reduce((sum,value)=>sum+value,0):null;
+  }
   return {available:true,scope,windows:windows.length,coveredMs:windows.reduce((sum,row)=>sum+row.to-row.from,0),
    transactionStart:summarize(row=>row.startDelay),transactionHold:summarize(row=>row.held),
    observedMaxPendingTransactions:observedMax(row=>row.pending),
@@ -541,6 +546,12 @@ function captureApplicationAdmission(driverEvidence){
    eventLoopDelay:summarize(row=>({count:row.eventLoopDelay?.samples,p95Ms:row.eventLoopDelay?.p95Ms})),
    passiveReadAdmission:summarize(row=>row.passiveRead?.queueWait),
    rawPoolAdmission:summarize(row=>row.rawPoolWork?.queueWait),
+   preAdmissionExits:{
+    scope:'Work that ended before the instrumentation recorded entry. Includes cancellation and setup failures as well as admission refusals. Counts are attempts, and one request can enter multiple gates.',
+    transaction:sumPreAdmissionExits('transaction'),
+    passiveRead:sumPreAdmissionExits('passiveRead'),
+    rawPool:sumPreAdmissionExits('rawPool'),
+   },
    attendanceApprovalAdmission:summarize(row=>row.attendanceApproval?.queueWait)};
  }catch{return {available:false,scope};}
 }

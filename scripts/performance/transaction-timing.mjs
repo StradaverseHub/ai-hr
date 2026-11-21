@@ -17,6 +17,7 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
  let approvalPending=0,approvalRunning=0,peakApprovalPending=0;
  let passivePending=0,passiveRunning=0,peakPassivePending=0,passiveFailedBeforeRead=0;
  let rawPending=0,rawRunning=0,peakRawPending=0,rawFailedBeforeWork=0;
+ let previousTransactionExits=0,previousPassiveExits=0,previousRawExits=0;
  const admissionCounts=()=>({immediate:0,miss:0,recovered:0,blockingFallback:0});
  const admissionWindow=()=>({submission:admissionCounts(),approval:admissionCounts(),clockingImport:admissionCounts()});
  let attendanceExclusiveAdmission=admissionWindow();
@@ -95,6 +96,11 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
   try{
    const capturedAt=Date.now();
    windows.push({from:windowStart,to:capturedAt,pending,holding,startDelay:describe(startDelay),held:describe(held),
+    preAdmissionExits:{
+     transaction:failedBeforeCallback-previousTransactionExits,
+     passiveRead:passiveFailedBeforeRead-previousPassiveExits,
+     rawPool:rawFailedBeforeWork-previousRawExits,
+    },
     eventLoopDelay:{samples:eventLoop.count,p95Ms:eventLoop.count?eventLoop.percentile(95)/1e6:null,maxMs:eventLoop.count?eventLoop.max/1e6:null},
     passiveRead:{pending:passivePending,running:passiveRunning,queueWait:describe(passiveWait),afterAdmission:describe(passiveWork)},
     rawPoolWork:{pending:rawPending,running:rawRunning,queueWait:describe(rawWait),afterAdmission:describe(rawWork)},
@@ -102,6 +108,9 @@ if(process.env.GITHUB_ACTIONS==='true'&&path){
     attendanceExclusiveAdmission});
    if(windows.length>180)windows.shift();
    windowStart=capturedAt;
+   previousTransactionExits=failedBeforeCallback;
+   previousPassiveExits=passiveFailedBeforeRead;
+   previousRawExits=rawFailedBeforeWork;
    attendanceExclusiveAdmission=admissionWindow();
    startDelay.reset();held.reset();approvalWait.reset();approvalWork.reset();passiveWait.reset();passiveWork.reset();rawWait.reset();rawWork.reset();eventLoop.reset();
    writeFileSync(path+'.tmp',JSON.stringify({
