@@ -11,6 +11,7 @@ import type { ProtectedAnswerFixture } from '../scripts/experiments/protected-an
 import { guidanceContractDigest, guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
+import { adjudicateAssistantAnswerPlan } from '../lib/ai/assistant-answer-plan';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
 import { routingDigest } from '../lib/ai/module-agent-routing';
 
@@ -90,6 +91,30 @@ describe('evaluator-held protected answer cases', () => {
       .rejects.toThrow('Invalid frozen protected holdout');
     const exposed = file(published.map(fixture => ({ ...fixture, id: 'renamed-' + fixture.intent })));
     await expect(scoreProtectedWorkSummaryHoldout(exposed, hash(exposed), developmentReport, modelDigest, noCall))
+      .rejects.toThrow('Holdout repeats an exposed');
+  });
+
+  it('recognizes exposed evidence after its reference ordinals change', async () => {
+    const noCall: PilotModel = async () => { throw Error('Model should not be called'); };
+    const reordered = published.map(fixture => {
+      const plan = adjudicateAssistantAnswerPlan(fixture.expected, fixture.reads);
+      if (plan.mode !== 'answer') throw Error('Expected a published answer fixture.');
+      return {
+        ...fixture,
+        id: 'reordered-' + fixture.intent,
+        reads: fixture.reads.map(read => ({ ...read, presentation: {
+          ...read.presentation, cards: read.presentation.cards.map(card => ({ ...card, facts: [...card.facts].reverse() })),
+        } })),
+        expected: { ...plan, blocks: plan.blocks.map(block => {
+          if (block.kind !== 'fact') return block;
+          const card = fixture.reads.find(read => read.read === block.read)!.presentation.cards[block.card];
+          return { ...block, fact: card.facts.length - 1 - block.fact };
+        }) },
+      };
+    });
+    expect(reordered[0].reads).not.toEqual(published[0].reads);
+    const bytes = file(reordered);
+    await expect(scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), developmentReport, modelDigest, noCall))
       .rejects.toThrow('Holdout repeats an exposed');
   });
 

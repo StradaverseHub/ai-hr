@@ -29,13 +29,15 @@ function projection(fixture: ProtectedAnswerFixture) {
 
 function caseShape(local: ReturnType<typeof projection>) {
   if (local.operation !== 'conversation') return fail();
-  return routingDigest({ intent: local.intent, reads: local.reads.map(read => ({
+  // Reordering references changes their ordinals but supplies the same evidence.
+  return routingDigest({ intent: local.intent, reads: local.reads.map(read => routingDigest({
     module: read.module,
-    cards: read.cards.map(card => card.facts.map(({ field, available }) => ({ field, available }))),
-    explanations: read.explanations.map(({ card, code }) => ({
-      card: card === null ? null : read.cards.findIndex(option => option.card === card), code,
-    })),
-  })) });
+    cards: read.cards.map(card => routingDigest({
+      facts: card.facts.map(({ field, available }) => `${field}:${available}`).sort(),
+      explanations: read.explanations.filter(option => option.card === card.card).map(option => option.code).sort(),
+    })).sort(),
+    explanations: read.explanations.filter(option => option.card === null).map(option => option.code).sort(),
+  })).sort() });
 }
 
 /** The evaluator supplies a precommitted fictional case file. Only masked reference
