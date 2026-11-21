@@ -1,4 +1,5 @@
 import {summarizeAccessLockLog} from './access-lock-server-log.mjs';
+import {admissionFailureMarkers} from './admission-failure-log.mjs';
 import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 import {readWebPoolerWork,summarizePoolerWindow} from './pooler-wait-evidence.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -2028,6 +2029,7 @@ try{
    const appLog=join(privateDir,'application.log');
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
+    if(mixedLoad)report.serverAdmissionFailureMarkers=admissionFailureMarkers(log);
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
      counts[code]=(counts[code]??0)+1;
