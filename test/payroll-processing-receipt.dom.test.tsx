@@ -14,16 +14,20 @@ const unavailable = 'The result could not be confirmed. Check the current status
 
 function renderForm() {
   const fallback = vi.fn();
-  const { container } = render(
-    <form action={fallback}>
-      <input type="hidden" name="batchId" value="fictional-run" />
-      <PayrollProcessingReceipt unavailable={unavailable}>
-        <input type="hidden" name="ackWarnings" value="1" />
-        <button type="submit">Process Payroll</button>
-      </PayrollProcessingReceipt>
-    </form>,
+  const view = (draft: boolean, finishedAt: string | null) => (
+    <PayrollProcessingReceipt unavailable={unavailable} finishedAt={finishedAt}>
+      {draft && (
+        <form action={fallback}>
+          <input type="hidden" name="batchId" value="fictional-run" />
+          <input type="hidden" name="from" value="/payroll?month=2026-11" />
+          <input type="hidden" name="ackWarnings" value="1" />
+          <button type="submit">Process Payroll</button>
+        </form>
+      )}
+    </PayrollProcessingReceipt>
   );
-  return { form: container.querySelector('form')!, fallback };
+  const { container, rerender } = render(view(true, null));
+  return { form: container.querySelector('form')!, fallback, update: (draft: boolean, finishedAt: string | null) => rerender(view(draft, finishedAt)) };
 }
 
 beforeEach(() => vi.resetAllMocks());
@@ -31,13 +35,14 @@ beforeEach(() => vi.resetAllMocks());
 it('sends one request with the confirmed warning and refreshes only after acceptance', async () => {
   const pending = Promise.withResolvers<{ status: 'queued'; message: string }>();
   request.mockReturnValue(pending.promise);
-  const { form, fallback } = renderForm();
+  const { form, fallback, update } = renderForm();
+  refresh.mockImplementation(() => expect(screen.getByRole('status')).toHaveTextContent('Payroll processing started.'));
 
   fireEvent.submit(form);
   fireEvent.submit(form);
   expect(request).toHaveBeenCalledOnce();
   expect(Object.fromEntries(request.mock.calls[0][0])).toMatchObject({
-    batchId: 'fictional-run', ackWarnings: '1',
+    batchId: 'fictional-run', from: '/payroll?month=2026-11', ackWarnings: '1',
   });
   expect(fallback).not.toHaveBeenCalled();
   expect(refresh).not.toHaveBeenCalled();
@@ -46,6 +51,15 @@ it('sends one request with the confirmed warning and refreshes only after accept
   pending.resolve({ status: 'queued', message: 'Payroll processing started.' });
   expect(await screen.findByRole('status')).toHaveTextContent('Payroll processing started.');
   expect(refresh).toHaveBeenCalledOnce();
+  update(false, null);
+  update(false, '2026-11-21T10:00:00Z');
+  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Payroll processing started.');
+  expect(refresh).toHaveBeenCalledOnce();
+
+  update(true, '2026-11-21T10:00:00Z');
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button')).toBeEnabled();
 });
 
 it('keeps a warning refusal on the form and lets the operator try again', async () => {
