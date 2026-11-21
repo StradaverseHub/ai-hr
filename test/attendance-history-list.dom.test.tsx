@@ -9,7 +9,7 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
-vi.mock('next-intl/server', () => ({ getTranslations: async (namespace:string) =>
+vi.mock('next-intl/server', () => ({ getTranslations: async (namespace:'common'|'attendanceHistory') =>
   createTranslator({ locale: 'en', messages: en, namespace, onError: error => { throw error; } }) }));
 vi.mock('../db/client', () => ({ withBackgroundReadWork: (_tenant:unknown, read:()=>unknown) => read() }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
