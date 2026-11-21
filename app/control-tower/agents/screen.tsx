@@ -195,6 +195,15 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const attentionEmpty = attention.companies.length+attention.users.length+attention.blocked.length===0;
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
+  const recentFeatureRows = workerOverview ? recentFeatureActivity.map(([feature, use]) => <li key={feature} className="flex flex-wrap items-baseline justify-between gap-x-4 py-2">
+    <Link href={aiManagementHref('runs') + '?feature=' + encodeURIComponent(feature)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+      {t(`features.${feature}`)}
+    </Link>
+    <div className="text-xs tabular-nums text-muted-foreground">
+      <p>{workerOverview('featureActivity', {count: use.runs})}</p>
+      {(use.failed > 0 || use.blocked > 0) && <p>{workerOverview('featureIssues', {blocked: use.blocked, failed: use.failed})}</p>}
+    </div>
+  </li>) : [];
   return <div className={pageWideCls}>
     <AiCentreGroupTabs group="administration" active={group} payroll={false} groupAdmin={isGroupAdmin(s)} />
     <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
@@ -210,7 +219,6 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {alerts.length>0&&<section role="alert" aria-labelledby="ai-alerts-heading" className="rounded-xl border border-amber-500/50 bg-amber-50 p-4 text-sm dark:bg-amber-950/30">
       <h2 id="ai-alerts-heading" className="font-semibold">{t('inv.alerts.title')}</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5">{alerts.map(a=><li key={a.kind}><span className={a.level==='critical'?'font-semibold text-red-700 dark:text-red-300':''}>{t(`inv.alerts.${a.kind}`,{count:a.count,detail:a.detail??''})}</span></li>)}</ul>
-      <p className="mt-2 text-xs text-muted-foreground">{t('inv.alerts.help')}</p>
     </section>}
     {alertBanner.status==='unavailable'&&<p role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>}
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
@@ -243,16 +251,14 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <dd><Link href={aiManagementHref('runs')} className={btnGhost}>{workerOverview('runHistory')}</Link></dd>
             {recentFeatureActivity.length > 0 && <dd className="sm:col-start-2">
               <ul className="divide-y divide-border">
-                {recentFeatureActivity.map(([feature, use]) => <li key={feature} className="flex flex-wrap items-baseline justify-between gap-x-4 py-2">
-                  <Link href={aiManagementHref('runs') + '?feature=' + encodeURIComponent(feature)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-                    {t(`features.${feature}`)}
-                  </Link>
-                  <div className="text-xs tabular-nums text-muted-foreground">
-                    <p>{workerOverview('featureActivity', {count: use.runs})}</p>
-                    {(use.failed > 0 || use.blocked > 0) && <p>{workerOverview('featureIssues', {blocked: use.blocked, failed: use.failed})}</p>}
-                  </div>
-                </li>)}
+                {recentFeatureRows.slice(0, 3)}
               </ul>
+              {recentFeatureRows.length > 3 && <details className="border-t border-border">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {workerOverview('moreFeatures', {count: recentFeatureRows.length - 3})}
+                </summary>
+                <ul className="divide-y divide-border">{recentFeatureRows.slice(3)}</ul>
+              </details>}
             </dd>}
           </div>
           <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
@@ -274,7 +280,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
           <dt className="font-medium">{workerOverview('quality')}</dt>
           <dd className="text-muted-foreground">{workerOverview('qualityHelp')}</dd>
-          <dd className="flex flex-wrap gap-2">
+          <dd className="flex flex-wrap gap-2 sm:justify-end">
             <Link href="/assistant?view=insights#ai-quality" className={btnGhost}>{workerOverview('openQuality')}</Link>
             {isGroupAdmin(s) && <Link href={aiManagementHref('assistant', {anchor:'#ai-reviews-heading'})} className={btnGhost}>{workerOverview('openReviews')}</Link>}
           </dd>

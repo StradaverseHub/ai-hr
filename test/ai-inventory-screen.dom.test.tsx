@@ -59,6 +59,10 @@ describe('AI inventory in six rendered locales',()=>{
   const overview=screen.getByRole('region',{name:'Activity overview'});
   const details=view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!;
   expect(details.open).toBe(false);
+  const moreFeatures=overview.querySelector<HTMLDetailsElement>('details')!;
+  expect(moreFeatures.open).toBe(false);
+  expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
+  expect(moreFeatures.previousElementSibling?.children).toHaveLength(3);
   expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('0 blocked attempts');
   expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
   expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
