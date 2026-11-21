@@ -326,6 +326,7 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
   noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,timed:record===true,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
   throw error;
  });
+ response.startedMs=started;
  response.durationMs=performance.now()-started;
  if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
@@ -346,21 +347,29 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
 // Six fictional principals only. Reads are indexed and stop as soon as the changed
 // state is visible. Observation time is an upper bound on commit visibility, not
 // an exact transaction duration; it is kept separate from HTTP latency samples.
-async function observedMutation(user,operation,visible,send){
+async function observedMutation(user,operation,visible,send,pollIntervalMs=100){
  if(![0,1,2,4,250,254].includes(user.index))return send();
  let stopped=false;const started=performance.now();
  const observation=(async()=>{
   let polls=0;
   try{
-   while(!stopped){polls++;if(await visible())return {visible:true,visibleByMs:performance.now()-started,polls};await pause(100);}
+   while(!stopped){polls++;if(await visible())return {visible:true,visibleByMs:performance.now()-started,polls};await pause(pollIntervalMs);}
    return {visible:false,visibleByMs:null,polls};
   }catch{return {visible:false,visibleByMs:null,polls,observerError:true};}
  })();
- let response;
+ let response,failedAttempt;
  try{response=await send();return response;}
- finally{
+ catch(error){
+  failedAttempt=ownedRequestFailures.get(error);
+  throw error;
+ }finally{
   stopped=true;const httpFinishedMs=performance.now()-started,result=await observation;
-  report.persistenceObservers.push({user:user.index,role:user.role,operation,...result,httpDurationMs:response?.durationMs??null,httpFinishedMs});
+  const requestStart=response?.startedMs??failedAttempt?.startedMs;
+  const responseTtfb=response?.ttfbMs??failedAttempt?.headers?.ttfbMs;
+  report.persistenceObservers.push({user:user.index,role:user.role,operation,...result,startedMs:started,
+   httpStatus:response?.status??failedAttempt?.headers?.status??null,
+   headersMs:Number.isFinite(responseTtfb)&&Number.isFinite(requestStart)?requestStart-started+responseTtfb:null,
+   httpDurationMs:response?.durationMs??null,httpFinishedMs});
  }
 }
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b);return {samples:sorted.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1]??null,p95Ms:sorted[Math.ceil(sorted.length*.95)-1]??null,p99Ms:sorted[Math.ceil(sorted.length*.99)-1]??null,maxMs:sorted.at(-1)??null};};
@@ -1559,7 +1568,7 @@ async function main(){
  }
  if(suite!=='claims-heavy'){
   requireNativeBusiness();
-  mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}));
+  mixedWorkflows=await withLockWorkload('mixed-workflows',()=>prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload,observedMutation}));
  }
  requireCleanDriver();
  let loadedAttendanceRejection;
@@ -1918,6 +1927,12 @@ async function main(){
   catch(error){
    const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:null;
    report.mixedWorkflows.failedAttendanceEffects={status:'unavailable',code};
+  }
+  try{
+   report.mixedWorkflows.failedLeaveCreates={status:'checked',...await mixedWorkflows.verifyFailedLeaveCreates()};
+  }catch(error){
+   const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:null;
+   report.mixedWorkflows.failedLeaveCreates={status:'unavailable',code};
   }
   save();
  }

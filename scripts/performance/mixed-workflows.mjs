@@ -66,9 +66,9 @@ export function attendanceCorrectionOutcome(response,expected){
  return refusals.length===0&&success.length===1&&success[0]==='1'?'corrected':'refused';
 }
 
-export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}){
+export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload,observedMutation}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
- const failedAttendanceActions=[];
+ const failedAttendanceActions=[],failedLeaveCreates=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
   const marker={attendanceCreate:attendanceCorrectionMarker,attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
@@ -477,6 +477,18 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     as f(action text,employment_id uuid,marker text,correction_id uuid)
    group by action order by action`;
  }
+ async function verifyFailedLeaveCreates(){
+  if(!failedLeaveCreates.length)return {failed:0,committed:0,duplicates:0};
+  const [counts]=await db`select count(*)::int as failed,
+   count(*) filter(where effects.matches=1)::int as committed,
+   count(*) filter(where effects.matches>1)::int as duplicates
+   from jsonb_to_recordset(${JSON.stringify(failedLeaveCreates)}::jsonb)
+    as f(tenant_id uuid,employment_id uuid,marker text)
+   cross join lateral (select count(*) as matches from public.leave_request r
+    where r.tenant_id=f.tenant_id and r.employment_id=f.employment_id
+     and r.start_date=${leaveDate}::date and r.reason=f.marker and r.status='pending') effects`;
+  return counts;
+ }
  async function run(user,iteration){
   const marker=`PERF_MIXED_${user.index}_${iteration}`;
   if(user.role==='groupHR'&&iteration===0){
@@ -511,8 +523,21 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   if(user.role==='employee'&&user.index%2===0){
    const fields=formFields(templates.leaveCreate,{employmentId:user.employmentId,leaveTypeId:user.leaveTypeId,startDate:leaveDate,endDate:leaveDate,reason:marker,durationType:'full_day'});
-   await send(user,templates.leaveCreate,fields);
-   const rows=await db`select id,status from leave_request where employment_id=${user.employmentId}::uuid and reason=${marker}`;assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
+   const readCreated=()=>db`select id,status from leave_request where tenant_id=${user.tenantId}::uuid
+    and employment_id=${user.employmentId}::uuid and start_date=${leaveDate}::date and reason=${marker}`;
+   const create=()=>send(user,templates.leaveCreate,fields);
+   try{
+    if(iteration===0&&(user.index===4||user.index===254)){
+     await observedMutation(user,'leaveCreate',async()=>{
+      const found=await readCreated();
+      return found.length===1&&found[0].status==='pending';
+     },create,500);
+    }else await create();
+   }catch(error){
+    failedLeaveCreates.push({tenant_id:user.tenantId,employment_id:user.employmentId,marker});
+    throw error;
+   }
+   const rows=await readCreated();assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
    await pause(thinkTimeMs);await send(user,templates.leaveEdit,formFields(templates.leaveEdit,{leaveRequestId:rows[0].id,leaveTypeId:user.leaveTypeId,startDate:leaveDate,endDate:leaveDate,reason:marker+'_EDITED',durationType:'full_day'}));
    const [edited]=await db`select reason from leave_request where id=${rows[0].id}::uuid`;assert.equal(edited.reason,marker+'_EDITED');
    await pause(thinkTimeMs);await send(user,templates.leaveCancel,formFields(templates.leaveCancel,{leaveRequestId:rows[0].id}));
@@ -542,5 +567,5 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return [...cases.values()];
  }
- return {run,verifyFailedAttendanceActions,plannedWrites};
+ return {run,verifyFailedAttendanceActions,verifyFailedLeaveCreates,plannedWrites};
 }
