@@ -1,3 +1,4 @@
+import {measureRecruitmentRecords} from './recruitment-record-census.mjs';
 import {measureRewardsRecords} from './rewards-record-census.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
@@ -36,7 +37,8 @@ const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusRewards=shardInput==='rewards-records';
 const censusLifecycle=shardInput==='fixture-records';
-const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
+const censusRecruitment=shardInput==='recruitment-records';
+const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards||censusRecruitment;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1558,7 +1560,7 @@ try{
   }
   retainSeedPhases();
  }
- if(!censusRewards)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+ if(!censusRewards&&!censusRecruitment)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusLifecycle),
   });
@@ -1614,7 +1616,21 @@ try{
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- if(!censusRewards){
+ if(censusRecruitment){
+  try{
+   await run('seed-recruitment-records',process.execPath,['--conditions=react-server','--import','tsx',
+    '../automation/scripts/performance/recruitment-record-fixture.mjs'],dbEnv);
+   fixture.recruitmentRecords=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8')).recruitmentRecords;
+  }finally{
+   const stageFile=join(privateDir,'recruitment-fixture-stage');
+   if(existsSync(stageFile)){
+    const stage=readFileSync(stageFile,'utf8');
+    if(['principal','requisition','position','application','verify','complete'].includes(stage))report.recruitmentFixtureStage=stage;
+   }
+   save();
+  }
+ }
+ if(!censusRewards&&!censusRecruitment){
   assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
   report.fixture.joinersSeeded=true;
  }
@@ -1634,6 +1650,7 @@ try{
    try{
     const options={db,fixture,origin,compiledPages,signedInContext,report,save};
     if(censusRewards)await measureRewardsRecords(options);
+    else if(censusRecruitment)await measureRecruitmentRecords(options);
     else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
     if(censusLifecycle)await measureLifecycleRecordActions(options);
    }
