@@ -472,6 +472,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10452,when:1795028007052,tag:'7052_contract_posting_reporting_end_date'},
  {idx:10460,when:1795028007060,tag:'7060_payroll_reprocess_tax_source'},
  {idx:10470,when:1795028007070,tag:'7070_payroll_tax_basis_group_job'},
+ {idx:10480,when:1795028007080,tag:'7080_job_run_deterministic_order'},
+ {idx:10490,when:1795028007090,tag:'7090_report_delivery_history_order'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -479,6 +481,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7052_contract_posting_reporting_end_date':'b878e9a1355f48088c8b80ed5a1b1cd93bc5ef59a1be125dc77d001d974e37c3',
  '7060_payroll_reprocess_tax_source':'7c7aa0905b7b9b6444c5597d3e8bde9e51ac5582ab8e7d02661450b0c3c83781',
  '7070_payroll_tax_basis_group_job':'12f23a15b7786a8d347bafdb0965a00a3cbf5ea8f9e04d320480df0a6d0d509b',
+ '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',
+ '7090_report_delivery_history_order':'f185674e4bbc196afed478ad0941425cc994cdfed329de5f2bfb629cda20c356',
  '6970_fixed_transaction_import_job':'92209b2a6ef6e821f6310a14980b63bc13921580e6e791223b9edd2f9200f2ed',
  '6980_payroll_transaction_export':'517cc9deb9eb5d764d0ccc30d88b0bfdde80c8f8ff3d2deafc8c05583a751e88',
  '6990_individual_import_template_version':'1272094b42c8c60031aa49a99290ed149011f57ae9aab97e58fac0222fc6411d',
