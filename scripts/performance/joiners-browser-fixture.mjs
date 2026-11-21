@@ -21,6 +21,7 @@ const [{client,createDb},{resolveEntitlementsTx}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
+let performanceSeedStage;
 try{
  const {onboardingContext,onboardingList,onboardingSaveConfig,v9Setup}=await source('packs/lifecycle/service.ts');
  const {saveEmployeeDraft}=await source('core/employee-draft.ts');
@@ -69,16 +70,32 @@ try{
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
  if(env.PERF_LIFECYCLE_RECORDS==='true'){
+  performanceSeedStage='import';
   const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
+  performanceSeedStage='create';
   const {cycleId}=await createCycle(ctx,{
    companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',
   });
+  performanceSeedStage='configure';
   await configureOnehrCycle(ctx,cycleId,null);
+  performanceSeedStage='open';
   const opened=await openCycle(ctx,{cycleId});
   assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
   fixture.performanceRecords={cycleId,name};
  }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
+}catch(error){
+ if(performanceSeedStage){
+  const code=error.cause?.code??error.code;
+  const frames=Array.from((error.stack??'').matchAll(/\/source\/((?:core|packs|lib|db)\/[A-Za-z0-9_.\/-]+:\d+:\d+)/g),match=>match[1]).slice(0,5);
+  writeFileSync(resolve(env.PERF_PRIVATE_DIR,'performance-seed-failure.json'),JSON.stringify({
+   stage:performanceSeedStage,
+   kind:error instanceof assert.AssertionError?'assertion':error instanceof TypeError?'type-error':'error',
+   code:typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_[A-Z_]{1,50})$/.test(code)?code:null,
+   frames,
+  }),{mode:0o600});
+ }
+ throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

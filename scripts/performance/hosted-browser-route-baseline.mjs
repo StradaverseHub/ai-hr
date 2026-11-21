@@ -1539,10 +1539,23 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
- await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
-  '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
-   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections),
-  });
+ try{
+  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
+    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections),
+   });
+ }finally{
+  const evidence=join(privateDir,'performance-seed-failure.json');
+  if(existsSync(evidence)){
+   const fact=JSON.parse(readFileSync(evidence,'utf8'));
+   if(['import','create','configure','open'].includes(fact.stage)&&['assertion','type-error','error'].includes(fact.kind)){
+    report.performanceSeedFailure={stage:fact.stage,kind:fact.kind,
+     code:typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|ERR_[A-Z_]{1,50})$/.test(fact.code)?fact.code:null,
+     frames:fact.frames.filter(frame=>/^(?:core|packs|lib|db)\/[A-Za-z0-9_.\/-]+:\d+:\d+$/.test(frame)).slice(0,5)};
+    save();
+   }
+  }
+ }
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
