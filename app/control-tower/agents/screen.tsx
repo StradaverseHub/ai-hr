@@ -70,8 +70,15 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     (row.kind === 'chat' || row.kind === 'specialist' || row.kind === 'embedded_feature' || row.kind === 'operator_loop') &&
     !isTemplateOnlyAiFeature(row.featureId) ? [[row.featureId, row.runtime.use30] as const] : [])) : null;
   const recentFeatureActivity = modelActivity ? [...modelActivity.entries()]
-    .filter(([, use]) => use.runs > 0 || use.blocked > 0)
+    .filter(([, use]) => use.runs > 0)
     .sort(([, a], [, b]) => b.runs - a.runs || b.blocked - a.blocked) : [];
+  const blockedOnlyActivity = modelActivity ? [...modelActivity.entries()]
+    .filter(([, use]) => use.runs === 0 && use.blocked > 0)
+    .sort(([, a], [, b]) => b.blocked - a.blocked) : [];
+  const featuresWithoutAttempts = modelActivity ? view.features.filter(({id}) => {
+    const use = modelActivity.get(id);
+    return use?.runs === 0 && use.blocked === 0;
+  }) : [];
   const actionActivity = inventory?.scope === 'full' ? inventory.rows.reduce((totals, row) => {
     if (row.kind === 'action' && row.runtime.outcomes) {
       totals.prepared += row.runtime.outcomes.prepared;
@@ -198,15 +205,16 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const attentionEmpty = attention.companies.length+attention.users.length+attention.blocked.length===0;
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
-  const recentFeatureRows = workerOverview ? recentFeatureActivity.map(([feature, use]) => <li key={feature} className="flex flex-wrap items-baseline justify-between gap-x-4 py-2">
-    <Link href={aiManagementHref('runs') + '?feature=' + encodeURIComponent(feature)} className="inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
+  const featureLinkClass = 'inline-flex min-h-9 items-center font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11';
+  const activityRow = ([feature, use]: (typeof recentFeatureActivity)[number]) => workerOverview && <li key={feature} className="flex flex-wrap items-baseline justify-between gap-x-4 py-2">
+    <Link href={`${aiManagementHref('runs')}?feature=${encodeURIComponent(feature)}${use.runs === 0 ? '&runs=blocked' : ''}`} className={featureLinkClass}>
       {t(`features.${feature}`)}
     </Link>
     <div className="text-xs tabular-nums text-muted-foreground">
       <p>{workerOverview('featureActivity', {count: use.runs})}</p>
       {(use.failed > 0 || use.blocked > 0) && <p>{workerOverview('featureIssues', {blocked: use.blocked, failed: use.failed})}</p>}
     </div>
-  </li>) : [];
+  </li>;
   return <div className={pageWideCls}>
     <AiCentreGroupTabs group="administration" active={group} payroll={false} groupAdmin={isGroupAdmin(s)} />
     <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
@@ -248,21 +256,37 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <dt className="font-medium">{workerOverview('model')}</dt>
             <dd className="text-muted-foreground">{modelActivity
               ? workerOverview('modelCounts', {
-                used: recentFeatureActivity.filter(([, use]) => use.runs > 0).length,
-                unused: [...modelActivity.values()].filter(use => use.runs === 0).length,
+                used: recentFeatureActivity.length,
                 failed: [...modelActivity.values()].reduce((sum, use) => sum + use.failed, 0),
                 blocked: [...modelActivity.values()].reduce((sum, use) => sum + use.blocked, 0),
               }) : workerOverview('unavailable')}</dd>
             <dd><Link href={aiManagementHref('runs')} className={btnGhost}>{workerOverview('runHistory')}</Link></dd>
-            {recentFeatureActivity.length > 0 && <dd className="sm:col-start-2">
-              <ul className="divide-y divide-border">
-                {recentFeatureRows.slice(0, 3)}
-              </ul>
-              {recentFeatureRows.length > 3 && <details className="border-t border-border">
+            {(recentFeatureActivity.length > 0 || blockedOnlyActivity.length > 0 || featuresWithoutAttempts.length > 0) && <dd className="min-w-0 sm:col-start-2">
+              {recentFeatureActivity.length > 0 && <ul className="divide-y divide-border">
+                {recentFeatureActivity.slice(0, 3).map(activityRow)}
+              </ul>}
+              {recentFeatureActivity.length > 3 && <details className="border-t border-border">
                 <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  {workerOverview('moreFeatures', {count: recentFeatureRows.length - 3})}
+                  {workerOverview('moreFeatures', {count: recentFeatureActivity.length - 3})}
                 </summary>
-                <ul className="divide-y divide-border">{recentFeatureRows.slice(3)}</ul>
+                <ul className="divide-y divide-border">{recentFeatureActivity.slice(3).map(activityRow)}</ul>
+              </details>}
+              {blockedOnlyActivity.length > 0 && <details className="border-t border-border">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {workerOverview('blockedOnly', {count: blockedOnlyActivity.length})}
+                </summary>
+                <ul className="divide-y divide-border">{blockedOnlyActivity.map(activityRow)}</ul>
+              </details>}
+              {featuresWithoutAttempts.length > 0 && <details className="border-t border-border">
+                <summary className="min-h-11 cursor-pointer py-3 font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {workerOverview('noAttempts', {count: featuresWithoutAttempts.length})}
+                </summary>
+                <ul className="divide-y divide-border">
+                  {featuresWithoutAttempts.map(feature => <li key={feature.id} className="flex flex-wrap items-baseline justify-between gap-x-4 py-1">
+                    <a href={`#ai-feature-${feature.id}`} className={featureLinkClass}>{t(`features.${feature.id}`)}</a>
+                    <span className="text-xs text-muted-foreground">{t(`states.${feature.state}`)}</span>
+                  </li>)}
+                </ul>
               </details>}
             </dd>}
           </div>

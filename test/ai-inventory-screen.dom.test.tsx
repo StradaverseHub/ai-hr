@@ -23,7 +23,19 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTra
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>state.group,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
-vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementPageView: async(_ctx:unknown,section:string)=>{const full=await (async()=>({provider:{provider:'openrouter',model:'fictional/model'},mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}))();if(!full||typeof full!=='object'||!('users' in full)||!('moreUsers' in full)||!('legacyBudget' in full)||!('runs' in full)||!('runFilter' in full))throw new Error('AI management page fixture is missing');const {users,moreUsers,legacyBudget,runs:_runs,runFilter:_filter,...common}=full;return {...common,section,allowances:section==='allowances'?{users,moreUsers,legacyBudget}:null};},bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
+vi.mock('../core/ai-management',async()=>{
+ const {AI_FEATURES}=await import('../lib/ai/features');
+ return {
+  AI_RUN_STATE_FILTERS:['blocked','failed'],
+  aiManagementPageView:async()=>({
+   provider:{provider:'openrouter',model:'fictional/model'},mayWriteUsers:state.group,
+   features:AI_FEATURES.map(feature=>({...feature,state:'ready',enabled:true,mayWrite:state.group})),
+   usage:[],policies:[],userDefault:null,
+   agentSwitches:{},companies:[],companyUsage:[],groups:[],attention:{companies:[],users:[],blocked:[]},spend:null,allowances:null,
+  }),
+  bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0}),
+ };
+});
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn(),setAgentActionPauseAction:vi.fn()}));
@@ -36,8 +48,8 @@ vi.mock('../core/ai-inventory',async()=>{
   register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
    actionPaused:c.kind==='action'?c.id==='leave.cancel':null,allowance:c.featureId&&c.kind!=='action'?{dailyRequests:50,monthlyTokens:200000}:null,
-   lastRun:c.id!=='payroll_explanation'&&(c.featureId||c.id==='ai-alerts')?at:null,
-   use30:c.key==='embedded_feature:payroll_explanation'?{runs:0,failed:0,blocked:1,tokens:0,reportedCredits:null}:
+   lastRun:c.id!=='payroll_explanation'&&c.id!=='pay_rule_draft'&&(c.featureId||c.id==='ai-alerts')?at:null,
+   use30:c.id==='payroll_explanation'||c.id==='pay_rule_draft'?{runs:0,failed:0,blocked:c.id==='payroll_explanation'?1:0,tokens:0,reportedCredits:null}:
     c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
    outcomes:c.kind==='action'&&c.tier!=='automatic'?{
     prepared:state.actionActivity?(c.id==='leave.cancel'?8:c.id==='leave.edit'?3:0):0,
@@ -110,10 +122,25 @@ describe('AI inventory in six rendered locales',()=>{
   expect(moreFeatures.open).toBe(false);
   expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
   expect(moreFeatures.previousElementSibling?.children).toHaveLength(3);
-  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 without');
   expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 blocked attempt');
   expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
   expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
+  const blockedOnly=within(overview).getByText('Blocked attempts only (1)').closest('details')!;
+  expect(blockedOnly.open).toBe(false);
+  blockedOnly.open=true;
+  expect(within(blockedOnly).getByRole('link',{name:en.aiManagement.features.payroll_explanation})).toHaveAttribute('href','/control-tower/agents/runs?feature=payroll_explanation&runs=blocked');
+  const noAttempts=within(overview).getByText('No attempts recorded (1)').closest('details')!;
+  expect(noAttempts.open).toBe(false);
+  expect(within(noAttempts).queryByText(en.aiManagement.features.payroll_explanation)).toBeNull();
+  noAttempts.open=true;
+  const settingsLink=within(noAttempts).getByRole('link',{name:en.aiManagement.features.pay_rule_draft});
+  expect(settingsLink).toHaveAttribute('href','#ai-feature-pay_rule_draft');
+  expect(within(noAttempts).getByText(en.aiManagement.states.ready)).toBeInTheDocument();
+  expect(view.container.querySelector('#ai-feature-pay_rule_draft')).toBeInTheDocument();
+  await captureAiReviewScreenshots(overview.outerHTML,'en','ai-centre-feature-activity',undefined,'atelier');
+  fireEvent.click(settingsLink);
+  expect(details.open).toBe(true);
+  details.open=false;
   expect(within(overview).getByRole('link',{name:'Candidate reviews'})).toHaveAttribute('href','/control-tower/agents/assistant#ai-reviews-heading');
   expect(within(overview).getByRole('link',{name:'Run history'})).toHaveAttribute('href','/control-tower/agents/runs');
   expect(within(overview).getByText('11 prepared · 7 completed')).toBeInTheDocument();
@@ -122,7 +149,7 @@ describe('AI inventory in six rendered locales',()=>{
   expect(view.container.querySelector('#ai-inventory-actions')).toBeInTheDocument();
   fireEvent.click(actionLink);
   expect(details.open).toBe(true);
- });
+ },60000);
 
  it('shows separate evidence for admitted requests, blocked-only features and individual reads',async()=>{
   state.locale='en';
@@ -196,6 +223,7 @@ describe('AI inventory in six rendered locales',()=>{
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();
   expect(screen.queryByRole('table',{name:inv.register.title})).toBeNull();
   expect(screen.queryByText(workerOverviewMessages[locale].assistantActions)).toBeNull();
+  expect(screen.queryByText(/No attempts recorded/)).toBeNull();
   expect(screen.queryByText(inv.cols.use30)).toBeNull();
   expect(screen.getAllByText(inv.cols.tier).length).toBeGreaterThan(0);
   expect(screen.getAllByText(inv.actionPaused).length).toBeGreaterThan(0);
