@@ -18,9 +18,9 @@ const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
 async function main() {
   const [model, outfile, ...args] = process.argv.slice(2);
   const holdoutMode = args[0] === '--protected-holdout';
-  const [, holdoutPath, holdoutSha] = args;
-  if (holdoutMode && (args.length !== 3 || !holdoutPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
-    throw Error('Use --protected-holdout FILE SHA256 with an evaluator-held fictional case file.');
+  const [, holdoutPath, holdoutSha, developmentReportPath] = args;
+  if (holdoutMode && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
+    throw Error('Use --protected-holdout FILE SHA256 DEVELOPMENT_REPORT with an evaluator-held fictional case file.');
   const flags = holdoutMode ? [] : args;
   const runners = {
     '--protected': runProtectedLeaveComparison,
@@ -44,15 +44,17 @@ async function main() {
     throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary | --protected-explanation-priority]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   const target = localOutputPath(outfile);
-  let holdout: Buffer | undefined;
+  let holdout: { cases: Buffer; developmentReport: Buffer } | undefined;
   if (holdoutMode) {
     const path = realpathSync(holdoutPath);
     const location = relative(realpathSync(REPO_ROOT), path);
     const stat = statSync(path);
+    const developmentStat = statSync(developmentReportPath);
     if ((!isAbsolute(location) && !location.startsWith('..' + sep)) || !stat.isFile() ||
-        stat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || existsSync(target))
+        stat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || !developmentStat.isFile() ||
+        developmentStat.size > PROTECTED_HOLDOUT_LIMIT_BYTES || existsSync(target))
       throw Error('Use a holdout outside the checkout and a new report path.');
-    holdout = readFileSync(path);
+    holdout = { cases: readFileSync(path), developmentReport: readFileSync(developmentReportPath) };
   }
   const deadline = AbortSignal.timeout(30 * 60_000);
   const request = async (path: string, init?: RequestInit) => {
@@ -90,7 +92,7 @@ async function main() {
     return { text: indexed ? indexed.decode(result.response) : result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
-  const report = holdout ? await scoreProtectedWorkSummaryHoldout(holdout, holdoutSha, modelDigest, generate) : await run(generate);
+  const report = holdout ? await scoreProtectedWorkSummaryHoldout(holdout.cases, holdoutSha, holdout.developmentReport, modelDigest, generate) : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
   const answerFormatDigest = routingDigest(explanationPriority ? 'protected_explanation_priority_v1' :
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);

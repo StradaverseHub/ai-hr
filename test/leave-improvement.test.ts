@@ -2,16 +2,17 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
-import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
+import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
 import { runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
 import type { ProtectedAnswerFixture } from '../scripts/experiments/protected-answer-comparison';
-import { guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
+import { guidanceContractDigest, guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
+import { routingDigest } from '../lib/ai/module-agent-routing';
 
 it('separates source-resolved findings from genuinely competing explanations', async () => {
   const report = await runProtectedExplanationPriority(async ({ mode, prompt }) => {
@@ -31,7 +32,8 @@ it('separates source-resolved findings from genuinely competing explanations', a
 
 describe('evaluator-held protected answer cases', () => {
   const modelDigest = 'a'.repeat(64);
-  const published = protectedWorkSummarySplits().development.slice(0, 2);
+  const { development, validation } = protectedWorkSummarySplits();
+  const published = development.slice(0, 2);
   const fictional = published.map(fixture => ({
     ...fixture, id: 'fictional-oracle-' + fixture.intent,
     reads: fixture.reads.map(read => ({ ...read, presentation: {
@@ -42,8 +44,18 @@ describe('evaluator-held protected answer cases', () => {
     } })),
   }));
   const hash = (body: Buffer) => createHash('sha256').update(body).digest('hex');
-  const file = (cases: readonly ProtectedAnswerFixture[] = fictional) => Buffer.from(JSON.stringify({
-    version: 1, cases, modelDigest, minimumGain: 2,
+  const developmentReport = Buffer.from(JSON.stringify({
+    evidence: 'offline_protected_selection_development', contractDigest: guidanceContractDigest, modelDigest,
+    answerFormatDigest: routingDigest(PROTECTED_CATALOGUE_FORMAT),
+    developmentDigest: routingDigest(development), validationDigest: routingDigest(validation),
+    baseline: { digest: protectedStrategyDigest([]), correct: 0, rejected: 0 },
+    rounds: [{ number: 1, parentDigest: protectedStrategyDigest([]), add: 'include_meaning',
+      candidateDigest: protectedStrategyDigest(['include_meaning']),
+      decision: 'advanced_in_development', validation: { correct: 2, rejected: 0, regressions: 0 } }],
+    selected: { digest: protectedStrategyDigest(['include_meaning']), rules: ['include_meaning'], correct: 2, rejected: 0 },
+  }));
+  const file = (cases: readonly ProtectedAnswerFixture[] = fictional, report = developmentReport) => Buffer.from(JSON.stringify({
+    version: 2, cases, modelDigest, minimumGain: 2, developmentReportDigest: hash(report),
     parentRules: [], parentDigest: protectedStrategyDigest([]),
     candidateRules: ['include_meaning'], candidateDigest: protectedStrategyDigest(['include_meaning']),
   }));
@@ -62,7 +74,7 @@ describe('evaluator-held protected answer cases', () => {
       };
     };
     const bytes = file();
-    const report = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), modelDigest, model);
+    const report = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), developmentReport, modelDigest, model);
     expect(calls).toBe(4);
     expect(report).toMatchObject({
       cases: 2, gains: 2, regressions: 0, candidateRejected: 0, meetsThreshold: true, releaseAuthorized: false,
@@ -74,11 +86,22 @@ describe('evaluator-held protected answer cases', () => {
   it('refuses a changed case file and exposed case catalogues before any model call', async () => {
     const noCall: PilotModel = async () => { throw Error('Model should not be called'); };
     const bytes = file();
-    await expect(scoreProtectedWorkSummaryHoldout(bytes, '0'.repeat(64), modelDigest, noCall))
+    await expect(scoreProtectedWorkSummaryHoldout(bytes, '0'.repeat(64), developmentReport, modelDigest, noCall))
       .rejects.toThrow('Invalid frozen protected holdout');
     const exposed = file(published.map(fixture => ({ ...fixture, id: 'renamed-' + fixture.intent })));
-    await expect(scoreProtectedWorkSummaryHoldout(exposed, hash(exposed), modelDigest, noCall))
+    await expect(scoreProtectedWorkSummaryHoldout(exposed, hash(exposed), developmentReport, modelDigest, noCall))
       .rejects.toThrow('Holdout repeats an exposed');
+  });
+
+  it('refuses to spend withheld cases on a rejected or substituted revision', async () => {
+    const noCall: PilotModel = async () => { throw Error('Model should not be called'); };
+    const changed = Buffer.from(developmentReport.toString().replace('advanced_in_development', 'retained_parent'));
+    const original = file();
+    await expect(scoreProtectedWorkSummaryHoldout(original, hash(original), changed, modelDigest, noCall))
+      .rejects.toThrow('Invalid frozen protected holdout');
+    const pinned = file(fictional, changed);
+    await expect(scoreProtectedWorkSummaryHoldout(pinned, hash(pinned), changed, modelDigest, noCall))
+      .rejects.toThrow('The frozen development report does not select this candidate');
   });
 });
 

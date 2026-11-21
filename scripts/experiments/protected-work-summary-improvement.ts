@@ -79,11 +79,11 @@ export async function runProtectedWorkSummaryImprovement(model: PilotModel) {
     }
     const rules = [...parent.rules, add];
     const proposed = await score(validation, rules);
-    const regressed = parent.score.diagnostics.some((row, index) =>
-      row.outcome === 'correct' && proposed.diagnostics[index].outcome !== 'correct');
-    const accepted = proposed.rejected === 0 && !regressed && proposed.correct > parent.score.correct;
+    const regressions = parent.score.diagnostics.filter((row, index) =>
+      row.outcome === 'correct' && proposed.diagnostics[index].outcome !== 'correct').length;
+    const accepted = proposed.rejected === 0 && regressions === 0 && proposed.correct > parent.score.correct;
     rounds.push({ number, parentDigest, candidateDigest: strategyDigest(rules), add,
-      validation: { correct: proposed.correct, rejected: proposed.rejected }, decision: accepted ? 'advanced_in_development' : 'retained_parent',
+      validation: { correct: proposed.correct, rejected: proposed.rejected, regressions }, decision: accepted ? 'advanced_in_development' : 'retained_parent',
     });
     if (!accepted) break;
     parent = { rules, score: proposed };

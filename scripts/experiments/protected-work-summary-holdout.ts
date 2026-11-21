@@ -4,11 +4,19 @@ import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { adjudicatePrivateAssistantTerminal, privateAssistantCatalogue } from '../../lib/ai/provider-assistant-policy';
 import type { PilotModel } from '../teras/leave-improvement';
 import { evaluateProtectedAnswer, type ProtectedAnswerFixture } from './protected-answer-comparison';
+import { requireProtectedDevelopmentWinner } from './protected-development-winner';
 import { protectedWorkSummarySplits } from './protected-work-summary-comparison';
 import { isGuidance, protectedStrategyDigest, withProtectedGuidance } from './protected-work-summary-guidance';
 
 export const PROTECTED_HOLDOUT_LIMIT_BYTES = 1024 * 1024;
 const fail = (): never => { throw Error('Invalid frozen protected holdout.'); };
+
+function frozenJson(bytes: Buffer, digest: unknown) {
+  if (!bytes.length || bytes.length > PROTECTED_HOLDOUT_LIMIT_BYTES ||
+      createHash('sha256').update(bytes).digest('hex') !== digest) return fail();
+  try { return JSON.parse(bytes.toString('utf8')); }
+  catch { return fail(); }
+}
 
 function captureRules(value: unknown) {
   if (!Array.isArray(value) || !value.every(isGuidance) || new Set(value).size !== value.length) return fail();
@@ -32,15 +40,12 @@ function caseShape(local: ReturnType<typeof projection>) {
 
 /** The evaluator supplies a precommitted fictional case file. Only masked reference
  * metadata reaches the model. The result reports aggregate comparisons only. */
-export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSha256: string, modelDigest: string, model: PilotModel) {
-  if (!bytes.length || bytes.length > PROTECTED_HOLDOUT_LIMIT_BYTES ||
-      createHash('sha256').update(bytes).digest('hex') !== expectedSha256) return fail();
-  let spec;
-  try { spec = JSON.parse(bytes.toString('utf8')); }
-  catch { return fail(); }
+export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSha256: string,
+  developmentReport: Buffer, modelDigest: string, model: PilotModel) {
+  const spec = frozenJson(bytes, expectedSha256);
   if (!spec || Object.keys(spec).sort().join(',') !==
-      'candidateDigest,candidateRules,cases,minimumGain,modelDigest,parentDigest,parentRules,version' ||
-      spec.version !== 1 || !/^[a-f0-9]{64}$/.test(modelDigest) || spec.modelDigest !== modelDigest ||
+      'candidateDigest,candidateRules,cases,developmentReportDigest,minimumGain,modelDigest,parentDigest,parentRules,version' ||
+      spec.version !== 2 || !/^[a-f0-9]{64}$/.test(modelDigest) || spec.modelDigest !== modelDigest ||
       !Array.isArray(spec.cases) || spec.cases.length < 2 || spec.cases.length > 32 ||
       !Number.isSafeInteger(spec.minimumGain) || spec.minimumGain < 1 || spec.minimumGain > spec.cases.length) return fail();
   const parentRules = captureRules(spec.parentRules);
@@ -51,6 +56,10 @@ export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSh
       protectedStrategyDigest(candidateRules) !== spec.candidateDigest) return fail();
 
   const { development, validation } = protectedWorkSummarySplits();
+  requireProtectedDevelopmentWinner(frozenJson(developmentReport, spec.developmentReportDigest), {
+    modelDigest, parentRules, candidateRules, validationCases: validation.length,
+    developmentCasesDigest: routingDigest(development), validationCasesDigest: routingDigest(validation),
+  });
   const seen = new Set([...development, ...validation].map(fixture => caseShape(projection(fixture))));
   const ids = new Set<string>();
   const cases: ProtectedAnswerFixture[] = spec.cases;
@@ -93,6 +102,7 @@ export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSh
   const meetsThreshold = scores.gains >= spec.minimumGain && scores.regressions === 0 && scores.candidateRejected === 0;
   return {
     evidence: 'offline_protected_holdout', releaseAuthorized: false, holdoutDigest: expectedSha256, modelDigest,
+    developmentReportDigest: spec.developmentReportDigest,
     parentDigest: spec.parentDigest, candidateDigest: spec.candidateDigest, minimumGain: spec.minimumGain,
     cases: cases.length, ...scores, meetsThreshold, usage,
   };
