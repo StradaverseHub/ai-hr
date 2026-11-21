@@ -57,10 +57,8 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 // Registers the request preamble every carrier of this render's read scope reads (decision 12).
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
-import {lifecycleModuleInbox} from './lifecycle/module-inbox';
-import { onboardingTasks } from '@/packs/lifecycle/service';
+import {readShellLifecyclePreview} from './lifecycle/module-inbox';
 import { ShellNotificationCenter } from './shell-notification-center';
-import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
 import { CommandBar } from '@/components/command-bar';
 import { WELCOME_TOUR_ID } from '@/lib/onboarding-tour-events';
 import { tourSteps } from '@/lib/onboarding-tour';
@@ -229,19 +227,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
-  const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
-    const [onboardingQueue, inbox] = await Promise.all([
-      lifecycleEnabled ? onboardingTasks(session) : [],
-      lifecycleModuleInbox(session, scopedLifecycleNavigation),
-    ]);
-    return {
-      items: [...onboardingQueue.map(onboardingNotificationTask), ...inbox.items],
-      count: onboardingQueue.length + inbox.count,
-      myTasksCount: onboardingQueue.length + inbox.myTasksCount,
-      approvalCount: inbox.approvalCount,
-      queueLinks: inbox.queueLinks,
-    };
-  });
+  const lifecyclePreview = withBackgroundReadWork(session.tenantId,
+    () => readShellLifecyclePreview(session, lifecycleEnabled, scopedLifecycleNavigation));
   // The passive badge and task preview stream separately from navigation. Reserve
   // interactive database capacity for the active page and the user's explicit actions.
   // It joins the page render's read-only snapshot (lib/request-read-scope.ts), so the owners it shares with the

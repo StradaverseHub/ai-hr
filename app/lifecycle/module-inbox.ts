@@ -1,11 +1,16 @@
 import 'server-only';
 import { getTranslations } from 'next-intl/server';
-import type { SessionContext } from '@/db/client';
+import { withSharedReadSnapshot, type SessionContext } from '@/db/client';
 import type { LifecycleTaskItem } from '@/lib/lifecycle-task-item';
+import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
+import { requestReadScope } from '@/lib/request-read-scope';
+import { settleReadGroup } from '@/lib/settle-read-group';
 import { contractInbox, contractSharedWorkPage, contractSharedPostingWorkPage } from '@/packs/contracts/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { lifecycleModuleNavigation } from './workflow-availability';
-import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
+import { onboardingTasks, v9EmailHoldInbox } from '@/packs/lifecycle/service';
+
+type LifecycleNavigation = Awaited<ReturnType<typeof lifecycleModuleNavigation>>;
 /**
  * Lifecycle module work beside the shared task list. Probation work is not listed here: it is a shared task source
  * (core/approvals-inbox.ts PACK_TASK_SOURCES, kinds probationApproval and probationTask), so the bell, Home, Today and
@@ -13,20 +18,23 @@ import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
  */
 export async function lifecycleModuleInbox(
   ctx: SessionContext,
-  navigation: Awaited<ReturnType<typeof lifecycleModuleNavigation>>,
+  navigation: LifecycleNavigation,
   options: { includeShared?: boolean } = {},
 ) {
   // Held On/Off Boarding emails: rechecked against Full case view and company access on every read.
   const sharedEnabled =
     options.includeShared !== false &&
     (isModuleEnabledOrFalse(ctx, 'lifecycle') || !!ctx.entitlements?.scopedModules.lifecycle?.length);
-  const [contracts, holds, shared, postings] = await Promise.all([
-    navigation.contractStaff.page ? contractInbox(ctx) : Promise.resolve({ count: 0, items: [] }),
-    v9EmailHoldInbox(ctx).catch(() => ({ count: 0, items: [] })),
-    sharedEnabled
+  const [[contracts, holds, postings], shared] = await settleReadGroup([
+    () => withSharedReadSnapshot(ctx, () => settleReadGroup([
+      () => navigation.contractStaff.page ? contractInbox(ctx) : { count: 0, items: [] },
+      () => v9EmailHoldInbox(ctx).catch(() => ({ count: 0, items: [] })),
+      () => sharedEnabled ? contractSharedPostingWorkPage(ctx, { limit: 20 }) : { items: [], total: 0 },
+    ]), undefined, requestReadScope()),
+    // This owner takes the shared Access lock in its own bounded transaction.
+    () => sharedEnabled
       ? contractSharedWorkPage(ctx, { limit: 20 })
-      : Promise.resolve({ items: [], total: 0, approvalTotal: 0, taskTotal: 0 }),
-    sharedEnabled ? contractSharedPostingWorkPage(ctx, { limit: 20 }) : Promise.resolve({ items: [], total: 0 }),
+      : { items: [], total: 0, approvalTotal: 0, taskTotal: 0 },
   ]);
   const holdCopy = holds.items.length ? await getTranslations('lifecycleEmailHold') : null;
   const contractCopy = contracts.items.some((item) => ['reconciliation', 'date_amendment'].includes(item.kind))
@@ -100,5 +108,23 @@ export async function lifecycleModuleInbox(
     count: contracts.count + holds.count + shared.total + postings.total,
     approvalCount: shared.approvalTotal,
     items,
+  };
+}
+
+export async function readShellLifecyclePreview(
+  ctx: SessionContext, lifecycleEnabled: boolean, navigation: LifecycleNavigation,
+) {
+  const [onboardingQueue, inbox] = await settleReadGroup([
+    () => lifecycleEnabled
+      ? withSharedReadSnapshot(ctx, () => onboardingTasks(ctx), undefined, requestReadScope())
+      : [],
+    () => lifecycleModuleInbox(ctx, navigation),
+  ]);
+  return {
+    items: [...onboardingQueue.map(onboardingNotificationTask), ...inbox.items],
+    count: onboardingQueue.length + inbox.count,
+    myTasksCount: onboardingQueue.length + inbox.myTasksCount,
+    approvalCount: inbox.approvalCount,
+    queueLinks: inbox.queueLinks,
   };
 }

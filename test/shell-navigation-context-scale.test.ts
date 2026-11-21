@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { lifecycleModuleNavigation } from '../app/lifecycle/workflow-availability';
+import { readShellLifecyclePreview } from '../app/lifecycle/module-inbox';
 import { isModuleEnabledOrFalse } from '../core/entitlements';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
 import type { SharedReadStats } from '../db/shared-read';
@@ -9,6 +10,7 @@ import { canAdminOnehr } from '../lib/authz-model';
 import { readShellNavigationContext, readSignedInShellNavigation, readSignedInShellRail } from '../lib/shell-navigation-context';
 import {canConfigureIdentityEmail} from '../lib/identity/email-settings';
 import { readShellFeatureNavigation } from '../lib/shell-feature-navigation';
+import { withRequestReadScope } from '../lib/request-read-scope';
 import { onboardingNavigation } from '../packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '../packs/performance/service';
 import { offboardingPostingAccess } from '../packs/personnel-postings/service';
@@ -138,6 +140,30 @@ it('keeps all rail destinations while avoiding separate Lifecycle and Performanc
     }
   } finally {
     browser.companyScope = undefined;
+    hooks.__aihrPerfBeginTransaction = previousHook;
+  }
+});
+
+it('keeps Lifecycle preview results while sharing compatible reads inside one render', async () => {
+  const hooks = globalThis as {
+    __aihrPerfBeginTransaction?: () => { acquired: () => void; finished: () => void };
+  };
+  const previousHook = hooks.__aihrPerfBeginTransaction;
+  let opened = 0;
+  hooks.__aihrPerfBeginTransaction = () => ({ acquired: () => { opened++; }, finished: () => {} });
+  try {
+    for (const session of [group.personas.group, group.personas.single, employee]) {
+      const navigation = await lifecycleModuleNavigation(session);
+      opened = 0;
+      const independent = await withIndependentTransactions(() => readShellLifecyclePreview(session, true, navigation));
+      const separateTransactions = opened;
+      opened = 0;
+      const shared = await withRequestReadScope({}, () => readShellLifecyclePreview(session, true, navigation));
+      expect(shared).toEqual(independent);
+      expect(opened).toBeGreaterThanOrEqual(2);
+      expect(opened).toBeLessThan(separateTransactions);
+    }
+  } finally {
     hooks.__aihrPerfBeginTransaction = previousHook;
   }
 });
