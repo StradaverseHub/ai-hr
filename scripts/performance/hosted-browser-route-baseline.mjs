@@ -520,10 +520,18 @@ function captureApplicationAdmission(driverEvidence){
     maxWindowP95Ms:p95.length?Math.max(...p95):null,
    };
   }
+  const observedMax=select=>{
+   const values=windows.map(select).map(nonnegative).filter(value=>value!==null);
+   return values.length?Math.max(...values):null;
+  };
   return {available:true,scope,windows:windows.length,coveredMs:windows.reduce((sum,row)=>sum+row.to-row.from,0),
    transactionStart:summarize(row=>row.startDelay),transactionHold:summarize(row=>row.held),
+   observedMaxPendingTransactions:observedMax(row=>row.pending),
+   observedMaxHeldTransactions:observedMax(row=>row.holding),
+   eventLoopDelay:summarize(row=>({count:row.eventLoopDelay?.samples,p95Ms:row.eventLoopDelay?.p95Ms})),
    passiveReadAdmission:summarize(row=>row.passiveRead?.queueWait),
-   rawPoolAdmission:summarize(row=>row.rawPoolWork?.queueWait)};
+   rawPoolAdmission:summarize(row=>row.rawPoolWork?.queueWait),
+   attendanceApprovalAdmission:summarize(row=>row.attendanceApproval?.queueWait)};
  }catch{return {available:false,scope};}
 }
 
