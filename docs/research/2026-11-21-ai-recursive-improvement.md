@@ -212,3 +212,12 @@ The scorer requires the original model and development report. It rejects normal
 ### Preregistered diagnostic on new findings
 
 The routing author froze eight English and eight Malay fictional questions before inference. Their expected findings come from the existing specialist contract. The router author chose the questions, so this measures transfer to unexposed findings and supplies no independent release evidence. Use the pinned Granite model and the fixed five-point margin. Require two gains over both the original model and the lexical selector in each language, zero losses to any reference strategy and fewer model calls. Plan SHA-256 `bbfa3cba7e68a99f139ead26a91de78db62c027b57ebf6e8c449f8282f7b2747`. English case SHA-256 `984a2fafe0e0ad17f15fc54fdec2a5d183135248975668fe58659adb27451504`. Malay case SHA-256 `5abc26e9f4e11c97c0932320e6866fbecab35ee3d423a75235923e685bf3dd88`.
+
+| Language | Original model | Lexical selector | Focused model | Five-point router | Estimated router calls |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| English | 3/8 | 3/8 | 4/8 | 4/8 | 7 of 8 |
+| Malay | 3/8 | 4/8 | 4/8 | 4/8 | 8 of 8 |
+
+The router failed the zero-regression gate. It matched the focused model on every question but lost one previously correct original-model answer in each language. It also lost one correct lexical answer in English and two in Malay. The diagnostic made 32 calls to evaluate both model arms and recorded 3,833 input tokens and 538 output tokens. The router would have saved one call across the 16 questions. Keep the current serving strategy. Report SHA-256 `d015212f5313a4522ae3191353fefb4060e6ab65cc8df0bf1e32ebd5f9e5731c`. [Frozen plan](https://github.com/StradaverseHub/ai-hr/commit/a0d93aa44107f433f605a0abe2592c221238e1aa)
+
+The offline router selects one explanation from fictional wording and finding codes. The serving Assistant resolves intent locally and sends a catalogue of authorized references. Its promotion contract recognizes the two source-owned strategy variants `baseline_v1` and `focused_v1`. A future routing candidate must earn its result using the serving catalogue and pass that contract's review before trial admission. [Offline selector](../../scripts/experiments/protected-explanation-priority.ts) · [Serving catalogue](../../lib/ai/provider-assistant-policy.ts) · [Strategy contract](../../lib/ai/assistant-conversation-candidate.ts)
