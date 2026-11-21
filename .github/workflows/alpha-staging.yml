@@ -1,5 +1,5 @@
 name: alpha-staging-ci
-run-name: ${{ inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
+run-name: ${{ inputs.recovery_unit && 'DB unit recovery only' || inputs.build_only && 'Canonical build only' || inputs.controller_only && 'CI controller checks' || inputs.diagnostics_only && 'Runner diagnostics' || 'Alpha CI' }} · ${{ inputs.candidate_ref || github.head_ref || 'alpha' }}
 on:
   workflow_dispatch:
     inputs:
@@ -27,6 +27,16 @@ on:
         required: false
         default: false
         type: boolean
+      recovery_unit:
+        description: Exact isolated DB unit missing after a hosted runner disappeared
+        required: false
+        default: ''
+        type: string
+      recovery_source_run:
+        description: First-attempt failed full gate with authenticated runner loss
+        required: false
+        default: ''
+        type: string
       diagnostics_only:
         description: Measure disposable runner resources without the full CI gate
         required: false
@@ -46,7 +56,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.build_only && 'build-only' || inputs.diagnostics_only && 'diagnostics' || 'gate' }}
+  group: alpha-ci-${{ inputs.candidate_ref || github.head_ref || github.ref }}-${{ inputs.recovery_unit && 'db-recovery' || inputs.build_only && 'build-only' || inputs.diagnostics_only && 'diagnostics' || 'gate' }}
   cancel-in-progress: false
 env:
   PYTHONDONTWRITEBYTECODE: '1'
@@ -89,8 +99,23 @@ jobs:
           DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
+      - name: Refuse incomplete or mixed database recovery
+        if: ${{ inputs.recovery_unit || inputs.recovery_source_run }}
+        env:
+          RECOVERY_UNIT: ${{ inputs.recovery_unit }}
+          SOURCE_RUN: ${{ inputs.recovery_source_run }}
+          EVENT: ${{ github.event_name }}
+          BASELINE: ${{ inputs.migration_base }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+          DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          CONTROLLER_ONLY: ${{ inputs.controller_only }}
+        run: |
+          test "$EVENT" = workflow_dispatch
+          test "$GITHUB_RUN_ATTEMPT" = 1
+          test "$BUILD_ONLY:$DIAGNOSTICS_ONLY:$CONTROLLER_ONLY" = false:false:false
+          test -n "$RECOVERY_UNIT" && test -n "$SOURCE_RUN" && test -n "$BASELINE"
       - name: CI integrity regression checks
-        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs .github/ci/resume-arrival.test.mjs
+        run: node --experimental-strip-types --test .github/ci/build-source-binding.test.mjs .github/ci/ai-manifest-admission.test.mjs .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/system-label-fonts.test.mjs .github/ci/ubuntu-browser-mirror.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/diagnostics/compiler-state.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-build-cache-policy.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs .github/ci/browser-recovery.test.mjs .github/ci/missing-db-unit.test.mjs .github/ci/build-heap.test.mjs .github/ci/orchestrator-browser.test.mjs .github/ci/resume-arrival.test.mjs
       - name: Build byte transport regression checks
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/staging -p "test_*.py"
@@ -141,7 +166,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   typecheck:
-    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
+    if: ${{ !inputs.recovery_unit && !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -195,7 +220,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
   migrations:
-    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
+    if: ${{ !inputs.recovery_unit && !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -267,7 +292,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
   controller-tests:
-    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
+    if: ${{ !inputs.recovery_unit && !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -296,9 +321,13 @@ jobs:
         run: node --import tsx --test ../automation/.github/ci/operator-flow.test.mjs ../automation/.github/ci/normal-cleanup-operator.test.mjs ../automation/.github/ci/build-source-binding.test.mjs ../automation/.github/ci/next-build-launcher.test.mjs ../automation/.github/ci/staging-source-transfer.test.mjs ../automation/.github/ci/staging-launcher.test.mjs
   plan:
     outputs:
-      test_matrix: ${{ steps.matrix.outputs.test_matrix }}
+      test_matrix: ${{ steps.recovery.outputs.test_matrix || steps.matrix.outputs.test_matrix }}
     if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve
+    permissions:
+      contents: read
+      actions: read
+      checks: read
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -325,7 +354,17 @@ jobs:
       - name: Require both frozen AI source manifests before planning
         run: node ../automation/.github/ci/ai-manifest-admission.mjs . "$AIHR_CI_HEAD"
       - run: node ../automation/.github/ci/plan.mjs > "$RUNNER_TEMP/ci-plan.json"
+      - name: Authenticate the frozen missing database unit
+        id: recovery
+        if: ${{ inputs.recovery_unit }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.recovery_source_run }}
+          RECOVERY_UNIT: ${{ inputs.recovery_unit }}
+          CANDIDATE_BRANCH: ${{ needs.resolve.outputs.branch }}
+        run: node ../automation/.github/ci/missing-db-unit.mjs
       - name: Derive execution matrix from complete trusted manifest
+        if: ${{ !inputs.recovery_unit }}
         id: matrix
         run: |
           node --input-type=module -e '
@@ -342,14 +381,24 @@ jobs:
             const count=k=>p.units.filter(u=>u.kind===k).reduce((n,u)=>n+u.files.length,0);
             const line=`Exact candidate ${p.sha}: ${p.suite.length} suite files = ${count("nodb")} no-DB + ${count("db")} DB; ${count("browser")} browser executions across 3 engines. Controller ${p.controller}.`;
             console.log(line); fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,line+"\n");'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - if: ${{ inputs.recovery_unit }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: missing-db-unit-inputs
+          path: |
+            ${{ runner.temp }}/ci-plan.json
+            ${{ runner.temp }}/missing-db-unit-inputs.json
+          if-no-files-found: error
+          retention-days: 14
+      - if: ${{ !inputs.recovery_unit }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gate-plan
           path: ${{ runner.temp }}/ci-plan.json
           if-no-files-found: error
           retention-days: 30
   build:
-    if: ${{ !inputs.diagnostics_only }}
+    if: ${{ !inputs.recovery_unit && !inputs.diagnostics_only }}
     needs: resolve
     runs-on: ubuntu-24.04
     defaults:
@@ -537,7 +586,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   browser:
-    if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
+    if: ${{ !inputs.recovery_unit && !inputs.diagnostics_only && !inputs.build_only }}
     needs: [resolve, plan]
     runs-on: ubuntu-24.04
     container:
@@ -578,7 +627,7 @@ jobs:
           retention-days: 14
   verify:
     needs: [resolve, plan, controller-tests, typecheck, migrations, build, test, browser]
-    if: ${{ always() && !inputs.diagnostics_only && !inputs.build_only && needs.resolve.result == 'success' }}
+    if: ${{ always() && !inputs.recovery_unit && !inputs.diagnostics_only && !inputs.build_only && needs.resolve.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:
