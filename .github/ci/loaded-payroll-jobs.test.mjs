@@ -45,6 +45,10 @@ test('distinguishes durable results from an unconfirmed response and strips data
     { ...completed, jobId: 'private-job', tenantId: 'private-tenant' }, missing,
   ] }), { status: 'checked', rows: [completed, missing] });
   assert.deepEqual(projectPayrollAfterTraffic({ status: 'unavailable', sql: 'private' }), { status: 'unavailable', rows: [] });
+  assert.deepEqual(projectPayrollAfterTraffic({ status: 'unavailable', kind: 'unclassified', sqlState: '42P01', sql: 'private' }),
+    { status: 'unavailable', rows: [], kind: 'unclassified', sqlState: '42P01' });
+  assert.deepEqual(projectPayrollAfterTraffic({ status: 'unavailable', kind: 'private', sqlState: 'raw diagnostic' }),
+    { status: 'unavailable', rows: [] });
   const invalid = { status: 'invalid', rows: [] };
   for (const rows of [[completed, completed], [{ ...missing, jobState: 'queued' }], [{ ...completed, payslipCount: -1 }]]) {
     assert.deepEqual(projectPayrollAfterTraffic({ status: 'checked', rows }), invalid);

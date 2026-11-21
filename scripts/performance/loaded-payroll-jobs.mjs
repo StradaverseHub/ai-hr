@@ -41,7 +41,12 @@ export function projectLoadedPayrollJobs(input) {
 
 /** A snapshot after client traffic settled. It cannot establish in-window acknowledgement. */
 export function projectPayrollAfterTraffic(input) {
-  if (input?.status === 'unavailable') return { status: 'unavailable', rows: [] };
+  if (input?.status === 'unavailable') {
+    const kind = ['Error', 'AssertionError', 'TimeoutError', 'AbortError', 'TypeError', 'AggregateError', 'unclassified'].includes(input.kind)
+      ? input.kind : null;
+    const sqlState = typeof input.sqlState === 'string' && /^[0-9A-Z]{5}$/.test(input.sqlState) ? input.sqlState : null;
+    return { status: 'unavailable', rows: [], ...(kind && { kind }), ...(sqlState && { sqlState }) };
+  }
   if (input?.status !== 'checked') return null;
   const invalid = { status: 'invalid', rows: [] };
   if (!Array.isArray(input.rows) || input.rows.length > 2) return invalid;

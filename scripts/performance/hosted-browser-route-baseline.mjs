@@ -700,7 +700,8 @@ async function measureMixedLoad(command,fixture){
    const payroll=data.mixedWorkflows?.baseline?.find(workflow=>workflow.workflow==='payroll calculation and scoped CSV export');
    if(payroll?.persisted===true&&payroll.employees===50&&Number.isSafeInteger(payroll.completionObservedMs)
       &&payroll.completionObservedMs>=0&&payroll.completionObservedMs<=90000){
-    report.mixedPayrollProcessing={verified:true,employees:50,completionObservedMs:payroll.completionObservedMs};
+    report.mixedPayrollProcessing={verified:true,employees:50,completionObservedMs:payroll.completionObservedMs,
+     ...(payroll.observerVerified===true&&{observerVerified:true})};
    }
    if(Array.isArray(data.driverFailureLocations)){
     report.mixedDriverFailureLocations=data.driverFailureLocations.slice(0,6).flatMap(location=>
