@@ -34,9 +34,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
-const contractNavigationVariant=env.AIHR_BROWSER_CONTRACT_NAVIGATION_VARIANT??'none';
-assert(['none','control','optimized'].includes(contractNavigationVariant));
-assert(contractNavigationVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
+const shellPermissionVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
+assert(['none','control','optimized'].includes(shellPermissionVariant));
+assert(shellPermissionVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -544,13 +544,13 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
  }
 }
 
-async function withMixedContractNavigationComparison(work){
- if(contractNavigationVariant==='none')return work();
+async function withMixedShellPermissionComparison(work){
+ if(shellPermissionVariant==='none')return work();
  assert.equal(sha,'b00e2b2738312d87d5bea6f0ac7c877517d0b75d');
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
- const dockerConfig=join(privateDir,'contract-navigation-docker-config');
+ const dockerConfig=join(privateDir,'shell-permission-docker-config');
  mkdirSync(dockerConfig,{mode:0o700});
  const label=execFileSync('/usr/bin/docker',[
   '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
@@ -563,12 +563,16 @@ async function withMixedContractNavigationComparison(work){
  const readFunctions=sql=>sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition,
   encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') as "bodyHash"
-  from pg_proc p where p.oid in ('app.contract_shared_navigation_access()'::regprocedure,'app.automation_can_configure(text)'::regprocedure)
+  from pg_proc p where p.oid in ('app.contract_shared_navigation_access()'::regprocedure,
+   'app.automation_can_configure(text)'::regprocedure,'app.offboarding_posting_queue_access()'::regprocedure,
+   'app.reward_current_group_roles()'::regprocedure)
   order by p.oid`;
  const boundaries=rows=>rows.map(({definition,bodyHash,...boundary})=>boundary);
  try{
   const original=await readFunctions(owner);
   assert.deepEqual(original.map(row=>row.bodyHash).sort(),[
+   '2bccfc9d1f8eef82df683aef9cf42d5bfdd6436ade60017406860d2accb6f560',
+   'a5b0666ffec7b7519f53e0f18f6717080f9d815417220d6269ff3efb175ba3af',
    'b0bb6d4e2743d83d6ab14ee757555fbfd6707db0bb82ff0b8505a44484a434fc',
    'b6aa90640d3ce45dc2fb1135af3008d7dc297090071ca8ff7534bb18624e288c',
   ]);
@@ -584,27 +588,42 @@ async function withMixedContractNavigationComparison(work){
     else assert.notEqual(row.bodyHash,original[index].bodyHash);
    }
   });
-  report.mixedContractNavigation={variant:contractNavigationVariant,fixtureFunctionOwner:functionOwner,
+  report.mixedShellPermissions={variant:shellPermissionVariant,fixtureFunctionOwner:functionOwner,
    replacementInstalled:false,restored:false};
   try{
-   if(contractNavigationVariant==='optimized'){
-    const proof=readFileSync(new URL('../../test/fixtures/contract-navigation-intake-scope.sql',import.meta.url),'utf8');
-    const digest=createHash('sha256').update(proof).digest('hex');
-    assert.equal(digest,'fb28975b2a1d0e3ad6ecacff472c1d4204a5e1ee6a996a75acb679a995c51f96');
+   if(shellPermissionVariant==='optimized'){
+    const readProof=(file,digest)=>{
+     const proof=readFileSync(new URL('../../test/fixtures/'+file,import.meta.url),'utf8');
+     assert.equal(createHash('sha256').update(proof).digest('hex'),digest);
+     return proof;
+    };
+    const proofs={
+     contract:'fb28975b2a1d0e3ad6ecacff472c1d4204a5e1ee6a996a75acb679a995c51f96',
+     offboarding:'98377e8ad38ce15950965f7def886f52642a65e8b153cbaacb02c162b2616539',
+     rewards:'6fcabdf602ac102d2407d7acf1914cec74611e10eba1792119728745be85a0e3',
+    };
+    const contract=readProof('contract-navigation-intake-scope.sql',proofs.contract);
+    const offboarding=readProof('offboarding-posting-queue-replacement.sql',proofs.offboarding);
+    const rewards=readProof('rewards-navigation-group-grant.sql',proofs.rewards);
     const restrictedOnly=' AND NOT owner_role.rolsuper AND NOT owner_role.rolbypassrls';
-    assert.equal(proof.split(restrictedOnly).length,3);
-    // PostgreSQL on this isolated fixture may be the original owner. Both arms retain the same owner and ACLs.
-    const replacement=functionOwner==='postgres'?proof.replaceAll(restrictedOnly,''):proof;
-    await install([replacement],false);
-    report.mixedContractNavigation.replacementSha256=digest;
-    report.mixedContractNavigation.replacementInstalled=true;
+    assert.equal(contract.split(restrictedOnly).length,3);
+    const marker='\nCREATE OR REPLACE FUNCTION app.offboarding_posting_queue_access()';
+    const start=offboarding.indexOf(marker);
+    assert(start>0&&start===offboarding.lastIndexOf(marker));
+    // Both browser arms retain their original owner and ACLs in the isolated database.
+    const replacement=functionOwner==='postgres'
+     ?[contract.replaceAll(restrictedOnly,''),offboarding.slice(start),rewards]
+     :[contract,offboarding,rewards];
+    await install(replacement,false);
+    report.mixedShellPermissions.replacementSha256=proofs;
+    report.mixedShellPermissions.replacementInstalled=true;
    }
    save();
    return await work();
   }finally{
-   if(report.mixedContractNavigation.replacementInstalled){
+   if(report.mixedShellPermissions.replacementInstalled){
     await install(original.map(row=>row.definition),true);
-    report.mixedContractNavigation.restored=true;
+    report.mixedShellPermissions.restored=true;
     save();
    }
   }
@@ -1850,7 +1869,7 @@ try{
   }
  }
  if(driverCommand&&!fixtureOnly){
-  await withMixedContractNavigationComparison(async()=>{
+  await withMixedShellPermissionComparison(async()=>{
    await startMixedWorker(driverCommand);
    await measureMixedLoad(driverCommand,fixture);
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
