@@ -8,7 +8,7 @@ import {resolveServerTree} from './helpers/server-tree';
 import {emptyRewardPreparation} from '../packs/rewards/preparation-model';
 // 70d5e7c5 — Configuration › Review Set-up for one review: checklist, one step at a time, release bar.
 const copies={en,ms,zh,ta,th,vi:viCopy};
-const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies,canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{} as Record<string,unknown>,previews:0}));
+const state=vi.hoisted(()=>({locale:'en' as keyof typeof copies,canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{} as Record<string,unknown>,previews:0,governanceReads:0,seniorReads:0}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()}),redirect:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:'rewards')=>createTranslator({locale:state.locale,messages:copies[state.locale],namespace})}));
@@ -23,14 +23,14 @@ vi.mock('../packs/rewards/service',()=>({
   exclusionWindow:{from:state.outsideYear?'2025-10-01':'2026-10-01',to:state.outsideYear?'2025-12-31':'2026-12-31',outsideYear:state.outsideYear},
   preparation:{...emptyRewardPreparation(),expectedRelease:'2026-11-30',steps:state.steps},checks:state.isGr?{snapshot:state.checks,data:true,excluded:!state.outsideYear,senior:true,budget:true,applied:true}:null,
   access:{required:state.required,setupVisible:true,isGr:state.isGr,independentChecker:false,actorNames:{'person-doer':'Fictional Doer'},history:[{id:'h1',kind:'preparation-confirm',reason:'Group Rewards preparation confirm',actorName:'Fictional Doer',at:'2026-11-01T02:00:00Z'}],applied:{salary:{name:'Fictional salary structure',version:2,confirmed:true},bonus:{name:'Fictional bonus matrix',version:3,confirmed:true}},origin:{name:'Fictional shared configuration',revision:4}}}),
- getRewardUnitGovernance:async()=>({available:true,unitId:'unit',revision:8,isGr:state.isGr,canEdit:state.canEdit,canAmounts:true,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:null},exemption:null,senior:[],companyPatBound:false}),
- getRewardSeniorMembership:async()=>({unitId:'unit',revision:8,canEdit:true,mode:'named-members',rows:[]}),
+ getRewardUnitGovernance:async()=>{state.governanceReads++;return {available:true,unitId:'unit',revision:8,isGr:state.isGr,canEdit:state.canEdit,canAmounts:true,inputs:{forecastCents:10000000,actualCents:11000000,targetCents:10000000,multiplierBp:10000,branchRatings:{},targetMonthsBp:20000},legacyInputs:null,pools:{standard:200000,h:50000},poolStatus:'final',branches:[],history:[],selection:{confirmedBy:null},exemption:null,senior:[],companyPatBound:false};},
+ getRewardSeniorMembership:async()=>{state.seniorReads++;return {unitId:'unit',revision:8,canEdit:true,mode:'named-members',rows:[]};},
  // 60f1fdcd: the release preview is the server-computed "Review before saving" summary; only asked for once every step is done.
  previewRewardPreparationRelease:async()=>{state.previews++;return{summary:{area:'preparation',itemLabel:'Release to BU CEO · Fictional Company 2026',lines:[{key:'state',label:'Unit set-up',before:'Preparing',after:'Released to BU CEO'}],changedCount:1,affected:[{reviewId:'unit',label:'Fictional Company 2026',stage:'draft',consequence:'released-to-bu'}],highImpact:['release-review']},digest:'d'.repeat(64)};},
  getRewardUnit:async()=>({companyName:'Fictional Company',name:'Fictional Unit',cycle:{name:'2026 Annual Compensation Review'},unit:{policy:{blockedFrom:'2026-10-01',blockedTo:'2026-12-31',payWindowKeep:{}}},rows:[]}),
 }));
 import SetupPage from '../app/admin/rewards/review-setup/[unitId]/page';
-afterEach(()=>{cleanup();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{},previews:0});});
+afterEach(()=>{cleanup();Object.assign(state,{locale:'en',canEdit:true,isGr:true,required:true,outsideYear:false,checks:true,steps:{},previews:0,governanceReads:0,seniorReads:0});});
 async function show(searchParams:Record<string,string>={}){const tree=await resolveServerTree(await SetupPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve(searchParams)}));return render(<NextIntlClientProvider locale={state.locale} messages={copies[state.locale]} onError={error=>{throw error;}}>{tree}</NextIntlClientProvider>);}
 describe('Review Set-up detail (70d5e7c5)',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('lists six numbered steps and opens one at a time in %s',async locale=>{
@@ -44,6 +44,21 @@ describe('Review Set-up detail (70d5e7c5)',()=>{
   expect(screen.queryByText(/predates preparation history/)).toBeNull();
   await captureAiReviewScreenshots(aiReviewDomHtml(view.container),locale,'rewards-review-setup');
  },60000);
+ it('loads the governance and senior data only for the relevant step and viewer',async()=>{
+  await show();
+  expect([state.governanceReads,state.seniorReads]).toEqual([0,0]);
+  cleanup();
+  await show({step:'budget'});
+  expect([state.governanceReads,state.seniorReads]).toEqual([1,0]);
+  cleanup();
+  await show({step:'senior'});
+  expect([state.governanceReads,state.seniorReads]).toEqual([2,1]);
+  cleanup();
+  state.canEdit=false;
+  state.isGr=false;
+  await show({step:'senior'});
+  expect([state.governanceReads,state.seniorReads]).toEqual([3,1]);
+ });
  it('says why release is unavailable, step first, then the expected date',async()=>{
   state.checks=false;await show();
   expect(screen.getByRole('status').textContent).toBe('Step 1: the employee snapshot has changes to review');
