@@ -69,7 +69,7 @@ export async function seedBrowserGroupShape(owner,fixture){
  return {counts,company:companies[0]};
 }
 
-export async function measureBrowserGroupScope({base,page,user,fixture,report,save}){
+export async function measureBrowserGroupScope({base,page,user,fixture,report,save},previewPath){
  assert.equal(user.role,'groupHR');
  assert(fixture.scaleCompany);
  report.groupScopeSteps=[];
@@ -84,6 +84,31 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
   const cookies=await page.context().cookies(base);
   return decodeURIComponent(cookies.find(cookie=>cookie.name==='company_scope')?.value??'');
  };
+
+ function observeSelectedPreview(expected){
+  if(!previewPath)return undefined;
+  return page.waitForResponse(async response=>{
+   const url=new URL(response.url());
+   if(url.origin!==base||url.pathname!==previewPath||response.request().method()!=='GET')return false;
+   const cookies=await response.request().headerValue('cookie');
+   const scope=cookies?.split(';').map(cookie=>cookie.trim()).find(cookie=>cookie.startsWith('company_scope='));
+   if(!scope)return false;
+   const ids=decodeURIComponent(scope.slice('company_scope='.length)).split(',').sort();
+   return ids.length===expected.length&&ids.every((id,index)=>id===expected[index]);
+  },{timeout}).then(async response=>{
+   if(response.status()!==200||response.headers()['cache-control']!=='private, no-store')return null;
+   const payload=await response.json();
+   return payload?.approvals?.state==='ready'?performance.now():null;
+  }).catch(()=>null);
+ }
+ async function recordPreview(step,preview,started){
+  if(!preview)return;
+  report.groupScopeStage=step;
+  const ready=await preview;
+  assert(Number.isFinite(ready),'The fresh company selection did not produce a usable task preview');
+  report.groupScopeSteps.push({step,elapsedMs:Math.round(ready-started),usable:true});
+  save();
+ }
 
  report.groupScopeStage='group-open';
  const opened=performance.now();
@@ -114,6 +139,7 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
 
  report.groupScopeStage='group-scope-narrowed';
  const selected=performance.now();
+ const selectedPreview=observeSelectedPreview([fixture.scaleCompany.id]);
  const [response]=await Promise.all([
   page.waitForResponse(response=>response.request().method()==='POST'
    &&new URL(response.url()).pathname==='/admin/personnel',{timeout}),
@@ -127,9 +153,12 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  report.groupScopeSteps.push({step:'select-one-company',elapsedMs:Math.round(performance.now()-selected),usable:true});
  save();
 
+ await recordPreview('selected-company-task-preview',selectedPreview,selected);
+
  report.groupScopeStage='group-scope-restored';
  if(await switcher.getAttribute('aria-expanded')!=='true')await switcher.click({timeout});
  const restored=performance.now();
+ const restoredPreview=observeSelectedPreview(allCompanyIds);
  const [restoredResponse]=await Promise.all([
   page.waitForResponse(response=>response.request().method()==='POST'
    &&new URL(response.url()).pathname==='/admin/personnel',{timeout}),
@@ -148,4 +177,5 @@ export async function measureBrowserGroupScope({base,page,user,fixture,report,sa
  assert.equal(await companies.count(),70);
  report.groupScopeSteps.push({step:'restore-all-companies',elapsedMs:Math.round(performance.now()-restored),usable:true});
  save();
+ await recordPreview('restored-companies-task-preview',restoredPreview,restored);
 }

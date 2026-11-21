@@ -2116,7 +2116,9 @@ async function measureActions(fixture){
  const db=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
  const actions=[
   ...(groupShape?[
-   {name:'group-company-scope',actorIndex:0,run:measureBrowserGroupScope,timings:result=>result.groupScopeSteps},
+   {name:'group-company-scope',actorIndex:0,
+    run:options=>measureBrowserGroupScope(options,sha===detachedShellSource?shellPreviewPath:undefined),
+    timings:result=>result.groupScopeSteps},
    {name:'group-lifecycle-menu',actorIndex:0,run:measureLifecycleMenu,timings:result=>result.lifecycleMenuSteps},
   ]:[]),
   {name:'personal-calendar-month',actorIndex:4,run:measureCalendarMonth,timings:result=>result.calendarSteps},
