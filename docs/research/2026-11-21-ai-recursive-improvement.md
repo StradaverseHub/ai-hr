@@ -241,6 +241,17 @@ The candidate failed both language gates. All 90 calls returned admissible repli
 
 Reproduce with `node --import tsx scripts/experiments/leave-improvement-cli.ts granite3.3:2b NEW_REPORT.json --compare-explanation-meanings`. Report SHA-256 `fd21a7f3eabc1645362bd6dfbd06641980d0da6f6aeb040a0a6b04ecc8d55423`. [Frozen experiment](https://github.com/StradaverseHub/ai-hr/commit/4b22bc9be13fb55a96ab0c48e72ef26e5cfb583b) · [Hosted tooling checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44947243848)
 
+### Can model scores identify when to abstain?
+
+A separate exploratory run used Ollama 0.40.17, the same pinned Granite model and the same 30 development questions. The focused prompt mapped ordered canonical codes to single-letter labels and constrained the output to one listed label. With temperature 0, seed 42 and up to 32 output tokens, Ollama provided scores for every eligible label at the selection position. The reported margin subtracts the highest alternative log probability from the chosen label's log probability. [Ollama generation API](https://docs.ollama.com/api/generate)
+
+| Language | Correct over all 15 | Correct among four highest margins | Correct among eight highest margins | Chosen label with zero or negative margin |
+| --- | ---: | ---: | ---: | ---: |
+| English | 12/15 | 3/4 | 6/8 | 4 |
+| Malay | 11/15 | 1/4 | 4/8 | 3 |
+
+The tested ranking failed to isolate reliable answers, especially in Malay. Treat the one-letter format's aggregate accuracy as an exploratory observation. This run changed the representation and prompt, and it did not measure paired regressions against the focused strategy. A selective classifier needs separate evidence that its thresholds reduce error at useful coverage. Keep threshold selection separate from the final evidence set and check coverage and errors per language. Report SHA-256 `13d8f07d250d1bf9af642d81521de70e83c155110f3b8d1ee567e975cdc8d767`. [Selective classification research](https://proceedings.neurips.cc/paper/2017/hash/4a8423d5e91fda00bb7e46540e2b0cf1-Abstract.html)
+
 ### Serving-catalogue experiment for explicit leave counts
 
 At `78731e264`, the experiment compared the two reviewed strategy prompts with a local deterministic candidate on the same serving catalogue. The candidate selects only the exact available, pending or taken count when the existing local intent names that field and the protected catalogue contains one selected leave card and one eligible matching fact. Both production answer adjudicators still validate the result. Ambiguous, missing or unrelated references defer to the existing path.
