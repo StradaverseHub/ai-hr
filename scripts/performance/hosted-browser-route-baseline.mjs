@@ -816,11 +816,27 @@ async function measureMixedLoad(command,fixture){
     };
    }
    const samplesPath=join(driverEvidence,'http-samples.json');
+   const attendanceActions=['attendanceCreate','attendanceApprove','importValidate','importCommit'];
+   const loadedAttendance=data.mixedWorkflows?.completed;
+   if(loadedAttendance)report.mixedAttendanceWork={
+    persisted:counts(loadedAttendance,['attendance','clockingImport']),
+   };
    report.mixedResponsePhases={available:false};
    try{
     const metadata=statSync(samplesPath);
     if(metadata.isFile()&&metadata.size<=16*1024*1024){
      const samples=JSON.parse(readFileSync(samplesPath,'utf8'));
+     const measuredFrom=data.measurementWindow?.startPerformanceMs;
+     if(Array.isArray(samples)&&Number.isFinite(measuredFrom)&&report.mixedAttendanceWork){
+      const completedResponses=Object.fromEntries(attendanceActions.map(action=>[action,0]));
+      for(const row of samples){
+       if(row?.method==='POST'&&attendanceActions.includes(row.action)&&Number.isFinite(row.startedMs)
+        &&row.startedMs>=measuredFrom&&Number.isInteger(row.status)&&row.status>=200&&row.status<=599){
+        completedResponses[row.action]++;
+       }
+      }
+      report.mixedAttendanceWork.completedHttpResponses=completedResponses;
+     }
      const statuses=summarizeMixedErrorStatuses(samples,data.measurementWindow,knownRoutes);
      if(statuses)report.mixedCompletedErrorStatuses={
       scope:'Completed HTTP 4xx/5xx responses recorded by the driver since load start. Expected denials may be included.',
