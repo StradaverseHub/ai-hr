@@ -9,6 +9,14 @@ import {attendanceCorrectionForm} from './attendance-rejection-browser.mjs';
 import {exerciseConcurrentPayrollClose} from './payroll-close-concurrency.mjs';
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
+const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
+
+export function isNativeAttendanceApprovalPost(request,url){
+ return request.method()==='POST'&&request.url()===url&&request.isNavigationRequest()
+  &&request.resourceType()==='document'&&!request.headers()['next-action']
+  &&/^multipart\/form-data\b/i.test(request.headers()['content-type']??'')
+  &&Boolean(request.postDataBuffer()?.includes(Buffer.from(attendanceApprovalMarker)));
+}
 
 export function readAttendanceCorrectionForm(html,{actionId,date,employmentId}){
  assert(typeof actionId==='string'&&/^[a-f0-9]{42}$/.test(actionId),'Missing captured Attendance action identity');
@@ -57,7 +65,8 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  const failedAttendanceActions=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
-  const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const currentUrl=page.url();
   // Bind to a request initiated after arming this click, never an advisory response already in flight.
   // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
   // the surrounding workflow still verifies UI readiness and independent committed native state.
@@ -65,7 +74,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   const waiting=page.waitForRequest(req=>{
    if(req.method()!=='POST')return false;
    posts++;
-   if(!req.headers()['next-action'])return false;
+   if(!req.headers()['next-action'])return kind==='attendanceApprove'&&isNativeAttendanceApprovalPost(req,currentUrl);
    actionPosts++;
    return !marker||req.postDataBuffer()?.includes(Buffer.from(marker));
   },{timeout:90000});
@@ -91,6 +100,12 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const form=await new Request(req.url(),{method:'POST',headers:{'Content-Type':type},body:req.postDataBuffer()}).formData();
    const pairs=[...form].filter(([,v])=>typeof v==='string');fieldOrder=pairs.map(([k])=>k);
    assert.equal(new Set(fieldOrder).size,fieldOrder.length,'fixture replay does not support repeated string fields');fields=Object.fromEntries(pairs);
+  }
+  if(kind==='attendanceApprove'&&!headers['next-action']){
+   assert([200,303].includes(response.status())&&fields.action==='approved'&&fields.reason===attendanceApprovalMarker,
+    'Native Attendance approval did not submit the witnessed form');
+   assert.equal(fieldOrder.filter(name=>/^\$ACTION_ID_[a-f0-9]{42}$/.test(name)).length,1,
+    'Native Attendance approval did not carry its named server action');
   }
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const actionUrl=new URL(req.url());
@@ -248,9 +263,11 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   await withContext(reviewCtx,async()=>{
    const review=await reviewCtx.newPage();
    await visit(review,approver,'/attendance/application-history/'+correction.id);
-   const approve=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')}).getByRole('button',{name:'Approve current stage',exact:true});
+   const approvalForm=review.locator('form:visible').filter({has:review.locator('input[name="action"][value="approved"]')});
+   const approve=approvalForm.getByRole('button',{name:'Approve current stage',exact:true});
    await approve.waitFor({state:'visible',timeout:90000});
    assert.equal(await approve.count(),1,'Expected one visible Attendance approval control');
+   await approvalForm.locator('textarea[name="reason"]').fill(attendanceApprovalMarker);
    await capture(review,()=>approve.click(),'attendanceApprove');await review.waitForLoadState('networkidle');
    const [row]=await db`select status from attendance_correction where id=${correction.id}::uuid`;assert.equal(row.status,'approved');
    const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
