@@ -5,7 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {createHomeHttpReplay} from './home-http.mjs';
 import {waitForTodayBrowserReadiness} from './today-browser-readiness.mjs';
 import {browserFailureLocation,browserPreflightClickObstruction,browserPreflightErrorFingerprint,browserPreflightFailureLocation} from './browser-failure.ts';
-import {routeLatency} from './route-latency.mjs';
+import {mixedActionRoute,routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
@@ -286,7 +286,7 @@ function readRoute(user,route){return readManifestRoute(route,(path,status)=>req
 // projected, through the closed workerRequestFailureFact, so a failure names its route but never its path.
 const ownedRequestFailures=new WeakMap();
 async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
- const attempt={stage:comparisonStage,role:user?.role??null,route:readRouteForMeasurement(path),method:fields?'POST':'GET',
+ const attempt={stage:comparisonStage,role:user?.role??null,route:mixedActionRoute(readRouteForMeasurement(path),action),method:fields?'POST':'GET',
   startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
  try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
  catch(error){
@@ -323,11 +323,11 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
-  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,startedMs:started,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
+  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
   throw error;
  });
  response.durationMs=performance.now()-started;
- if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:readRouteForMeasurement(path),method:fields?'POST':'GET',action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
  if(!fields&&expectedStatus===200&&ownPayslipPdf){
@@ -1903,8 +1903,9 @@ async function main(){
  const claimWriteRoles=mixedWorkflows?['manager']:Object.keys(measuredRoutePools);
  const plannedWrites=claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete']
   .map(action=>({role,route:'/claims',action}))).concat(mixedWorkflows?.plannedWrites()??[]);
+ const plannedReads=plannedWrites.filter(row=>row.action==='attendanceCreate').map(row=>({...row,action:'attendanceForm'}));
  report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
-  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedWrites,steadyStart,steadyUntil});
+  homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedReads,plannedWrites,steadyStart,steadyUntil});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
  if(measureDevelopment)loadedCadenceClosed=loadedWindowReached;

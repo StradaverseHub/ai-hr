@@ -2,17 +2,19 @@
 const minimumSteadySamples=20;
 const recordId=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
-function writeRouteTemplate(route,action) {
+export const mixedActionRouteTemplates=Object.freeze(['/payroll/[batchId]','/attendance/my-records/[date]','/attendance/application-history/[id]']);
+
+export function mixedActionRoute(route,action) {
  const [root,module,view,record,extra]=route.split('/');
  if(root!==''||extra!==undefined)return route;
  if(action==='payrollProcess'&&module==='payroll'&&record===undefined&&recordId.test(view))return '/payroll/[batchId]';
  if(module!=='attendance')return route;
- if(action==='attendanceCreate'&&view==='my-records'&&/^\d{4}-\d{2}-\d{2}$/.test(record))return '/attendance/my-records/[date]';
+ if((action==='attendanceCreate'||action==='attendanceForm')&&view==='my-records'&&/^\d{4}-\d{2}-\d{2}$/.test(record))return '/attendance/my-records/[date]';
  if(action==='attendanceApprove'&&view==='application-history'&&recordId.test(record))return '/attendance/application-history/[id]';
  return route;
 }
 
-export function routeLatency({samples,pageInteractions,routePools,homeTemplates,plannedWrites=[],steadyStart,steadyUntil}) {
+export function routeLatency({samples,pageInteractions,routePools,homeTemplates,plannedReads=[],plannedWrites=[],steadyStart,steadyUntil}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
  const inside=row=>row.startedMs>=steadyStart&&row.startedMs<steadyUntil;
  const buckets=new Map();
@@ -24,11 +26,13 @@ export function routeLatency({samples,pageInteractions,routePools,homeTemplates,
  };
  for(const [role,routes] of Object.entries(routePools))for(const route of routes){add('read',role,route);add('navigation',role,route);}
  for(const {role,requests} of homeTemplates)for(const {path} of requests)add('read',role,path);
- for(const {role,route,action} of plannedWrites)add('write',role,writeRouteTemplate(route,action),action);
+ for(const {role,route,action} of plannedReads)add('read',role,mixedActionRoute(route,action),action);
+ for(const {role,route,action} of plannedWrites)add('write',role,mixedActionRoute(route,action),action);
  for(const row of samples){
   const bucket=row.method==='POST'
-   ?add('write',row.role,writeRouteTemplate(row.route,row.action),row.action)
-   :row.method==='GET'?buckets.get(keyFor('read',row.role,row.route)):undefined;
+   ?add('write',row.role,mixedActionRoute(row.route,row.action),row.action)
+   :row.method==='GET'?(buckets.get(keyFor('read',row.role,mixedActionRoute(row.route,row.action),row.action))
+    ??buckets.get(keyFor('read',row.role,row.route))):undefined;
   if(bucket&&inside(row))bucket.values.push(row.durationMs);
  }
  for(const row of pageInteractions)if(inside(row)){

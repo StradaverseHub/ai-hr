@@ -1,5 +1,6 @@
 import {expect,it} from 'vitest';
-import {routeLatency} from '../scripts/performance/route-latency.mjs';
+import {mixedActionRoute,routeLatency} from '../scripts/performance/route-latency.mjs';
+import {workerRequestFailureFact} from '../scripts/performance/worker-comparison-failure.mjs';
 const read=(role:string,route:string,durationMs:number,startedMs=20,action?:string)=>({role,route,durationMs,startedMs,action,method:'GET'});
 const navigation=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs});
 const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
@@ -95,4 +96,27 @@ it('measures seeded records together for the same action and keeps the role sepa
 it('does not conceal an invalid measurement as a passing sample',()=>{
  const fixture=input();fixture.samples[0].durationMs=NaN;expect(()=>routeLatency(fixture)).toThrow(RangeError);
  fixture.steadyUntil=fixture.steadyStart;expect(()=>routeLatency(fixture)).toThrow(RangeError);
+});
+
+it('counts the form read and mutation separately and keeps failed requests on safe route templates',()=>{
+ const fixture=input();
+ const datePath='/attendance/my-records/2026-11-21';
+ const template='/attendance/my-records/[date]';
+ const plannedReads=[{role:'employee',route:template,action:'attendanceForm'}];
+ fixture.samples.push(read('employee',datePath,240,20,'attendanceForm'),
+  {...read('employee',datePath,320,20,'attendanceCreate'),method:'POST'});
+ const rows=routeLatency({...fixture,plannedReads}).rows.filter(row=>row.route===template);
+ expect(rows).toMatchObject([
+  {kind:'read',action:'attendanceForm',samples:1,p95Ms:240},
+  {kind:'write',action:'attendanceCreate',samples:1,p95Ms:320},
+ ]);
+ expect(mixedActionRoute(datePath,'unrelatedAction')).toBe(datePath);
+ for(const [path,action,route] of [
+  [datePath,'attendanceForm',template],
+  ['/attendance/application-history/10000000-0000-4000-8000-000000000001','attendanceApprove','/attendance/application-history/[id]'],
+  ['/payroll/10000000-0000-4000-8000-000000000001','payrollProcess','/payroll/[batchId]'],
+ ]){
+  expect(workerRequestFailureFact({route:mixedActionRoute(path,action)}).route).toBe(route);
+  expect(workerRequestFailureFact({route:path}).route).toBe('other');
+ }
 });

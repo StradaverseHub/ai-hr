@@ -1,6 +1,7 @@
 /** Closed, diagnostic-only facts from the existing fictional comparison owner. */
 import {driverErrorFact} from './driver-shutdown.mjs';
 import {routePools} from './system-route-manifest.mjs';
+import {mixedActionRouteTemplates} from './route-latency.mjs';
 
 export const workerDriverFailureFile='worker-driver-failure.json';
 export const workerDriverFailureBytes=3584;
@@ -174,6 +175,7 @@ export function workerStageFailureFact({step,role,route,sourceFile,sourceLine,er
    check:typeof navigation.checkId==='string'&&scenarioId.test(navigation.checkId)?navigation.checkId:null,counts}:null};
 }
 const requestMethods=new Set(['GET','POST']);
+const knownRequestRoutes=new Set([...knownRoutes,...mixedActionRouteTemplates]);
 const requestAbortSources=new Set(['driver-deadline','connection-reset','premature-close','abort-unattributed','not-aborted']);
 const requestDeadlineMaxMs=900000;
 const requestElapsedMaxMs=910000;
@@ -191,14 +193,14 @@ const wholeMs=(value,maximum)=>typeof value==='number'&&Number.isFinite(value)&&
  * its deadline, how long it ran, whether headers arrived, and what ended it. Never a path, query, body or header. */
 export function workerRequestFailureFact({stage,role,route,method,deadlineMs,elapsedMs,ttfbMs,httpStatus,error,deadline}={}){
  return {stage:stages.has(stage)?stage:'unavailable',role:roles.has(role)?role:null,
-  route:typeof route==='string'?knownRoutes.has(route)?route:'other':null,method:requestMethods.has(method)?method:null,
+  route:typeof route==='string'?knownRequestRoutes.has(route)?route:'other':null,method:requestMethods.has(method)?method:null,
   deadlineMs:Number.isSafeInteger(deadlineMs)&&deadlineMs>0&&deadlineMs<=requestDeadlineMaxMs?deadlineMs:null,
   elapsedMs:wholeMs(elapsedMs,requestElapsedMaxMs),ttfbMs:wholeMs(ttfbMs,requestElapsedMaxMs),
   httpStatus:Number.isInteger(httpStatus)&&httpStatus>=100&&httpStatus<=599?httpStatus:null,
   abortSource:requestAbortSource(error,deadline)};
 }
 const validRequest=value=>value===null||fields(value,['stage','role','route','method','deadlineMs','elapsedMs','ttfbMs','httpStatus','abortSource'])
- &&stages.has(value.stage)&&(value.role===null||roles.has(value.role))&&(value.route===null||value.route==='other'||knownRoutes.has(value.route))
+ &&stages.has(value.stage)&&(value.role===null||roles.has(value.role))&&(value.route===null||value.route==='other'||knownRequestRoutes.has(value.route))
  &&(value.method===null||requestMethods.has(value.method))
  &&(value.deadlineMs===null||Number.isSafeInteger(value.deadlineMs)&&value.deadlineMs>0&&value.deadlineMs<=requestDeadlineMaxMs)
  &&(value.elapsedMs===null||integer(value.elapsedMs,requestElapsedMaxMs))&&(value.ttfbMs===null||integer(value.ttfbMs,requestElapsedMaxMs))
