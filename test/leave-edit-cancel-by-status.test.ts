@@ -293,6 +293,46 @@ describe('cancelOwnLeave — pending withdraw', () => {
     expect(gb.cancellationRequestId).toBeTruthy();
   });
 
+  it('commits exactly one outcome when approval and pending self-withdrawal race', async () => {
+    const id = await pendingThreeDay();
+    const [approval, withdrawal] = await Promise.allSettled([
+      decideLeave(adminCtx(b), { leaveRequestId: id, decision: 'approved' }),
+      cancelOwnLeave(subjectCtx, { leaveRequestId: id }),
+    ]);
+    expect([approval, withdrawal].filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const approved = approval.status === 'fulfilled';
+    const approvalEvent = 'leave-request.approved';
+    const withdrawalEvent = 'leave-request.self-cancelled';
+    expect((await rowOf(id)).status).toBe(approved ? 'approved' : 'cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(approved ? 17 : 20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === approvalEvent || type === withdrawalEvent))
+      .toEqual([approved ? approvalEvent : withdrawalEvent]);
+  });
+
+  it('restores the net debit on an existing pending request exactly once', async () => {
+    const id = await pendingThreeDay();
+    // A historical debit is possible even though current pending submissions do not debit the balance.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-1.00',
+      sourceRequestId: id,
+      effectiveOn: '2026-08-10',
+    });
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(19);
+    expect(await cancelOwnLeave(subjectCtx, { leaveRequestId: id })).toEqual({
+      previousStatus: 'pending',
+      restoredDays: 1,
+    });
+    await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+    expect((await rowOf(id)).status).toBe('cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === 'leave-request.self-cancelled'))
+      .toEqual(['leave-request.self-cancelled']);
+  });
+
   it('subject-only: a manager who can SEE the leave cannot self-cancel it', async () => {
     const id = await pendingThreeDay();
     await expect(cancelOwnLeave(otherCtx, { leaveRequestId: id })).rejects.toBeInstanceOf(
