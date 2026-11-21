@@ -14,6 +14,7 @@ import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
@@ -27,7 +28,7 @@ import {
 } from '../core/leave';
 import { dispatchNotifications } from '../core/notifications';
 import { leaveRequestsFor } from '../core/read';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
@@ -278,6 +279,47 @@ describe('cancelOwnLeave — pending withdraw', () => {
     expect(sc.actorId).toBe(subjectCtx.userId);
     expect(sc.subj).toBe(subject.employmentId);
     void ev;
+  });
+
+  it('observes a pending self-withdrawal queue an unrelated tenant read behind it', async () => {
+    const id = await pendingThreeDay();
+    let withdrawal: ReturnType<typeof cancelOwnLeave> | undefined;
+    let independentRead: Promise<boolean> | undefined;
+    try {
+      await owner.db.transaction(async holder => {
+        await lockAccessConfigurationReadTx(holder, b.tenantId);
+        const [backend] = await holder.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+        const blockers = () => holder.execute<{ pid: number; mode: string; blockedBy: number[] }>(sql`
+          with key as (select hashtextextended(${'access-configuration:' + b.tenantId}, 0) as id)
+          select l.pid, l.mode, pg_blocking_pids(l.pid) as "blockedBy"
+          from pg_locks l cross join key
+          where l.locktype='advisory' and l.objsubid=1 and not l.granted
+            and l.database=(select oid from pg_database where datname=current_database())
+            and l.classid::bigint=((key.id>>32)&4294967295) and l.objid::bigint=(key.id&4294967295)
+        `);
+        withdrawal = cancelOwnLeave(subjectCtx, { leaveRequestId: id });
+        void withdrawal.catch(() => undefined);
+        let withdrawalPid: number | undefined;
+        await expect.poll(async () => {
+          withdrawalPid = (await blockers()).find(lock => lock.mode === 'ExclusiveLock' && lock.blockedBy.includes(backend.pid))?.pid;
+          return withdrawalPid !== undefined;
+        }, { timeout: 1500, interval: 25 }).toBe(true);
+        independentRead = withTenant(otherCtx, async tx => {
+          await lockAccessConfigurationReadTx(tx, b.tenantId);
+          const [principal] = await tx.execute<{ current: boolean }>(sql`select app.principal_snapshot_current() as current`);
+          return principal.current;
+        });
+        void independentRead.catch(() => undefined);
+        await expect.poll(async () => {
+          return (await blockers()).some(lock => lock.mode === 'ShareLock' && lock.blockedBy.some(pid => pid === withdrawalPid));
+        }, { timeout: 1500, interval: 25 }).toBe(true);
+      });
+      await expect(withdrawal).resolves.toEqual({ previousStatus: 'pending', restoredDays: 0 });
+      await expect(independentRead).resolves.toBe(true);
+      expect((await rowOf(id)).status).toBe('cancelled');
+    } finally {
+      await Promise.allSettled([withdrawal, independentRead]);
+    }
   });
 
   it('refuses to self-cancel an APPROVED leave (routed to the give-back flow instead)', async () => {
