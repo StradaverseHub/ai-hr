@@ -81,21 +81,29 @@ it('shares live Rewards configuration facts without changing flags at group scal
   expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);
   expect(fixture.activeEmploymentIds.length).toBeGreaterThanOrEqual(1000);
 
-  const newUser = async () => ({
+  const [employed] = await owner.db.execute<{ person_id: string }>(sql`
+    select person_id from employment where id=${fixture.activeEmploymentIds[0]}::uuid
+  `);
+  expect(employed?.person_id).toBeTruthy();
+  const newUser = async (personId?: string) => ({
     ...fixture.personas.group,
-    userId: await createAppUser(base.tenantId, null, 'employee'),
-    personId: undefined,
+    userId: await createAppUser(base.tenantId, personId ?? null, 'employee'),
+    personId,
     roles: ['employee'],
     grants: [{ role: 'employee', companyId: null }],
   } satisfies SessionContext);
-  const [employee, groupRewards, groupCtro] = await Promise.all([newUser(), newUser(), newUser()]);
+  const [employee, groupRewards, groupCtro, ineligibleCtro] = await Promise.all([
+    newUser(), newUser(), newUser(employed.person_id), newUser(),
+  ]);
   await owner.db.execute(sql`insert into reward_setup_grant(tenant_id,user_id,role,valid_from,created_by,reason)
     values(${base.tenantId}::uuid,${groupRewards.userId}::uuid,'gr','2000-01-01',${base.adminUserId}::uuid,'Fictional group Rewards fixture')`);
   await owner.db.execute(sql`insert into reward_group_role_grant(tenant_id,user_id,role,active,revision)
-    values(${base.tenantId}::uuid,${groupCtro.userId}::uuid,'ctro',true,1)`);
+    values(${base.tenantId}::uuid,${groupCtro.userId}::uuid,'ctro',true,1),
+      (${base.tenantId}::uuid,${ineligibleCtro.userId}::uuid,'ctro',true,1)`);
 
   for (const [persona, ctx] of Object.entries(fixture.personas)) await compare(ctx, persona);
   expect(Object.values(await compare(employee, 'employee'))).toEqual(Array(6).fill(false));
   expect(await compare(groupRewards, 'groupRewards')).toMatchObject({ plans: true, history_upload: true });
   expect(await compare(groupCtro, 'groupCtro')).toMatchObject({ salary: true, bonus: true });
+  expect(Object.values(await compare(ineligibleCtro, 'ineligibleCtro'))).toEqual(Array(6).fill(false));
 }, 180_000);
