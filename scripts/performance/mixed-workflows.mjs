@@ -363,12 +363,24 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   await withContext(ctx,async()=>{
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
-   await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
+   const processButton=page.getByRole('button',{name:'Process Payroll',exact:true});
+   const fallbackAction=await processButton.evaluate(button=>{
+    const form=button.closest('form');
+    if(!form)return null;
+    const actionNames=Array.from(form.elements).map(element=>/^\$ACTION_ID_([a-f0-9]{42})$/.exec(element.name??'')).filter(Boolean);
+    return actionNames.length===1?actionNames[0][1]:null;
+   });
+   await processButton.click();
    const queueFeedback=page.getByRole('status').filter({hasText:payrollQueuedMessage});
    const receiptStart=performance.now();
    const feedback=queueFeedback.waitFor({state:'visible',timeout:90000}).then(()=>Math.round(performance.now()-receiptStart));
    const [,browserReceiptMs]=await Promise.all([
-    capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess'),
+    capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess').then(template=>{
+     const channel=fallbackAction===null?'unknown'
+      :template.headers['next-action']===fallbackAction?'fallback':'receipt';
+     report.mixedWorkflows.payrollUiPreflightTransport={channel,status:template.status};save();
+     return template;
+    }),
     feedback,
    ]);
    report.mixedWorkflows.payrollUiPreflight={browserReceiptMs};save();
