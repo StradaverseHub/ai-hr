@@ -41,7 +41,7 @@ assert(['none','control','optimized'].includes(shellPermissionVariant));
 assert(shellPermissionVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
-assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
+assert(databaseTopology==='direct'||(mixedLoad&&!fixtureOnly&&shellPermissionVariant==='none'));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 assert(!groupScale||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
@@ -69,11 +69,15 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
+const pinnedCandidates=JSON.parse(readFileSync(new URL('./pooled-candidate-builds.json',import.meta.url),'utf8'));
+const pinnedCandidate=pinnedCandidates[sha];
+const reusedBuild=pinnedCandidate
+ ?{runId:pinnedCandidate.runId,artifactId:pinnedCandidate.artifactId,sourceSha:sha}
+ :{runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'};
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44897803593,artifactId:14705041556,
-  sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:reusedBuild}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};

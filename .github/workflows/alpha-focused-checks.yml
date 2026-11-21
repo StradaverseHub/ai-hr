@@ -175,6 +175,9 @@ jobs:
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               false:24be55ec75d7e27013929ba798dedf3a200b25b8) ;;
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:497768e0210433bcf6723f42182d7f2b46111241) ;;
+              false:*)
+                jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/pooled-candidate-builds.json >/dev/null || exit 2
+                ;;
               *) exit 2 ;;
             esac
           fi
@@ -300,37 +303,51 @@ jobs:
         run: |
           build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          harness_head="$AIHR_CI_HEAD"
-          if [[ "$AIHR_CI_HEAD" == 497768e0210433bcf6723f42182d7f2b46111241 ]]; then
-            test "$MIXED_GROUP_SCALE" = true
-            harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
-            test "$(git rev-parse HEAD^)" = "$harness_head"
-            test "$(git diff --name-status "$harness_head" HEAD)" = "$(printf '%s\t%s' M scripts/performance/system-load-owner.mjs)"
-          fi
-          if [[ "$AIHR_CI_HEAD" == 24be55ec75d7e27013929ba798dedf3a200b25b8 ]]; then
+          pins=../automation/scripts/performance/pooled-candidate-builds.json
+          if jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' "$pins" >/dev/null; then
             test "$MIXED_GROUP_SCALE" = false
-            harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
-            test "$(git rev-parse HEAD^)" = "$harness_head"
-            witness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/system-load-owner.mjs)"
-            test "$(git diff --name-status "$harness_head" HEAD)" = "$witness_diff"
+            IFS=$'\t' read -r run job artifact controller digest < <(jq -r --arg source "$AIHR_CI_HEAD" \
+              '.[$source] | [.runId,.jobId,.artifactId,.controllerSha,.sha256] | @tsv' "$pins")
+          else
+            run=44897803593
+            job=136827202599
+            artifact=14705041556
+            controller=ce8bdf04bfe00cce140fff584836e498579622b5
+            digest=04dbf21aff4cd49fa6e101d4c87f939d1850bdb5e6a66f21a1d96de19f94b969
+            harness_head="$AIHR_CI_HEAD"
+            if [[ "$AIHR_CI_HEAD" == 497768e0210433bcf6723f42182d7f2b46111241 ]]; then
+              test "$MIXED_GROUP_SCALE" = true
+              harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
+              test "$(git rev-parse HEAD^)" = "$harness_head"
+              test "$(git diff --name-status "$harness_head" HEAD)" = "$(printf '%s\t%s' M scripts/performance/system-load-owner.mjs)"
+            fi
+            if [[ "$AIHR_CI_HEAD" == 24be55ec75d7e27013929ba798dedf3a200b25b8 ]]; then
+              test "$MIXED_GROUP_SCALE" = false
+              harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
+              test "$(git rev-parse HEAD^)" = "$harness_head"
+              witness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/system-load-owner.mjs)"
+              test "$(git diff --name-status "$harness_head" HEAD)" = "$witness_diff"
+            fi
+            case "$harness_head" in
+              "$build_source") ;;
+              a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55)
+                test "$(git rev-parse "$harness_head~2")" = "$build_source"
+                harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/route-latency.mjs \
+                  M scripts/performance/system-load-owner.mjs A test/performance-attendance-capture.test.ts M test/performance-route-latency.test.ts)"
+                test "$(git diff --name-status "$build_source" "$harness_head")" = "$harness_diff"
+                ;;
+              *) exit 2 ;;
+            esac
           fi
-          case "$harness_head" in
-            "$build_source") ;;
-            a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55)
-              test "$(git rev-parse "$harness_head~2")" = "$build_source"
-              harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/route-latency.mjs \
-                M scripts/performance/system-load-owner.mjs A test/performance-attendance-capture.test.ts M test/performance-route-latency.test.ts)"
-              test "$(git diff --name-status "$build_source" "$harness_head")" = "$harness_diff"
-              ;;
-            *) exit 2 ;;
-          esac
+          [[ "$run" =~ ^[0-9]+$ && "$job" =~ ^[0-9]+$ && "$artifact" =~ ^[0-9]+$ ]]
+          [[ "$controller" =~ ^[a-f0-9]{40}$ && "$digest" =~ ^[a-f0-9]{64}$ ]]
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136827202599 --jq '
+          gh api "repos/StradaverseHub/ai-hr/actions/jobs/$job" | jq -e --arg head "$controller" --argjson run "$run" '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44897803593 and .head_sha == "ce8bdf04bfe00cce140fff584836e498579622b5"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14705041556/zip > "$archive"
-          printf '%s  %s\n' '04dbf21aff4cd49fa6e101d4c87f939d1850bdb5e6a66f21a1d96de19f94b969' "$archive" | sha256sum -c -
+            .run_id == $run and .head_sha == $head' >/dev/null
+          gh api "repos/StradaverseHub/ai-hr/actions/artifacts/$artifact/zip" > "$archive"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -341,7 +358,8 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
-          if [[ "$REUSE_BUILD" == true ]]; then
+          if [[ "$REUSE_BUILD" == true ]] &&
+              ! jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' ../automation/scripts/performance/pooled-candidate-builds.json >/dev/null; then
             expected_build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
