@@ -1634,8 +1634,21 @@ try{
    const path=join(privateDir,'import-history-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['principal','personnel','payroll','tax-basis','fixed-transaction','individual-workbook','individual-submit','individual-missing-column-grant-verified',
+    if(['principal','personnel','payroll','tax-basis-component','tax-basis-import-preview','tax-basis-import-commit','tax-basis-preview','tax-basis-confirm',
+     'fixed-transaction','individual-workbook','individual-submit','individual-missing-column-grant-verified',
      'individual-worker','individual-job','individual-attempt','complete'].includes(stage))report.importHistorySeedStage=stage;
+    const sqlStatePath=join(privateDir,'import-history-seed-sqlstate');
+    if(existsSync(sqlStatePath)){
+     const code=readFileSync(sqlStatePath,'utf8');
+     if(/^[A-Z0-9]{5}$/.test(code))report.importHistorySeedSqlState=code;
+    }
+    const taxFactsPath=join(privateDir,'tax-basis-seed-facts.json');
+    if(existsSync(taxFactsPath)){
+     const {eligible,blocked,records}=JSON.parse(readFileSync(taxFactsPath,'utf8'));
+     if([eligible,blocked,records].every(count=>Number.isSafeInteger(count)&&count>=0&&count<=1000)){
+      report.taxBasisSeed={eligible,blocked,records};
+     }
+    }
     const grantPath=join(privateDir,'individual-import-grant-probe');
     if(existsSync(grantPath)){
      const grantProbe=readFileSync(grantPath,'utf8');

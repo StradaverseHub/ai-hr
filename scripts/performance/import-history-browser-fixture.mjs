@@ -79,7 +79,7 @@ try{
  const detail=await payroll.payrollHistoryMaintenanceRecord(ctx,record.id);
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
 
- mark('tax-basis');
+ mark('tax-basis-component');
  const year=Number(fixture.month.slice(0,4))-1;
  const taxPeriod=year+'-02';
  const componentCode='PERFHISTTRAVEL';
@@ -91,17 +91,24 @@ try{
   ...[['BASIC',amount],[componentCode,'500.00'],['EEEPF','0.00'],['EESOCSO','0.00'],['EEEIS','0.00'],['PCB','0.00']]
    .map(([code,value])=>[employeeCode,taxPeriod,'ME',code,companyLabel,value]),
  ]);
+ mark('tax-basis-import-preview');
  const taxUpload=await payroll.previewPayrollHistoryUpload(ctx,{name:'fictional-tax-basis.csv',content:Buffer.from(taxSource)});
  assert.equal(taxUpload.plan.counts.invalid,0);
+ mark('tax-basis-import-commit');
  await payroll.confirmPayrollHistoryUpload(ctx,{attemptId:taxUpload.attemptId,previewHash:taxUpload.plan.previewHash,confirmReplacement:true});
  await owner.client`update pay_component set included_in_pcb=true where id=${travel.id}::uuid`;
  const [employment]=await owner.client`select id from employment where tenant_id=${group.tenantId}::uuid
   and company_id=${group.companyId}::uuid and employee_code=${employeeCode}`;
  assert(employment,'Expected the fictional import employee for recalculation');
+ mark('tax-basis-preview');
  const taxPreview=await payroll.previewTaxBasisRecalculation(ctx,{companyId:group.companyId,year,upToMonth:2,employmentIds:[employment.id]});
+ writeFileSync(resultPath('tax-basis-seed-facts.json'),JSON.stringify({
+  eligible:taxPreview.eligibleCount,blocked:taxPreview.blockedCount,records:taxPreview.recordCount,
+ }),{mode:0o600});
  assert.equal(taxPreview.eligibleCount,1);
  assert.equal(taxPreview.recordCount,1);
  assert.equal(taxPreview.employees[0].months[0].taxable,Number(amount)+500);
+ mark('tax-basis-confirm');
  const taxRun=await payroll.confirmTaxBasisRecalculation(ctx,{previewId:taxPreview.previewId,previewHash:taxPreview.previewHash});
  const taxBatch=await payroll.getTaxBasisBatch(ctx,taxRun.id);
  assert(taxBatch?.status==='completed'&&taxBatch.completedCount===1&&taxBatch.recordCount===1);
@@ -184,4 +191,8 @@ try{
   fixed,individual,
  }),{mode:0o600});
  mark('complete');
+}catch(error){
+ const code=pgSqlState(error);
+ if(code)writeFileSync(resultPath('import-history-seed-sqlstate'),code,{mode:0o600});
+ throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}
