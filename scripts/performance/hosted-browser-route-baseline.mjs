@@ -39,13 +39,14 @@ const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const shellPermissionVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 assert(['none','control','optimized'].includes(shellPermissionVariant));
 assert(shellPermissionVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
-const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
-assert(['direct','transaction-pool'].includes(databaseTopology));
+const databaseVariant=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
+assert(['direct','transaction-pool','transaction-pool-12'].includes(databaseVariant));
+const databaseTopology=databaseVariant==='direct'?'direct':'transaction-pool';
 assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 assert(!groupScale||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
-const webDatabaseConnections=8;
+const webDatabaseConnections=databaseVariant==='transaction-pool-12'?12:8;
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -59,6 +60,9 @@ const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
+assert(webDatabaseConnections===8||
+ (groupScale&&sha==='cddd7cebf757d0392ed06bead78300732fd54256'),
+ 'The 12-connection arm requires the pinned group-scale workload');
 
 const privateDir=mixedLoad
  ? join(env.RUNNER_TEMP,'system-performance-private')
