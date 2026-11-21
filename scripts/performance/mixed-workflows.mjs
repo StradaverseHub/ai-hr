@@ -216,7 +216,8 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  async function assertProcessed(batchId,onAcknowledged){
   const started=performance.now();
   const [ack]=await db`select job.id from bulk_job job join payroll_batch batch on batch.tenant_id=job.tenant_id
-   where batch.id=${batchId}::uuid and job.kind='payroll_process' and job.input->>'batchId'=batch.id::text
+   where batch.id=${batchId}::uuid and job.kind='payroll_process'
+    and (job.id=batch.processing_job_id or job.input->>'batchId'=batch.id::text or job.result->>'batchId'=batch.id::text)
    order by job.created_at desc,job.id desc limit 1`;
   assert(ack,'Payroll processing did not acknowledge a durable job');
   onAcknowledged?.();
@@ -334,10 +335,24 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
    await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');
-   const completionObservedMs=await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
-   const [observed] = await readPayrollAfterTraffic(db,[{...actor,batchId}]);
-   assert.deepEqual(observed,{tenant:actor.tenant,batchState:'processed',jobCount:1,jobState:'completed',payslipCount:50});
-   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs,observerVerified:true});save();
+   let stage='job-completion';
+   try{
+    const completionObservedMs=await assertProcessed(batchId);
+    stage='scoped-export';await exportPayroll(actor,batchId,1);
+    stage='database-observation';
+    const rows=await readPayrollAfterTraffic(db,[{...actor,batchId}]);
+    report.mixedWorkflows.payrollObserverPreflight={stage,status:'checked',rows};
+    save();
+    assert.deepEqual(rows[0],{tenant:actor.tenant,batchState:'processed',jobCount:1,jobState:'completed',payslipCount:50});
+    evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50,completionObservedMs,observerVerified:true});save();
+   }catch(error){
+    if(!report.mixedWorkflows.payrollObserverPreflight){
+     const {kind}=driverErrorFact(error);
+     const sqlState=error?.name==='PostgresError'&&typeof error.code==='string'&&/^[0-9A-Z]{5}$/.test(error.code)?error.code:null;
+     report.mixedWorkflows.payrollObserverPreflight={stage,status:'unavailable',kind,sqlState};save();
+    }
+    throw error;
+   }
   });
  }
  // Publish a separate completed past-month run; current-month mutations retain their open period.
