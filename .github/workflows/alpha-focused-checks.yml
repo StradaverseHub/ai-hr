@@ -171,33 +171,34 @@ jobs:
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
             [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]];
           }; then exit 2; fi
-          if [[ "$REUSE_BUILD" == true ]]; then
-            case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
-              false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
-              *) exit 2 ;;
-            esac
-          fi
-          fresh_group_build=false
+          combined_group_build=false
           if [[ "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then
-            fresh_group_build=true
+            combined_group_build=true
+          fi
+          if [[ "$REUSE_BUILD" == true ]]; then
+            case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
+              false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
+              true:5175d387846c18fcc83ef96091cb1b4e1b538241) [[ "$combined_group_build" == true ]] || exit 2 ;;
+              *) exit 2 ;;
+            esac
           fi
           case "$SHELL_PERMISSION_VARIANT" in
             none) ;;
             contract-control|contract-optimized)
-              [[ ( "$REUSE_BUILD" == true || "$fresh_group_build" == true ) && "$BROWSER_MIXED_LOAD" == true && "$MIXED_GROUP_SCALE" == true && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool ]] || exit 2
-              [[ "$EXPECTED_SHA" == cddd7cebf757d0392ed06bead78300732fd54256 || "$fresh_group_build" == true ]] || exit 2
+              [[ ( "$REUSE_BUILD" == true || "$combined_group_build" == true ) && "$BROWSER_MIXED_LOAD" == true && "$MIXED_GROUP_SCALE" == true && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool ]] || exit 2
+              [[ "$EXPECTED_SHA" == cddd7cebf757d0392ed06bead78300732fd54256 || "$combined_group_build" == true ]] || exit 2
               ;;
             *) exit 2 ;;
           esac
           case "$MIXED_DATABASE_TOPOLOGY" in
             direct) ;;
-            transaction-pool) [[ "$REUSE_BUILD" == true || "$fresh_group_build" == true ]] || exit 2 ;;
+            transaction-pool) [[ "$REUSE_BUILD" == true || "$combined_group_build" == true ]] || exit 2 ;;
             *) exit 2 ;;
           esac
-          if [[ "$MIXED_GROUP_SCALE" == true && "$REUSE_BUILD" != true && "$fresh_group_build" != true ]]; then
+          if [[ "$MIXED_GROUP_SCALE" == true && "$REUSE_BUILD" != true && "$combined_group_build" != true ]]; then
             exit 2
           fi
           node .github/ci/focused-checks.mjs selection
@@ -306,33 +307,43 @@ jobs:
         run: |
           build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          harness_head="$AIHR_CI_HEAD"
-          if [[ "$AIHR_CI_HEAD" == cddd7cebf757d0392ed06bead78300732fd54256 ]]; then
-            test "$MIXED_GROUP_SCALE" = true
-            harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
-            test "$(git rev-parse HEAD~3)" = "$harness_head"
-            workforce_diff="$(printf '%s\t%s\n' M scripts/performance/fixture-workload.mjs \
-              M scripts/performance/navigation-fixture-bindings.ts M scripts/performance/org-explorer-browser.mjs \
-              M scripts/performance/system-load-owner.mjs)"
-            test "$(git diff --name-status "$harness_head" HEAD)" = "$workforce_diff"
-          fi
-          case "$harness_head" in
-            "$build_source") ;;
-            a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55)
-              test "$(git rev-parse "$harness_head~2")" = "$build_source"
-              harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/route-latency.mjs \
-                M scripts/performance/system-load-owner.mjs A test/performance-attendance-capture.test.ts M test/performance-route-latency.test.ts)"
-              test "$(git diff --name-status "$build_source" "$harness_head")" = "$harness_diff"
-              ;;
-            *) exit 2 ;;
-          esac
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136827202599 --jq '
-            .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44897803593 and .head_sha == "ce8bdf04bfe00cce140fff584836e498579622b5"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14705041556/zip > "$archive"
-          printf '%s  %s\n' '04dbf21aff4cd49fa6e101d4c87f939d1850bdb5e6a66f21a1d96de19f94b969' "$archive" | sha256sum -c -
+          if [[ "$AIHR_CI_HEAD" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/136898799232 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 44921616758 and .head_sha == "968443bcff2348351234b3366f4d30dce3217262"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14714382484/zip > "$archive"
+            digest=52ccf4e6f5b86d925f8a37bdd6f07a74581cbd5dd57b90e3de08315147ecc385
+          else
+            harness_head="$AIHR_CI_HEAD"
+            if [[ "$AIHR_CI_HEAD" == cddd7cebf757d0392ed06bead78300732fd54256 ]]; then
+              test "$MIXED_GROUP_SCALE" = true
+              harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
+              test "$(git rev-parse HEAD~3)" = "$harness_head"
+              workforce_diff="$(printf '%s\t%s\n' M scripts/performance/fixture-workload.mjs \
+                M scripts/performance/navigation-fixture-bindings.ts M scripts/performance/org-explorer-browser.mjs \
+                M scripts/performance/system-load-owner.mjs)"
+              test "$(git diff --name-status "$harness_head" HEAD)" = "$workforce_diff"
+            fi
+            case "$harness_head" in
+              "$build_source") ;;
+              a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55)
+                test "$(git rev-parse "$harness_head~2")" = "$build_source"
+                harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/route-latency.mjs \
+                  M scripts/performance/system-load-owner.mjs A test/performance-attendance-capture.test.ts M test/performance-route-latency.test.ts)"
+                test "$(git diff --name-status "$build_source" "$harness_head")" = "$harness_diff"
+                ;;
+              *) exit 2 ;;
+            esac
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/136827202599 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 44897803593 and .head_sha == "ce8bdf04bfe00cce140fff584836e498579622b5"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14705041556/zip > "$archive"
+            digest=04dbf21aff4cd49fa6e101d4c87f939d1850bdb5e6a66f21a1d96de19f94b969
+          fi
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -343,7 +354,7 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
-          if [[ "$REUSE_BUILD" == true ]]; then
+          if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 ]]; then
             expected_build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"

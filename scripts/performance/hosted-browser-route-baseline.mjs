@@ -40,12 +40,13 @@ const shellPermissionVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 assert(['none','contract-control','contract-optimized'].includes(shellPermissionVariant));
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
-assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
 const combinedGroupCandidate='5175d387846c18fcc83ef96091cb1b4e1b538241';
-const freshCombinedGroup=env.AIHR_CI_HEAD===combinedGroupCandidate&&groupScale&&establishedAttendance
+const combinedGroupBuild=env.AIHR_CI_HEAD===combinedGroupCandidate&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
-assert(!groupScale||(mixedLoad&&(env.AIHR_BROWSER_REUSED_BUILD==='true'||freshCombinedGroup)&&!fixtureOnly));
+const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
+assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
+assert(!groupScale||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
 assert(shellPermissionVariant==='none'||(groupScale&&databaseTopology==='transaction-pool'));
 assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
 const webDatabaseConnections=8;
@@ -75,8 +76,9 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44897803593,artifactId:14705041556,
-  sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
+ ...(reusedBuild&&{buildArtifact:combinedGroupBuild
+  ? {runId:44921616758,artifactId:14714382484,sourceSha:combinedGroupCandidate}
+  : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
