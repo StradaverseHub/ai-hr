@@ -138,6 +138,17 @@ The same pinned Qwen model, from the same container image and with the same expl
 
 All 69 calls succeeded without reported input truncation. Development, English and Malay report digests are `0473b657ae9c7a474b5b0831b0cc1de9ef25457034066d954a9ade7a9af9d3d4`, `bec462de35628427fd13c9389c45f6d8bc84a65adf228523bf2dd045c487f937`, and `910f4296cb2173844256edfe20c194a4d1a49b23abf0be04d8772dfec8eedfdf`. [Exact experiment source](https://github.com/StradaverseHub/ai-hr/commit/4053217c86444aa6122a1ade1aebed7a19d3917b) · [Hosted tooling checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44953871709)
 
+### Measured calls for deterministic selection with a model fallback
+
+The direct evaluator runs the fixed lexical selector first. A positive score margin selects the deterministic result. A tie calls the focused model. The candidate runs before either model reference. The report measures the candidate's own calls and tokens separately from evaluation overhead. Reproduce with `node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG NEW_REPORT.json --direct-explanation-fallback CASE_FILE CASE_SHA256 DEVELOPMENT_REPORT.json`.
+
+| Language | Deterministic correct | Original model correct | Focused model correct | Direct route correct | Direct model calls | Losses vs original / focused |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| English | 7/15 | 5/15 | 8/15 | 9/15 | 6 | 0 / 2 |
+| Malay | 7/15 | 5/15 | 9/15 | 10/15 | 5 | 1 / 1 |
+
+The direct run reproduced the prior replay aggregates on the same exposed Qwen English and Malay cases. It preserved all correct deterministic answers and skipped 19 of the 30 model calls required by an always-model policy. It lost prior correct model answers, so the candidate remains offline. The engine completed 71 actual calls, comprising 11 routed calls and 60 reference calls, with zero input truncations. These exposed cases supply no independent acceptance. Report SHA-256 `41c6270d2da9f104f6b19157ccbf6548a2eb774cc858445c1409000f707ea39e` for English and `f52c51385f0021cd184e27c638c9b3c0bc2119fd456a5bd107cc0e55b502bb0d` for Malay. [Hosted tooling checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44955748401)
+
 ### Numbered choices for protected answers
 
 At `fa61dc3a92b4764cfb4f0ff3de94ca136f36369d`, the offline `--indexed-catalogue` mode lists the available closed field labels and explanation codes with numbered choices. It asks for one ordered list of indices. The decoder rejects unknown or repeated indices and extra fields. It expands a valid selection into the same answer plan and passes it through both existing adjudicators. The new format changes the model instructions and representation together. It supplies neither source values nor expected answers.
