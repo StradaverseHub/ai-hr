@@ -77,7 +77,11 @@ let requestScopePreamble:SharedReadPreamble|undefined;
 export function registerRequestScopePreamble(preamble:SharedReadPreamble){requestScopePreamble=preamble;}
 export function scopePreamble():SharedReadPreamble|undefined{return requestScopePreamble;}
 /** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
-export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit',value:'on'|'off'):void};
+export type SharedReadCarrierControl={
+ seed(seeds:readonly SharedReadSeed[]):number;
+ hold(setting:'jit',value:'on'|'off'):void;
+ preparedRows<Row extends Record<string, unknown>>(query:string,params:unknown[]):Promise<Row[]>;
+};
 
 /** One open carrier transaction. `finish` lets it commit; `done` settles after COMMIT or ROLLBACK. */
 export type SharedReadCarrier<Tx>={tx:Promise<Tx>;finish:()=>void;done:Promise<void>};
@@ -169,8 +173,9 @@ export class SharedReadSession<Tx>{
 }
 
 /** The carrier transactions of shared sessions: one REPEATABLE READ READ ONLY snapshot each, for one identity. */
-const carrierTransactions=new WeakSet<object>();
-export function markSharedCarrierTransaction(tx:object){carrierTransactions.add(tx);}
+const carrierTransactions=new WeakMap<object,SharedReadCarrierControl>();
+export function markSharedCarrierTransaction(tx:object,control:SharedReadCarrierControl){carrierTransactions.set(tx,control);}
+export function sharedCarrierControl(tx:object){return carrierTransactions.get(tx);}
 export function isSharedCarrierTransaction(tx:object){return carrierTransactions.has(tx);}
 const derived=new WeakMap<object,Map<string,Promise<unknown>>>();
 const windows=new WeakMap<SharedReadSession<unknown>,Map<string,{from:string;to:string}>>();
@@ -289,6 +294,7 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
   },
   // A setting the carrier's identity statement already put in force.
   hold(setting,value){held.set(setting,value);},
+  preparedRows,
  };
  const unsafe=(query:string,params?:unknown[],options?:unknown):Pending=>{
   let mode:'rows'|'values'='rows',started:Promise<unknown>|undefined;
@@ -307,6 +313,20 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
    session.failed(code);throw error;
   });
  };
+ /** The pinned postgres.js transaction queues statements in submission order. Submit the
+  * settings and prepared read together before yielding so other carrier reads keep their mode.
+  * The carrier guard keeps other owners from changing this setting. DEFAULT restores the
+  * connection's configured mode, and a failed statement rolls back the entire carrier. */
+ async function preparedRows<Row extends Record<string, unknown>>(query:string,params:unknown[]):Promise<Row[]>{
+  const statement=classifySharedStatement(query);
+  if(statement.kind!=='memo')throw session.refuse(statement.kind==='refuse'?statement.reason:'prepared-read');
+  const [,rows]=await Promise.all([
+   send('set local plan_cache_mode=force_generic_plan',undefined,undefined,'rows'),
+   send(query,params,{prepare:true},'rows'),
+   send('set local plan_cache_mode=default',undefined,undefined,'rows'),
+  ]);
+  return rows as Row[];
+ }
  const execute=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values'):Promise<unknown>=>{
   // The carrier's own identity statement, before any owner can join: never counted, classified or memoized.
   if(session.bootstrapping){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}

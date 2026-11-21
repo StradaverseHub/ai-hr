@@ -19,7 +19,7 @@ import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,isSharedCarrierTransaction,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedCarrierControl,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
 export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
@@ -357,10 +357,11 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     ctx: SessionContext, build: (tx: Tx) => SQL,
   ): Promise<Row[]> {
     return withTenant(ctx, async tx => {
-      // Sibling reads on a shared carrier retain the carrier's planning settings.
-      if (isSharedCarrierTransaction(tx)) await tx.execute(sql`set local jit=off`);
+      const carrier = sharedCarrierControl(tx);
+      if (carrier) await tx.execute(sql`set local jit=off`);
       else await tx.execute(sql`select set_config('jit','off',true), set_config('plan_cache_mode','force_generic_plan',true)`);
       const query = preparedReadDialect.sqlToQuery(build(tx));
+      if (carrier) return carrier.preparedRows<Row>(query.sql, query.params);
       const { session } = tx as unknown as { session: { client: postgres.TransactionSql } };
       return await session.client.unsafe<Row[]>(query.sql, query.params as postgres.ParameterOrJSON<never>[], { prepare: true });
     }, { readOnlySnapshot: true });
@@ -479,7 +480,8 @@ export function createDb(connectionString: string, options?: { max?: number; adm
                 if (control.current?.seed(seeds)) session.stats.preambles++;
               }
             }
-            markSharedCarrierTransaction(carrierTx);
+            if (!control.current) throw new Error('Shared read driver control unavailable');
+            markSharedCarrierTransaction(carrierTx, control.current);
             resolveTx(carrierTx);
             await finished;
           });

@@ -68,18 +68,38 @@ it('uses the production prepared reader across company widths and retains transa
     expect(plan).toEqual({ generic: 4, mode: 'auto' });
 
     await isolated.withSharedReadSnapshot(session, async () => {
-      const [result] = await isolated.readPreparedTenantRows<Row>(session, tx => {
+      const readMode = (phase: string) => isolated.withTenant(session, tx => {
         expect(isSharedCarrierTransaction(tx)).toBe(true);
-        return statementFor(tx, session, selection);
+        return tx.execute<{ mode: string; phase: string }>(sql`
+          select current_setting('plan_cache_mode') as mode, ${phase}::text as phase
+        `);
       });
+      const [[before], [result], [after]] = await Promise.all([
+        readMode('before'),
+        isolated.readPreparedTenantRows<Row>(session, tx => {
+          expect(isSharedCarrierTransaction(tx)).toBe(true);
+          return statementFor(tx, session, selection);
+        }),
+        readMode('after'),
+      ]);
       expect(result).toEqual(one);
-      const [settings] = await isolated.withTenant(session, tx =>
-        tx.execute<{ mode: string }>(sql`select current_setting('plan_cache_mode') as mode`));
-      expect(settings.mode).toBe('auto');
+      expect([before, after]).toEqual([{ mode: 'auto', phase: 'before' }, { mode: 'auto', phase: 'after' }]);
     });
+    const [scopedPlan] = await isolated.withTenant(session, tx => tx.execute<{ generic: number; custom: number }>(sql`
+      select sum(generic_plans)::int as generic, sum(custom_plans)::int as custom
+      from pg_prepared_statements where statement=${shape}
+    `));
+    expect(scopedPlan).toEqual({ generic: 5, custom: 0 });
+
+    await expect(isolated.withSharedReadSnapshot(session, () =>
+      isolated.readPreparedTenantRows(session, () => sql`select ${'invalid uuid'}::uuid`))).rejects.toThrow();
+    const [restored] = await isolated.withTenant(session, tx => tx.execute<{ mode: string }>(sql`
+      select current_setting('plan_cache_mode') as mode
+    `));
+    expect(restored.mode).toBe('auto');
 
     // The signed-in shell reads this shape with Claims disabled inside a shared carrier.
-    // Compare automatic and forced planning on separate connections so one mode cannot warm the other.
+    // Compare the shared and standalone paths on separate connections so caches cannot warm each other.
     url.searchParams.set('application_name', 'aihr-account-shell-generic-plan-test');
     const forced = createDb(url.toString(), { max: 1 });
     const samples = Array.from({ length: 24 }, (_, index) => ({
@@ -116,11 +136,12 @@ it('uses the production prepared reader across company widths and retains transa
         expect(shared[0]?.principal).toBe(true);
         expect([...shared]).toEqual([...standalone]);
       }
-      const [auto, generic] = await Promise.all([planCounts(isolated), planCounts(forced)]);
-      expect(auto.generic + auto.custom).toBe(samples.length);
-      expect(generic).toEqual({ generic: samples.length, custom: 0, shapes: shellShapes.size });
+      const [carrier, standalone] = await Promise.all([planCounts(isolated), planCounts(forced)]);
+      const expected = { generic: samples.length, custom: 0, shapes: shellShapes.size };
+      expect(carrier).toEqual(expected);
+      expect(standalone).toEqual(expected);
       const p95 = (durations: number[]) => durations.sort((a, b) => a - b)[Math.ceil(durations.length * 0.95) - 1];
-      console.info(JSON.stringify({ shellPlanComparison: { auto, generic,
+      console.info(JSON.stringify({ shellPlanComparison: { carrier, standalone,
         carrierP95Ms: p95(shellTimes.carrier), standaloneP95Ms: p95(shellTimes.standalone) } }));
     } finally {
       await forced.client.end({ timeout: 5 });
@@ -162,7 +183,8 @@ it('uses the production prepared reader across company widths and retains transa
           coalesce(sum(custom_plans),0)::int as custom, count(*)::int as shapes
           from pg_prepared_statements where statement like 'with task_caller as materialized%'`)[0]));
         expect(new Set(plans.map(plan => plan.pid)).size).toBe(poolSize);
-        expect(plans.reduce((sum, plan) => sum + plan.generic + plan.custom, 0)).toBe(poolSize * rounds);
+        expect(plans.reduce((sum, plan) => sum + plan.generic, 0)).toBe(poolSize * rounds);
+        expect(plans.every(plan => plan.custom === 0)).toBe(true);
         console.info(JSON.stringify({ shellSharedPool: plans.map(({ generic, custom, shapes }) => ({ generic, custom, shapes })) }));
       } finally {
         for (const connection of connections) connection.release();
