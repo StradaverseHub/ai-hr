@@ -1,5 +1,6 @@
 import {summarizeAccessLockLog} from './access-lock-server-log.mjs';
 import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
+import {capturePostgresEvidence,postgresProfileFromEnv} from '../../.github/ci/postgres-evidence.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
@@ -658,6 +659,24 @@ async function withMixedShellPermissionComparison(work){
  }finally{await owner.end({timeout:5});}
 }
 
+function mixedPostgresTerminalResources(){
+ try{
+  const evidence=capturePostgresEvidence(pgEnv.AIHR_CI_UNIT,postgresProfileFromEnv(pgEnv));
+  const count=value=>Number.isSafeInteger(value)&&value>=0?value:null;
+  const flag=value=>typeof value==='boolean'?value:null;
+  return {
+   scope:'Fictional database container lifetime through load-driver settlement',
+   memoryLimitBytes:count(evidence.memoryLimit),
+   peakMemoryBytes:evidence.errors.cgroup?null:count(evidence.memoryPeak),
+   memoryLimitEvents:count(evidence.memoryEvents?.max),
+   outOfMemoryEvents:count(evidence.memoryEvents?.oom),
+   outOfMemoryKills:count(evidence.memoryEvents?.oom_kill),
+   containerRunning:flag(evidence.state?.Running),
+   containerOutOfMemoryKilled:flag(evidence.state?.OOMKilled),
+  };
+ }catch{return {state:'collection-unavailable'};}
+}
+
 async function measureMixedLoad(command,fixture){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
@@ -719,6 +738,8 @@ async function measureMixedLoad(command,fixture){
  }finally{
   clearInterval(stagePoll);
   retainMixedDriverStage(stagePath);
+  report.mixedDatabaseProfile.terminalResources=mixedPostgresTerminalResources();
+  save();
   if(!existsSync(resultPath)){
    retainMixedStartupFailure('measure-500-user-mixed-load');
   }else{
