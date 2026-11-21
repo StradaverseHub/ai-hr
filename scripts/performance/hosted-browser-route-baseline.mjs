@@ -3,7 +3,8 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
-import {randomBytes} from 'node:crypto';
+import {createHash,randomBytes} from 'node:crypto';
+import {PROJECT_INSTALLED_OWNERSHIP} from '../../test/helpers/installed-owner-projection.ts';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import {createServer,request as httpsRequest} from 'node:https';
@@ -34,6 +35,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
+const offboardingVariant=env.AIHR_BROWSER_OFFBOARDING_VARIANT??'none';
+assert(['none','control','optimized'].includes(offboardingVariant));
+assert(offboardingVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -539,6 +543,71 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
   await Promise.allSettled([guardedHolder,waiter]);
   await database.end({timeout:2});
  }
+}
+
+async function withMixedOffboardingComparison(work){
+ if(offboardingVariant==='none')return work();
+ assert.equal(sha,'b00e2b2738312d87d5bea6f0ac7c877517d0b75d');
+ assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
+ const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
+ assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
+ const dockerConfig=join(privateDir,'offboarding-docker-config');
+ mkdirSync(dockerConfig,{mode:0o700});
+ const label=execFileSync('/usr/bin/docker',[
+  '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
+  '--format','{{index .Config.Labels "aihr-owner"}}',name,
+ ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:5000}).trim();
+ assert.equal(label,name,'Expected the job-owned fictional database');
+
+ const require=createRequire(join(process.cwd(),'package.json'));
+ const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{statement_timeout:'90s',lock_timeout:'3s'}});
+ const readFunction=async sql=>{
+  const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition
+   from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure`;
+  return row;
+ };
+ try{
+  await owner.begin(async tx=>{
+   const [{exists}]=await tx`select exists(select 1 from pg_roles where rolname='ai_hr_owner')`;
+   if(!exists)await tx.unsafe('create role ai_hr_owner nologin nosuperuser nobypassrls nocreatedb nocreaterole noreplication');
+   // A deployed migration owner can log in. These attributes define which
+   // privileges it lacks, independent of how a runner connects.
+   const [role]=await tx`select rolsuper,rolbypassrls,rolcreaterole,rolcreatedb,rolreplication from pg_roles where rolname='ai_hr_owner'`;
+   assert(role&&!role.rolsuper&&!role.rolbypassrls&&!role.rolcreaterole&&!role.rolcreatedb&&!role.rolreplication,
+    'Expected the restricted fictional owner');
+   if((await readFunction(tx)).owner==='postgres')await tx.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+   assert.equal((await readFunction(tx)).owner,'ai_hr_owner');
+  });
+  const {definition:original,...boundary}=await readFunction(owner);
+  const install=(statement,expected)=>owner.begin(async tx=>{
+   await tx.unsafe('set local role ai_hr_owner');
+   await tx.unsafe(statement);
+   const {definition,...observed}=await readFunction(tx);
+   assert.deepEqual(observed,boundary);
+   if(expected==='original')assert.equal(definition,original);
+   else assert.notEqual(definition,original);
+  });
+  report.mixedOffboarding={variant:offboardingVariant,restrictedOwner:true,replacementInstalled:false,restored:false};
+  try{
+   if(offboardingVariant==='optimized'){
+    const replacement=readFileSync(new URL('../../test/fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
+    const digest=createHash('sha256').update(replacement).digest('hex');
+    assert.equal(digest,'98377e8ad38ce15950965f7def886f52642a65e8b153cbaacb02c162b2616539');
+    await install(replacement,'optimized');
+    report.mixedOffboarding.replacementSha256=digest;
+    report.mixedOffboarding.replacementInstalled=true;
+   }
+   save();
+   return await work();
+  }finally{
+   if(report.mixedOffboarding.replacementInstalled){
+    await install(original,'original');
+    report.mixedOffboarding.restored=true;
+    save();
+   }
+  }
+ }finally{await owner.end({timeout:5});}
 }
 
 async function measureMixedLoad(command,fixture){
@@ -1780,9 +1849,11 @@ try{
   }
  }
  if(driverCommand&&!fixtureOnly){
-  await startMixedWorker(driverCommand);
-  await measureMixedLoad(driverCommand,fixture);
-  assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+  await withMixedOffboardingComparison(async()=>{
+   await startMixedWorker(driverCommand);
+   await measureMixedLoad(driverCommand,fixture);
+   assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
+  });
  }
  else if(!fixtureOnly){
   await measureRoutes(fixture);
