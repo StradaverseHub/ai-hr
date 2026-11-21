@@ -1536,13 +1536,28 @@ try{
  // The task, approvals, and profile reads use the installed Resignation verifier.
  await step('provision-resignation-runtime','scripts/provision-resignation-runtime.ts');
  await step('seed-catalogues','scripts/seed-catalogs.ts');
+ const rewardSeeder='scripts/performance/reward-draft-fixture.mjs';
+ const originalSeeder=censusRewards?readFileSync(rewardSeeder):null;
  try{
+  if(originalSeeder){
+   // Use identical fictional provisioning code for both builds and restore
+   // the checkout before Next.js starts. Build artifacts remain SHA-pinned.
+   const sharedSeeder=new URL('./reward-draft-fixture.mjs',import.meta.url);
+   report.rewardsSeederBlob=git('hash-object',sharedSeeder.pathname);
+   writeFileSync(rewardSeeder,readFileSync(sharedSeeder));
+  }
   await run('seed-system-fixture',process.execPath,['--import','tsx',
    'scripts/performance/system-fixture.mjs'],{...dbEnv,
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
- }finally{retainSeedPhases();}
- await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+ }finally{
+  if(originalSeeder){
+   writeFileSync(rewardSeeder,originalSeeder);
+   assert.equal(git('status','--porcelain'),'','The target checkout changed during Rewards fixture provisioning');
+  }
+  retainSeedPhases();
+ }
+ if(!censusRewards)await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusLifecycle),
   });
@@ -1598,8 +1613,10 @@ try{
  }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
- assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
- report.fixture.joinersSeeded=true;
+ if(!censusRewards){
+  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
+  report.fixture.joinersSeeded=true;
+ }
  report.fixtureVerified=true;
  if(!fixtureOnly){
   if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
