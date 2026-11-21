@@ -553,6 +553,37 @@ async function personnelRosterRoutes(db, fixture) {
   ]);
 }
 
+async function personnelProfileCostRoutes(db, fixture) {
+  const routes = await personnelRosterRoutes(db, fixture);
+  return routes.flatMap(entry => {
+    if (entry.template === '/admin/personnel/[employmentId]/movement/[mode]') return [entry];
+    if (entry.template !== '/admin/personnel/[employmentId]') return [];
+    return [
+      { ...entry, scenario: 'profile tab' },
+      { ...entry, path: entry.path + '?tab=family', scenario: 'family tab',
+        witness: '[data-tabpanel="family"]:visible [data-ui-section-header]:visible' },
+    ];
+  });
+}
+
+async function personnelDocumentWork(page) {
+  await page.waitForLoadState('domcontentloaded', { timeout: 2000 });
+  return page.evaluate(() => {
+    const main = document.querySelector('main');
+    const panels = Array.from(main?.querySelectorAll('[data-tabpanel]') ?? []);
+    const hidden = panels.filter(panel => panel.hasAttribute('hidden'));
+    const controls = panel => panel.querySelectorAll('input:not([type="hidden"]), select, textarea, button').length;
+    const navigation = performance.getEntriesByType('navigation')[0];
+    return {
+      mainElements: main?.querySelectorAll('*').length ?? 0,
+      visiblePanelControls: panels.filter(panel => !panel.hasAttribute('hidden')).reduce((total, panel) => total + controls(panel), 0),
+      hiddenPanels: hidden.length,
+      hiddenPanelControls: hidden.reduce((total, panel) => total + controls(panel), 0),
+      decodedBodyBytes: navigation?.responseEnd > 0 && navigation.decodedBodySize > 0 ? navigation.decodedBodySize : null,
+    };
+  });
+}
+
 async function attendanceRecordRoutes(db, fixture) {
   const [group, company] = fixture.users;
   assert.equal(group.role, 'groupHR');
@@ -590,7 +621,7 @@ async function attendanceRecordRoutes(db, fixture) {
   ];
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords, payrollRegisterRecords, personnelRosterRecords }) {
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory, personnelDirectory, attendanceRecords, payrollRegisterRecords, personnelRosterRecords, personnelProfileCost }) {
   const before = payrollCorrections || payrollRegisterRecords ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
     : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
@@ -599,6 +630,7 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : attendanceRecords ? await attendanceRecordRoutes(db, fixture)
     : payrollRegisterRecords ? await payrollRegisterRoutes(db, fixture)
     : personnelRosterRecords ? await personnelRosterRoutes(db, fixture)
+    : personnelProfileCost ? await personnelProfileCostRoutes(db, fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
@@ -654,6 +686,9 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
           row.outcome = error.name === 'TimeoutError' ? 'timeout' : error.code === 'ERR_ASSERTION' ? 'assertion' : 'browser-failure';
         } finally {
           row.elapsedMs = Math.round(performance.now() - started);
+          if (personnelProfileCost && row.outcome === 'usable-content') {
+            row.documentWork = await personnelDocumentWork(page).catch(() => null);
+          }
           save();
         }
       }
@@ -668,5 +703,8 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     save();
   }
   assert.equal(rows.length, cases.length * 2);
+  if (personnelProfileCost) {
+    assert(rows.every(row => row.documentWork?.mainElements > 0), 'Personnel document work evidence is incomplete');
+  }
   assert(rows.every(row => row.outcome === 'usable-content'), 'One or more fictional record screens missed their readiness witness');
 }
