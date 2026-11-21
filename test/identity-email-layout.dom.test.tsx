@@ -195,9 +195,10 @@ it('keeps exact Claims totals and accepted Lifecycle inbox counts together in th
  expect(m.tasks.mock.calls[0]?.[3]).toEqual({deferClaimPreview:true});
  expect(m.claimCount).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({userId:'hr'}),['selected-company']);
  const bell=await bellElement(tree);
- expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(7);
- expect(propsOf(bell,NotificationCenter)?.claimPreviewRevision).toEqual(expect.any(String));
- expect(propsOf(bell,NotificationCenter)?.tasks).toEqual([]);
+ const props=propsOf(bell,NotificationCenter);
+ expect(props?.taskCount).toBe(0);
+ expect(props?.claimPreviewRevision).toEqual(expect.any(String));
+ await expect(props?.lifecyclePreview).resolves.toMatchObject({count:7,items:[]});
 });
 
 it('renders the shell while the lifecycle queue is pending and streams the same queue once',async()=>{
@@ -210,18 +211,21 @@ it('renders the shell while the lifecycle queue is pending and streams the same 
   expect(currentDatabaseWorkload()).toBe('background');
   return gate;
  });
- const rendered=vi.fn();
- const layout=Layout({children:<main>Available before the lifecycle queue</main>}).then(tree=>{rendered();return tree;});
+ const ready=vi.fn();
+ const layout=Layout({children:<main>Available before the lifecycle queue</main>}).then(async tree=>{
+  const bell=await bellElement(tree);
+  ready();
+  return {tree,bell};
+ });
  try{
-  await vi.waitFor(()=>expect(rendered).toHaveBeenCalledOnce());
+  await vi.waitFor(()=>expect(ready).toHaveBeenCalledOnce());
  }finally{
   release();
  }
- const tree=await layout;
+ const {tree,bell}=await layout;
  expect(sidebarProps(tree)).toBeDefined();
- const [facts,bell]=await Promise.all([approvalSource(tree),bellElement(tree)]);
- expect(facts).toMatchObject({state:'ready',lifecycleMyTasksCount:4});
- expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(4);
+ await expect(approvalSource(tree)).resolves.toMatchObject({state:'ready',lifecycleMyTasksCount:4});
+ await expect(propsOf(bell,NotificationCenter)?.lifecyclePreview).resolves.toMatchObject({count:4});
  expect(m.lifecycleWait).toHaveBeenCalledOnce();
 });
 

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
 import { useIsMonolith } from '@/components/ui-theme-context';
-import {useShellApprovalFacts} from '@/components/shell-approval-facts';
+import {useShellApprovalFacts,useShellStreamValue} from '@/components/shell-approval-facts';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
@@ -15,6 +15,7 @@ type NotificationRow=Pick<StoredNotificationRow,'id'|'title'|'body'|'severity'|'
 import type { PendingTaskItem as ApprovalTaskItem } from '@/core/approvals-inbox';
 export type NotificationTaskQueueLink={href:string;label:string;count:number};
 export type NotificationTaskItem=ApprovalTaskItem | (Omit<ApprovalTaskItem,'kind'|'createdAt'>&{kind:'onboarding'|'probation'|'contract_staff'|'lifecycle_email';createdAt?:undefined;actionLabel?:string});
+export type NotificationLifecyclePreview={items:NotificationTaskItem[];queueLinks:NotificationTaskQueueLink[];count:number};
 import type { ApprovalHistoryItem } from '@/lib/approval-history';
 
 /**
@@ -64,7 +65,8 @@ export function NotificationCenter({
   items,
   tasks:baseTasks = [],
   taskNotifications = [],
-  taskQueueLinks = [],
+  taskQueueLinks:baseQueueLinks = [],
+  lifecyclePreview,
   taskCount:baseTaskCount = 0,
   claimTaskCount:baseClaimTaskCount=0,
   claimPreviewRevision,
@@ -81,6 +83,7 @@ export function NotificationCenter({
   taskNotifications?: NotificationRow[];
   /** Full native owner queues, with exact counts independent of their bounded bell previews. */
   taskQueueLinks?:NotificationTaskQueueLink[];
+  lifecyclePreview?:Promise<NotificationLifecyclePreview>;
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
   /** Exact claim total when the shell supplies a bounded preview. */
@@ -92,9 +95,16 @@ export function NotificationCenter({
   canApprove?: boolean;
 }) {
   const approvals=useShellApprovalFacts()?.result;
-  const tasksKnown=!approvals||approvals.state==='ready';
-  const tasks=useMemo(()=>approvals?.state==='ready'?[...approvals.items,...baseTasks]:baseTasks,[approvals,baseTasks]);
-  const taskCount=approvals?.state==='ready'?baseTaskCount+approvals.total:baseTaskCount;
+  const lifecycleStream=useShellStreamValue(lifecyclePreview);
+  const lifecycle=lifecycleStream?.state==='ready'?lifecycleStream.value:undefined;
+  const tasksPending=approvals?.state==='pending'||(Boolean(lifecyclePreview)&&!lifecycleStream);
+  const tasksUnavailable=approvals?.state==='unavailable'||lifecycleStream?.state==='unavailable';
+  const tasksKnown=!tasksPending&&!tasksUnavailable;
+  const tasks=useMemo(()=>[
+    ...(approvals?.state==='ready'?approvals.items:[]),...baseTasks,...(lifecycle?.items??[]),
+  ],[approvals,baseTasks,lifecycle]);
+  const taskQueueLinks=lifecycle?.queueLinks??baseQueueLinks;
+  const taskCount=baseTaskCount+(lifecycle?.count??0)+(approvals?.state==='ready'?approvals.total:0);
   const claimTaskCount=approvals?.state==='ready'?approvals.claimTotal:baseClaimTaskCount;
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
@@ -396,10 +406,10 @@ export function NotificationCenter({
               </>
             )}
 
-            {tab==='tasks' && (approvals?.state==='pending'||(loadClaimPreview && !claimPreviewResult)) && (
+            {tab==='tasks' && (tasksPending||(loadClaimPreview && !claimPreviewResult)) && (
               <p role="status" className="px-4 py-2 text-sm text-muted-foreground">{tCommon('loading')}</p>
             )}
-            {tab==='tasks' && (approvals?.state==='unavailable'||(loadClaimPreview && claimPreviewResult === 'unavailable')) && (
+            {tab==='tasks' && (tasksUnavailable||(loadClaimPreview && claimPreviewResult === 'unavailable')) && (
               <p role="alert" className="px-4 py-2 text-sm text-muted-foreground">{tLoad('loadError')}</p>
             )}
             {tab === 'tasks' &&
