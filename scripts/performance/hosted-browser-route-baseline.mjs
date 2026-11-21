@@ -69,7 +69,7 @@ const report={kind:actionLane?'FICTIONAL_SCRIPTED_ACTIONS':surfaceProbe?'FICTION
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(actionLane&&{actionLane}),
  ...(env.AIHR_BROWSER_REUSED_ACTION_BUILD==='true'&&{
-  verifiedBuildArtifact:{runId:44845333202,artifactId:14683043052,sourceSha:sha},
+  verifiedBuildArtifact:{runId:44927404845,artifactId:14716484117,sourceSha:sha},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
  phases:[],observations:[],journeys:[]};
