@@ -1548,7 +1548,7 @@ try{
   const evidence=join(privateDir,'performance-seed-failure.json');
   if(existsSync(evidence)){
    const fact=JSON.parse(readFileSync(evidence,'utf8'));
-   if(['import','grade','create','configure','open'].includes(fact.stage)&&['assertion','type-error','error'].includes(fact.kind)){
+   if(['import','grade','create','configure','open','manager-work'].includes(fact.stage)&&['assertion','type-error','error'].includes(fact.kind)){
     report.performanceSeedFailure={stage:fact.stage,kind:fact.kind,
      code:typeof fact.code==='string'&&/^(?:[0-9A-Z]{5}|ERR_[A-Z_]{1,50})$/.test(fact.code)?fact.code:null,
      frames:fact.frames.filter(frame=>/^(?:core|packs|lib|db)\/[A-Za-z0-9_.\/-]+:\d+:\d+$/.test(frame)).slice(0,5)};

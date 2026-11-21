@@ -1,5 +1,6 @@
 /** Add two draft joiners to the existing disposable browser database through the normal owners. */
 import assert from 'node:assert/strict';
+import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -71,7 +72,10 @@ try{
  }
  if(env.PERF_LIFECYCLE_RECORDS==='true'){
   performanceSeedStage='import';
-  const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
+  const {
+   createCycle,configureOnehrCycle,openCycle,getOnehrReview,
+   saveOnehrKpis,approveOnehrScorecard,submitOnehrResults,performanceTabAccess,
+  }=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
   performanceSeedStage='grade';
@@ -98,7 +102,33 @@ try{
   performanceSeedStage='open';
   const opened=await openCycle(ctx,{cycleId});
   assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
-  fixture.performanceRecords={cycleId,name};
+  performanceSeedStage='manager-work';
+  const manager=fixture.users[2],employee=fixture.users[6];
+  assert(manager.role==='manager'&&employee.role==='employee'&&manager.companyId===company.companyId&&employee.companyId===company.companyId);
+  const [teamReview]=await owner.client`select id from performance_review
+   where tenant_id=${group.tenantId}::uuid and cycle_id=${cycleId}::uuid
+     and employment_id=${employee.employmentId}::uuid and reviewer_employment_id=${manager.employmentId}::uuid`;
+  assert(teamReview,'Expected a native review for the manager’s assigned subject');
+  const sessionFor=async actor=>{
+   const [principal]=await owner.client`select tenant_id,grants from app.principal(${actor.userId}::uuid)`;
+   assert(principal?.tenant_id===group.tenantId&&Array.isArray(principal.grants));
+   return {tenantId:group.tenantId,userId:actor.userId,personId:actor.personId,
+    grants:principal.grants,roles:[...new Set(principal.grants.map(grant=>grant.role))],entitlements:ctx.entitlements};
+  };
+  const [viewer,reviewer]=await Promise.all([sessionFor(employee),sessionFor(manager)]);
+  const revision=async actor=>(await getOnehrReview(actor,teamReview.id)).revision;
+  const objective='Fictional review objective';
+  const id=randomUUID();
+  await saveOnehrKpis(viewer,teamReview.id,await revision(viewer),[{
+   id,title:objective,description:'Verified work',weightBp:10000,unit:'items',
+   scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},
+   moderatorEmploymentId:manager.employmentId,
+  }],true);
+  await approveOnehrScorecard(reviewer,teamReview.id,await revision(reviewer),true,'');
+  await submitOnehrResults(viewer,teamReview.id,await revision(viewer),[{id,actual:100,note:'Verified work'}],'Completed the agreed work.');
+  const teamTab=await performanceTabAccess(reviewer,'pm.team');
+  assert(teamTab.mayOpen,'Expected assigned moderation to admit Team PM');
+  fixture.performanceRecords={cycleId,name,teamReviewId:teamReview.id,objective};
  }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
 }catch(error){

@@ -318,7 +318,7 @@ async function organisationLifecycleRoutes(db, fixture) {
 async function performanceRoutes(db, fixture) {
   const [group, company, manager, , employee] = fixture.users;
   assert.deepEqual([group.role, company.role, manager.role, employee.role], ['groupHR', 'companyHR', 'manager', 'employee']);
-  const { cycleId, name } = fixture.performanceRecords;
+  const { cycleId, name, teamReviewId, objective } = fixture.performanceRecords;
   const [subject] = await db`
     select r.id, r.reviewer_employment_id
     from performance_review r join review_cycle c on c.id = r.cycle_id and c.tenant_id = r.tenant_id
@@ -350,8 +350,8 @@ async function performanceRoutes(db, fixture) {
       exactHeading: reviewHeading, content: 'KPI scorecard', exactContent: true,
     },
     {
-      actor: manager, template: '/performance/team/[reviewId]', path: '/performance/team/' + subject.id,
-      exactHeading: reviewHeading, content: 'KPI scorecard', exactContent: true,
+      actor: manager, template: '/performance/team/[reviewId]', path: '/performance/team/' + teamReviewId,
+      exactHeading: `${fixture.users[6].name} · ${name}`, content: objective, exactContent: true,
     },
   ];
 }
