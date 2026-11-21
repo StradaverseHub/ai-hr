@@ -117,7 +117,9 @@ export default async function BatchPage({
   // 'processing': the background job is writing this run's payslips. Nothing of the run is shown as issued until its
   // finalize flips it to processed in one transaction; the processing panel below says where it is.
   const issued = batch.status === 'processed' || batch.status === 'closed';
-  const processingStatus = await payrollProcessingStatus(s, batch.id);
+  const processingStatus = batch.status === 'draft' || batch.status === 'processing'
+    ? await payrollProcessingStatus(s, batch.id)
+    : null;
   const processingJob = processingStatus?.job ?? null;
   const showProcessing = batch.status === 'processing' || (processingJob != null && batch.status === 'draft'
     && (processingJob.state === 'failed' || processingJob.state === 'cancelled')
