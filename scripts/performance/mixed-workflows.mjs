@@ -526,8 +526,9 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const readCreated=()=>db`select id,status from leave_request where tenant_id=${user.tenantId}::uuid
     and employment_id=${user.employmentId}::uuid and start_date=${leaveDate}::date and reason=${marker}`;
    const create=()=>send(user,templates.leaveCreate,fields);
+   const traceCreate=iteration===0&&(user.index===4||user.index===254);
    try{
-    if(iteration===0&&(user.index===4||user.index===254)){
+    if(traceCreate){
      await observedMutation(user,'leaveCreate',async()=>{
       const found=await readCreated();
       return found.length===1&&found[0].status==='pending';
@@ -537,7 +538,14 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     failedLeaveCreates.push({tenant_id:user.tenantId,employment_id:user.employmentId,marker});
     throw error;
    }
-   const rows=await readCreated();assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
+   const rows=await readCreated();
+   if(traceCreate){
+    const observation=report.persistenceObservers.find(row=>row.user===user.index&&row.operation==='leaveCreate');
+    assert(observation,'Expected the independent observation for the measured Leave creation');
+    observation.pendingVerifiedAfterResponse=rows.length===1&&rows[0].status==='pending';
+    observation.checkedAfterResponseByMs=performance.now()-observation.startedMs;
+   }
+   assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
    await pause(thinkTimeMs);await send(user,templates.leaveEdit,formFields(templates.leaveEdit,{leaveRequestId:rows[0].id,leaveTypeId:user.leaveTypeId,startDate:leaveDate,endDate:leaveDate,reason:marker+'_EDITED',durationType:'full_day'}));
    const [edited]=await db`select reason from leave_request where id=${rows[0].id}::uuid`;assert.equal(edited.reason,marker+'_EDITED');
    await pause(thinkTimeMs);await send(user,templates.leaveCancel,formFields(templates.leaveCancel,{leaveRequestId:rows[0].id}));
