@@ -30,7 +30,7 @@ export async function measureRewardsRecords({db,fixture,origin,compiledPages,sig
  const configuration='/admin/rewards/'+draft.id;
  const setup='/admin/rewards/review-setup/'+draft.id;
  const planHeading=page=>page.locator('main h1').filter({hasText:draft.name});
- const checklist=page=>page.locator('main nav a[aria-current="step"][href^="?step="]');
+ const checklist=page=>page.locator('main nav a[aria-current="step"][href^="'+setup+'?step="]');
  const backToUnit=page=>page.locator('main a[href="'+review+'"]');
  const cases=[
   {surface:'annual-configuration',template:'/admin/rewards/[unitId]',path:configuration+'?mode=view',
