@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
 
@@ -57,5 +58,24 @@ describe('leave improvement development experiment', () => {
 
   it('fails rather than recording a gain when the model is unavailable', async () => {
     await expect(runLeaveImprovement(fakeModel({ fail: true }).model)).rejects.toThrow('Local model service unavailable');
+  });
+});
+
+describe('leave experiment output schema', () => {
+  it('admits the expected plans for every search and validation fixture', () => {
+    const cases = ASSISTANT_CONVERSATION_HOLDOUTS.filter(row =>
+      /:(domain:leave|leave_canonical_why|clarify:leave_type|unsupported|privacy:0)$/.test(row.id)
+    );
+    expect(cases).toHaveLength(30);
+    for (const row of cases) expect(leaveAnswerFormat.parse(row.expected)).toEqual(row.expected);
+  });
+
+  it('rejects prose selectors, arbitrary effects, extra keys and empty plans', () => {
+    for (const invalid of [
+      { version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card: 0, fact: 'a guessed amount' }] },
+      { version: 1, mode: 'propose', action: 'apply_leave', hints: {} },
+      { version: 1, mode: 'refuse', code: 'unsupported_request', prose: 'a disclosure' },
+      { version: 1, mode: 'answer', blocks: [] },
+    ]) expect(leaveAnswerFormat.safeParse(invalid).success).toBe(false);
   });
 });

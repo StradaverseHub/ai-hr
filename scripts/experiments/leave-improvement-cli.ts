@@ -1,3 +1,5 @@
+import { routingDigest } from '../../lib/ai/module-agent-routing';
+import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { runLeaveImprovement } from '../teras/leave-improvement';
 import { localOutputPath, writeLocalOutput } from '../teras/output';
 
@@ -5,10 +7,11 @@ const baseUrl = 'http://127.0.0.1:11434';
 const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
 
 async function main() {
-  const [model, outfile, ...rest] = process.argv.slice(2);
+  const [model, outfile, formatFlag, ...rest] = process.argv.slice(2);
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
-  if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile || rest.length)
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json');
+  if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile || (formatFlag !== undefined && formatFlag !== '--schema') || rest.length)
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema]');
+  const answerFormat = formatFlag === '--schema' ? leaveAnswerJsonSchema : 'json';
   localOutputPath(outfile);
   const deadline = AbortSignal.timeout(30 * 60_000);
   const request = async (path: string, init?: RequestInit) => {
@@ -25,19 +28,19 @@ async function main() {
     return entry.digest as string;
   };
   const modelDigest = await models();
-  const report = await runLeaveImprovement(async ({ system, prompt }) => {
+  const report = await runLeaveImprovement(async ({ mode, system, prompt }) => {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
     const result = await request('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system, prompt, stream: false, format: 'json', options: generationOptions }),
+      body: JSON.stringify({ model, system, prompt, stream: false, format: mode === 'answer' ? answerFormat : 'json', options: generationOptions }),
     });
     if (result?.done !== true || result.model !== model || typeof result.response !== 'string')
       throw Error('Local model returned an incomplete response.');
     return { text: result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   });
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
-  writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions }, null, 2));
+  writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest: routingDigest(answerFormat) }, null, 2));
 }
 
 main().catch(error => {
