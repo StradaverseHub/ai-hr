@@ -22,7 +22,7 @@ function view():View{return{sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:
  candidates:[{id:'00000000-0000-4000-8000-000000000011',version:1,kind:'read_plan_prompt_v1',own:false,attempts:1,progress:null,verifiedSignalCount:null}],
  promotions:[{id:'00000000-0000-4000-8000-000000000012',version:1,kind:'read_plan_prompt_v1',used:0,maximum:5,expiresAt:new Date().toISOString(),retired:false}],
  conversationCandidates:[{id:'00000000-0000-4000-8000-000000000001',version:2,own:false,progress:null}],
- conversationPromotions:[{id:'00000000-0000-4000-8000-000000000002',version:2,used:0,maximum:5,expiresAt:new Date().toISOString(),retired:false}]};}
+ localLeaveTrials:[],conversationPromotions:[{id:'00000000-0000-4000-8000-000000000002',version:2,used:0,maximum:5,expiresAt:new Date().toISOString(),retired:false}]};}
 // The erase controls ask first through the shared client confirm dialog, which needs the client intl provider.
 const intl=({children}:{children:ReactNode})=><NextIntlClientProvider locale="en" messages={en}>{children}</NextIntlClientProvider>;
 async function mount(){const result=render(await ModuleAgentReview({view:view()}),{wrapper:intl});for(const details of result.container.querySelectorAll('details'))details.open=true;return result;}

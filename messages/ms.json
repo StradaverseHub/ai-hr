@@ -20865,7 +20865,25 @@
         "progress": "{completed}/{total} kes berpasangan selesai; {failures} kegagalan cabang diketahui.",
         "unknown": "Tidak diketahui / belum disahkan",
         "noCandidates": "Belum ada calon perbualan.",
-        "metrics": "Betul {correct}; kegagalan keselamatan {security}. p50/p95 {p50}/{p95} ms. Token masuk/keluar {input}/{output}. Kredit akaun {credits}."
+        "metrics": "Betul {correct}; kegagalan keselamatan {security}. p50/p95 {p50}/{p95} ms. Token masuk/keluar {input}/{output}. Kredit akaun {credits}.",
+        "leaveTrial": {
+          "title": "Percubaan baki cuti",
+          "scope": "Menguji jawapan terus untuk satu pekerjaan aktif milik pemilik calon. Dua penilaian bebas yang ditandatangani diperlukan untuk memulakan percubaan.",
+          "record": "Calon percubaan v{version}",
+          "earlierBuild": "Calon ini daripada versi binaan terdahulu.",
+          "needsEvidence": "Menunggu bukti penilaian yang ditandatangani.",
+          "needsApprover": "Bukti disahkan. Menunggu pelulus yang ditetapkan.",
+          "providerUnavailable": "Penyedia model yang ditetapkan tidak dapat disahkan.",
+          "ready": "Bukti disahkan. Anda boleh memulakan percubaan ini.",
+          "withdrawn": "Bukti percubaan tidak tersedia. Soalan baharu menggunakan kaedah asas.",
+          "approvalUnavailable": "Kelulusan percubaan yang direkodkan tidak dapat disahkan.",
+          "windowOpen": "Tempoh percubaan dibuka untuk pemilik calon.",
+          "expired": "Percubaan telah tamat.",
+          "exhausted": "Percubaan mencapai had soalan.",
+          "rolledBack": "Percubaan telah ditarik balik.",
+          "start": "Mulakan percubaan baki cuti",
+          "usage": "{used} daripada {maximum} soalan percubaan diterima"
+        }
       },
       "historyPrivacy": {
         "title": "Sejarah sembang anda",

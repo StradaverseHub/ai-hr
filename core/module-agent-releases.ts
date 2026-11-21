@@ -671,12 +671,66 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||!PROMPT_HOLDOUTS.some(row=>row.id===proof.fixtureId))throw Error();
   lastTrial={state:proof.stage==='reserved'?'pending':proof.stage==='completed'?'completed':proof.stage==='refused'?'refused':'unavailable',fixtureId:String(proof.fixtureId)};
  }catch{lastTrial={state:'unavailable',fixtureId:null};}}
- const conversationRows=await tx.execute<{id:string;version:number;own:boolean}>(sql`select id,version,owner_user_id=app.current_user_id() as own from public.ai_agent_candidate where tenant_id=${ctx.tenantId}::uuid and kind='assistant_answer_prompt_v1' order by created_at desc,id desc limit 5`);
+ const conversationRows=await tx.execute<{id:string;version:number;own:boolean}>(sql`select id,version,owner_user_id=app.current_user_id() as own
+  from public.ai_agent_candidate where tenant_id=${ctx.tenantId}::uuid and kind='assistant_answer_prompt_v1'
+  and configuration->>'variant'<>${ASSISTANT_LOCAL_LEAVE_VARIANT} order by created_at desc,id desc limit 5`);
  const conversationCandidates:{id:string;version:number;own:boolean;progress:Awaited<ReturnType<typeof conversationProgressTx>>|null}[]=[];for(const row of conversationRows){let progress:Awaited<ReturnType<typeof conversationProgressTx>>|null=null;if(!row.own&&providerFingerprint)try{progress=await conversationProgressTx(tx,ctx,row.id,providerFingerprint);}catch{/* Unknown/stale source is never zero progress. */}conversationCandidates.push({...row,progress});}
- const conversationPromotions=await tx.execute<{id:string;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) as retired from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and c.kind='assistant_answer_prompt_v1' order by p.created_at desc,p.id desc limit 5`);
- return {conversationCandidates,conversationPromotions:Array.from(conversationPromotions),sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated,
+ const conversationPromotions=await tx.execute<{id:string;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) as retired
+  from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id
+  where p.tenant_id=${ctx.tenantId}::uuid and c.kind='assistant_answer_prompt_v1' and c.configuration->>'variant'<>${ASSISTANT_LOCAL_LEAVE_VARIANT}
+  order by p.created_at desc,p.id desc limit 5`);
+ const localLeaveTrials=await localLeaveTrialReviewTx(tx,ctx,providerFingerprint);
+ return {conversationCandidates,conversationPromotions:Array.from(conversationPromotions),localLeaveTrials,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated,
   candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null,verifiedSignalCount:verifiedSignalCount.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
+}
+
+type LocalLeaveReviewState='earlierBuild'|'needsEvidence'|'needsApprover'|'providerUnavailable'|'ready'|'withdrawn'|'approvalUnavailable'|'windowOpen'|'expired'|'exhausted'|'rolledBack';
+
+async function localLeaveTrialReviewTx(tx:Tx,ctx:SessionContext,providerFingerprint:string|null){
+ const rows=await tx.execute<{
+  id:string; version:number; authorId:string; candidateDigest:string; baselineDigest:string; sourceDigest:string;
+  promotionId:string|null; receipt:string|null; used:number|null; maximum:number|null; expired:boolean; retired:boolean;
+ }>(sql`with candidates as (
+   select id,tenant_id,version,author_user_id,candidate_digest,baseline_digest,source_digest,created_at
+   from public.ai_agent_candidate where tenant_id=${ctx.tenantId}::uuid and kind='assistant_answer_prompt_v1'
+    and configuration->>'variant'=${ASSISTANT_LOCAL_LEAVE_VARIANT}
+   order by created_at desc,id desc limit 5
+  )
+  select c.id,c.version,c.author_user_id as "authorId",c.candidate_digest as "candidateDigest",
+    c.baseline_digest as "baselineDigest",c.source_digest as "sourceDigest",
+    p.id as "promotionId",p.receipt,p.used_jobs as used,p.max_jobs as maximum,
+    coalesce(p.expires_at<=statement_timestamp(),false) as expired,
+    exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=c.tenant_id) as retired
+   from candidates c
+   left join lateral (
+    select p.id,p.receipt,p.used_jobs,p.max_jobs,p.expires_at from public.ai_agent_promotion p
+    where p.tenant_id=c.tenant_id and p.candidate_id=c.id order by p.created_at desc,p.id desc limit 1
+   ) p on true
+   order by c.created_at desc,c.id desc`);
+ return rows.map(row=>{
+  const current=row.sourceDigest===MODULE_AGENT_SOURCE_DIGEST&&row.baselineDigest===conversationBaselineDigest;
+  const evidence=current?installedLocalLeaveEvidence({tenantId:ctx.tenantId,...row}):null;
+  let state:LocalLeaveReviewState;
+  if(row.retired)state='rolledBack';
+  else if(row.expired)state='expired';
+  else if(row.used!==null&&row.maximum!==null&&row.used>=row.maximum)state='exhausted';
+  else if(!current)state='earlierBuild';
+  else if(!evidence)state=row.promotionId?'withdrawn':'needsEvidence';
+  else if(!providerFingerprint)state='providerUnavailable';
+  else if(row.promotionId){
+   state='approvalUnavailable';
+   if(row.receipt)try{
+    const proof=open('conversation-promotion',ctx.tenantId,row.promotionId,row.receipt);
+    if(proof.candidateDigest===row.candidateDigest&&proof.providerFingerprint===providerFingerprint&&
+       proof.approverId===evidence.approverId&&routingDigest(proof.pairedEvidence)===routingDigest(evidence))state='windowOpen';
+   }catch{/* The window is unverified if the stored approval cannot be read. */}
+  }else state=evidence.approverId===ctx.userId&&row.authorId!==ctx.userId?'ready':'needsApprover';
+  const promotion=row.promotionId&&row.used!==null&&row.maximum!==null?{
+   id:row.promotionId, used:row.used, maximum:row.maximum, retired:row.retired,
+  }:null;
+  return {id:row.id,version:row.version,state,promotion};
+ });
 }
 
 /** Human-question planning is separate from synthetic evaluation and never retrieves HR records.

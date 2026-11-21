@@ -23,7 +23,7 @@ import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '..
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
-import {createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
+import {agentReviewWorkspaceTx,createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
 import {signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
 import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_LOCAL_LEAVE_VARIANT} from '../lib/ai/assistant-conversation-candidate';
@@ -89,9 +89,14 @@ describe('actual Mine flags bind current provider input and historical source di
    const [legacy]=await owner.db.execute(sql`select candidate_digest from public.ai_agent_candidate where id=${old.candidateId}::uuid`);
    expect(legacy.candidate_digest).toBe(old.candidateDigest);
 
+   const review=(actor:SessionContext)=>withTenant(actor,tx=>agentReviewWorkspaceTx(tx,actor));
+   const trial=(actor:SessionContext)=>review(actor).then(view=>view?.localLeaveTrials.find(row=>row.id===created.candidateId));
+   expect(await review(employee)).toBeNull();
+   expect((await review(ctx))?.conversationCandidates.map(row=>row.id)).toEqual([old.candidateId]);
    const request={candidateId:created.candidateId,maxJobs:3,hours:1};
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
+   expect(await trial(promoter)).toEqual({id:created.candidateId,version:2,state:'needsEvidence',promotion:null});
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
    const keys=[generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519')];
    const now=new Date(),expiresAt=new Date(now.getTime()+15*60_000).toISOString();
@@ -117,6 +122,9 @@ describe('actual Mine flags bind current provider input and historical source di
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','0'.repeat(64));
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256',digest);
+   expect(await trial(reviewer)).toMatchObject({state:'needsApprover'});
+   expect(await trial(ctx)).toMatchObject({state:'needsApprover'});
+   expect(await trial(promoter)).toMatchObject({state:'ready'});
    await expect(promoteConversationAgentCandidate(ctx,request)).rejects.toThrow();
    await expect(promoteConversationAgentCandidate(reviewer,request)).rejects.toThrow();
    const promotion=await promoteConversationAgentCandidate(promoter,request);
@@ -134,6 +142,9 @@ describe('actual Mine flags bind current provider input and historical source di
    const [quota]=await owner.db.execute(sql`select exchange_id::text,accounted_tokens::int,completed_at is not null as completed
     from app.assistant_question_budget where tenant_id=${base.tenantId}::uuid and user_id=${authorId}::uuid`);
    expect(quota).toEqual({exchange_id:served.exchangeId,accounted_tokens:0,completed:true});
+   expect(await trial(promoter)).toMatchObject({state:'windowOpen',
+    promotion:{id:promotion.promotionId,used:1,maximum:3,retired:false}});
+   expect((await review(promoter))?.conversationPromotions).toEqual([]);
    const history=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
    expect(history.history[0].grounded?.mode).toBe('grounded');
    expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
@@ -147,6 +158,7 @@ describe('actual Mine flags bind current provider input and historical source di
    });
    expect(inflight.provenance.mode).toBe('promoted');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
+   expect(await trial(promoter)).toMatchObject({state:'withdrawn',promotion:{used:2,maximum:3}});
    try{
     await expect(withTenant(ctx,tx=>recheckAssistantConversationStrategyTx(tx,ctx,inflight.capability))).rejects.toThrow();
    }finally{retireAssistantConversationStrategyCapability(inflight.capability);}
@@ -162,6 +174,7 @@ describe('actual Mine flags bind current provider input and historical source di
    await expect(ask()).resolves.toMatchObject({turns:1});
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE',bundle);
    await rollbackAssistantPromotion(promoter,{promotionId:promotion.promotionId,reason:'human'});
+   expect(await trial(promoter)).toMatchObject({state:'rolledBack',promotion:{used:2,retired:true}});
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
    await expect(ask()).resolves.toMatchObject({turns:1});
    expect(transport).toHaveBeenCalledTimes(2);
