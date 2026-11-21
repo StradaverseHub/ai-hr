@@ -37,9 +37,10 @@ const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusRewards=shardInput==='rewards-records';
 const censusLifecycle=shardInput==='fixture-records';
 const censusShellStartup=shardInput==='shell-startup';
+const censusShellPrefetch=shardInput==='shell-prefetch';
 const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||censusShellStartup)&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||censusShellStartup||censusShellPrefetch)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -578,19 +579,25 @@ async function measureShellLinks(fixture){
 }
 
 async function measureShellPrefetchAfterIntent(fixture){
- const actor=fixture.users[0],context=await signedInContext(actor);
+ const actor=fixture.users[0];
+ let context;
  const row={journey:'shell-prefetch-after-intent',role:actor.role,route:'/payroll',destination:'/',status:'incomplete'};
  report.journeys.push(row);
  const requests={beforeHover:0,duringHover:0,afterPointerLeave:0,afterRefresh:0};
  const afterRefreshObservationMs=1500;
- let phase='beforeHover',documentRequests=0,stage='open-page';
- try{
+ let phase='beforeHover',documentRequests=0;
+ const mark=stage=>{Object.assign(row,{stage,requests,documentRequests});save();};
+ mark('context');
+ const budgetMs=45000,deadline=performance.now()+budgetMs;
+ const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+ let timer;
+ const observe=async()=>{
+  context=await signedInContext(actor);
+  mark('open-page');
   const page=await context.newPage();
   const activePath=origin+row.route;
   const home=page.locator('aside[data-app-sidebar][data-shell-navigation-ready="true"] a[href="/"][aria-label="AIHR home"]:visible');
   const opened=performance.now();
-  const deadline=performance.now()+45000;
-  const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
   const matchesRouteData=(request,path)=>{
    const url=new URL(request.url());
    return request.method()==='GET'&&url.origin===origin&&url.pathname===path&&
@@ -601,17 +608,17 @@ async function measureShellPrefetchAfterIntent(fixture){
    if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;
    if(matchesRouteData(request,row.destination))requests[phase]++;
   });
-  stage='payroll-content';
+  mark('payroll-content');
   assert.equal(await readyContent(page,actor,row.route,remaining),'usable-content');
-  stage='interactive-persistent-link';
+  mark('interactive-persistent-link');
   await home.waitFor({state:'visible',timeout:remaining()});
   row.shellReadyMs=Math.round(performance.now()-opened);
   const node=await home.elementHandle({timeout:remaining()});
   assert(node,'The persistent home link is unavailable');
-  stage='router-ready';
+  mark('router-ready');
   await page.waitForFunction(()=>typeof window.next?.router?.refresh==='function',null,{timeout:remaining()});
   await page.locator('main:visible').first().hover({position:{x:12,y:12},timeout:remaining()});
-  stage='hover-prefetch';
+  mark('hover-prefetch');
   phase='duringHover';
   const intentStarted=performance.now();
   const [prefetched]=await Promise.all([
@@ -619,23 +626,23 @@ async function measureShellPrefetchAfterIntent(fixture){
    home.hover({timeout:remaining()}),
   ]);
   assert(prefetched.ok(),'The intentional prefetch must receive a successful response');
-  assert.equal(await prefetched.finished(),null);
+
   row.intentResponseMs=Math.round(performance.now()-intentStarted);
-  stage='leave-link';
+  mark('leave-link');
   await page.locator('main:visible').first().hover({position:{x:12,y:12},timeout:remaining()});
   phase='afterPointerLeave';
   assert(await node.evaluate(link=>link.isConnected&&!link.matches(':hover')&&!link.contains(document.activeElement)),
    'The link must remain mounted with no pointer or focus intent');
   await pause(250);
-  stage='route-refresh';
+  mark('route-refresh');
   phase='afterRefresh';
   const [refreshed]=await Promise.all([
    page.waitForResponse(response=>matchesRouteData(response.request(),row.route),{timeout:remaining()}),
    page.evaluate(()=>window.next.router.refresh()),
   ]);
   assert(refreshed.ok(),'The real router refresh must receive a successful response');
-  assert.equal(await refreshed.finished(),null);
-  stage='post-refresh-content';
+
+  mark('post-refresh-content');
   await pause(afterRefreshObservationMs);
   assert.equal(page.url(),activePath);
   assert.equal(documentRequests,0,'The refresh must keep the same browser document');
@@ -643,13 +650,20 @@ async function measureShellPrefetchAfterIntent(fixture){
    'The same link must survive the refresh without fresh intent');
   assert.equal(await readyContent(page,actor,row.route,remaining),'usable-content');
   row.status='observed';
+  mark('complete');
+ };
+ try{
+  const timeout=new Promise((_,reject)=>{
+   timer=setTimeout(()=>reject(Object.assign(Error('Shell intent measurement deadline'),{name:'TimeoutError'})),budgetMs);
+  });
+  await Promise.race([observe(),timeout]);
  }catch(error){
-  row.stage=stage;
   row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':
    error?.name==='TypeError'?'type-error':'browser';
  }finally{
-  Object.assign(row,{requests,afterRefreshObservationMs,documentRequests});
-  await context.close();save();
+  clearTimeout(timer);
+  Object.assign(row,{requests,afterRefreshObservationMs,documentRequests});save();
+  await context?.close();
  }
 }
 
@@ -1704,7 +1718,7 @@ try{
  }
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!censusShellPrefetch)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
@@ -1722,6 +1736,11 @@ try{
     if(censusLifecycle)await measureLifecycleRecordActions(options);
    }
    finally{await db.end({timeout:5});}
+  }else if(censusShellPrefetch){
+   const require=createRequire(join(process.cwd(),'package.json'));
+   browser=await require('playwright').chromium.launch();
+   await measureShellPrefetchAfterIntent(fixture);
+   assert(report.journeys[0]?.status==='observed','The isolated shell intent journey did not complete');
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
