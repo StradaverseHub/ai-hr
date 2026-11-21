@@ -118,6 +118,20 @@ The pinned Qwen 2.5 3B model proposed grouping related facts before their explan
 
 IBM Granite 3.3 2B provided a second model family for the same experiment. The run kept the source, development and validation cases, catalogue schema, generation settings and guidance options fixed. The local `granite3.3:2b` GGUF had digest `07bd1f170855240f9e162bf54ea494a8bc1c73d8cbd1365d7fccbeb7d2504947`. Granite also proposed grouping related evidence. Baseline and candidate each scored 0/4 exact with zero rejected replies. The gate kept the baseline after 13 calls, with 13,396 reported input tokens and 344 output tokens. Across both model families, admissible output has yet to yield an exact protected answer on these validation cases. [IBM Granite model card](https://huggingface.co/ibm-granite/granite-3.3-2b-instruct) · [Ollama model distribution](https://ollama.com/library/granite3.3:2b)
 
+### Qwen3 4B baseline and proposal checks
+
+The pinned Qwen3 4B Instruct 2507 Q4_K_M model ran the three existing public development benchmarks. All 34 completed calls succeeded at the transport layer and the engine reported zero input truncations. The local memory limit required a 2,048-token context for work summaries and 1,024 for the shorter explanation tasks. The successful reports used temperature 0, seed 42, and a 512-token output cap. Model digest `0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`. [Model distribution](https://ollama.com/library/qwen3%3A4b-instruct-2507-q4_K_M) · [Exact experiment source](https://github.com/StradaverseHub/ai-hr/commit/02febf9ab5d57ef3be4d17a25d416e1fb60b70c9)
+
+| Experiment | Baseline | Changed strategy | Correct selections | Calls |
+| --- | --- | --- | --- | ---: |
+| Complete protected work summary | Original catalogue prompt | Model proposed grouping facts with their explanation | 0/4 → 0/4 | 13 |
+| Explanation revision | Available codes | Model proposed comparing code meanings | 1/2 → 1/2 | 9 |
+| Explanation control | Available codes | Application supplies the intended focus | 3/6 → 6/6 | 12 |
+
+Neither model proposal advanced. The control isolates why the narrower task is a better candidate for further study. When the question's focus was absent, some requests had the same inputs and required different answers. The model's proposed instruction still left those inputs identical. Supplying the focus distinguished them. The candidate search needs evidence that a proposed change addresses the observed failure before it spends independent cases. These known fixtures establish a development comparison. They supply no independent acceptance or serving authority.
+
+Report SHA-256 values in table order are `44a1c1cc4e06aa3257ac05934e9e85308f499c926f4a3eacf6b14116ab0278fb`, `302e6b46889ce5995f3301fed6841c9b2a96bedecc005cd55f585b3ba1f92b02`, and `e00e3441f259323e529c0c3a6c01f66d34eb3ccd50dc7756e017ec8b15ef9491`.
+
 ### Numbered choices for protected answers
 
 At `fa61dc3a92b4764cfb4f0ff3de94ca136f36369d`, the offline `--indexed-catalogue` mode lists the available closed field labels and explanation codes with numbered choices. It asks for one ordered list of indices. The decoder rejects unknown or repeated indices and extra fields. It expands a valid selection into the same answer plan and passes it through both existing adjudicators. The new format changes the model instructions and representation together. It supplies neither source values nor expected answers.
