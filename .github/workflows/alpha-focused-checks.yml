@@ -155,7 +155,7 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 26b9218413a0130f4b87e010e8bdde7ead38b6ec ]];
+            [[ "$EXPECTED_SHA" != c4d55628ec5724279f879583a8c2d8d0c874d25e ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -257,34 +257,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
-          test "$AIHR_CI_HEAD" = 26b9218413a0130f4b87e010e8bdde7ead38b6ec
+          build_source=5e20d9f5e2cf2c7aa9a5757cf62821b857f84e1e
+          test "$AIHR_CI_HEAD" = c4d55628ec5724279f879583a8c2d8d0c874d25e
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
-          harness_diff="$(printf '%s\t%s\n' A .github/ci/loaded-access-blockers.test.mjs \
-            A .github/ci/mixed-loaded-advisory.test.mjs \
-            A scripts/performance/loaded-access-blockers.mjs \
-            M scripts/performance/lock-sample-attribution.mjs \
-            M scripts/performance/measured-lock-observer.mjs \
-            M scripts/performance/mixed-workflows.mjs \
-            A scripts/performance/payroll-after-traffic.mjs \
-            M scripts/performance/route-latency.mjs \
-            M scripts/performance/route-scheduling.mjs \
-            M scripts/performance/system-fixture-owner.mjs \
-            M scripts/performance/system-load-owner.mjs \
-            M scripts/performance/worker-comparison-failure.mjs \
-            M test/payroll-processing-job.test.ts \
-            M test/performance-driver-lifecycle.test.ts \
-            M test/performance-route-latency.test.ts \
-            M test/performance-route-scheduling.test.ts)"
+          test "$(git rev-parse HEAD^)" = "$build_source"
+          harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs A test/performance-attendance-capture.test.ts)"
           test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          gh api repos/StradaverseHub/ai-hr/actions/jobs/136663689130 --jq '
+          gh api repos/StradaverseHub/ai-hr/actions/jobs/136853990254 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
-            .run_id == 44845333202 and .head_sha == "b6ccfc0457474d67015f03284f6d46fdb7cb10cf"' | grep -qx true
-          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14683043052/zip > "$archive"
-          printf '%s  %s\n' '91646cc00aa15b82cd12a607bca5ad51cef3bb1e20fa06a25862aa9debb6f4a6' "$archive" | sha256sum -c -
+            .run_id == 44906756341 and .head_sha == "a4aec4dab6bd8cfac0511a23917f1088c7c18bbc"' | grep -qx true
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14709150543/zip > "$archive"
+          printf '%s  %s\n' 'f7229e81e8c37b2a4a0a98da971d7be359fad8ca255aa49e3e1279a0350048e1' "$archive" | sha256sum -c -
           test "$(unzip -Z1 "$archive" | LC_ALL=C sort)" = "$(printf '%s\n' build-bundle-files.json build-bundle.tar.gz source-sha)"
           install -d -m 700 "$RUNNER_TEMP/fictional-browser-build"
           unzip -q "$archive" -d "$RUNNER_TEMP/fictional-browser-build"
@@ -296,7 +281,7 @@ jobs:
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
           if [[ "$REUSE_BUILD" == true ]]; then
-            expected_build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
+            expected_build_source=5e20d9f5e2cf2c7aa9a5757cf62821b857f84e1e
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"

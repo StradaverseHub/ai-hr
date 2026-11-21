@@ -3,7 +3,7 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
-import {projectLoadedPayrollJobs,projectPayrollAfterTraffic,projectTimedOutPayrollResponses} from './loaded-payroll-jobs.mjs';
+import {projectLoadedPayrollJobs,projectPayrollAfterTraffic,projectPayrollUiPreflight,projectTimedOutPayrollResponses} from './loaded-payroll-jobs.mjs';
 import {randomBytes} from 'node:crypto';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
@@ -61,8 +61,8 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44845333202,artifactId:14683043052,
-  sourceSha:'a458ecc0087722ec939b67a673f6c0ef017ba332'}}),
+ ...(env.AIHR_BROWSER_REUSED_BUILD==='true'&&{buildArtifact:{runId:44906756341,artifactId:14709150543,
+  sourceSha:'5e20d9f5e2cf2c7aa9a5757cf62821b857f84e1e'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
@@ -695,6 +695,8 @@ async function measureMixedLoad(command,fixture){
    }
    const loadedPayroll=projectLoadedPayrollJobs(data.mixedWorkflows?.loadedPayroll);
    if(loadedPayroll)report.mixedLoadedPayrollJobs=loadedPayroll;
+   const payrollUi=projectPayrollUiPreflight(data.mixedWorkflows?.payrollUiPreflight);
+   if(payrollUi)report.mixedPayrollUiPreflight=payrollUi;
    const payrollTimeouts=projectTimedOutPayrollResponses(data.requestErrors,data.measurementWindow?.startPerformanceMs,
     new Map(fixture.users.filter(user=>user.role==='groupHR').map(user=>[user.index,user.tenant])));
    if(payrollTimeouts.length)report.mixedPayrollTimeouts=payrollTimeouts;

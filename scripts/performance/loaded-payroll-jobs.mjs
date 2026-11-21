@@ -4,7 +4,7 @@ export function projectLoadedPayrollJobs(input) {
   const invalid = { state: 'invalid', jobs: [] };
   if (input.length > 2) return invalid;
 
-  const timings = ['responseMs', 'acknowledgmentMs', 'verifiedCompletionMs', 'verifiedExportMs'];
+  const timings = ['receiptHeadersMs', 'responseMs', 'acknowledgmentMs', 'verifiedCompletionMs', 'verifiedExportMs'];
   const witnesses = ['startedWith', 'verifiedWith', 'exportStartedWith', 'exportVerifiedWith'];
   const jobs = [];
   for (const row of input) {
@@ -25,18 +25,32 @@ export function projectLoadedPayrollJobs(input) {
       job[field] = { active: load.active, launched: load.launched, inSteadyWindow: load.inSteadyWindow };
     }
     if (!job.startedWith ||
+        ((job.receiptHeadersMs !== undefined || row.receiptConfirmed !== undefined) &&
+          !(row.receiptConfirmed === true && job.receiptHeadersMs <= job.responseMs)) ||
         (job.acknowledgmentMs !== undefined && !(job.responseMs <= job.acknowledgmentMs)) ||
         ((job.verifiedCompletionMs !== undefined || job.verifiedWith) &&
           !(job.verifiedWith && job.acknowledgmentMs <= job.verifiedCompletionMs)) ||
         (job.exportStartedWith && !job.verifiedWith) ||
         ((job.verifiedExportMs !== undefined || job.exportVerifiedWith) &&
           !(job.exportStartedWith && job.exportVerifiedWith && job.verifiedExportMs !== undefined))) return invalid;
+    if (row.receiptConfirmed === true) job.receiptConfirmed = true;
     jobs.push(job);
   }
   jobs.sort((left, right) => left.tenant - right.tenant);
   const verifiedAtFullLoad = job => witnesses.every(field =>
     job[field]?.active === 500 && job[field].inSteadyWindow);
   return { state: jobs.length === 2 && jobs.every(verifiedAtFullLoad) ? 'verified-at-steady-load' : 'incomplete', jobs };
+}
+
+/** Publish the observed browser receipt and processed-register control without page text or identifiers. */
+export function projectPayrollUiPreflight(input) {
+  if (!input || !Number.isSafeInteger(input.browserReceiptMs) ||
+      input.browserReceiptMs < 0 || input.browserReceiptMs > 90000) return null;
+  const { browserReceiptMs, registerReadyMs } = input;
+  if (registerReadyMs === undefined) return { browserReceiptMs };
+  if (!Number.isSafeInteger(registerReadyMs) || registerReadyMs < browserReceiptMs ||
+      registerReadyMs > 240000) return null;
+  return { browserReceiptMs, registerReadyMs };
 }
 
 /** A snapshot after client traffic settled. It cannot establish in-window acknowledgement. */

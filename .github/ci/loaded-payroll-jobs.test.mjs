@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectLoadedPayrollJobs, projectPayrollAfterTraffic, projectTimedOutPayrollResponses } from '../../scripts/performance/loaded-payroll-jobs.mjs';
+import { projectLoadedPayrollJobs, projectPayrollAfterTraffic, projectPayrollUiPreflight, projectTimedOutPayrollResponses } from '../../scripts/performance/loaded-payroll-jobs.mjs';
 
 const atSteady = { active: 500, launched: 500, inSteadyWindow: true };
 const job = tenant => ({
@@ -25,6 +25,18 @@ test('keeps partial timings and records a completion or export outside steady lo
     assert.equal(projectLoadedPayrollJobs([job(0), late]).state, 'incomplete');
   }
   assert.equal(projectLoadedPayrollJobs([job(0)]).state, 'incomplete');
+});
+
+test('checks typed receipt timing and publishes the browser result separately from the register', () => {
+  const received = { ...job(0), receiptHeadersMs: 180, receiptConfirmed: true };
+  assert.deepEqual(projectLoadedPayrollJobs([received]).jobs, [received]);
+  for (const row of [{ ...received, receiptHeadersMs: 250 }, { ...received, receiptConfirmed: false }, { ...received, receiptHeadersMs: undefined }]) {
+    assert.equal(projectLoadedPayrollJobs([row]).state, 'invalid');
+  }
+  assert.deepEqual(projectPayrollUiPreflight({ browserReceiptMs: 400, registerReadyMs: 850, page: 'private' }),
+    { browserReceiptMs: 400, registerReadyMs: 850 });
+  assert.deepEqual(projectPayrollUiPreflight({ browserReceiptMs: 410 }), { browserReceiptMs: 410 });
+  assert.equal(projectPayrollUiPreflight({ browserReceiptMs: 400, registerReadyMs: 399 }), null);
 });
 
 test('rejects duplicate tenants, inconsistent phases, and invalid load or timing values', () => {
