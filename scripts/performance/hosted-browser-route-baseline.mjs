@@ -74,6 +74,7 @@ mkdirSync(fixtureEvidenceDir,{mode:0o700});
 const focusedEvidence=join(env.RUNNER_TEMP,'aihr-focused');
 mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
+const transactionTimingPath=join(privateDir,'application-transaction-timing.json');
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
@@ -482,17 +483,45 @@ function captureAccessServerLogWindow({containerId,dockerConfig,fixture,from,to}
  }
 }
 
+function loadedObservationBounds(driverEvidence){
+ const waitsPath=join(driverEvidence,'database-waits.json');
+ if(statSync(waitsPath).size>8*1024*1024)return null;
+ const samples=JSON.parse(readFileSync(waitsPath,'utf8'))
+  .filter(sample=>sample.phase==='loaded'&&Number.isSafeInteger(sample.at)&&sample.at>0);
+ if(samples.length<2)return null;
+ return {from:Math.min(...samples.map(sample=>sample.at)),to:Math.max(...samples.map(sample=>sample.at))};
+}
+
 function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture}){
  try{
-  const waitsPath=join(driverEvidence,'database-waits.json');
-  if(statSync(waitsPath).size>8*1024*1024)return {state:'sample-file-over-cap'};
-  const samples=JSON.parse(readFileSync(waitsPath,'utf8'))
-   .filter(sample=>sample.phase==='loaded'&&Number.isSafeInteger(sample.at)&&sample.at>0);
-  if(samples.length<2)return {state:'sample-window-unavailable'};
-  const from=Math.min(...samples.map(sample=>sample.at));
-  const to=Math.max(...samples.map(sample=>sample.at));
-  return captureAccessServerLogWindow({containerId,dockerConfig,fixture,from,to});
+  const bounds=loadedObservationBounds(driverEvidence);
+  return bounds?captureAccessServerLogWindow({containerId,dockerConfig,fixture,...bounds}):{state:'sample-window-unavailable'};
  }catch{return {state:'collection-unavailable'};}
+}
+
+function captureApplicationAdmission(driverEvidence){
+ const scope='Application timing windows contained in the loaded lock-observer interval. Start delay includes admission, a connection checkout, BEGIN and callback scheduling. Raw pool wait measures application admission before checkout.';
+ try{
+  const bounds=loadedObservationBounds(driverEvidence);
+  if(!bounds||statSync(transactionTimingPath).size>1024*1024)return {available:false,scope};
+  const timing=JSON.parse(readFileSync(transactionTimingPath,'utf8'));
+  const windows=timing.windows.filter(row=>Number.isSafeInteger(row.from)&&Number.isSafeInteger(row.to)
+   &&row.from>=bounds.from&&row.to<=bounds.to&&row.to>row.from);
+  if(!windows.length)return {available:false,scope};
+  const nonnegative=value=>Number.isFinite(value)&&value>=0?value:null;
+  function summarize(select){
+   const metrics=windows.map(select).filter(row=>row&&nonnegative(row.count)!==null);
+   const p95=metrics.map(row=>nonnegative(row.p95Ms)).filter(value=>value!==null);
+   return {
+    samples:metrics.reduce((count,row)=>count+row.count,0),
+    maxWindowP95Ms:p95.length?Math.max(...p95):null,
+   };
+  }
+  return {available:true,scope,windows:windows.length,coveredMs:windows.reduce((sum,row)=>sum+row.to-row.from,0),
+   transactionStart:summarize(row=>row.startDelay),transactionHold:summarize(row=>row.held),
+   passiveReadAdmission:summarize(row=>row.passiveRead?.queueWait),
+   rawPoolAdmission:summarize(row=>row.rawPoolWork?.queueWait)};
+ }catch{return {available:false,scope};}
 }
 
 async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
@@ -705,6 +734,7 @@ async function measureMixedLoad(command,fixture){
    // Failure or startup snapshots before that reset would mix in preflight work.
    if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
     report.mixedDatabaseProfile.loadedStatements=retainMixedStatementSummary(driverEvidence);
+    if(databaseTopology==='transaction-pool')report.applicationAdmission=captureApplicationAdmission(driverEvidence);
     report.mixedDatabaseProfile.accessServerLog=captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture});
     if(data.trafficSettled===true)report.mixedDatabaseProfile.applicationRootStatements=readMixedRootStatements(name,dockerConfig);
    }
@@ -1897,6 +1927,8 @@ try{
     ...(webPooler&&{
      DATABASE_POOLED_URL:namedDatabase(webPooler.appUrl,'aihr-fixture-mixed-web'),
      AIHR_DB_POOLER_SERVER_CONNECTIONS:String(webPooler.serverConnections),
+     PERF_TX_TIMING_PATH:transactionTimingPath,
+     NODE_OPTIONS:[dbEnv.NODE_OPTIONS,`--import=${new URL('./transaction-timing.mjs',import.meta.url).href}`].filter(Boolean).join(' '),
     })});
   try{
    await waitForApp();
