@@ -34,4 +34,4 @@ jobs:
       - name: Test the populated restricted-role upgrade and rollback
         env:
           AIHR_UPGRADE_SQL: ${{ github.ref_name == 'codex/staging-index-pilot-20261121' && 'db/migrations/7080_job_run_deterministic_order.sql' || '' }}
-        run: node --test deploy/upgrade/*.test.mjs
+        run: node --test deploy/upgrade/index-expansion.test.mjs

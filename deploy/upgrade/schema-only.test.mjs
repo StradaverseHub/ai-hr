@@ -44,7 +44,7 @@ test('exact index changes the plan on 50,000 rows without changing tenant visibi
   await owner`INSERT INTO tenant(id) VALUES (${tenant}),(${other})`;
   await owner`INSERT INTO clocking_import_run(id,tenant_id,created_at,mapping_name)
     SELECT md5(i::text)::uuid,CASE WHEN i%3=0 THEN ${tenant}::uuid ELSE ${other}::uuid END,
-    '2026-01-01'::timestamptz+(i/150)*interval '1 minute','fixture' FROM generate_series(1,50000) i`;
+    '2026-01-01'::timestamptz+(i/3000)*interval '1 minute','fixture' FROM generate_series(1,50000) i`;
   await owner`ANALYZE clocking_import_run`;
   const history=(tenantId,allowed)=>app.begin(async tx=>{
     await tx`SELECT set_config('app.fixture_tenant',${tenantId},true),set_config('app.fixture_admin',${allowed},true)`;
@@ -55,7 +55,8 @@ test('exact index changes the plan on 50,000 rows without changing tenant visibi
   const before=await history(tenant,'yes');
   const acl=await rights();
   assert.equal(before.length,200); assert(before.every(row=>row.tenant_id===tenant));
-  assert((await history(other,'yes')).every(row=>row.tenant_id===other));
+  const otherRows=await history(other,'yes');
+  assert.equal(otherRows.length,200); assert(otherRows.every(row=>row.tenant_id===other));
   assert.equal((await history(tenant,'no')).length,0);
   await owner.begin(async tx=>{
     await tx`LOCK TABLE clocking_import_run IN ROW EXCLUSIVE MODE`;
@@ -73,7 +74,7 @@ test('exact index changes the plan on 50,000 rows without changing tenant visibi
     await tx`SELECT set_config('app.fixture_tenant',${tenant},true),set_config('app.fixture_admin','yes',true)`;
     return tx`EXPLAIN (FORMAT JSON) SELECT id,tenant_id FROM clocking_import_run ORDER BY created_at DESC,id DESC LIMIT 200`;
   });
-  assert(JSON.stringify(query).includes(index.index));
+  assert(JSON.stringify(query).includes(index.index), JSON.stringify(query));
   assert.equal((await applyIndexExpansion(owner,plan)).applied,false);
   console.log(JSON.stringify({migration:lastTag,sqlSha256:index.digest,populatedRows:50000,rollback:true,lockRefusal:true,unchangedTenantResults:true,newIndexUsed:true}));
 });
