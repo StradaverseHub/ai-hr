@@ -236,15 +236,16 @@ describe('evaluator-held protected answer cases', () => {
   const modelDigest = 'a'.repeat(64);
   const { development, validation } = protectedWorkSummarySplits();
   const published = development.slice(0, 2);
-  const fictional = published.map(fixture => ({
-    ...fixture, id: 'fictional-oracle-' + fixture.intent,
+  const withFictionalTitle = (fixture: ProtectedAnswerFixture) => ({
+    ...fixture, id: 'fictional-oracle-' + fixture.id,
     reads: fixture.reads.map(read => ({ ...read, presentation: {
       ...read.presentation, cards: read.presentation.cards.map((card, index) => index === 0 ? {
         ...card, title: { kind: 'text' as const, value: 'Fictional value sentinel' },
         facts: card.facts.slice(0, -1),
       } : card),
     } })),
-  }));
+  });
+  const fictional = published.map(withFictionalTitle);
   const hash = (body: Buffer) => createHash('sha256').update(body).digest('hex');
   const developmentReport = Buffer.from(JSON.stringify({
     evidence: 'offline_protected_selection_development', contractDigest: guidanceContractDigest, modelDigest,
@@ -328,6 +329,61 @@ describe('evaluator-held protected answer cases', () => {
     const pinned = file(fictional, changed);
     await expect(scoreProtectedWorkSummaryHoldout(pinned, hash(pinned), changed, modelDigest, noCall))
       .rejects.toThrow('The frozen development report does not select this candidate');
+  });
+
+  it('requires a passing immediate parent and fresh cases, then measures incremental and cumulative gain', async () => {
+    const firstCases = file();
+    const fresh = validation.slice(0, 2).map(withFictionalTitle);
+    const correct = (fixture: ProtectedAnswerFixture) => ({
+      text: JSON.stringify(fixture.expected), inputTokens: 10, outputTokens: 5,
+    });
+    const wrong = { text: '{}', inputTokens: 10, outputTokens: 5 };
+    const firstScore = await scoreProtectedWorkSummaryHoldout(firstCases, hash(firstCases), developmentReport, modelDigest,
+      async ({ system, prompt }) => system.includes(guidanceOptions.include_meaning)
+        ? correct(fictional.find(row => row.intent === JSON.parse(prompt).intent)!) : wrong);
+    expect(firstScore.meetsThreshold).toBe(true);
+    const previous = { cases: firstCases, report: Buffer.from(JSON.stringify(firstScore)) };
+    const revisedRules = ['include_meaning', 'group_evidence'] as const;
+    const revisedDigest = protectedStrategyDigest(revisedRules);
+    const parent = JSON.parse(developmentReport.toString());
+    const secondDevelopment = Buffer.from(JSON.stringify({
+      ...parent, rounds: [...parent.rounds, {
+        number: 2, parentDigest: parent.selected.digest, add: 'group_evidence', candidateDigest: revisedDigest,
+        decision: 'advanced_in_development', validation: { correct: 3, rejected: 0, regressions: 0 },
+      }], selected: { digest: revisedDigest, rules: revisedRules, correct: 3, rejected: 0 },
+    }));
+    const secondFile = (cases: readonly ProtectedAnswerFixture[], evidence: Buffer) => Buffer.from(JSON.stringify({
+      version: 3, cases, modelDigest, minimumGain: 2, developmentReportDigest: hash(secondDevelopment),
+      parentRules: ['include_meaning'], parentDigest: parent.selected.digest, candidateRules: revisedRules,
+      candidateDigest: revisedDigest, previousReportDigest: hash(evidence),
+    }));
+    const bytes = secondFile(fresh, previous.report);
+    const noCall = vi.fn<PilotModel>();
+    await expect(scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), secondDevelopment, modelDigest, noCall))
+      .rejects.toThrow('Invalid frozen protected holdout');
+    const failed = Buffer.from(JSON.stringify({ ...firstScore, meetsThreshold: false }));
+    const citesFailed = secondFile(fresh, failed);
+    await expect(scoreProtectedWorkSummaryHoldout(citesFailed, hash(citesFailed), secondDevelopment, modelDigest, noCall,
+      { ...previous, report: failed })).rejects.toThrow('Invalid frozen protected holdout');
+    const replay = secondFile(fictional.map(row => ({ ...row, id: 'renamed-' + row.intent })), previous.report);
+    await expect(scoreProtectedWorkSummaryHoldout(replay, hash(replay), secondDevelopment, modelDigest, noCall, previous))
+      .rejects.toThrow('Holdout repeats an exposed');
+    expect(noCall).not.toHaveBeenCalled();
+
+    for (const originalCorrect of [false, true]) {
+      const scored = await scoreProtectedWorkSummaryHoldout(bytes, hash(bytes), secondDevelopment, modelDigest,
+        async ({ system, prompt }) => {
+          const fixture = fresh.find(row => row.intent === JSON.parse(prompt).intent)!;
+          const original = !system.includes(guidanceOptions.include_meaning);
+          if (system.includes(guidanceOptions.group_evidence) || (original && originalCorrect)) return correct(fixture);
+          return wrong;
+        }, previous);
+      expect(scored).toMatchObject({
+        gains: 2, regressions: 0, meetsThreshold: !originalCorrect, previousReportDigest: hash(previous.report),
+        canonical: { correct: originalCorrect ? 2 : 0, gains: originalCorrect ? 0 : 2, regressions: 0 },
+        usage: { calls: 6, inputTokens: 60, outputTokens: 30 },
+      });
+    }
   });
 });
 

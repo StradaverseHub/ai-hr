@@ -9,7 +9,9 @@ import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } f
 import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
-import { PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout } from './protected-work-summary-holdout';
+import {
+  PROTECTED_HOLDOUT_GENERATION_OPTIONS, PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout,
+} from './protected-work-summary-holdout';
 import { scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationRevisionSchema,
@@ -19,7 +21,6 @@ import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement
 import { localOutputPath, REPO_ROOT, writeLocalOutput } from '../teras/output';
 
 const baseUrl = 'http://127.0.0.1:11434';
-const generationOptions = EXPLANATION_GENERATION_OPTIONS;
 
 function readHoldoutInput(filename: string, outsideCheckout: boolean) {
   const path = realpathSync(filename);
@@ -36,11 +37,13 @@ async function main() {
   const pairedLeave = args[0] === '--paired-leave-routing';
   const freshRouting = args[0] === '--fresh-explanation-routing';
   const explanationHoldout = freshRouting || args[0] === '--protected-explanation-holdout';
-  const holdoutMode = pairedLeave || explanationHoldout || args[0] === '--protected-holdout';
-  const [, holdoutPath, holdoutSha, developmentReportPath] = args;
+  const workSummaryHoldout = args[0] === '--protected-holdout';
+  const holdoutMode = pairedLeave || explanationHoldout || workSummaryHoldout;
+  const [, holdoutPath, holdoutSha, developmentReportPath, previousReportPath, previousCasesPath] = args;
   if (pairedLeave && (args.length !== 3 || !holdoutPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
     throw Error('Supply evaluator-owned CASE_FILE SHA256 for paired leave routing.');
-  if (holdoutMode && !pairedLeave && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
+  const hasPrevious = workSummaryHoldout && args.length === 6 && Boolean(previousReportPath && previousCasesPath);
+  if (holdoutMode && !pairedLeave && ((args.length !== 4 && !hasPrevious) || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
     throw Error('Supply FILE SHA256 DEVELOPMENT_REPORT for a holdout or DIRECTORY PLAN_SHA256 DEVELOPMENT_REPORT for fresh routing.');
   const flags = holdoutMode ? [] : args;
   const runners = {
@@ -67,6 +70,8 @@ async function main() {
       (useIndexedFormat && (benchmark !== '--protected-work-summary' || useStaticSchema || useCatalogueFormat)))
     throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [' + Object.keys(runners).join(' | ') + ']');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
+  const generationOptions = workSummaryHoldout || benchmark === '--improve-protected-work-summary'
+    ? PROTECTED_HOLDOUT_GENERATION_OPTIONS : EXPLANATION_GENERATION_OPTIONS;
   const target = localOutputPath(outfile);
   if (holdoutMode && existsSync(target)) throw Error('Use a new report path.');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
@@ -74,6 +79,9 @@ async function main() {
   const candidateSha = pairedLeave ? git('rev-parse', 'HEAD') : null;
   const developmentReport = holdoutMode && !pairedLeave ? readHoldoutInput(developmentReportPath, false) : null;
   const cases = holdoutMode && !freshRouting ? readHoldoutInput(holdoutPath, true) : null;
+  const previousHoldout = hasPrevious ? {
+    report: readHoldoutInput(previousReportPath, true), cases: readHoldoutInput(previousCasesPath, true),
+  } : undefined;
   const freshInput = freshRouting && developmentReport ? {
     plan: readHoldoutInput(join(holdoutPath, 'plan.json'), true), planSha256: holdoutSha, developmentReport,
     english: readHoldoutInput(join(holdoutPath, 'en.json'), true), malay: readHoldoutInput(join(holdoutPath, 'ms.json'), true),
@@ -119,10 +127,11 @@ async function main() {
     return { text: indexed ? indexed.decode(result.response) : result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
-  const scoreHoldout = explanationHoldout ? scoreProtectedExplanationHoldout : scoreProtectedWorkSummaryHoldout;
   const report = candidateSha && cases ? await scorePairedLeaveRoutingHoldout(cases, holdoutSha, candidateSha, modelDigest, generate)
     : freshInput ? await scoreFreshExplanationRouting(freshInput, modelDigest, generate)
-    : cases && developmentReport ? await scoreHoldout(cases, holdoutSha, developmentReport, modelDigest, generate)
+    : cases && developmentReport ? await (explanationHoldout
+      ? scoreProtectedExplanationHoldout(cases, holdoutSha, developmentReport, modelDigest, generate)
+      : scoreProtectedWorkSummaryHoldout(cases, holdoutSha, developmentReport, modelDigest, generate, previousHoldout))
     : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
   if (candidateSha && (git('rev-parse', 'HEAD') !== candidateSha || git('status', '--porcelain', '--untracked-files=no')))
@@ -131,6 +140,7 @@ async function main() {
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
   if (pairedLeave && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
+  if (hasPrevious && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
 }
 
 main().catch(error => {
