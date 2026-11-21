@@ -2,7 +2,6 @@ name: Staging upgrade qualification
 on:
   push:
     branches: ['codex/staging-additive-upgrade-20261121', 'codex/staging-index-pilot-20261121']
-    paths: ['deploy/upgrade/**', 'db/migrations/7080_job_run_deterministic_order.sql', '.github/workflows/staging-upgrade-qualification.yml']
   pull_request:
     paths: ['deploy/upgrade/**', 'db/migrations/7080_job_run_deterministic_order.sql', '.github/workflows/staging-upgrade-qualification.yml']
 permissions:

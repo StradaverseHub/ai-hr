@@ -5,7 +5,9 @@ SQL SHA-256 `7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736`. 
 high watermark of `1795028007070`. The source survey covered 9,923 refs, 799 distinct
 journals and 679 readable worktrees. The index supports the existing Scheduled Actions
 query order `job_key, ran_at DESC, id DESC`. The existing index, rows and permission
-policies are retained. Recheck the exact live prefix before admission.
+policies are retained. The index is managed by this handwritten migration. The
+declarative table and older migration snapshots continue to describe the existing
+application contract. Recheck the exact live prefix before admission.
 
 # Grouped income-tax recalculation candidate, 20 November 2026
 
