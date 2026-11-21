@@ -1,8 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { projectLoadedPayrollJobs, projectPayrollAfterTraffic, projectPayrollUiPreflight, projectTimedOutPayrollResponses } from '../../scripts/performance/loaded-payroll-jobs.mjs';
+import { projectLoadedPayrollJobs, projectPayrollAdmissionPhases, projectPayrollAfterTraffic, projectPayrollUiPreflight, projectTimedOutPayrollResponses } from '../../scripts/performance/loaded-payroll-jobs.mjs';
 
 const atSteady = { active: 500, launched: 500, inSteadyWindow: true };
+
+test('projects ordered Payroll phase durations without carrying raw log fields or accepting partial success', () => {
+  const sample = { sample: 'steady-0', outcome: 'queued', phases: { session: 5, translations: 6, prechecks: 19, enqueue: 22 }, handlerMs: 23 };
+  const log = [sample, { ...sample, phases: { session: 4, enqueue: 20 } }, { ...sample, sample: 'private' },
+    { ...sample, outcome: 'refused', phases: { session: 5, translations: 6 } },
+    { ...sample, handlerMs: 1 }].map(row => 'PERF_PAYROLL_RECEIPT '+JSON.stringify({ ...row, privateLog: 'private' })).join('\n');
+  assert.deepEqual(projectPayrollAdmissionPhases(log), [
+    sample, { ...sample, outcome: 'refused', phases: { session: 5, translations: 6 } },
+  ]);
+});
+
 const job = tenant => ({
   tenant, startedWith: atSteady, responseMs: 241, acknowledgmentMs: 267,
   verifiedCompletionMs: 7300, verifiedWith: atSteady,

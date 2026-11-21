@@ -1,3 +1,25 @@
+/** Publish elapsed phase boundaries from the hosted fictional receipt test. */
+export function projectPayrollAdmissionPhases(log) {
+  const phaseNames = ['session', 'translations', 'prechecks', 'enqueue'];
+  const samples = [];
+  for (const [, line] of log.matchAll(/^PERF_PAYROLL_RECEIPT (.{1,350})$/gm)) {
+    let entry;
+    try { entry = JSON.parse(line); } catch { continue; }
+    if (!['steady-0', 'steady-1', 'preflight'].includes(entry?.sample) ||
+        !['queued', 'refused', 'error'].includes(entry?.outcome) ||
+        !Number.isSafeInteger(entry.handlerMs) || entry.handlerMs < 0 || entry.handlerMs > 180000) continue;
+    const phases = Object.fromEntries(phaseNames.filter(name => entry.phases?.[name] !== undefined)
+      .map(name => [name, entry.phases[name]]));
+    const values = Object.values(phases);
+    if (Object.keys(phases).some((name, index) => name !== phaseNames[index]) ||
+        values.some((ms, index) => !Number.isSafeInteger(ms) || ms < (values[index - 1] ?? 0) || ms > entry.handlerMs) ||
+        (entry.outcome === 'queued' && values.length !== phaseNames.length)) continue;
+    samples.push({ sample: entry.sample, outcome: entry.outcome, phases, handlerMs: entry.handlerMs });
+    if (samples.length === 8) break;
+  }
+  return samples;
+}
+
 /** Publish only the synthetic tenant ordinal, bounded durations, and observed load. */
 export function projectLoadedPayrollJobs(input) {
   if (!Array.isArray(input)) return null;

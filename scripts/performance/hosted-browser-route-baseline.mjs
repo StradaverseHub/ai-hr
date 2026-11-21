@@ -3,7 +3,7 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
-import {projectLoadedPayrollJobs,projectPayrollAfterTraffic,projectPayrollUiPreflight,projectTimedOutPayrollResponses} from './loaded-payroll-jobs.mjs';
+import {projectLoadedPayrollJobs,projectPayrollAdmissionPhases,projectPayrollAfterTraffic,projectPayrollUiPreflight,projectTimedOutPayrollResponses} from './loaded-payroll-jobs.mjs';
 import {randomBytes} from 'node:crypto';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
@@ -1785,7 +1785,7 @@ try{
   if(!mixedLoad)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',
-    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')})});
+    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web'),AIHR_PAYROLL_RECEIPT_PROFILE:'true'})});
   try{
    await waitForApp();
    await proxy();
@@ -1822,6 +1822,8 @@ try{
    const appLog=join(privateDir,'application.log');
    if(existsSync(appLog)){
     const log=readFileSync(appLog,'utf8');
+    const payrollAdmission=projectPayrollAdmissionPhases(log);
+    if(payrollAdmission.length)report.mixedPayrollAdmissionPhases=payrollAdmission;
     const counts={};
     for(const [,code] of log.matchAll(/(?:^|\n)\s*code: ['"]([0-9A-Z]{5})['"]/g)){
      counts[code]=(counts[code]??0)+1;
