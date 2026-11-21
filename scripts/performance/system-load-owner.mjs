@@ -1663,6 +1663,17 @@ async function main(){
  markComparisonStage('preflight-lock-gate');
  await finishPreflightLockSampling();
  markComparisonStage('loaded-setup');
+ const replacementCatalogue=process.env.AIHR_BROWSER_REPLACEMENT_CATALOGUE;
+ if(replacementCatalogue){
+  assert(['present','absent'].includes(replacementCatalogue)&&fixture.tenants.length===2);
+  const [catalogue]=await db`select count(distinct tenant_id)::int as present from leave_type
+   where tenant_id=any(${fixture.tenants.map(tenant=>tenant.tenantId)}::uuid[])
+     and archived_at is null and (role='replacement' or (coalesce(role,'')='' and lower(code)='replacement'))`;
+  const presentTenants=catalogue.present;
+  report.replacementCatalogueAtLoadStart={presentTenants,tenants:2};
+  noteEvidence(save);
+  assert.equal(presentTenants,replacementCatalogue==='present'?2:0,'Replacement Leave catalogue arm drifted during browser preflight');
+ }
  await db`select pg_stat_statements_reset()`;
  if(measureDevelopment){
   measuredLockDb=postgres(process.env.MIGRATION_DATABASE_URL,{max:1,connect_timeout:2,

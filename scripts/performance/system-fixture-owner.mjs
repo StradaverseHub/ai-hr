@@ -23,6 +23,9 @@ assert(!hostedEstablishedAttendance||(
  process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.RUNNER_ENVIRONMENT==='github-hosted'
  &&process.env.AIHR_BROWSER_MIXED_LOAD==='true'&&process.env.PERF_HTTP_SUITE==='whole-system'
 ),'Established Attendance comparison requires the owned hosted mixed fixture');
+const replacementCatalogue=process.env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
+assert(['','absent','present'].includes(replacementCatalogue));
+assert(!replacementCatalogue||hostedEstablishedAttendance,'Replacement catalogue comparison requires established Attendance fixtures');
 const establishedAttendance=hostedEstablishedAttendance||fullDevelopmentRoutes||
  (isWorkerComparisonCourse(process.env.AIHR_MEASURED_BROWSER_COURSE)
  &&['whole-system','workflow-preflight'].includes(process.env.PERF_HTTP_SUITE));
@@ -260,6 +263,18 @@ try{
    const {ensureStandardRule}=await import('../../core/attendance-rule.ts');
    const standard=await ensureStandardRule(ctx);
    assert.equal(standard.created,true,'Established Attendance fixture must create one Standard before measurement');
+  });
+  if(replacementCatalogue)await fixturePhase(t,'attendance-replacement-catalogue',async()=>{
+   const [{withTenant},{ensureReplacementLeaveTypeForSweepTx,findReplacementLeaveTypeIdTx}]=await Promise.all([
+    import('../../db/client.ts'),import('../../packs/leave/service.ts'),
+   ]);
+   await withTenant(ctx,async tx=>{
+    assert.equal(await findReplacementLeaveTypeIdTx(tx,b.tenantId),null,'Expected a clean replacement leave catalogue');
+    if(replacementCatalogue==='present'){
+     const created=await ensureReplacementLeaveTypeForSweepTx(tx,ctx);
+     assert.equal(await findReplacementLeaveTypeIdTx(tx,b.tenantId),created);
+    }
+   });
   });
  }));
  for(const result of seeded)if(result.status==='rejected')throw result.reason;
