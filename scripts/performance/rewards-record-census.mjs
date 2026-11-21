@@ -29,6 +29,12 @@ export async function measureRewardsRecords({db,fixture,origin,compiledPages,sig
    witnesses:page=>[planHeading(page),page.locator('main #people')]},
   {surface:'review-setup',template:'/admin/rewards/review-setup/[unitId]',path:setup,
    witnesses:page=>[checklist(page),backToUnit(page)]},
+  {surface:'review-setup-budget',template:'/admin/rewards/review-setup/[unitId]',path:setup+'?step=budget',
+   witnesses:page=>[checklist(page),page.locator('main input[name="multiplier"]')]},
+  {surface:'review-setup-senior',template:'/admin/rewards/review-setup/[unitId]',path:setup+'?step=senior',
+   witnesses:page=>[checklist(page),page.locator('main').getByRole('button',{name:'Confirm Senior plan selection',exact:true})]},
+  {surface:'review-setup-history',template:'/admin/rewards/review-setup/[unitId]',path:setup+'?step=history',
+   witnesses:page=>[page.locator('main #preparation-history'),backToUnit(page)]},
   {surface:'old-setup-link',template:'/rewards/[unitId]/setup',path:review+'/setup',finalPath:setup,
    witnesses:page=>[checklist(page),backToUnit(page)]},
   {surface:'data-check',template:'/rewards/[unitId]/data-check',path:review+'/data-check',
@@ -50,8 +56,15 @@ export async function measureRewardsRecords({db,fixture,origin,compiledPages,sig
     try{
      const response=await page.goto(origin+route.path,{waitUntil:'domcontentloaded',timeout:remaining()});
      row.statusCode=response?.status()??null;
-     assert.equal(row.statusCode,200);
-     assert.equal(page.url(),origin+(route.finalPath??route.path));
+     if(route.finalPath){
+      // An RSC streaming redirect can return 200 before the client changes location.
+      assert(row.statusCode===null||row.statusCode<400);
+      row.step='redirect';
+      await page.waitForURL(origin+route.finalPath,{waitUntil:'domcontentloaded',timeout:remaining()});
+     }else{
+      assert.equal(row.statusCode,200);
+      assert.equal(page.url(),origin+route.path);
+     }
      row.documentMs=Math.round(performance.now()-started);
      row.step='usable-content';
      for(const witness of route.witnesses(page)){
