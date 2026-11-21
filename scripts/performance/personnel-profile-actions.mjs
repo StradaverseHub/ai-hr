@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { personnelDocumentWork } from './fixture-record-census.mjs';
 
 const nameControl = 'form[data-save-section="person"] input[data-personnel-field="profile.personal_details.fullname"]';
 const profilePanel = '[data-tabpanel="profile"]';
@@ -37,6 +38,7 @@ export async function measurePersonnelProfileActions({ db, fixture, origin, sign
         return row;
       };
       const before = await readState();
+      const openStarted = performance.now();
       assert.equal((await page.goto(url, { waitUntil: 'commit', timeout: 15000 }))?.status(), 200);
       const profile = page.locator(profilePanel);
       const family = page.locator(familyPanel + ' #section-family');
@@ -58,11 +60,16 @@ export async function measurePersonnelProfileActions({ db, fixture, origin, sign
         save();
       };
       await name.waitFor({ state: 'visible' });
+      result.profileOpenMs = Math.round(performance.now() - openStarted);
       assert.equal(await name.inputValue(), subject.name);
+      result.initialDocument = await personnelDocumentWork(page);
       result.familyContentOnProfile = await family.count() > 0;
       await timed('open Family tab', () => tab('family').click(), () => family.waitFor({ state: 'visible' }));
       assert.equal(new URL(page.url()).searchParams.get('tab'), 'family');
       await timed('return to Profile', () => tab('profile').click(), () => name.waitFor({ state: 'visible' }));
+      await timed('reopen Family tab', () => tab('family').click(), () => family.waitFor({ state: 'visible' }));
+      await tab('profile').click();
+      await name.waitFor({ state: 'visible' });
 
       const editedName = subject.name + ' Browser check';
       await setName(editedName);
@@ -91,6 +98,11 @@ export async function measurePersonnelProfileActions({ db, fixture, origin, sign
       };
       await persist('save Profile', editedName, 1);
       await persist('restore Profile', subject.name, 2);
+      await timed('open a direct Family link', async () => {
+        assert.equal((await page.goto(url + '?tab=family', { waitUntil: 'commit' }))?.status(), 200);
+      }, () => family.waitFor({ state: 'visible' }));
+      assert.equal(new URL(page.url()).searchParams.get('tab'), 'family');
+      assert.equal(await profile.isVisible(), false);
       result.outcome = 'observed';
     } catch (error) {
       result.outcome = error.name === 'TimeoutError' ? 'timeout'

@@ -566,7 +566,7 @@ async function personnelProfileCostRoutes(db, fixture) {
   });
 }
 
-async function personnelDocumentWork(page) {
+export async function personnelDocumentWork(page) {
   // These controls can be usable while the document is still streaming. Keep
   // their counts even when the response body has not finished.
   await page.waitForLoadState('domcontentloaded', { timeout: 2000 }).catch(() => {});
