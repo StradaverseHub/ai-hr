@@ -1564,6 +1564,13 @@ try{
     report.recordFixtureFailure=failure;
    }
   }
+  const locationPath=join(privateDir,'record-fixture-failure-location');
+  if(existsSync(locationPath)){
+   const location=readFileSync(locationPath,'utf8');
+   if(/^(?:core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):\d+$/.test(location)){
+    report.recordFixtureFailureLocation=location;
+   }
+  }
   save();
  }
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
@@ -1651,7 +1658,10 @@ try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
      payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation,
      importHistory:censusImportHistory});
-    if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+    if(censusFullFixtureRecords){
+     await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+     assert(fixture.performanceRecords,'The full record plan requires a populated Performance assessment cycle');
+    }
    }
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);

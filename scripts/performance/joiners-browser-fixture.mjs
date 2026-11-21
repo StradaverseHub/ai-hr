@@ -13,6 +13,21 @@ assert.equal(env.DATABASE_URL,'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
 assert.equal(env.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
 const path=resolve(env.PERF_PRIVATE_DIR,'fixture.json');
 const setStage=stage=>writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-stage'),stage,{mode:0o600});
+function recordFailure(error){
+ const knownKinds=new Set(['DrizzleQueryError','PostgresError','PerfError','ZodError','TypeError']);
+ let category='unclassified',source=null;
+ for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
+  const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
+  if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code))category=code;
+  else if(category==='unclassified'&&knownKinds.has(current.name))category=current.name;
+  const frames=String(current.stack??'').split('\n').filter(line=>/^\s+at\b/.test(line));
+  source??=frames.map(line=>line.match(/\/(core\/performance\.ts|packs\/performance\/onehr\/(?:service|participation-service)\.ts):(\d+):\d+\)?$/))
+   .find(Boolean)?.slice(1).join(':')??null;
+  current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
+ }
+ writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
+ if(source)writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure-location'),source,{mode:0o600});
+}
 setStage('fixture');
 const fixture=JSON.parse(readFileSync(path,'utf8'));
 const [group,company]=fixture.users;
@@ -77,7 +92,7 @@ try{
   const request=await lifecycle.createAssetRequest(ctx,{companyId,catalogueId:catalogue.id,justification});
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
- if(env.PERF_LIFECYCLE_RECORDS==='true'){
+ if(env.PERF_LIFECYCLE_RECORDS==='true')try{
   const {createCycle,openCycle,previewEligibleCount}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
@@ -92,18 +107,13 @@ try{
   const opened=await openCycle(ctx,{cycleId});
   assert.equal(opened.reviewsSpawned,count,'Expected the populated OneHR roster to match the native preview');
   fixture.performanceRecords={cycleId,name};
+ }catch(error){
+  recordFailure(error);
+  fixture.performanceRecordsUnavailable=true;
  }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
- setStage('complete');
+ if(!fixture.performanceRecordsUnavailable)setStage('complete');
 }catch(error){
- const knownKinds=new Set(['DrizzleQueryError','PostgresError','PerfError','ZodError','TypeError']);
- let category='unclassified';
- for(let current=error,depth=0;current instanceof Error&&depth<4;depth++){
-  const code=Object.getOwnPropertyDescriptor(current,'code')?.value;
-  if(typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code)){category=code;break;}
-  if(knownKinds.has(current.name))category=current.name;
-  current=Object.getOwnPropertyDescriptor(current,'cause')?.value;
- }
- writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
+ recordFailure(error);
  throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

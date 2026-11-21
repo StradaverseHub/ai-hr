@@ -463,10 +463,12 @@ export async function measureFixtureRecordCensus({ db, fixture, origin, compiled
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
-      ...await organisationLifecycleRoutes(db, fixture), ...await performanceRoutes(db, fixture),
+      ...await organisationLifecycleRoutes(db, fixture),
+      ...(fixture.performanceRecordsUnavailable ? [] : await performanceRoutes(db, fixture)),
     ];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
-  report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
+  report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [],
+    ...(fixture.performanceRecordsUnavailable && { missingFixture: 'Performance assessment cycle' }) };
   const rows = report.fixtureRecordCensus.observations;
   save();
   for (const entry of cases) {
