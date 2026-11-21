@@ -13,6 +13,7 @@ import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protect
 import { assertFreshExplanationCases, scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
 import { assessExplanationRouting } from '../scripts/experiments/assess-explanation-routing';
 import { historicalExplanationCases } from '../scripts/experiments/write-historical-explanation-cases';
+import { compareProtectedExplanationMeanings } from '../scripts/experiments/protected-explanation-meanings';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, runProtectedExplanationImprovement, runProtectedExplanationPriority,
 } from '../scripts/experiments/protected-explanation-priority';
@@ -24,6 +25,40 @@ import { adjudicateAssistantAnswerPlan } from '../lib/ai/assistant-answer-plan';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
 import { routingDigest } from '../lib/ai/module-agent-routing';
 import { capturePrivateAssistantTask } from '../lib/ai/provider-assistant-policy';
+
+it('presents every available meaning only in the glossary arm and scores paired gains by locale', async () => {
+  const cases = [historicalExplanationCases('en'), historicalExplanationCases('ms')].flat();
+  let previousChoices: string[] = [];
+  let requestNumber = 0;
+  const report = await compareProtectedExplanationMeanings(async ({ mode, prompt }) => {
+    expect(mode).toBe('answer');
+    const fixture = cases[Math.floor(requestNumber / 3)];
+    const arm = requestNumber++ % 3;
+    const request = JSON.parse(prompt);
+    expect(request.module).toBe(fixture.module);
+    expect(request).not.toHaveProperty('expected');
+    const correct = 'specialist_finding:' + fixture.expected;
+    if (arm === 0) previousChoices = request.choices;
+    expect(request.choices).toEqual(previousChoices);
+    if (arm > 0) expect(request.focus).toBe(fixture.focus);
+    else expect(request).not.toHaveProperty('focus');
+    if (arm === 2) expect(Object.keys(request.meanings)).toEqual(previousChoices);
+    else expect(request).not.toHaveProperty('meanings');
+    const choice = arm === 2 ? correct : previousChoices.find(choice => choice !== correct);
+    return { text: JSON.stringify({choice}), inputTokens: 10 + arm, outputTokens: 2 };
+  });
+  expect(report).toMatchObject({
+    passes: true, releaseAuthorized: false, budget: {calls: 3 * cases.length},
+    locales: ['en', 'ms'].map(locale => ({
+      locale, original: {correct: 0, regressions: 0}, focused: {correct: 0, regressions: 0},
+      meanings: {rejected: 0}, passes: true,
+    })),
+  });
+  for (const locale of report.locales) {
+    expect(locale.focused.gains).toBe(locale.cases);
+    expect(locale.tokens.meanings.input).toBe(12 * locale.cases);
+  }
+});
 
 it('separates source-resolved findings from genuinely competing explanations', async () => {
   const report = await runProtectedExplanationPriority(async ({ mode, prompt }) => {

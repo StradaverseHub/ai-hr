@@ -80,9 +80,9 @@ function readChoice(text: string, key: string): unknown {
 }
 
 export async function choose(model: PilotModel, { module, choices, focus, expected }: ExplanationCase,
-  includeFocus: boolean, instruction = system): Promise<Outcome> {
+  includeFocus: boolean, instruction = system, meanings?: Readonly<Record<string, string>>): Promise<Outcome> {
   const response = await model({ mode: 'answer', system: instruction,
-    prompt: JSON.stringify({ module, choices, ...(includeFocus ? { focus } : {}) }) });
+    prompt: JSON.stringify({ module, choices, ...(includeFocus ? { focus } : {}), ...(meanings ? { meanings } : {}) }) });
   const choice = readChoice(response.text, 'choice');
   if (!choices.includes(choice as AssistantExplanationCode)) return 'rejected';
   return choice === expected ? 'correct' : 'incorrect';

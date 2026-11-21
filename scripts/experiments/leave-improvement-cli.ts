@@ -13,6 +13,7 @@ import {
   PROTECTED_HOLDOUT_GENERATION_OPTIONS, PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout,
 } from './protected-work-summary-holdout';
 import { scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
+import { compareProtectedExplanationMeanings } from './protected-explanation-meanings';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationRevisionSchema,
   runProtectedExplanationImprovement, runProtectedExplanationPriority,
@@ -52,6 +53,7 @@ async function main() {
     '--protected-work-summary': runProtectedWorkSummaryComparison,
     '--improve-protected-work-summary': runProtectedWorkSummaryImprovement,
     '--protected-explanation-priority': runProtectedExplanationPriority,
+    '--compare-explanation-meanings': compareProtectedExplanationMeanings,
     '--improve-protected-explanation': runProtectedExplanationImprovement,
   };
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
@@ -61,7 +63,8 @@ async function main() {
   const useStaticSchema = flags.includes('--schema');
   const useIndexedFormat = flags.includes('--indexed-catalogue');
   const improveExplanation = benchmark === '--improve-protected-explanation';
-  const explanationPriority = explanationHoldout || benchmark === '--protected-explanation-priority' || improveExplanation;
+  const explanationPriority = explanationHoldout || benchmark === '--protected-explanation-priority' ||
+    benchmark === '--compare-explanation-meanings' || improveExplanation;
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
       flags.some(flag => !['--schema', '--catalogue-schema', '--indexed-catalogue'].includes(flag) && !isBenchmark(flag)) ||
