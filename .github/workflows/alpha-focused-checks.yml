@@ -155,7 +155,7 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != 5b7ec6d023e3548a940201f7a108a05c8f82ebb8 ]];
+            [[ "$EXPECTED_SHA" != 4dcb21b58c1c5dda2809f4de10c7a3fbffe914db ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -258,7 +258,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=a458ecc0087722ec939b67a673f6c0ef017ba332
-          test "$AIHR_CI_HEAD" = 5b7ec6d023e3548a940201f7a108a05c8f82ebb8
+          test "$AIHR_CI_HEAD" = 4dcb21b58c1c5dda2809f4de10c7a3fbffe914db
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
           harness_diff="$(printf '%s\t%s\n' A .github/ci/loaded-access-blockers.test.mjs \

@@ -697,6 +697,11 @@ async function measureMixedLoad(command,fixture){
    if(loadedPayroll)report.mixedLoadedPayrollJobs=loadedPayroll;
    const payrollAfterTraffic=projectPayrollAfterTraffic(data.mixedWorkflows?.payrollAfterTraffic);
    if(payrollAfterTraffic)report.mixedPayrollAfterTraffic=payrollAfterTraffic;
+   const observerPreflight=data.mixedWorkflows?.payrollObserverPreflight;
+   const observer=projectPayrollAfterTraffic(observerPreflight);
+   if(observer&&['job-completion','scoped-export','database-observation'].includes(observerPreflight.stage)){
+    report.mixedPayrollObserverPreflight={stage:observerPreflight.stage,...observer};
+   }
    const payroll=data.mixedWorkflows?.baseline?.find(workflow=>workflow.workflow==='payroll calculation and scoped CSV export');
    if(payroll?.persisted===true&&payroll.employees===50&&Number.isSafeInteger(payroll.completionObservedMs)
       &&payroll.completionObservedMs>=0&&payroll.completionObservedMs<=90000){
