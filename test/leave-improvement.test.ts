@@ -177,8 +177,8 @@ describe('paired English and Malay routing evidence', () => {
     expect(() => assessExplanationRouting(8, english, malay)).toThrow('not evaluated');
     expect(() => assessExplanationRouting(4, english, english)).toThrow('Distinct English and Malay');
     expect(() => assessExplanationRouting(4, english, {...malay, sha256: english.sha256})).toThrow();
-    expect(() => assessExplanationRouting(4, english, bind(languageReport('ms', 0, 0, 'e'.repeat(64))))
-      .toThrow('share a model and parent');
+    const differentModel = bind(languageReport('ms', 0, 0, 'e'.repeat(64)));
+    expect(() => assessExplanationRouting(4, english, differentModel)).toThrow('share a model and parent');
   });
 });
 
