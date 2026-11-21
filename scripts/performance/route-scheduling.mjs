@@ -43,7 +43,7 @@ export function firstGroupNavigationRoutes(pools,roleCounts,groupReadSlots=7){
 }
 
 
-export const navigationProtocol='steady-role-coverage-v2';
+export const navigationProtocol='steady-role-coverage-v3-payroll-first';
 const roles=['employee','manager','companyHR','groupHR'];
 /** Actual slot admission, shared by the HTTP driver and capacity model. Successful navigation
  * must have STARTED in the steady window; ramp visits and failed requests never discharge it.
@@ -100,13 +100,17 @@ export function modelSteadyRouteCapacity({pools,users,thinkTimeMs,steadyHoldMs,g
  const scheduler=createSteadyRouteScheduler({pools,roleCounts:counts,steadyStart:10000,steadyUntil:10000+steadyHoldMs,groupReadSlots});
  const ordinals=new Map(),actors=users.map((user,i)=>{const ordinal=ordinals.get(user.role)??0;ordinals.set(user.role,ordinal+1);return{user,ordinal,now:i*20,iteration:0,slot:0,lease:null};});
  const steps={payrollProcess:0,payrollExport:0,ordinaryMutations:0,clockingActions:0},iterations=Object.fromEntries(roles.map(role=>[role,0]));
+ for(const actor of actors.filter(({user})=>user.role==='groupHR')){
+  actor.now=10000+postMs+thinkTimeMs+getMs+thinkTimeMs;
+  steps.payrollProcess++;steps.payrollExport++;
+ }
  while(true){
   let actor;for(const candidate of actors)if(candidate.now<10000+steadyHoldMs&&(!actor||candidate.now<actor.now))actor=candidate;
   if(!actor)break;
   const {user,ordinal}=actor;
   if(actor.lease){scheduler.complete(actor.lease,true);actor.lease=null;actor.now+=thinkTimeMs;actor.slot++;
    if(actor.slot===scheduler.slots(user.role,ordinal,actor.iteration)){
-    if(user.role==='groupHR'&&actor.iteration===0){actor.now+=postMs+thinkTimeMs+getMs+thinkTimeMs;steps.payrollProcess++;steps.payrollExport++;}
+    if(user.role==='groupHR'&&actor.iteration===0)actor.now+=thinkTimeMs;
     else {const actions=user.role==='employee'&&user.index%2===1?2:3;actor.now+=actions*(postMs+thinkTimeMs);steps.ordinaryMutations+=actions;
      if(user.role==='companyHR'&&user.index%50===1){actor.now+=2*(postMs+thinkTimeMs);steps.clockingActions+=2;}}
     actor.iteration++;iterations[user.role]++;actor.slot=0;

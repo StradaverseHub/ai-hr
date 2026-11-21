@@ -211,12 +211,13 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
  }
  // A real correction workflow and Payroll processing/export, not page-render timing.
  const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
- async function assertProcessed(batchId){
+ async function assertProcessed(batchId,onAcknowledged){
   const started=performance.now();
   const [ack]=await db`select job.id from bulk_job job join payroll_batch batch on batch.tenant_id=job.tenant_id
    where batch.id=${batchId}::uuid and job.kind='payroll_process' and job.input->>'batchId'=batch.id::text
    order by job.created_at desc,job.id desc limit 1`;
   assert(ack,'Payroll processing did not acknowledge a durable job');
+  onAcknowledged?.();
   let batch;
   while(performance.now()-started<90000){
    const [observed]=await db`select batch.status,batch.employee_count,job.state
@@ -462,12 +463,28 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     as f(action text,employment_id uuid,marker text,correction_id uuid)
    group by action order by action`;
  }
+ async function runPayroll(user,loadState){
+  assert.equal(user.role,'groupHR');
+  const startedWith=loadState(),started=performance.now();
+  const row={tenant:user.tenant,startedWith};
+  (report.mixedWorkflows.loadedPayroll??=[]).push(row);
+  save();
+  assert(startedWith.active===500&&startedWith.inSteadyWindow,'Payroll processing did not start at steady 500-user load');
+  const elapsed=()=>Math.round(performance.now()-started);
+  await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
+  row.responseMs=elapsed();save();
+  await assertProcessed(user.batchId,()=>{row.acknowledgmentMs=elapsed();save();});
+  row.verifiedCompletionMs=elapsed();row.verifiedWith=loadState();
+  report.mixedWorkflows.completed.payroll++;save();
+  await pause(thinkTimeMs);
+  const exportStarted=performance.now();
+  row.exportStartedWith=loadState();save();
+  await exportPayroll(user,user.batchId,user.company);
+  row.verifiedExportMs=Math.round(performance.now()-exportStarted);row.exportVerifiedWith=loadState();save();
+ }
  async function run(user,iteration){
+  if(user.role==='groupHR'&&iteration===0)return true;
   const marker=`PERF_MIXED_${user.index}_${iteration}`;
-  if(user.role==='groupHR'&&iteration===0){
-   await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
-   await assertProcessed(user.batchId);report.mixedWorkflows.completed.payroll++;await pause(thinkTimeMs);await exportPayroll(user,user.batchId,user.company);return true;
-  }
   if(user.role==='employee'&&user.index%2===1){
    const checkIn=iteration%2?'09:30':'09:15',checkOut=iteration%2?'18:30':'18:15';
    await runAttendance(user,marker,checkIn,checkOut);
@@ -527,5 +544,5 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return [...cases.values()];
  }
- return {run,verifyFailedAttendanceActions,plannedWrites};
+ return {run,runPayroll,verifyFailedAttendanceActions,plannedWrites};
 }

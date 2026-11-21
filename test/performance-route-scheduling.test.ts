@@ -54,15 +54,7 @@ it('does not stall or duplicate an obligation when all pending routes are in fli
 it.each([1000,5000])('models actual 500 actor offsets and first-cycle priorities at %sms with all per-role steady obligations and retained mutations',thinkTimeMs=>{
  expect(users.filter(u=>u.role==='groupHR').map(u=>u.index)).toEqual([0,250]);expect([...counts.values()]).toEqual([460,20,18,2]);
  const bounded=planSteadyRouteCoverage({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000});
- expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(thinkTimeMs===5000?8:7);
- // Independent lower-budget counterexample: the slow seven-slot model completes only
- // 75 of the current 76 Group HR obligations. No route or native mutation is dropped.
- if(thinkTimeMs===5000){
-  const lower=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,groupReadSlots:7});
-  expect(lower.feasible).toBe(false);
-  expect(lower.rows.find(row=>row.role==='groupHR')).toEqual({role:'groupHR',required:76,completed:75,pending:['/admin/claims/limits'],inflight:[]});
-  expect(lower.rows.filter(row=>row.role!=='groupHR').every(row=>row.completed===row.required)).toBe(true);
- }
+ expect(bounded.protocol).toBe(navigationProtocol);expect(bounded.groupReadSlots).toBe(7);
  for(const [getMs,postMs]of [[900,400],[1000,500]]){
   const plan=modelSteadyRouteCapacity({pools:routePools,users,thinkTimeMs,steadyHoldMs:300000,groupReadSlots:bounded.groupReadSlots,getMs,postMs});
   expect(plan.kind).toBe('PLANNING_ONLY');expect(plan.feasible,JSON.stringify(plan.rows)).toBe(true);
@@ -77,7 +69,7 @@ it('handles future route cardinality through a bounded explicit revision or refu
  const firstCycle=firstGroupNavigationRoutes(routePools,counts),headroom=12*firstCycle.length-firstCycle.flat().length;
  const grown=(routes:number)=>({...routePools,groupHR:[...routePools.groupHR,...Array.from({length:routes},(_,i)=>'/future/'+i)]});
  expect(headroom).toBeGreaterThan(0);
- const more=grown(headroom),plan=planSteadyRouteCoverage({pools:more,users,thinkTimeMs:5000,steadyHoldMs:300000});expect(plan.groupReadSlots).toBeGreaterThan(7);expect(plan.groupReadSlots).toBeLessThanOrEqual(12);
+ const more=grown(headroom),plan=planSteadyRouteCoverage({pools:more,users,thinkTimeMs:5000,steadyHoldMs:300000});expect(plan.groupReadSlots).toBeGreaterThanOrEqual(7);expect(plan.groupReadSlots).toBeLessThanOrEqual(12);
  expect(plan.rows.find(row=>row.role==='groupHR')!.completed).toBe(more.groupHR.length);
  expect(()=>planSteadyRouteCoverage({pools:grown(headroom+1),users,thinkTimeMs:5000,steadyHoldMs:300000})).toThrow(/capacity/);
  const impossible={...routePools,groupHR:[...routePools.groupHR,...Array.from({length:1000},(_,i)=>'/future/'+i)]};
@@ -88,6 +80,9 @@ it('uses the same slot scheduler in the real driver and preserves complete nativ
  const driver=readFileSync(new URL('../scripts/performance/system-load-owner.mjs',import.meta.url),'utf8'),mixed=readFileSync(new URL('../scripts/performance/mixed-workflows.mjs',import.meta.url),'utf8');
  expect(driver).toContain('navigationScheduler?.reserve(');expect(driver).toContain('navigationScheduler.complete(lease,usable)');
  expect(driver).toContain('await mixedWorkflows.run(user,iteration)');expect(driver).toContain('await pause(i*20)');
+ const groupPayroll=driver.indexOf('await mixedWorkflows.runPayroll(user,loadState)');
+ expect(groupPayroll).toBeGreaterThan(driver.indexOf('await pause(i*20)'));
+ expect(groupPayroll).toBeLessThan(driver.indexOf('await mixedWorkflows.run(user,iteration)'));
  expect(driver).not.toContain('iteration===0&&user.role===\'groupHR\'?firstGroupRoutes');
  // Native business workflows are unchanged; the source guard supplements the event-time
  // scheduling tests, it cannot establish execution or native persistence on its own.
