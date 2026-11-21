@@ -3,10 +3,11 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
-import { getFormatter, getTranslations } from 'next-intl/server';
+import { createTranslator } from 'next-intl';
+import { getFormatter, getLocale, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
 import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';
-import { AI_FEATURES, isAiFeature } from '@/lib/ai/features';
+import { AI_FEATURES, isAiFeature, isTemplateOnlyAiFeature } from '@/lib/ai/features';
 import type { AgentFeature } from '@/core/agent-principal';
 import { orchestrationQueue } from '@/core/hr-orchestrator';
 import { Badge, Card, ErrorBanner, PageHeader, SectionHeader, btnPrimary, btnGhost, inputCls, pageWideCls } from '@/components/ui';
@@ -25,6 +26,8 @@ import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily }
 import type { AgentStatus } from '@/core/control-domains';
 import type { WorkerDetail, WorkerRow } from '@/core/agent-registry/views';
 import type { OutcomeSummary } from '@/core/agent-registry/export';
+import { isLocale } from '@/i18n/config';
+import workerOverviewMessages from './worker-overview-messages.json';
 import { WorkerRegistry } from './worker-registry';
 import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
@@ -62,6 +65,16 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const inventory = section==='features' ? await aiInventoryView(s, view).catch(() => null) : null;
   // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
   const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
+  const modelActivity = inventory?.scope === 'full' ? new Map(inventory.rows.flatMap(row =>
+    row.featureId && row.id === row.featureId && row.runtime.use30 &&
+    (row.kind === 'chat' || row.kind === 'specialist' || row.kind === 'embedded_feature') &&
+    !isTemplateOnlyAiFeature(row.featureId) ? [[row.featureId, row.runtime.use30] as const] : [])) : null;
+  const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
+  const overviewLocale = section === 'features' ? await getLocale() : null;
+  const workerOverview = overviewLocale === null ? null : createTranslator({
+    locale: overviewLocale,
+    messages: workerOverviewMessages[isLocale(overviewLocale) ? overviewLocale : 'en'],
+  });
   const alertBanner = await aiManagementAlerts(s, view);
   const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
   const history = section==='runs' && isGroupAdmin(s) ? await aiRunHistory(s,{from:sp.from,to:sp.to,page:sp.page},runFilter) : null;
@@ -211,7 +224,47 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
+    {workerOverview && <section aria-labelledby="worker-overview-title" className="border-y border-border py-4">
+      <h2 id="worker-overview-title" className="text-base font-semibold">{workerOverview('title')}</h2>
+      <dl className="mt-2 divide-y divide-border text-sm">
+        {isGroupAdmin(s) && <>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('model')}</dt>
+            <dd className="text-muted-foreground">{modelActivity
+              ? workerOverview('modelCounts', {
+                used: [...modelActivity.values()].filter(use => use.runs > 0).length,
+                failed: [...modelActivity.values()].reduce((sum, use) => sum + use.failed, 0),
+                blocked: [...modelActivity.values()].reduce((sum, use) => sum + use.blocked, 0),
+              }) : workerOverview('unavailable')}</dd>
+            <dd><Link href={aiManagementHref('runs')} className={btnGhost}>{workerOverview('runHistory')}</Link></dd>
+          </div>
+          <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+            <dt className="font-medium">{workerOverview('scheduled')}</dt>
+            <dd className="text-muted-foreground">{workerActivity
+              ? workerOverview('scheduleCounts', {
+                allowed: workerActivity.filter(row => row.gate.run).length,
+                recorded: workerActivity.filter(row => row.lastRunAt !== null).length,
+                total: workerActivity.length,
+              }) : workerOverview('unavailable')}</dd>
+            <dd><Link href="/admin/scheduled-actions" className={btnGhost}>{tc('workers.systemJobsLink')}</Link></dd>
+          </div>
+        </>}
+        <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+          <dt className="font-medium">{workerOverview('loops')}</dt>
+          <dd className="text-muted-foreground">{workerOverview('loopsHelp')}</dd>
+          <dd><Link href="/control-tower/loops" className={btnGhost}>{workerOverview('openLoops')}</Link></dd>
+        </div>
+        <div className="grid gap-1 py-3 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline sm:gap-4">
+          <dt className="font-medium">{workerOverview('quality')}</dt>
+          <dd className="text-muted-foreground">{workerOverview('qualityHelp')}</dd>
+          <dd><Link href="/assistant?view=insights#ai-quality" className={btnGhost}>{workerOverview('openQuality')}</Link></dd>
+        </div>
+      </dl>
+    </section>}
     {section==='features'&&children}
+    {workerOverview && <details data-ai-worker-details open={sp.worker || sp.toast || sp.error ? true : undefined}>
+      <summary className="min-h-11 cursor-pointer rounded-md px-2 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{workerOverview('details')}</summary>
+      <div className="space-y-5 pt-2">
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
@@ -222,6 +275,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
           {byFamily[family].map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
           const placement=FEATURE_PLACEMENT[feature.id];
+          const recent = modelActivity?.get(feature.id);
           return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
             <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)} · {tc(`workers.triggers.${placement.trigger}`)} · {tc(`workers.effects.${placement.effect}`)}</p><p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">{t(`privateFeatures.${feature.id}`)}</p>{(()=>{
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
@@ -230,7 +284,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
                 :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}
               {feature.staleOverride&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t(feature.staleOverride.enabled?'staleOverrideOn':'staleOverrideOff')}</p>}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
-            <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
+            <td className="px-5 py-4">{recent && workerOverview && <p className="mb-1 text-sm tabular-nums">{workerOverview('featureActivity', {count: recent.runs})}</p>}{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><ActionButton type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</ActionButton></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
           </tr>;
         })}</tbody>)}</table></div>
@@ -250,6 +304,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {/* The inventory and audit columns, on the same page: the one list of every AI piece (owner decision 29). */}
     {section==='features'&&(inventorySection ?? <p role="status" data-inventory-unavailable className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>)}
+      </div>
+    </details>}
     {view.section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>

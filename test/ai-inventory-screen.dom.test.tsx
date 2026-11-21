@@ -5,7 +5,7 @@ import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
  *  captures desktop and mobile screenshots (test/helpers/ai-review-screenshots.ts). */
 import {withAiCentre} from './helpers/ai-centre-messages';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {createFormatter,createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -18,7 +18,7 @@ import {AI_FEATURES} from '../lib/ai/features';
 const copies={en,ms,zh,vi:viCopy,th,ta};
 const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>state.group,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
@@ -53,6 +53,19 @@ const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',sear
 };
 
 describe('AI inventory in six rendered locales',()=>{
+ it('puts recorded activity ahead of the collapsed controls',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  const overview=screen.getByRole('region',{name:'Activity overview'});
+  const details=view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!;
+  expect(details.open).toBe(false);
+  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('0 blocked attempts');
+  expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
+  expect(within(overview).getByRole('link',{name:'Run history'})).toHaveAttribute('href','/control-tower/agents/runs');
+  fireEvent.click(within(details).getByText('Worker details and settings'));
+  expect(details.open).toBe(true);
+ });
+
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: group administrator sees every component group, the pause control, alerts and the data register',async locale=>{
   state.locale=locale;state.group=true;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
