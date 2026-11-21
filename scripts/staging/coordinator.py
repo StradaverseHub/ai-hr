@@ -214,7 +214,11 @@ class Coordinator:
                 raise ValueError('Cutover arrival must be verified by the shared cutover controller')
             build = r.get('build') or l['build']
             if phases.index(phase) >= 2:
-                text(build); self.ready(p['candidate'], build)
+                text(build)
+                observed = self.ready(p['candidate'], build)
+                if plan_is_cutover(p) and phase in ('accepting', 'capturing'):
+                    require(observed.get('backend') == 'canonical',
+                            'Verify the reconciled canonical route before acceptance')
             self.db.execute('UPDATE lease SET phase=?,build=?', (phase, build))
             self.event(actor, action, {'batch': l['batch'], 'phase': phase, 'build': build})
             return {'phase': phase}
@@ -222,7 +226,10 @@ class Coordinator:
             reason = text(r['reason'], 2000)
             if action == 'finish':
                 require(l['phase'] in ('accepting', 'capturing'), 'Arrival, acceptance and optional capture must finish before handback')
-                self.ready(p['candidate'], l['build'])
+                observed = self.ready(p['candidate'], l['build'])
+                if plan_is_cutover(p):
+                    require(observed.get('backend') == 'canonical',
+                            'Verify the reconciled canonical route before cutover handback')
                 state = 'complete'
             elif action == 'abort':
                 require(l['phase'] == 'claimed', 'Mutated or uncertain attempt needs explicit recovery')

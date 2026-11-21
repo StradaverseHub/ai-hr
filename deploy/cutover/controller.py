@@ -120,9 +120,12 @@ class Cutover:
             raise RuntimeError("Active endpoint or release identity changed")
 
     def switch(self, release):
+        self.switch_to(self.endpoint(release))
+
+    def switch_to(self, endpoint):
         with tempfile.TemporaryDirectory(dir=self.root) as directory:
             incoming = Path(directory) / "selected.sock"
-            incoming.symlink_to(self.endpoint(release))
+            incoming.symlink_to(endpoint)
             os.replace(incoming, self.pointer)
             sync_directory(self.root)
 

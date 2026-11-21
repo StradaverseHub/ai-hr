@@ -10,7 +10,7 @@ from unittest.mock import patch
 import uuid
 
 from controller import Release, UnixHTTPConnection, get_bytes, write_json
-from staging import Coordinator, NextStaging, activate, recover
+from staging import Coordinator, NextStaging, activate, promote, recover
 from coordinator import PROTOCOL
 
 
@@ -125,8 +125,35 @@ class QueueCutoverTest(TestCase):
         self.assertEqual(self.candidate.source, result["source"])
         self.assertEqual("new", self.request("observe")["runtime"]["build_id"])
         self.schema.assert_called_once_with(self.baseline, self.candidate)
-        self.request("phase", **self.lease, phase="accepting", build="new")
-        self.assertEqual("complete", self.request("finish", **self.lease, reason="Verified")["state"])
+        with self.assertRaisesRegex(ValueError, "canonical route"):
+            self.request("phase", **self.lease, phase="accepting", build="new")
+
+    def test_canonical_restart_stays_behind_verified_immutable_ingress(self):
+        self.installing()
+        canonical = self.serve(ThreadingUnixStreamServer(str(self.cutover.canonical_socket), App))
+        canonical.build, canonical.marker = "old", b"old"
+        state = dict(state="ok", stale_build="0", ref=self.baseline.source,
+                     built_ref=self.baseline.source, build_id="old", built_build_id="old")
+        with patch("staging.canonical_live_state", side_effect=lambda: dict(state)), \
+                patch("staging.APP", self.root / "source" / self.baseline.artifact):
+            self.cutover.switch_to(self.cutover.canonical_socket)
+            self.cutover.pin_canonical(self.baseline, "old")
+            activate(self.queue, self.cutover, self.lease, self.candidate.artifact)
+
+        def restart_canonical(*args, **kwargs):
+            self.assertEqual("immutable", self.cutover.queue_state()["backend"])
+            canonical.build, canonical.marker = "new", b"new"
+            state.update(ref=self.candidate.source, built_ref=self.candidate.source,
+                         build_id="new", built_build_id="new")
+
+        with patch("staging.canonical_live_state", side_effect=lambda: dict(state)), \
+                patch("staging.APP", self.root / "source" / self.candidate.artifact), \
+                patch("staging.subprocess.run", side_effect=restart_canonical):
+            result = promote(self.queue, self.cutover, self.lease, self.candidate.artifact)
+            self.assertTrue(result["parked"])
+            self.assertEqual("canonical", self.cutover.queue_state()["backend"])
+            self.request("phase", **self.lease, phase="accepting", build="new")
+            self.assertEqual("complete", self.request("finish", **self.lease, reason="Verified")["state"])
 
     def test_wrong_epoch_and_missing_install_phase_cannot_switch(self):
         for lease in ({**self.lease, "epoch": self.lease["epoch"] + 1}, self.lease):
