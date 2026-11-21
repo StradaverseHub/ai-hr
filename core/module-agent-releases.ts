@@ -644,6 +644,11 @@ async function promptEvaluationProgressTx(tx:Tx,ctx:SessionContext,id:string,pro
  }catch{return null;}
 }
 
+// Stable identifier of the validated CHECK installed by the local leave candidate migration.
+const localLeaveRegistrationInstalled=sql`exists(select 1 from pg_constraint
+ where conrelid='public.ai_agent_candidate'::regclass and contype='c' and convalidated
+   and conname='ai_agent_candidate_assistant_local_leave_configuration_check')`;
+
 /** Minimal management metadata in the caller's already-owned workspace read carrier. */
 export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
  await assertAiPrincipalTx(tx,ctx);if(!isGroupAdmin(ctx))return null;
@@ -659,8 +664,9 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id) as retired
   from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id
   where p.tenant_id=${ctx.tenantId}::uuid and c.kind in('typed_route_priority_v1','read_plan_prompt_v1') order by p.created_at desc,p.id desc limit 20`);
- const [latest]=await tx.execute<{version:number}>(sql`select coalesce(max(version),0)::int as version from public.ai_agent_candidate
-  where tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and module_code='assistant'`);
+ const [latest]=await tx.execute<{version:number;localLeaveRegistrationAvailable:boolean}>(sql`
+  select coalesce(max(version),0)::int as version,${localLeaveRegistrationInstalled} as "localLeaveRegistrationAvailable"
+  from public.ai_agent_candidate where tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and module_code='assistant'`);
  let lastTrial:{state:'pending'|'completed'|'refused'|'unavailable';fixtureId:string|null}|null=null;
  const [job]=await tx.execute<{id:string;receipt:string;candidate_id:string}>(sql`select j.id,j.receipt,p.candidate_id
   from public.ai_agent_job_receipt j join public.ai_agent_promotion p on p.id=j.promotion_id and p.tenant_id=j.tenant_id
@@ -680,7 +686,7 @@ export async function agentReviewWorkspaceTx(tx:Tx,ctx:SessionContext){
   where p.tenant_id=${ctx.tenantId}::uuid and c.kind='assistant_answer_prompt_v1' and c.configuration->>'variant'<>${ASSISTANT_LOCAL_LEAVE_VARIANT}
   order by p.created_at desc,p.id desc limit 5`);
  const localLeaveTrials=await localLeaveTrialReviewTx(tx,ctx,providerFingerprint);
- return {conversationCandidates,conversationPromotions:Array.from(conversationPromotions),localLeaveTrials,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated,
+ return {conversationCandidates,conversationPromotions:Array.from(conversationPromotions),localLeaveTrials,localLeaveRegistrationAvailable:latest.localLeaveRegistrationAvailable,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:latest.version+1,lastTrial,ownSignalChoices,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated,
   candidates:rows.map(row=>({id:row.id,version:row.version,kind:row.kind,own:row.own,attempts:row.attempts,progress:progress.get(row.id)??null,verifiedSignalCount:verifiedSignalCount.get(row.id)??null})),
   promotions:promotions.map(row=>({id:row.id,version:row.version,kind:row.kind,used:row.used,maximum:row.maximum,expiresAt:row.expiresAt,retired:row.retired}))};
 }
@@ -729,7 +735,11 @@ async function localLeaveTrialReviewTx(tx:Tx,ctx:SessionContext,providerFingerpr
   const promotion=row.promotionId&&row.used!==null&&row.maximum!==null?{
    id:row.promotionId, used:row.used, maximum:row.maximum, retired:row.retired,
   }:null;
-  return {id:row.id,version:row.version,state,promotion};
+  const evaluationBinding=state==='needsEvidence'&&row.authorId===ctx.userId?{
+   tenantId:ctx.tenantId,authorId:row.authorId,candidateDigest:row.candidateDigest,
+   baselineDigest:row.baselineDigest,sourceDigest:row.sourceDigest,
+  }:null;
+  return {id:row.id,version:row.version,state,promotion,evaluationBinding};
  });
 }
 
@@ -1083,9 +1093,14 @@ async function ownSpecialistSignalChoicesTx(tx:Tx,ctx:SessionContext){
 export async function createConversationAgentCandidate(ctx:SessionContext,input:{version:number;configuration:unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[]},server:NativeOutcomeServerContext={}){
  const current=capture(ctx),configuration=captureAssistantConversationCandidate(input.configuration),version=input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
  // Only the installed paired holdouts can qualify the local routing trial.
- if(configuration.variant===ASSISTANT_LOCAL_LEAVE_VARIANT&&(signalIds.length||nativeSignalIds.length))return fail();
+ const localLeave=configuration.variant===ASSISTANT_LOCAL_LEAVE_VARIANT;
+ if(localLeave&&(signalIds.length||nativeSignalIds.length))return fail();
  if(!exact(input,['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])])||!Number.isSafeInteger(version)||version<1)return fail();
  return withTenant(current,async tx=>{if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx,current,true);
+  if(localLeave){
+   const [migration]=await tx.execute<{ready:boolean}>(sql`select ${localLeaveRegistrationInstalled} as ready`);
+   if(migration?.ready!==true)return fail();
+  }
   const id=randomUUID(),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
   const row:CandidateRow={id,owner_user_id:current.userId!,author_user_id:current.userId!,module_code:'assistant',version,kind:'assistant_answer_prompt_v1',configuration,candidate_digest:'',baseline_digest:conversationBaselineDigest,source_digest:MODULE_AGENT_SOURCE_DIGEST,engine_digest:ASSISTANT_CONVERSATION_ENGINE_DIGEST,policy_digest:ASSISTANT_CONVERSATION_POLICY_DIGEST,input_digest:ASSISTANT_CONVERSATION_INPUT_DIGEST,signal_refs,signal_receipt:null,native_signal_refs};row.candidate_digest=routingDigest(binding(row));
   await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest) values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,'assistant',${version},${row.kind},${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${row.baseline_digest},${row.source_digest},${row.engine_digest},${row.policy_digest},${row.input_digest})`);

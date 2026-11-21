@@ -20869,6 +20869,8 @@
         "leaveTrial": {
           "title": "Thử nghiệm số dư ngày phép",
           "scope": "Thử trả lời trực tiếp cho chủ phương án có một quan hệ lao động đang hiệu lực. Cần hai đánh giá độc lập có chữ ký để bắt đầu thử nghiệm.",
+          "register": "Đăng ký phương án thử nghiệm số dư ngày phép",
+          "binding": "Thông tin cho đánh giá độc lập",
           "record": "Phương án thử nghiệm v{version}",
           "earlierBuild": "Phương án thuộc bản dựng trước.",
           "needsEvidence": "Đang chờ bằng chứng đánh giá có chữ ký.",

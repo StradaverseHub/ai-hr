@@ -20869,6 +20869,8 @@
         "leaveTrial": {
           "title": "Percubaan baki cuti",
           "scope": "Menguji jawapan terus untuk satu pekerjaan aktif milik pemilik calon. Dua penilaian bebas yang ditandatangani diperlukan untuk memulakan percubaan.",
+          "register": "Daftar calon percubaan baki cuti",
+          "binding": "Butiran untuk penilaian bebas",
           "record": "Calon percubaan v{version}",
           "earlierBuild": "Calon ini daripada versi binaan terdahulu.",
           "needsEvidence": "Menunggu bukti penilaian yang ditandatangani.",

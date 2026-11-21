@@ -16,7 +16,7 @@ import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest
 import {createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction} from '../app/assistant/agent-review-actions';
 type View=Parameters<typeof ModuleAgentReview>[0]['view'];
 const id='00000000-0000-4000-8000-000000000001';
-function view(own=false):View{return{sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,candidates:[],promotions:[],conversationCandidates:[{id,version:2,own,progress:null}],localLeaveTrials:[],conversationPromotions:[]};}
+function view(own=false):View{return{sourceDigest:MODULE_AGENT_SOURCE_DIGEST,nextVersion:3,lastTrial:null,ownSignalChoices:[],ownNativeSignalChoices:[],nativeSignalChoicesTruncated:false,candidates:[],promotions:[],conversationCandidates:[{id,version:2,own,progress:null}],localLeaveTrials:[],localLeaveRegistrationAvailable:false,conversationPromotions:[]};}
 // The erase controls ask first through the shared client confirm dialog, which needs the client intl provider.
 const intl=({children}:{children:ReactNode})=><NextIntlClientProvider locale={state.locale} messages={copies[state.locale] as typeof en}>{children}</NextIntlClientProvider>;
 beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(cleanup);
@@ -48,14 +48,16 @@ it.each(['en','ms','zh','ta','th','vi'])('%s keeps the independent trial outside
  const input=view();
  const waitingId='4b20497b-9129-44a0-84bb-6d7a8324590c',readyId='7c4a0eed-8ec3-45f3-ad3c-25c01d194b44';
  input.localLeaveTrials=[
-  {id:waitingId,version:3,state:'needsApprover',promotion:null},
-  {id:readyId,version:4,state:'ready',promotion:null},
-  {id:'withdrawn',version:5,state:'withdrawn',promotion:{id:'withdrawn-promotion',used:1,maximum:5,retired:false}},
-  {id:'retired',version:6,state:'rolledBack',promotion:{id:'retired-promotion',used:2,maximum:5,retired:true}},
+  {id:waitingId,version:3,state:'needsApprover',promotion:null,evaluationBinding:null},
+  {id:readyId,version:4,state:'ready',promotion:null,evaluationBinding:null},
+  {id:'withdrawn',version:5,state:'withdrawn',promotion:{id:'withdrawn-promotion',used:1,maximum:5,retired:false},evaluationBinding:null},
+  {id:'retired',version:6,state:'rolledBack',promotion:{id:'retired-promotion',used:2,maximum:5,retired:true},evaluationBinding:null},
  ];
  render(await ModuleAgentReview({view:input}),{wrapper:intl});
  const conversation=within(screen.getByRole('region',{name:copy.title}));
  const trial=within(conversation.getByRole('region',{name:copy.leaveTrial.title}));
+ expect(trial.queryByRole('button',{name:copy.leaveTrial.register})).toBeNull();
+ expect(trial.queryByText(copy.leaveTrial.binding)).toBeNull();
  expect(trial.getByText(copy.leaveTrial.needsApprover)).toBeTruthy();
  expect(trial.getByText(copy.leaveTrial.withdrawn)).toBeTruthy();
  expect(trial.getByText(copy.leaveTrial.rolledBack)).toBeTruthy();
@@ -68,4 +70,20 @@ it.each(['en','ms','zh','ta','th','vi'])('%s keeps the independent trial outside
  const rollback=(copies[locale] as typeof en).assistant.workspace.agentReview.rollback;
  expect(trial.getAllByRole('button',{name:rollback})).toHaveLength(1);
  expect(promoteConversationCandidateAction).not.toHaveBeenCalled();
+});
+
+it('offers the fixed leave trial registration only after the migration is installed',async()=>{
+ const copy=en.assistant.workspace.conversationGovernance,input=view(true);
+ input.localLeaveRegistrationAvailable=true;
+ input.localLeaveTrials=[{id,version:2,state:'needsEvidence',promotion:null,evaluationBinding:{
+  tenantId:'fixture-tenant',authorId:'fixture-author',candidateDigest:'a'.repeat(64),
+  baselineDigest:'b'.repeat(64),sourceDigest:MODULE_AGENT_SOURCE_DIGEST,
+ }}];
+ render(await ModuleAgentReview({view:input}),{wrapper:intl});
+ const trial=within(screen.getByRole('region',{name:copy.leaveTrial.title}));
+ const register=trial.getByRole('button',{name:copy.leaveTrial.register}).closest('form')!;
+ expect(Object.fromEntries(new FormData(register))).toEqual({version:'3',variant:'local_leave_count_v1'});
+ expect(trial.getByText(copy.leaveTrial.binding).closest('details')?.open).toBe(false);
+ expect(trial.getByText(/fixture-author/)).toHaveTextContent('candidateDigest');
+ expect(trial.queryByRole('button',{name:copy.leaveTrial.start})).toBeNull();
 });

@@ -26,12 +26,12 @@ BEGIN
   END IF;
   EXECUTE format('ALTER TABLE public.ai_agent_candidate DROP CONSTRAINT %I',actual_name);
   EXECUTE format($definition$
-    ALTER TABLE public.ai_agent_candidate ADD CONSTRAINT %I CHECK (
+    ALTER TABLE public.ai_agent_candidate ADD CONSTRAINT ai_agent_candidate_assistant_local_leave_configuration_check CHECK (
       (%s) OR (
         kind='assistant_answer_prompt_v1' AND module_code='assistant' AND
         configuration=jsonb_build_object('kind','assistant_answer_prompt_v1','variant','local_leave_count_v1')
       )
     )
-  $definition$,actual_name,expected);
+  $definition$,expected);
   DROP TABLE pg_temp.aihr_local_leave_constraint_oracle;
 END $migration$;

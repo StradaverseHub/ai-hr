@@ -73,6 +73,9 @@ describe('actual Mine flags bind current provider input and historical source di
   const second=await participant('Fictional Second Leave Reviewer');
   const promoter=await participant('Fictional Leave Approver');
   const nomination={version:2,configuration:{kind:'assistant_answer_prompt_v1',variant:ASSISTANT_LOCAL_LEAVE_VARIANT}};
+  const review=(actor:SessionContext)=>withTenant(actor,tx=>agentReviewWorkspaceTx(tx,actor));
+  expect((await review(ctx))?.localLeaveRegistrationAvailable).toBe(false);
+  await expect(createConversationAgentCandidate(ctx,nomination)).rejects.toThrow('Agent review could not be confirmed');
   const old=await createConversationAgentCandidate(ctx,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});
   const [constraint]=await owner.db.execute<{name:string;definition:string}>(sql`select conname as name,pg_get_constraintdef(oid) as definition
    from pg_constraint where conrelid='public.ai_agent_candidate'::regclass and contype='c'
@@ -95,6 +98,7 @@ describe('actual Mine flags bind current provider input and historical source di
    await tx.execute(sql`alter table public.ai_agent_candidate owner to ${sql.identifier(original.role)}`);
   });
   try{
+   expect((await review(ctx))?.localLeaveRegistrationAvailable).toBe(true);
    await expect(createConversationAgentCandidate(employee,nomination)).rejects.toThrow();
    await expect(createConversationAgentCandidate(ctx,{...nomination,signalIds:[randomUUID()]})).rejects.toThrow();
    const created=await createConversationAgentCandidate(ctx,nomination);
@@ -104,14 +108,16 @@ describe('actual Mine flags bind current provider input and historical source di
    const [legacy]=await owner.db.execute(sql`select candidate_digest from public.ai_agent_candidate where id=${old.candidateId}::uuid`);
    expect(legacy.candidate_digest).toBe(old.candidateDigest);
 
-   const review=(actor:SessionContext)=>withTenant(actor,tx=>agentReviewWorkspaceTx(tx,actor));
    const trial=(actor:SessionContext)=>review(actor).then(view=>view?.localLeaveTrials.find(row=>row.id===created.candidateId));
    expect(await review(employee)).toBeNull();
    expect((await review(ctx))?.conversationCandidates.map(row=>row.id)).toEqual([old.candidateId]);
    const request={candidateId:created.candidateId,maxJobs:3,hours:1};
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
-   expect(await trial(promoter)).toEqual({id:created.candidateId,version:2,state:'needsEvidence',promotion:null});
+   expect(await trial(promoter)).toEqual({id:created.candidateId,version:2,state:'needsEvidence',promotion:null,evaluationBinding:null});
+   expect((await trial(ctx))?.evaluationBinding).toEqual({
+    tenantId:base.tenantId,authorId,candidateDigest:created.candidateDigest,...binding,
+   });
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
    const keys=[generateKeyPairSync('ed25519'),generateKeyPairSync('ed25519')];
    const now=new Date(),expiresAt=new Date(now.getTime()+15*60_000).toISOString();
@@ -200,7 +206,7 @@ describe('actual Mine flags bind current provider input and historical source di
    await resetDb();
    await owner.db.transaction(async tx=>{
     const name=sql.identifier(constraint.name);
-    await tx.execute(sql`alter table public.ai_agent_candidate drop constraint ${name}`);
+    await tx.execute(sql`alter table public.ai_agent_candidate drop constraint ai_agent_candidate_assistant_local_leave_configuration_check`);
     await tx.execute(sql`alter table public.ai_agent_candidate add constraint ${name} ${sql.raw(constraint.definition)}`);
    });
   }
