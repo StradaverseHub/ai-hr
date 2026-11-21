@@ -173,6 +173,7 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
+              false:24be55ec75d7e27013929ba798dedf3a200b25b8) ;;
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:497768e0210433bcf6723f42182d7f2b46111241) ;;
               *) exit 2 ;;
             esac
@@ -302,6 +303,13 @@ jobs:
             harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
             test "$(git rev-parse HEAD^)" = "$harness_head"
             test "$(git diff --name-status "$harness_head" HEAD)" = "$(printf '%s\t%s' M scripts/performance/system-load-owner.mjs)"
+          fi
+          if [[ "$AIHR_CI_HEAD" == 24be55ec75d7e27013929ba798dedf3a200b25b8 ]]; then
+            test "$MIXED_GROUP_SCALE" = false
+            harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
+            test "$(git rev-parse HEAD^)" = "$harness_head"
+            witness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/system-load-owner.mjs)"
+            test "$(git diff --name-status "$harness_head" HEAD)" = "$witness_diff"
           fi
           case "$harness_head" in
             "$build_source") ;;

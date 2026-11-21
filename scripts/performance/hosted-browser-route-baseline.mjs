@@ -767,6 +767,25 @@ async function measureMixedLoad(command,fixture){
      transportFailures:requestErrors.length,
     };
    }
+   const failedLeave=data.mixedWorkflows?.failedLeaveCreates;
+   if(failedLeave?.status==='checked'&&['failed','committed','duplicates'].every(key=>
+    Number.isSafeInteger(failedLeave[key])&&failedLeave[key]>=0)
+    &&failedLeave.committed+failedLeave.duplicates<=failedLeave.failed){
+    report.mixedFailedLeaveCreates={status:'checked',...counts(failedLeave,['failed','committed','duplicates'])};
+   }else if(failedLeave?.status==='unavailable'){
+    report.mixedFailedLeaveCreates={status:'unavailable',code:failureCode(failedLeave.code)};
+   }
+   const observedLeave=(data.persistenceObservers??[]).filter(row=>row.operation==='leaveCreate'
+    &&row.role==='employee'&&[4,254].includes(row.user)).slice(0,2);
+   if(observedLeave.length){
+    const start=data.measurementWindow?.steadyStartPerformanceMs,end=data.measurementWindow?.steadyUntilPerformanceMs;
+    report.mixedLeaveCreateTiming=observedLeave.map(row=>({
+     tenant:row.user===4?0:1,
+     startedDuringSteadyLoad:Number.isFinite(start)&&Number.isFinite(end)&&row.startedMs>=start&&row.startedMs<end,
+     committedObserved:row.visible===true,observerError:row.observerError===true,
+     ...counts(row,['visibleByMs','headersMs','httpStatus','httpDurationMs','httpFinishedMs','polls']),
+    }));
+   }
    if(data.resourceCpu||data.cpu){
     const seconds=(obj,keys)=>Object.fromEntries(keys.map(key=>[
      key,Number.isFinite(obj?.[key])&&obj[key]>=0?Math.round(obj[key]*1000)/1000:null,
