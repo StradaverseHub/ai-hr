@@ -54,11 +54,17 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
       case 'allowance': return rt ? <span className="text-xs">{allowance(rt)}</span> : null;
       case 'lastRun': {
         if (!('runtime' in r)) return null;
+        if (r.kind === 'read_binding') return <span className="text-xs text-muted-foreground">{workerCopy('readActivityUnavailable')}</span>;
         if (r.kind === 'scheduled_job' && !r.runtime.lastRun) {
           if (!r.jobKey && RUNNERS.some(runner => runner.id === r.id)) return <Link href={`/admin/scheduled-actions#runner-${r.id}`} prefetch={false}
             aria-label={workerCopy('checkNamedScheduler', {worker: name(r)})}
             className="inline-flex min-h-9 items-center text-xs text-primary underline underline-offset-4 pointer-coarse:min-h-11">{workerCopy('checkScheduler')}</Link>;
           return <span className="text-xs text-muted-foreground">{workerCopy(r.jobKey ? 'noScheduledRunRecorded' : 'unavailable')}</span>;
+        }
+        if (r.featureId && r.kind !== 'action' && r.kind !== 'orchestrator_step' && r.kind !== 'scheduled_job') {
+          return <span className="text-xs">{r.runtime.lastRun
+            ? workerCopy('lastAdmittedRequest', {date: date(r.runtime.lastRun)})
+            : workerCopy('noAdmittedRequestRecorded')}</span>;
         }
         return <span className="whitespace-nowrap text-xs">{r.kind==='action'?'—':date(r.runtime.lastRun)}</span>;
       }

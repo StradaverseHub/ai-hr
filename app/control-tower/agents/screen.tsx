@@ -249,6 +249,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <dd className="text-muted-foreground">{modelActivity
               ? workerOverview('modelCounts', {
                 used: recentFeatureActivity.filter(([, use]) => use.runs > 0).length,
+                unused: [...modelActivity.values()].filter(use => use.runs === 0).length,
                 failed: [...modelActivity.values()].reduce((sum, use) => sum + use.failed, 0),
                 blocked: [...modelActivity.values()].reduce((sum, use) => sum + use.blocked, 0),
               }) : workerOverview('unavailable')}</dd>

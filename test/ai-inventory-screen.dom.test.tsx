@@ -36,7 +36,9 @@ vi.mock('../core/ai-inventory',async()=>{
   register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
    actionPaused:c.kind==='action'?c.id==='leave.cancel':null,allowance:c.featureId&&c.kind!=='action'?{dailyRequests:50,monthlyTokens:200000}:null,
-   lastRun:c.featureId||c.id==='ai-alerts'?at:null,use30:c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
+   lastRun:c.id!=='payroll_explanation'&&(c.featureId||c.id==='ai-alerts')?at:null,
+   use30:c.key==='embedded_feature:payroll_explanation'?{runs:0,failed:0,blocked:1,tokens:0,reportedCredits:null}:
+    c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
    outcomes:c.kind==='action'&&c.tier!=='automatic'?{
     prepared:state.actionActivity?(c.id==='leave.cancel'?8:c.id==='leave.edit'?3:0):0,
     completed:state.actionActivity?(c.id==='leave.cancel'?6:c.id==='leave.edit'?1:0):0,
@@ -108,7 +110,8 @@ describe('AI inventory in six rendered locales',()=>{
   expect(moreFeatures.open).toBe(false);
   expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
   expect(moreFeatures.previousElementSibling?.children).toHaveLength(3);
-  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('0 blocked attempts');
+  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 without');
+  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 blocked attempt');
   expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
   expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
   expect(within(overview).getByRole('link',{name:'Candidate reviews'})).toHaveAttribute('href','/control-tower/agents/assistant#ai-reviews-heading');
@@ -119,6 +122,19 @@ describe('AI inventory in six rendered locales',()=>{
   expect(view.container.querySelector('#ai-inventory-actions')).toBeInTheDocument();
   fireEvent.click(actionLink);
   expect(details.open).toBe(true);
+ });
+
+ it('shows separate evidence for admitted requests, blocked-only features and individual reads',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
+  const inventory=view.container.querySelector<HTMLElement>('#ai-inventory')!;
+  const row=(id:string)=>within(inventory.querySelector<HTMLElement>(`#ai-component-${id}`)!);
+  expect(row('chat-hr_assistant').getByText(/Latest admitted request.*Oct 29, 2026/)).toBeInTheDocument();
+  expect(row('embedded_feature-payroll_explanation').getByText('No admitted request recorded')).toBeInTheDocument();
+  const read=inventory.querySelector<HTMLElement>('tr[id^="ai-component-read_binding-"]')!;
+  expect(within(read).getByText('Individual read activity unavailable')).toBeInTheDocument();
+  expect(within(read).queryByText(/Oct 29, 2026/)).toBeNull();
  });
 
  it.each([false,true])('distinguishes empty from unavailable action evidence when inventory fails=%s',async inventoryUnavailable=>{
