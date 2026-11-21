@@ -1,3 +1,12 @@
+# Scheduled Actions ordering index, 21 November 2026
+
+Reserve `7080_job_run_deterministic_order`, index `10480`, timestamp `1795028007080`.
+SQL SHA-256 `7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736`. Both installations reported 1,132 migration entries with a
+high watermark of `1795028007070`. The source survey covered 9,923 refs, 799 distinct
+journals and 679 readable worktrees. The index supports the existing Scheduled Actions
+query order `job_key, ran_at DESC, id DESC`. The existing index, rows and permission
+policies are retained. Recheck the exact live prefix before admission.
+
 # Grouped income-tax recalculation candidate, 20 November 2026
 
 Candidate `7070_payroll_tax_basis_group_job`, journal index `10470`, timestamp

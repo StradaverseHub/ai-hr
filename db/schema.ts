@@ -9438,7 +9438,10 @@ export const jobRun = pgTable(
     result: jsonb('result').$type<Record<string, number>>(),
     error: text('error'),
   },
-  (t) => [index('job_run_key_ran_at_idx').on(t.jobKey, t.ranAt.desc())],
+  (t) => [
+    index('job_run_key_ran_at_idx').on(t.jobKey, t.ranAt.desc()),
+    index('job_run_key_ran_at_id_idx').on(t.jobKey, t.ranAt.desc(), t.id.desc()),
+  ],
 );
 
 /**
