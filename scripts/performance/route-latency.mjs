@@ -14,7 +14,13 @@ export function mixedActionRoute(route,action) {
  return route;
 }
 
-export function routeLatency({samples,pageInteractions,routePools,homeTemplates,plannedReads=[],plannedWrites=[],steadyStart,steadyUntil}) {
+/** @typedef {{role: string, route: string, action: string}} PlannedAction */
+export function routeLatency({
+ samples,pageInteractions,routePools,homeTemplates,
+ plannedReads=/** @type {PlannedAction[]} */ ([]),
+ plannedWrites=/** @type {PlannedAction[]} */ ([]),
+ steadyStart,steadyUntil,
+}) {
  if(!Number.isFinite(steadyStart)||!Number.isFinite(steadyUntil)||steadyUntil<=steadyStart)throw new RangeError('Invalid steady window');
  const inside=row=>row.startedMs>=steadyStart&&row.startedMs<steadyUntil;
  const buckets=new Map();
