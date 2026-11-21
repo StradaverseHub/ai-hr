@@ -34,7 +34,7 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const surfaceProbe=env.AIHR_BROWSER_SURFACE_PROBE??'';
-assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
+assert(['','insights','recruitment','both','attendance','workflow','workflow-list','access-editor','rewards','actions','leave-inbox','leave-balances','roster','content-readiness'].includes(surfaceProbe),'Unknown browser surface');
 const readinessRoutes=new Set([
  '/admin/work-locations/clocking','/delegations','/leave/tracker','/me/ea','/me/letters','/me/tp3',
 ]);
@@ -49,7 +49,7 @@ const mobileTaskTrace=env.AIHR_BROWSER_MOBILE_TASK_TRACE==='true';
 const diagnosticCount=Number(payrollReadTrace)+Number(mobileTaskTrace)+Number(Boolean(surfaceProbe));
 assert(diagnosticCount<=1&&(!diagnosticCount||(!fixtureOnly&&staticShard===null)),
  'Invalid browser read tracing configuration');
-assert(!['leave-inbox','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
+assert(!['leave-inbox','leave-balances','roster'].includes(surfaceProbe)||groupShape,'The selected comparison requires group scale');
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_EVENT_NAME==='workflow_dispatch');
 assert(env.GITHUB_WORKFLOW==='alpha-focused-checks'&&env.GITHUB_JOB==='selected-tests'&&process.platform==='linux');
@@ -1026,6 +1026,52 @@ async function measureSurfaceProbe(fixture,surface){
   }finally{await context.close();}
  }
  if(!rewardSurface)assert(visits.every(row=>row.status==='observed'),'A focused surface did not become usable on each visit');
+}
+
+async function measureLeaveBalanceWindows(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser??=await require('playwright').chromium.launch();
+ const route='/leave/employee-balances';
+ const windows=[[25,50,100],[50,100,25],[100,25,50]];
+ const visits=report.leaveBalanceWindows=[];
+ for(const actorIndex of [0,1]){
+  const actor=fixture.users[actorIndex],context=await signedInContext(actor);
+  assert.equal(actor.role,actorIndex===0?'groupHR':'companyHR');
+  try{
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   for(const [round,sizes] of windows.entries())for(const size of sizes){
+    const row={role:actor.role,round,size,status:'incomplete'};
+    visits.push(row);
+    const started=performance.now();
+    const elapsed=()=>Math.round(performance.now()-started);
+    const remaining=()=>Math.max(1,30000-elapsed());
+    try{
+     const url=new URL(route,origin);
+     url.searchParams.set('size',String(size));
+     const response=await page.goto(url.href,{waitUntil:'commit',timeout:remaining()});
+     row.responseMs=elapsed();
+     assert.equal(response?.status(),200);
+     assert.equal(page.url(),url.href);
+     await readyContent(page,actor,route,remaining,()=>{row.headingMs=elapsed();},fixture);
+     const balanceLinks=page.getByTestId('employee-balances-table')
+      .locator('tbody tr td:nth-child(5) a[href^="/leave/employee-records?emp="]');
+     await balanceLinks.first().waitFor({state:'visible',timeout:remaining()});
+     row.employees=await balanceLinks.evaluateAll(links=>new Set(links.map(link=>new URL(link.href).searchParams.get('emp'))).size);
+     row.rows=await balanceLinks.count();
+     assert(row.employees>0&&row.employees<=row.rows&&row.rows<=size,'Expected populated, bounded leave balances');
+     row.contentMs=elapsed();
+     row.documentTiming=await documentTiming(page);
+     row.status='observed';
+    }catch(error){
+     row.status='failed';
+     row.elapsedMs=elapsed();
+     row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';
+    }finally{save();}
+   }
+  }finally{await context.close();}
+ }
+ assert(visits.length===18&&visits.every(row=>row.status==='observed'),'Leave Balances did not show real rows in every measured window');
 }
 
 async function measurePayrollReadTrace(fixture){
@@ -2372,6 +2418,7 @@ try{
     'Some scripted actions did not reach their verified result');
   }
   else if(surfaceProbe==='attendance')await measureAttendanceJourneys(fixture);
+  else if(surfaceProbe==='leave-balances')await measureLeaveBalanceWindows(fixture);
   else if(surfaceProbe==='workflow')await measureAttendanceWorkflowEditor(fixture);
   else if(surfaceProbe==='roster')await measureFocusedRoster(fixture);
   else if(surfaceProbe==='content-readiness'){
