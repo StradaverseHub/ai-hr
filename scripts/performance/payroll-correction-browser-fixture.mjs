@@ -1,5 +1,6 @@
 /** Process one payroll run in the disposable browser database before opening correction forms. */
 import assert from 'node:assert/strict';
+import {compareRosterProjection} from './roster-projection-comparison.mjs';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -59,6 +60,8 @@ try{
  });
  mark('calculate');
  await generatePayslips(ctx,{batchId:company.batchId});
+ mark('roster-projection');
+ await compareRosterProjection({source,owner,fixture,ctx});
  mark('complete');
 }catch(error){
  const code=error?.cause?.code??error?.code;

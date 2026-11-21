@@ -1567,8 +1567,22 @@ try{
    const path=join(privateDir,'payroll-correction-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['module','principal','reset-setting','payroll-records','calculate','complete'].includes(stage)){
+    if(['module','principal','reset-setting','payroll-records','calculate','roster-projection','complete'].includes(stage)){
      report.payrollCorrectionSeedStage=stage;
+    }
+   }
+   const projectionPath=join(privateDir,'roster-projection.json');
+   if(existsSync(projectionPath)){
+    const projection=JSON.parse(readFileSync(projectionPath,'utf8'));
+    const counts=['pairedSamples','rosterRows','selectedRows','rosterEmploymentRows','singleEmploymentRows'];
+    const durations=['rosterMedianMs','selectedMedianMs'];
+    if(projection.deniedSelections===3&&projection.projectedFields===7&&projection.comparisons?.length===2
+      &&projection.comparisons.every((row,index)=>row.scope===['group','company'][index]
+       &&counts.every(key=>Number.isSafeInteger(row[key])&&row[key]>=0)
+       &&durations.every(key=>Number.isFinite(row[key])&&row[key]>=0))){
+     report.rosterProjection={deniedSelections:3,projectedFields:7,comparisons:projection.comparisons.map(row=>({
+      scope:row.scope,...Object.fromEntries([...counts,...durations].map(key=>[key,row[key]])),
+     }))};
     }
    }
    const failurePath=join(privateDir,'payroll-correction-seed-failure');
