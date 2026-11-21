@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from './hr-date';
 /** Shared formatting for the domain-event log — used by the dashboard widget, the global
  *  audit view, and per-record history cards. Pure (no DB), safe in client or server. */
 
@@ -18,7 +19,7 @@ export function relativeTime(d: Date | string, nowMs: number): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
-  return days < 30 ? `${days}d ago` : t.toLocaleDateString();
+  return days < 30 ? `${days}d ago` : t.toLocaleDateString(undefined, { timeZone: HR_LOCAL_TZ });
 }
 
 export const ACTOR_DOT: Record<string, string> = {

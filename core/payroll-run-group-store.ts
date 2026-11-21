@@ -13,7 +13,7 @@ import type postgres from 'postgres';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {bulkJobProgress,bulkJobWorkerStatusTx,isBulkJobId,type BulkJobRow} from './bulk-job';
-import {summarize,type CompanyOutcome,type RunGroupReasonCode,type RunGroupResult,type PayrollTransactionFailure} from './payroll-run-group-result';
+import {importedTaxReviewPeriod,summarize,type CompanyOutcome,type RunGroupReasonCode,type RunGroupResult,type PayrollTransactionFailure} from './payroll-run-group-result';
 import {PAYROLL_PROCESS_JOB_KIND} from '../lib/payroll-processing-job';
 import type {BulkJobProgress,BulkJobWorkerStatus} from '../lib/bulk-job';
 
@@ -30,7 +30,7 @@ export type RunGroupView={id:string;kind:RunGroupKind;payPeriod:string;done:bool
 
 type GroupRow={id:string;tenant_id:string;created_by:string;kind:RunGroupKind;pay_period:string;started_at:Date|string;company_ids:string[];outcomes:StoredCompanyOutcome[];
  sealed_at:Date|null;ended_at:Date|string|null;result:RunGroupResult|null;event_id:string|null};
-type JobOutcomeRow=Pick<BulkJobRow,'id'|'state'|'result'|'plan'|'finished_at'>;
+type JobOutcomeRow=Pick<BulkJobRow,'id'|'state'|'result'|'plan'|'finished_at'|'error'>;
 const pending=(o:StoredCompanyOutcome):o is PendingCompanyOutcome=>o.status==='processing';
 const iso=(value:Date|string)=>new Date(value).toISOString();
 const TERMINAL=new Set(['completed','failed','cancelled']);
@@ -45,9 +45,11 @@ function finishedOutcome(o:PendingCompanyOutcome,job:JobOutcomeRow|undefined):Co
    ...(skipped>0?{employeesSkipped:skipped}:{})};
  }
  const transactionFailure=(job.plan as {transactionFailure?:PayrollTransactionFailure}|null)?.transactionFailure;
- const reason=((job.plan as {failureReason?:RunGroupReasonCode}|null)?.failureReason)??'SYSTEM_VALIDATION_ERROR';
+ const storedReason=(job.plan as {failureReason?:RunGroupReasonCode}|null)?.failureReason;
+ const historicalTaxPeriod=importedTaxReviewPeriod(job.error);
+ const reason=historicalTaxPeriod?'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED':storedReason??'SYSTEM_VALIDATION_ERROR';
  return{companyId:o.companyId,companyName:o.companyName,status:'failed',...(o.failed.batchId?{batchId:o.failed.batchId}:{}),
-  employeesSelected:o.failed.employeesSelected,employeesSucceeded:0,reason,...(transactionFailure?{transactionFailure}:{})};
+  employeesSelected:o.failed.employeesSelected,employeesSucceeded:0,reason,...(transactionFailure?{transactionFailure}:{}),...(historicalTaxPeriod?{historicalTaxPeriod}:{})};
 }
 async function jobsTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,BulkJobRow>();
@@ -158,7 +160,7 @@ export async function settleRunGroupsForJobTx(owner:postgres.ReservedSql,job:Pic
   and outcomes @> ${JSON.stringify([{jobId:job.id}])}::jsonb order by id for update`;
  for(const g of groups){
   const ids=g.outcomes.filter(pending).map(o=>o.jobId);
-  const jobs=new Map((ids.length?await owner<JobOutcomeRow[]>`select id,state,result,plan,finished_at from bulk_job where tenant_id=${g.tenant_id}::uuid and id=any(${ids}::uuid[])`:[]).map(r=>[r.id,r]));
+  const jobs=new Map((ids.length?await owner<JobOutcomeRow[]>`select id,state,result,plan,finished_at,error from bulk_job where tenant_id=${g.tenant_id}::uuid and id=any(${ids}::uuid[])`:[]).map(r=>[r.id,r]));
   const settled=settlement(g,jobs);
   if(!settled)continue;
   let eventId:string|null=null;
@@ -181,6 +183,26 @@ export async function settleRunGroupsForJob(owner:postgres.ReservedSql,job:Pick<
  }catch(error){await owner`rollback`;throw error;}
 }
 
+/** Enrich legacy results from their own job's allowlisted refusal without changing the saved audit result. */
+async function withHistoricalTaxDetails(tx: Tx, group: GroupRow, result: RunGroupResult): Promise<RunGroupResult> {
+ const byCompany=new Map(group.outcomes.filter(pending).map(outcome=>[outcome.companyId,outcome.jobId]));
+ const legacy=result.perCompany.filter(outcome=>outcome.status==='failed'&&outcome.reason==='SYSTEM_VALIDATION_ERROR');
+ const ids=legacy.flatMap(outcome=>{
+  const jobId=byCompany.get(outcome.companyId);
+  return jobId?[jobId]:[];
+ });
+ if(!ids.length)return result;
+ const jobs=await tx.execute<Pick<BulkJobRow,'id'|'error'>>(sql`select id,error from bulk_job
+  where tenant_id=${group.tenant_id}::uuid and kind=${PAYROLL_PROCESS_JOB_KIND}
+    and state='failed' and id in (${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)})`);
+ const periodsByJob=new Map(jobs.map(job=>[job.id,importedTaxReviewPeriod(job.error)]));
+ return {...result,perCompany:result.perCompany.map(outcome=>{
+  const period=outcome.status==='failed'&&outcome.reason==='SYSTEM_VALIDATION_ERROR'
+   ?periodsByJob.get(byCompany.get(outcome.companyId)??''):undefined;
+  return period?{...outcome,reason:'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED',historicalTaxPeriod:period}:outcome;
+ })};
+}
+
 /** The result screen's view of a group: the settled result, or (while a job runs) each company's job progress.
  * When every job has finished but the group is not settled yet, the same outcomes are derived for display. */
 export async function readRunGroup(ctx:SessionContext,id:string):Promise<RunGroupView|null>{
@@ -191,7 +213,7 @@ export async function readRunGroup(ctx:SessionContext,id:string):Promise<RunGrou
   const worker=await bulkJobWorkerStatusTx(tx,PAYROLL_PROCESS_JOB_KIND);
   const jobs=g.result?new Map<string,BulkJobRow>():await jobsTx(tx,g.outcomes.filter(pending).map(o=>o.jobId));
   const companies=g.outcomes.map(o=>({companyId:o.companyId,companyName:o.companyName,status:o.status,job:pending(o)&&jobs.get(o.jobId)?bulkJobProgress(jobs.get(o.jobId)!):null}));
-  if(g.result)return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:true,result:g.result,companies,worker};
+  if(g.result)return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:true,result:await withHistoricalTaxDetails(tx,g,g.result),companies,worker};
   const resolved=g.outcomes.map(o=>pending(o)?finishedOutcome(o,jobs.get(o.jobId)):o);
   if(resolved.some(o=>o===null))return{id:g.id,kind:g.kind,payPeriod:g.pay_period,done:false,result:null,companies,worker};
   const finished=[...jobs.values()].map(j=>j.finished_at).filter((t):t is Date=>t!=null).map(t=>new Date(t).getTime());
