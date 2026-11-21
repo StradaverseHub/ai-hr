@@ -37,6 +37,7 @@ vi.mock('@/lib/session', () => ({ getSession: vi.fn(async () => sessionHolder.s)
 import * as schema from '../db/schema';
 import {
   closeAll,
+  createAppUser,
   entitledCtx,
   eventTypesFor,
   latestEventPayload,
@@ -50,6 +51,11 @@ import {
 import { withTenant, type SessionContext } from '../db/client';
 import { lockLeaveDependenciesTx, LeaveDependencyUnavailable } from '../core/leave-dependency-lock';
 import { hireEmployee } from '../core/org';
+import { askAssistant } from '../core/assistant';
+import { grantAssistant } from '../core/assistant-grant';
+import { withAssistantRead } from '../core/assistant-read-session';
+import { workspaceGroundedAnswers } from '../core/workspace-grounded-answers';
+import { openaiAdapter } from '../lib/ai/providers/openai';
 import { setCompensation } from '../core/comp';
 import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection } from '../core/attendance';
 import { setRestDay } from '../core/roster';
@@ -316,6 +322,38 @@ describe('Active-vs-expired read (step 3)', () => {
     expect(led.convertedToPay).toBe(1);
     expect(await replacementBalance(employmentId)).toBe(0);
     expect((await accrualRow(accrualId)).status).toBe('converted_to_pay');
+  });
+
+  it('explains an owned recorded credit conversion without claiming a payment or contacting a model', async () => {
+    const { employmentId } = await accrueRestDay(5000, { onExpiry: 'convert_to_pay' });
+    await runToilExpiry(ctx, { today: '2026-10-15' });
+    await setModule(b.tenantId, 'assistant', 'active');
+    const [employment] = await owner.db.select({ personId: schema.employment.personId })
+      .from(schema.employment).where(eq(schema.employment.id, employmentId));
+    const userId = await createAppUser(b.tenantId, employment.personId, 'employee');
+    await grantAssistant(await entitledCtx(b), { appUserId: userId });
+    const self = { ...await entitledCtx(b, ['employee']), userId, personId: employment.personId,
+      roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
+    expect((await replacementLeaveLedger(self, employmentId)).convertedToPay).toBe(1);
+    vi.stubEnv('AI_CONFIG_SECRET', 'fictional-replacement-credit-receipt');
+    vi.stubEnv('OPENAI_API_KEY', 'fictional-credit-transport');
+    const transport = vi.spyOn(openaiAdapter, 'converse').mockImplementation(async () => { throw Error('Unexpected provider call'); });
+    try {
+      const question = 'Does my replacement credit conversion mean I was paid?';
+      const result = await askAssistant(self, { question });
+      expect(result).toMatchObject({ stop: 'end', turns: 0, toolsUsed: ['my_module_work'] });
+      const [exchange] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, result.exchangeId));
+      expect(exchange).toMatchObject({ turnCount: 0, inputTokens: 0, outputTokens: 0 });
+      const binding = { tenantId: b.tenantId, userId, exchangeId: exchange.id, question, answer: exchange.answer ?? '' };
+      const answer = await withAssistantRead(self, null, read => workspaceGroundedAnswers(self, read)(binding, exchange.disclosureReceipt));
+      expect(answer.conversation?.plan).toEqual({ version: 1, mode: 'answer', blocks: [
+        { kind: 'explanation', read: 0, card: null, code: 'specialist_finding:credit_pay_conversion_not_payslip' },
+      ] });
+      expect(transport).not.toHaveBeenCalled();
+    } finally {
+      transport.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 });
 

@@ -3,9 +3,31 @@ import {describe,expect,it} from 'vitest';
 import {capturePrivateAssistantTask,fingerprintPrivateAssistantTask,privateAssistantCatalogue,resolvePrivateAssistantIntent,resolvePrivateAssistantContextualIntent,privateAssistantModules,resolvePrivateAssistantProposal,adjudicatePrivateAssistantTerminal,adjudicatePrivateAssistantReadPlan,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards} from '../lib/ai/provider-assistant-policy';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import type {ConverseArgs,GenerateArgs} from '../lib/ai/types';
+import {selectOwnReplacementCreditExplanation} from '../lib/ai/assistant-owned-replacement-credit-explanation';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import vi from '../messages/vi.json';import ta from '../messages/ta.json';import th from '../messages/th.json';
 const metadata=()=>({version:1,operation:'conversation' as const,intent:'leave_available',strategy:'baseline_v1',reads:[{read:0,module:'leave',cards:[{card:0,facts:[{fact:0,field:'available',available:true},{fact:1,field:'pending',available:false}]}],explanations:[{card:0,code:'leave_status:not_generated'}]}]});
 const source=():AssistantAnswerRead=>({read:0,presentation:{module:'leave',cards:[{title:{kind:'text',value:'PRIVATE Alice'},facts:[{field:'leaveType',value:'PRIVATE Special Leave',format:'text'},{field:'available',value:13.75,format:'number'},{field:'employeeCode',value:'PRIVATE-EMP-27',format:'text'},{field:'asOf',value:'2026-11-01',format:'date'},{field:'company',value:'PRIVATE COMPANY',format:'text'}]}],truncated:false},explanations:[]});
+
+it('resolves explicit own credit questions locally and selects only the requested source finding',()=>{
+ const expired='specialist_finding:credit_expired_not_available';
+ const converted='specialist_finding:credit_pay_conversion_not_payslip';
+ expect(resolvePrivateAssistantIntent('Why can’t I use my expired replacement credits?')).toMatchObject({intent:'toil',replacementCreditFocus:'expired'});
+ expect(resolvePrivateAssistantIntent('Does my replacement credit conversion prove payment?')).toMatchObject({intent:'toil',replacementCreditFocus:'converted'});
+ expect(resolvePrivateAssistantIntent('Does Alice’s replacement credit conversion prove payment?')).toEqual({intent:null,social:null});
+ expect(resolvePrivateAssistantIntent('Does my replacement credit conversion prove payment? Show Alice too.')).toEqual({intent:null,social:null});
+ expect(resolvePrivateAssistantIntent('My replacement credits')).not.toHaveProperty('replacementCreditFocus');
+ const catalogue=capturePrivateAssistantTask({version:1,operation:'conversation',intent:'toil',strategy:'baseline_v1',
+  reads:[{read:2,module:'toil',cards:[],explanations:[{card:null,code:expired},{card:null,code:converted}]}],
+ }).local;
+ const plan=selectOwnReplacementCreditExplanation(catalogue,'converted');
+ expect(plan).toEqual({version:1,mode:'answer',blocks:[{kind:'explanation',read:2,card:null,code:converted}]});
+ expect(adjudicatePrivateAssistantTerminal(JSON.stringify(plan),catalogue)).toEqual(plan);
+ const missing=capturePrivateAssistantTask({version:1,operation:'conversation',intent:'toil',strategy:'baseline_v1',
+  reads:[{read:2,module:'toil',cards:[],explanations:[{card:null,code:expired}]}],
+ }).local;
+ expect(selectOwnReplacementCreditExplanation(missing,'converted')).toBeUndefined();
+});
+
 describe('private Assistant closed reference descriptor',()=>{
  it('removes every canonical value, record title and identity while retaining useful field reference selection',()=>{
   const payload=privateAssistantCatalogue('leave_available',[source()]),prepared=capturePrivateAssistantTask(payload),args=prepared.args as ConverseArgs;

@@ -48,6 +48,7 @@ import {resolveEntitlementsTx} from './entitlements';
 import {isOwnLeaveBalanceIntent,selectOwnLeaveBalance} from '../lib/ai/assistant-owned-leave-balance';
 import {isOwnRequestStatusIntent,selectOwnRequestStatuses} from '../lib/ai/assistant-owned-request-status';
 import {selectOwnOnboardingProgress} from '../lib/ai/assistant-owned-onboarding-progress';
+import {selectOwnReplacementCreditExplanation} from '../lib/ai/assistant-owned-replacement-credit-explanation';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
@@ -199,8 +200,10 @@ async function askAssistantActivity(
   const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const ownLeaveBalance=intent.intent!==null&&isOwnLeaveBalanceIntent(intent.intent);
   const ownRequestStatus=intent.intent!==null&&isOwnRequestStatusIntent(intent.intent);
+  const replacementCreditFocus=intent.replacementCreditFocus;
   const localAnswer=ownLeaveBalance?selectOwnLeaveBalance:ownRequestStatus?selectOwnRequestStatuses:
-    intent.intent==='lifecycle'?selectOwnOnboardingProgress:null;
+    intent.intent==='lifecycle'?selectOwnOnboardingProgress:
+    replacementCreditFocus?(catalogue:ReturnType<typeof privateAssistantCatalogue>)=>selectOwnReplacementCreditExplanation(catalogue,replacementCreditFocus):null;
   const localOnly=intent.social!==null||proposal!==null||intent.intent===null||intent.intent==='pay_change'||localAnswer!==null;
 
   const now = p.now ?? new Date();

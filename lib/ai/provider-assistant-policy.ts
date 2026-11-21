@@ -11,6 +11,7 @@ import {AiGatewayError,type ConverseArgs,type GenerateArgs} from './types';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from './module-agents';
 import {JOB_FACT_FIELDS} from './module-jobs';
 import {ASSISTANT_EXPLANATION_CODES,assistantSocialIntent,parseAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from './assistant-answer-plan';
+import {ownReplacementCreditFocus,type ReplacementCreditFocus} from './assistant-owned-replacement-credit-explanation';
 import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
 export const ASSISTANT_PRIVATE_CONTRACT='assistant_closed_references_v1' as const;
 export const PRIVATE_ASSISTANT_INTENTS=Object.freeze(['module_overview','leave_available','leave_taken','leave_pending','leave_requests','claim_statuses','holidays','reporting_line','work_profile','payslip','pay_change','attendance','performance','notifications','approvals','toil','lifecycle','knowledge_base','rewards'] as const);
@@ -99,9 +100,11 @@ export function resolvePrivateAssistantProposal(question:string):Readonly<{actio
 }
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
-export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode}>{
+export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode;replacementCreditFocus?:ReplacementCreditFocus}>{
  const social=assistantSocialIntent(question);if(social&&social!=='help')return{intent:null,social};
  const normalized=normalize(question);
+ const replacementCreditFocus=ownReplacementCreditFocus(normalized);
+ if(replacementCreditFocus)return{intent:'toil',social:null,module:'toil',replacementCreditFocus};
  for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
  for(const intent of PRIVATE_ASSISTANT_INTENTS){
   if(aliases[intent]?.some(alias=>normalize(alias)===normalized)||dictionaries.some(dictionary=>{const key=`${intent}_prompt` as keyof typeof en.assistant.workspace;const value=dictionary.assistant.workspace[key as keyof typeof dictionary.assistant.workspace];return typeof value==='string'&&!value.includes('{date}')&&normalize(value)===normalized;}))return{intent,social:null,module:privateAssistantModules(intent)[0]};
