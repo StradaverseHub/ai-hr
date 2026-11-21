@@ -1,9 +1,10 @@
+import {summarizeAccessLockLog} from './access-lock-server-log.mjs';
 import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
 import {randomBytes} from 'node:crypto';
-import {spawn,execFileSync} from 'node:child_process';
+import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
 import {createServer,request as httpsRequest} from 'node:https';
 import {request} from 'node:http';
@@ -430,7 +431,41 @@ function readMixedRootStatements(name,dockerConfig){
  }catch{/* The workload result remains available if the observer cannot complete. */ return null;}
 }
 
-async function measureMixedLoad(command){
+function captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture}){
+ try{
+  const waitsPath=join(driverEvidence,'database-waits.json');
+  if(statSync(waitsPath).size>8*1024*1024)return {state:'sample-file-over-cap'};
+  const samples=JSON.parse(readFileSync(waitsPath,'utf8'))
+   .filter(sample=>sample.phase==='loaded'&&Number.isSafeInteger(sample.at)&&sample.at>0);
+  if(samples.length<2)return {state:'sample-window-unavailable'};
+  const from=Math.min(...samples.map(sample=>sample.at));
+  const to=Math.max(...samples.map(sample=>sample.at));
+  const tenantIds=fixture.tenants.map(tenant=>tenant.tenantId);
+  assert(tenantIds.length===2&&tenantIds.every(id=>/^[a-f0-9-]{36}$/.test(id)));
+  const docker=(args,options)=>spawnSync('/usr/bin/docker',[
+   '--config',dockerConfig,'--host','unix:///var/run/docker.sock',...args,
+  ],{env:{PATH:'/usr/bin:/bin'},encoding:'utf8',timeout:10000,...options});
+  const keyResponse=docker(['exec',containerId,'psql','-U','postgres','-p','5433','-d','ai_hr_dev',
+   '-Atq','-v','ON_ERROR_STOP=1','-c',
+   `select current_database_oid||','||((k>>32)&4294967295)||','||(k&4294967295)||',1'
+     from (select oid::text as current_database_oid from pg_database where datname=current_database()) db
+     cross join lateral (values ${tenantIds.map(id=>"(hashtextextended('access-configuration:"+id+"',0))").join(',')}) keys(k)`,
+  ]);
+  const keys=keyResponse.stdout?.trim().split('\n');
+  if(keyResponse.status!==0||keys?.length!==2||!keys.every(key=>/^\d+,\d+,\d+,1$/.test(key))){
+   return {state:'access-keys-unavailable'};
+  }
+  const logs=docker(['logs','--timestamps','--since',new Date(from).toISOString(),
+   '--until',new Date(to).toISOString(),containerId],{maxBuffer:16*1024*1024});
+  if(logs.status!==0)return {state:'server-log-unavailable'};
+  return {state:'observed',sampleWindowMs:to-from,
+   ...summarizeAccessLockLog([logs.stdout,logs.stderr],keys,from,to)};
+ }catch{
+  return {state:'collection-unavailable'};
+ }
+}
+
+async function measureMixedLoad(command,fixture){
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name),'Expected the job-owned PostgreSQL container');
  const dockerConfig=join(privateDir,'docker-config');
@@ -485,6 +520,7 @@ async function measureMixedLoad(command){
    // Failure or startup snapshots before that reset would mix in preflight work.
    if(Number.isFinite(data.measurementWindow?.startPerformanceMs)){
     report.mixedDatabaseProfile.loadedStatements=retainMixedStatementSummary(driverEvidence);
+    report.mixedDatabaseProfile.accessServerLog=captureAccessServerLog({containerId,dockerConfig,driverEvidence,fixture});
     if(data.trafficSettled===true)report.mixedDatabaseProfile.applicationRootStatements=readMixedRootStatements(name,dockerConfig);
    }
    const nonnegative=value=>Number.isFinite(value)&&value>=0?Math.round(value):null;
@@ -1646,7 +1682,7 @@ try{
  }
  if(driverCommand&&!fixtureOnly){
   await startMixedWorker(driverCommand);
-  await measureMixedLoad(driverCommand);
+  await measureMixedLoad(driverCommand,fixture);
   assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
  }
  else if(!fixtureOnly){
