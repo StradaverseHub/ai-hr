@@ -4,9 +4,9 @@ import {createRequire} from 'node:module';
 import {test} from 'node:test';
 import {applyIndexExpansion, parseIndex} from './index-expansion.mjs';
 
-const index = parseIndex(Buffer.from(
-  'CREATE INDEX job_run_key_ran_at_id_idx ON public.job_run USING btree (job_key, ran_at DESC, id DESC);\n',
-));
+const fixture = 'CREATE INDEX job_run_key_ran_at_id_idx ON public.job_run USING btree (job_key, ran_at DESC, id DESC);\n';
+const index = parseIndex(process.env.AIHR_UPGRADE_SQL ? readFileSync(process.env.AIHR_UPGRADE_SQL) : Buffer.from(fixture));
+assert.equal(index.sql, fixture.trim(), 'The pilot rehearsal must execute the same reviewed index');
 const original = [{tag: '0280_job_run', created_at: '1720000000000', hash: 'a'.repeat(64)}];
 const row = {tag: 'fixture_order_index', created_at: '1720000000001', hash: index.digest};
 const plan = {index, original, row, expanded: [...original, row]};

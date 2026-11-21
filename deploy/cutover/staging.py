@@ -92,6 +92,18 @@ class NextStaging(Cutover):
         finally:
             connection.close()
 
+    def index_expansion(self, candidate, migration, action):
+        source, _ = self.runtime(candidate)
+        engine = Path(__file__).with_name("upgrade-engine") / "deploy/upgrade/staging-index.mjs"
+        require(engine.is_file(), "The index upgrade engine is not commissioned")
+        result = subprocess.run(
+            ["/opt/node22/bin/node", "--env-file=.env.production", str(engine),
+             action, str(source), migration["digest"], candidate.schema],
+            cwd=APP, capture_output=True, text=True, timeout=30,
+        )
+        require(result.returncode == 0, "Restricted-owner index expansion refused: " + result.stderr[:320].strip())
+        return json.loads(result.stdout)
+
     def verify_schema(self, baseline, candidate):
         source, _ = self.runtime(candidate)
         assertion = """
@@ -158,14 +170,24 @@ def activate(queue, cutover, lease, digest):
         require(plan["baseline"] == baseline.source and plan["candidate"] == candidate.source,
                 "Cutover sources differ from the leased batch")
         require(plan["baselineBuild"] == cutover.runtime(baseline)[1], "Leased baseline build differs")
-        require(all(
-            spec["risk"] == "ordinary" and not spec["migrations"]
-            for member in plan["tickets"]
-            for spec in [json.loads(queue.row("tickets", member)["spec"])]
-        ), "Cutover requires ordinary migration-free tickets")
-        cutover.verify_schema(baseline, candidate)
+        migration = receipt.get("upgrade")
+        require(bool(migration) == (plan.get("lane") == "index-expansion"),
+                "Prepared upgrade mode differs from the leased batch")
         build = cutover.runtime(candidate)[1]
         seen = cutover.queue_state()
+        expansion = None
+        if migration:
+            require(plan["migration"] == migration["tag"], "Leased migration differs")
+            if seen["ref"] != candidate.source:
+                queue.ready(plan["baseline"], plan["baselineBuild"])
+            expansion = cutover.index_expansion(candidate, migration, "apply")
+            require(expansion["tag"] == migration["tag"], "Applied migration differs")
+            if seen["ref"] != candidate.source:
+                # The predecessor still serves the expected request on the expanded database.
+                cutover.assert_live(baseline)
+                cutover.prove_outcome(cutover.ingress, receipt["smoke"])
+        else:
+            cutover.verify_schema(baseline, candidate)
         if seen["ref"] == candidate.source and seen["build_id"] == build:
             # A prior attempt can have switched successfully and lost the SQL commit.
             # Verify the exact route and outcome again before recording arrival.
@@ -179,6 +201,8 @@ def activate(queue, cutover, lease, digest):
         queue.db.execute("UPDATE lease SET phase='arrived',build=?", (build,))
         queue.event("cutover", "phase", {"batch": held["batch"], "epoch": held["epoch"],
                                          "phase": "arrived", "build": build})
+        if expansion:
+            result["expansion"] = expansion
         return {**result, "build": build, "epoch": held["epoch"]}
 
 
@@ -213,6 +237,8 @@ def promote(queue, cutover, lease, digest):
                     and held["build"] == build, "Canonical handback lease differs")
             queue.ready(candidate.source, build)
         if cutover.pointer.resolve(strict=True) == cutover.canonical_socket:
+            if receipt.get("upgrade"):
+                cutover.index_expansion(candidate, receipt["upgrade"], "verify-promoted")
             return {"parked": True, "resumed": True, "build": build}
         cutover.assert_live(candidate)
         # A previous immutable-only release must first be reconciled by its original lease.
@@ -231,6 +257,8 @@ def promote(queue, cutover, lease, digest):
         try:
             queue.ready(candidate.source, build)
             cutover.prove_outcome(cutover.ingress, receipt["smoke"])
+            if receipt.get("upgrade"):
+                cutover.index_expansion(candidate, receipt["upgrade"], "verify-promoted")
         except Exception:
             cutover.switch(candidate)
             cutover.assert_live(candidate)
@@ -274,9 +302,20 @@ def main():
             cutover.pin_canonical(baseline, state["build_id"])
         else:
             baseline = cutover.live_health()
-        cutover.verify_schema(baseline, candidate)
-        print(json.dumps(cutover.prepare(baseline, candidate, packet / "build.tar.gz",
-                                        {"path": args.smoke_path, "status": args.smoke_status})))
+        migration = read_json(packet / "verified.json").get("upgrade")
+        if migration:
+            require(state.get("backend") == "canonical", "Index expansion needs a canonical baseline")
+            probe = cutover.index_expansion(candidate, migration, "inspect")
+            require(probe["tag"] == migration["tag"] and probe["state"] == "baseline",
+                    "The preflight must prove the exact unexpanded baseline")
+        else:
+            cutover.verify_schema(baseline, candidate)
+        receipt = cutover.prepare(baseline, candidate, packet / "build.tar.gz",
+                                  {"path": args.smoke_path, "status": args.smoke_status})
+        if migration:
+            receipt["upgrade"] = migration
+            write_json(cutover.prepared_path(candidate.artifact), receipt)
+        print(json.dumps(receipt))
         return
     queue = Coordinator(probe=cutover.queue_state)
     try:

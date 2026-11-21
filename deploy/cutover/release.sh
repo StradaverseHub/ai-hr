@@ -21,7 +21,7 @@ if [[ "$mode" == prepare ]]; then
   jq -e --arg sha "$baseline" --arg build "$baseline_build" \
     '.runtime.state=="ok" and .runtime.backend=="canonical" and .runtime.ref==$sha and .runtime.build_id==$build' \
     >/dev/null <<< "$observed"
-  node "$controller/.github/ci/staging-cutover-build.mjs" "$source" "$baseline" "$ci_controller" "$run" "$work/build"
+  node "$controller/.github/ci/staging-cutover-build.mjs" "$source" "$baseline" "$ci_controller" "$run" "$work/build" "${AIHR_STAGING_INDEX_QUALIFICATION_RUN:-}"
   stamp artifact_verified_at
   packet=$("${ssh[@]}" 'mktemp -d /var/tmp/aihr-deploy/cutover-packet-XXXXXXXX')
   [[ "$packet" =~ ^/var/tmp/aihr-deploy/cutover-packet-[A-Za-z0-9]+$ ]]
@@ -48,12 +48,15 @@ REMOTE
   candidate=$(jq -er '.candidate.source' "$work/prepared.json")
   digest=$(jq -er '.candidate.artifact' "$work/prepared.json")
   ticket=$(python3 -c 'import uuid; print(uuid.uuid4())')
-  jq -cn --arg id "$ticket" --arg candidate "$candidate" --arg baseline "$baseline" --arg run "$run" --arg smoke "$smoke_path" \
-    '{spec:{id:$id,source:$candidate,base:$baseline,dependencies:[],risk:"ordinary",migrations:[],
+  migration=$(jq -r '.upgrade.tag // ""' "$work/build/verified.json")
+  jq -cn --arg id "$ticket" --arg candidate "$candidate" --arg baseline "$baseline" --arg run "$run" --arg smoke "$smoke_path" --arg migration "$migration" \
+    '{spec:{id:$id,source:$candidate,base:$baseline,dependencies:[],risk:(if $migration=="" then "ordinary" else "isolated" end),
+      migrations:(if $migration=="" then [] else [$migration] end),
       acceptance:("Signed-in feature walkthrough and signed-out redirect at "+$smoke),
       evidence:("Authenticated canonical GitHub build-only run "+$run)}}' > "$work/submit.json"
-  jq -cn --arg id "$ticket" --arg candidate "$candidate" --arg baseline "$baseline" --arg build "$baseline_build" \
-    '{tickets:[$id],candidate:$candidate,baseline:$baseline,baselineBuild:$build}' > "$work/prepare.json"
+  jq -cn --arg id "$ticket" --arg candidate "$candidate" --arg baseline "$baseline" --arg build "$baseline_build" --arg migration "$migration" \
+    '{tickets:[$id],candidate:$candidate,baseline:$baseline,baselineBuild:$build}
+     + (if $migration=="" then {} else {strategy:"index-expansion"} end)' > "$work/prepare.json"
   "${queue[@]}" submit --request "$work/submit.json" > "$work/ticket.json"
   "${queue[@]}" prepare --worktree "$source" --request "$work/prepare.json" > "$work/batch.json"
   jq '{batch}' "$work/batch.json" > "$work/claim.json"

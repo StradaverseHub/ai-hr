@@ -68,22 +68,38 @@ if [[ -f "$delta" ]] && jq -e 'type=="object"' "$delta" >/dev/null; then
   jq -e --arg before "$baseline" --arg after "$candidate" \
     '.baseline==$before and .candidate==$after and (.paths|length)>0 and (.paths|length)<=100
       and ((.paths|unique|length) == (.paths|length))
-      and ((.before|length) == (.paths|length)) and ((.after|length) == (.paths|length))
-      and (. as $m | all(range(0; .paths|length);
-        (. as $i | ($m.before[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $m.paths[$i]))
-                    and ($m.after[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $m.paths[$i])))))' \
+      and (. as $m | ($m.added // []) as $new
+        | ($m.paths - $new) as $old
+        | ($new - $m.paths | length)==0
+        and (($new|unique|length) == ($new|length))
+        and ($m.before|length) == ($old|length) and ($m.after|length) == ($m.paths|length)
+        and all(range(0; $old|length);
+          (. as $i | ($m.before[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $old[$i]))))
+        and all(range(0; $m.paths|length);
+          (. as $i | ($m.after[$i] | test("^[a-f0-9]{64}  ") and endswith("  " + $m.paths[$i])))))' \
     "$delta" >/dev/null
   jq -er '.paths[]' "$delta" > "$stage/source-files"
-  jq -er '.before[]' "$delta" > "$stage/source-before"
+  jq -r '(.added // [])[]' "$delta" > "$stage/source-added"
+  jq -r '(.paths - (.added // []))[]' "$delta" > "$stage/source-existing"
+  jq -r '.before[]' "$delta" > "$stage/source-before"
   jq -er '.after[]' "$delta" > "$stage/source-after"
   while IFS= read -r file; do
-    [[ "$file" =~ ^(app|components|lib|messages|test)/[a-zA-Z0-9_./-]+$ ]]
-    test "$(realpath "$live/$file")" = "$live/$file"
-    test "$(realpath "$source/$file")" = "$source/$file"
+    case "$file" in
+      app/*|components/*|lib/*|messages/*|test/*|db/migrations/*.sql|db/migrations/meta/_journal.json|db/schema.ts|docs/MIGRATION-ALLOCATION.md|deploy/upgrade/index-expansion*.mjs|.github/workflows/staging-upgrade-qualification.yml) ;;
+      *) echo "Unexpected source path in scoped promotion" >&2; exit 1 ;;
+    esac
+    [[ "$file" =~ ^[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)+$ ]]
+    test "$(realpath -m "$live/$file")" = "$live/$file"
+    test "$(realpath -e "$source/$file")" = "$source/$file"
   done < "$stage/source-files"
-  sha256sum --check --strict --status "$stage/source-before"
+  while IFS= read -r file; do
+    test ! -e "$live/$file" && test ! -L "$live/$file"
+  done < "$stage/source-added"
+  if [[ -s "$stage/source-existing" ]]; then
+    sha256sum --check --strict --status "$stage/source-before"
+    rsync -a --files-from="$stage/source-existing" "$live/" "$backup/"
+  fi
   (cd "$source" && sha256sum --check --strict --status "$stage/source-after")
-  rsync -a --files-from="$stage/source-files" "$live/" "$backup/"
   scoped=1
 else
   source_rsync --link-dest="$live" "$live/" "$backup/"
@@ -108,8 +124,17 @@ rollback() {
     dstate begin "$baseline" "$$" "$stage/canonical.log"
     dstate phase cutover-canonical-rollback
     if (( scoped )); then
-      rsync -a --checksum --files-from="$stage/source-files" "$backup/" "$live/"
-      sha256sum --check --strict --status "$stage/source-before"
+      while IFS= read -r file; do
+        if [[ -e "$live/$file" || -L "$live/$file" ]]; then
+          test "$(realpath -e "$live/$file")" = "$live/$file"
+          cmp -s -- "$source/$file" "$live/$file"
+          rm -- "$live/$file"
+        fi
+      done < "$stage/source-added"
+      if [[ -s "$stage/source-existing" ]]; then
+        rsync -a --checksum --files-from="$stage/source-existing" "$backup/" "$live/"
+        sha256sum --check --strict --status "$stage/source-before"
+      fi
     else
       source_rsync --checksum "$backup/" "$live/"
     fi

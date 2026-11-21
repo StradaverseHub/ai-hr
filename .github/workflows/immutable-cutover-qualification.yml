@@ -1,7 +1,7 @@
 name: Immutable cutover qualification
 on:
   push:
-    branches: [codex/immutable-release-cutover-20261120, codex/staging-cutover-queue-20261121]
+    branches: [codex/immutable-release-cutover-20261120, codex/staging-cutover-queue-20261121, codex/staging-additive-upgrade-20261121]
     paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build*.mjs', '.github/workflows/immutable-cutover-qualification.yml']
   pull_request:
     paths: ['deploy/cutover/**', 'scripts/staging/**', '.github/ci/staging-cutover-build*.mjs', '.github/workflows/immutable-cutover-qualification.yml']

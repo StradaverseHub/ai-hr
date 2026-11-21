@@ -166,7 +166,14 @@ class Coordinator:
             candidate = sha(r['candidate']); baseline = sha(r['baseline']); build = text(r['baselineBuild'])
             self.ready(baseline, build)
             plan = {'candidate': candidate, 'baseline': baseline, 'baselineBuild': build, 'tickets': ids, 'members': [s['source'] for s in specs]}
-            if self.cutover and all(s['risk'] == 'ordinary' and not s['migrations'] for s in specs):
+            if r.get('strategy') == 'index-expansion':
+                require(self.cutover and (self.root / 'upgrade-engine/deploy/upgrade/staging-index.mjs').is_file(),
+                        'The staging upgrade engine is not commissioned')
+                require(len(specs) == 1 and specs[0]['risk'] == 'isolated' and len(specs[0]['migrations']) == 1,
+                        'Index expansion requires one isolated migration ticket')
+                plan['lane'] = 'index-expansion'
+                plan['migration'] = specs[0]['migrations'][0]
+            elif self.cutover and all(s['risk'] == 'ordinary' and not s['migrations'] for s in specs):
                 plan['lane'] = 'cutover'
             key = str(uuid.uuid4())
             self.db.execute('INSERT INTO batches(id,plan,state) VALUES(?,?,?)', (key, canonical(plan), 'prepared'))
@@ -186,7 +193,9 @@ class Coordinator:
                         and s.get('ref') == s.get('built_ref') == p['baseline']
                         and s.get('build_id') == s.get('built_build_id') == p['baselineBuild'],
                         'Upgrade requires the observed release in the canonical installation')
-            self.ready(p['baseline'], p['baselineBuild'])
+            observed = self.ready(p['baseline'], p['baselineBuild'])
+            if p.get('lane') == 'index-expansion':
+                require(observed.get('backend') == 'canonical', 'Index expansion requires a canonical live baseline')
             token = secrets.token_hex(32); epoch = l['epoch'] + 1
             self.db.execute("UPDATE lease SET epoch=?,batch=?,token_hash=?,phase='claimed',build=NULL", (epoch, b['id'], hashlib.sha256(token.encode()).hexdigest()))
             self.db.execute("UPDATE batches SET state='leased' WHERE id=?", (b['id'],))
@@ -247,7 +256,7 @@ class Coordinator:
 
 
 def plan_is_cutover(plan):
-    return plan.get('lane') == 'cutover'
+    return plan.get('lane') in ('cutover', 'index-expansion')
 
 
 def live_state(root=ROOT):

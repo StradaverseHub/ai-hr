@@ -9,7 +9,7 @@ from unittest import TestCase
 from unittest.mock import patch
 import uuid
 
-from controller import Release, UnixHTTPConnection, get_bytes, write_json
+from controller import Release, UnixHTTPConnection, get_bytes, read_json, write_json
 from staging import Coordinator, NextStaging, activate, promote, recover
 from coordinator import PROTOCOL, check_operation_route
 
@@ -160,6 +160,38 @@ class QueueCutoverTest(TestCase):
             with self.assertRaises(ValueError):
                 activate(self.queue, self.cutover, lease, self.candidate.artifact)
         self.assertEqual("old", self.cutover.queue_state()["build_id"])
+
+    def test_index_upgrade_isolated_lease_applies_before_switch_and_keeps_predecessor(self):
+        self.request("abort", **self.lease, reason="Replace the fixture batch")
+        engine = self.queue.root / "upgrade-engine/deploy/upgrade/staging-index.mjs"
+        engine.parent.mkdir(parents=True)
+        engine.touch()
+        tag, digest = "7080_order_index", "1" * 64
+        ticket = str(uuid.uuid4())
+        self.request("submit", spec=dict(id=ticket, source=self.candidate.source,
+                                        base=self.baseline.source, dependencies=[], risk="isolated",
+                                        migrations=[tag], acceptance="Order", evidence="Restricted-owner rehearsal"))
+        batch = self.request("prepare", tickets=[ticket], candidate=self.candidate.source,
+                             baseline=self.baseline.source, baselineBuild="old", strategy="index-expansion")
+        self.assertEqual(batch["plan"]["migration"], tag)
+        self.lease = self.request("claim", batch=batch["batch"])
+        self.installing()
+        path = self.cutover.prepared_path(self.candidate.artifact)
+        receipt = read_json(path)
+        receipt["upgrade"] = {"tag": tag, "digest": digest}
+        write_json(path, receipt)
+
+        def prove_expansion(candidate, migration, action):
+            self.assertEqual(candidate, self.candidate)
+            self.assertEqual(action, "apply")
+            self.assertEqual(migration, receipt["upgrade"])
+            self.assertEqual(self.cutover.queue_state()["ref"], self.baseline.source)
+            return {"tag": tag, "applied": True}
+
+        with patch.object(self.cutover, "index_expansion", side_effect=prove_expansion):
+            result = activate(self.queue, self.cutover, self.lease, self.candidate.artifact)
+        self.assertTrue(result["expansion"]["applied"])
+        self.assertEqual("arrived", self.request("status")["lease"]["phase"])
 
     def test_legacy_install_cannot_act_on_default_cutover_batch(self):
         self.installing()

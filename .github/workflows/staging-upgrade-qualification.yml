@@ -1,10 +1,10 @@
 name: Staging upgrade qualification
 on:
   push:
-    branches: ['codex/staging-additive-upgrade-20261121']
-    paths: ['deploy/upgrade/**', '.github/workflows/staging-upgrade-qualification.yml']
+    branches: ['codex/staging-additive-upgrade-20261121', 'codex/staging-index-pilot-20261121']
+    paths: ['deploy/upgrade/**', 'db/migrations/7080_job_run_deterministic_order.sql', '.github/workflows/staging-upgrade-qualification.yml']
   pull_request:
-    paths: ['deploy/upgrade/**', '.github/workflows/staging-upgrade-qualification.yml']
+    paths: ['deploy/upgrade/**', 'db/migrations/7080_job_run_deterministic_order.sql', '.github/workflows/staging-upgrade-qualification.yml']
 permissions:
   contents: read
 jobs:
@@ -33,4 +33,6 @@ jobs:
           patch -d "$RUNNER_TEMP/upgrade-deps/node_modules/postgres" -p1 < patches/postgres@3.4.9.patch
           ln -s "$RUNNER_TEMP/upgrade-deps/node_modules" node_modules
       - name: Test the populated restricted-role upgrade and rollback
+        env:
+          AIHR_UPGRADE_SQL: ${{ github.ref_name == 'codex/staging-index-pilot-20261121' && 'db/migrations/7080_job_run_deterministic_order.sql' || '' }}
         run: node --test deploy/upgrade/*.test.mjs
