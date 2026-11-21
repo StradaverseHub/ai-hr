@@ -4,6 +4,7 @@ import {reconcileStaticPageCensus} from '../../scripts/performance/browser-stati
 import {STATIC_CENSUS_SHARDS,staticPageCensusPlan} from '../../scripts/performance/system-route-manifest.mjs';
 
 const identity={sourceSha:'a'.repeat(40),controllerSha:'b'.repeat(40)};
+const archive={sourceSha:identity.sourceSha,runId:17,artifactId:19};
 const person='/people/[id]', edit='/people/[id]/edit';
 const manifest={'/page':'/','/payroll/page':'/payroll',[person+'/page']:person,[edit+'/page']:edit};
 function dynamicVisits(path,linkDepth,parentTemplate){
@@ -13,11 +14,12 @@ function dynamicVisits(path,linkDepth,parentTemplate){
 function fixture(){
  return Array.from({length:STATIC_CENSUS_SHARDS},(_,shard)=>{
   const plan=staticPageCensusPlan(manifest,shard);
-  return {kind:'FICTIONAL_STATIC_PAGE_CENSUS',...identity,buildId:'test-build',fixtureVerified:true,
+  return {kind:'FICTIONAL_STATIC_PAGE_CENSUS',...identity,buildId:'test-build',fixtureVerified:true,verifiedBuildArtifact:archive,
    releaseEligible:false,fixture:{tenants:2},
    staticPageCensus:{shard,shards:STATIC_CENSUS_SHARDS,...plan,
     outcomes:plan.paths.flatMap(path=>['first','repeat'].map(pass=>({path,pass,role:'groupHR',
-     outcome:path==='/payroll'?'timeout':'heading-visible',elapsedMs:path==='/payroll'?15001:350}))),
+     outcome:path==='/payroll'?'timeout':'heading-visible',elapsedMs:path==='/payroll'?15001:350,
+     ...(path==='/payroll'?{timeoutStage:'render',responseCommittedMs:201,documentTiming:{documentResponseEndMs:210}}:{headingMs:345})}))),
     dynamic:{templates:[person,edit],missingMatchers:[],maxLinkDepth:2,discoveryFailures:0,limitedRoles:[],
      outcomes:plan.paths.includes('/')?[...dynamicVisits(person,1),...dynamicVisits(edit,2,person)]:[]},
    }};
@@ -30,6 +32,11 @@ test('reconciles a single build while retaining failed openings and template-lev
  assert.equal(report.staticAttempts,4);
  assert.equal(report.staticPagesWithTwoHeadings,1);
  assert.equal(report.byOutcome.timeout,2);
+ assert.deepEqual(report.verifiedBuildArtifact,archive);
+ const payroll=report.staticObservations.find(row=>row.path==='/payroll'&&row.pass==='first');
+ assert.equal(payroll.responseCommittedMs,201);
+ assert.equal(payroll.documentResponseEndMs,210);
+ assert.equal(payroll.timeoutStage,'render');
  assert.equal(report.dynamicTemplatesWithHeading,2);
  const nested=report.dynamicObservations.filter(row=>row.linkDepth===2);
  assert.equal(nested.length,2);
@@ -41,6 +48,8 @@ test('reconciles a single build while retaining failed openings and template-lev
 test('rejects mixed source builds, incomplete visits, and duplicate shards',()=>{
  const mixed=fixture();mixed[1].buildId='other-build';
  assert.throws(()=>reconcileStaticPageCensus(mixed,identity));
+ const mismatchedArchive=fixture();mismatchedArchive[1].verifiedBuildArtifact={...archive,artifactId:23};
+ assert.throws(()=>reconcileStaticPageCensus(mismatchedArchive,identity),/different production archives/);
  const incomplete=fixture();incomplete.find(r=>r.staticPageCensus.outcomes.length).staticPageCensus.outcomes.pop();
  assert.throws(()=>reconcileStaticPageCensus(incomplete,identity),/Missing static visit/);
  const duplicate=fixture();duplicate[1]=duplicate[0];

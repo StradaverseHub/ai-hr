@@ -13,11 +13,30 @@ function discoveryKey(role,path,pass){
 
 const passes=['first','repeat'];
 
+function visitTiming(row){
+ const timing={elapsedMs:row.elapsedMs};
+ if(Number.isSafeInteger(row.headingMs))timing.headingMs=row.headingMs;
+ if(Number.isSafeInteger(row.responseCommittedMs))timing.responseCommittedMs=row.responseCommittedMs;
+ if(Number.isSafeInteger(row.documentTiming?.documentResponseEndMs)){
+  timing.documentResponseEndMs=row.documentTiming.documentResponseEndMs;
+ }
+ if(row.outcome==='timeout'&&['response','render','usable-content'].includes(row.timeoutStage)){
+  timing.timeoutStage=row.timeoutStage;
+ }
+ return timing;
+}
+
 export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
  assert.match(sourceSha,/^[a-f0-9]{40}$/);
  assert.match(controllerSha,/^[a-f0-9]{40}$/);
  assert.equal(reports.length,STATIC_CENSUS_SHARDS,'Incomplete static census receipts');
  const first=reports[0],reference=first.staticPageCensus;
+ const artifact=first.verifiedBuildArtifact;
+ if(artifact){
+  assert.equal(artifact.sourceSha,sourceSha,'Pinned archive source differs from the measured source');
+  assert(Number.isSafeInteger(artifact.runId)&&artifact.runId>0);
+  assert(Number.isSafeInteger(artifact.artifactId)&&artifact.artifactId>0);
+ }
  assert(typeof first.buildId==='string'&&first.buildId.length>0,'A shared build ID is required');
  const staticPaths=new Set(),shards=new Set(),observations=[],dynamicRows=[],discoveryLimits=[];
  for(const report of reports){
@@ -25,6 +44,7 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
   assert.equal(report.sourceSha,sourceSha);
   assert.equal(report.controllerSha,controllerSha);
   assert.equal(report.buildId,first.buildId);
+  assert.deepEqual(report.verifiedBuildArtifact,artifact,'Census shards used different production archives');
   assert.equal(report.fixtureVerified,true);
   assert.equal(report.releaseEligible,false);
   assert.deepEqual(report.fixture,first.fixture);
@@ -58,8 +78,7 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
    assert(missing.delete(row.path+' '+row.pass),'Unexpected static visit');
    assert(roles.has(row.role)&&outcomes.has(row.outcome));
    assert(Number.isSafeInteger(row.elapsedMs)&&row.elapsedMs>=0);
-   observations.push({path:row.path,pass:row.pass,role:row.role,outcome:row.outcome,elapsedMs:row.elapsedMs,
-    ...(outcomes.has(row.outcome)&&Number.isSafeInteger(row.headingMs)&&{headingMs:row.headingMs})});
+   observations.push({path:row.path,pass:row.pass,role:row.role,outcome:row.outcome,...visitTiming(row)});
   }
   assert.equal(missing.size,0,'Missing static visit');
   const templates=new Set(census.dynamic.templates);
@@ -91,9 +110,8 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
     assert(row.parentTemplate===undefined,'Unexpected parent for directly linked detail');
    }
    dynamicRows.push({template:row.path,sourcePath:row.sourcePath,pass:row.pass,role:row.role,
-    outcome:row.outcome,elapsedMs:row.elapsedMs,linkDepth:row.linkDepth,
-    ...(row.parentTemplate&&{parentTemplate:row.parentTemplate}),
-    ...(Number.isSafeInteger(row.headingMs)&&{headingMs:row.headingMs})});
+    outcome:row.outcome,linkDepth:row.linkDepth,...visitTiming(row),
+    ...(row.parentTemplate&&{parentTemplate:row.parentTemplate})});
   }
  }
  assert.equal(staticPaths.size,reference.staticPageCount,'Compiled static page count differs from measured routes');
@@ -104,6 +122,7 @@ export function reconcileStaticPageCensus(reports,{sourceSha,controllerSha}){
  const staticPagesWithTwoHeadings=[...byPath.values()].filter(rows=>rows.every(outcome=>outcome==='heading-visible')).length;
  const dynamicObserved=new Set(dynamicRows.filter(row=>row.outcome==='heading-visible').map(row=>row.template));
  return {kind:'FICTIONAL_COMPILED_BROWSER_CENSUS',releaseEligible:false,sourceSha,controllerSha,buildId:first.buildId,
+  ...(artifact&&{verifiedBuildArtifact:artifact}),
   compiledStaticPages:staticPaths.size,staticAttempts:observations.length,staticPagesWithTwoHeadings,byOutcome,
   staticObservations:observations.sort((a,b)=>a.path.localeCompare(b.path)||a.pass.localeCompare(b.pass)),
   compiledDynamicTemplates:reference.dynamicTemplateCount,dynamicTemplatesWithHeading:dynamicObserved.size,

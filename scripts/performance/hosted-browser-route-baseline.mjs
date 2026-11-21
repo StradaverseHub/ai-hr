@@ -1190,7 +1190,9 @@ async function measureCensusVisit(page,url,role,pass,label,compiledPaths){
     const heading=title
      ?page.locator('main:visible').getByRole('heading',{name:title,exact:true,level:2}).first()
      :page.locator('main:visible h1:visible').first();
-    const fault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/}).first();
+    const globalFault=page.getByRole('heading',{name:/^(This page could not be displayed|This is taking longer than usual)$/});
+    const rewardsFault=page.getByRole('alert').getByRole('heading',{name:'Reward review unavailable',exact:true});
+    const fault=globalFault.or(rewardsFault).first();
     await heading.or(fault).first().waitFor({state:'visible',timeout:remaining()});
     if(!redirected()){
      row.headingMs=Math.round(performance.now()-start);
