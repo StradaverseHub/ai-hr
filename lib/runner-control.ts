@@ -24,7 +24,7 @@ async function port(body:unknown):Promise<unknown> {
 export async function runnerControlSnapshot(session:SessionContext):Promise<RunnerSnapshot|null> {
  if(!isOperator(session)&&!isGroupAdmin(session))throw new Error('Runner status is restricted to administrators.');
  try{
-  for(const op of ['status_with_worker_cron','status_with_cron','status']){
+  for(const op of ['status_with_review_cron','status_with_worker_cron','status_with_cron','status']){
    try{return runnerSnapshotSchema.parse(await port({op}));}
    catch(error){if(!(error instanceof RunnerPortRefused&&error.status===409))throw error;}
   }

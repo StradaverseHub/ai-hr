@@ -92,7 +92,13 @@ def next_run(timer):
         return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=monotonic-time.monotonic())).isoformat()
     return None
 
-LEGACY_WORKER_CRON={'payroll-loops':'payroll-loop-tick','ai-alerts':'ai-alerts'}
+LEGACY_WORKER_CRON={'payroll-loops':'payroll-loop-tick','ai-alerts':'ai-alerts','reviews':'review-sweep'}
+STATUS_CRON_WORKERS={
+    'status':(),
+    'status_with_cron':('payroll-loops',),
+    'status_with_worker_cron':('payroll-loops','ai-alerts'),
+    'status_with_review_cron':tuple(LEGACY_WORKER_CRON),
+}
 
 def legacy_worker_cron_pattern(worker):
     # Match the installed and documented wrappers from the start of the actual cron command.
@@ -104,9 +110,10 @@ def legacy_worker_cron_pattern(worker):
 def legacy_worker_dispatch(worker):
     # The Debian cron daemon owns these journal fields. Return only its dispatch time.
     # Missing or inaccessible logs provide no evidence about whether a schedule exists.
+    hours=48 if worker=='reviews' else 2
     try:
         result=subprocess.run([
-            '/usr/bin/journalctl','--quiet','--no-pager','--since=-2h','--lines=1','--output=json',
+            '/usr/bin/journalctl','--quiet','--no-pager',f'--since=-{hours}h','--lines=1','--output=json',
             '--output-fields=__REALTIME_TIMESTAMP',
             '--grep='+legacy_worker_cron_pattern(worker),
             '_UID=0','_EXE=/usr/sbin/cron','_SYSTEMD_UNIT=cron.service','SYSLOG_IDENTIFIER=CRON',
@@ -115,7 +122,7 @@ def legacy_worker_dispatch(worker):
         stamp=json.loads(result.stdout)['__REALTIME_TIMESTAMP']
         if not isinstance(stamp,str) or re.fullmatch(r'[0-9]{16}',stamp) is None:return None
         dispatched=datetime.datetime.fromtimestamp(int(stamp)/1000000,datetime.timezone.utc)
-        if not datetime.timedelta(0)<=datetime.datetime.now(datetime.timezone.utc)-dispatched<=datetime.timedelta(hours=2):return None
+        if not datetime.timedelta(0)<=datetime.datetime.now(datetime.timezone.utc)-dispatched<=datetime.timedelta(hours=hours):return None
         return dispatched.isoformat(timespec='seconds').replace('+00:00','Z')
     except (OSError,subprocess.TimeoutExpired,ValueError,KeyError,TypeError):
         return None
@@ -185,9 +192,9 @@ def separate_capability(row):
 
 def handle(body,policy,catalog):
     require(isinstance(body,dict),'invalid request')
-    if body in ({'op':'status'},{'op':'status_with_cron'},{'op':'status_with_worker_cron'}):
+    if set(body)=={'op'} and isinstance(body['op'],str) and body['op'] in STATUS_CRON_WORKERS:
         runners=[row_status(policy,row) for row in catalog]
-        workers={'status':(),'status_with_cron':('payroll-loops',),'status_with_worker_cron':LEGACY_WORKER_CRON}[body['op']]
+        workers=STATUS_CRON_WORKERS[body['op']]
         for row in runners:
             if row['id'] in workers:
                 dispatched=legacy_worker_dispatch(row['id'])

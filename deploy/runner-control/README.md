@@ -61,10 +61,11 @@ approved retention/backup procedure. Raw worker logs, HR values and credentials 
 Systemd's last success is process-exit evidence, not proof of email receipt or business correctness.
 Missing/unmanaged jobs can still have external cron schedules: the UI explicitly says not managed here.
 On Debian-style cron installations, Scheduled Actions can show a recent dispatch of the pre-salary
-payroll check or AI alerts. The broker looks for the documented command wrappers in trusted cron
-journal entries over the last two hours and returns only the newest matching timestamp per job.
+payroll check, daily review sweep or AI alerts. The broker looks for the documented command wrappers
+in trusted cron journal entries and returns only the newest matching timestamp per job. It checks
+the previous 48 hours for the daily review sweep and two hours for payroll and alerts.
 An absent timestamp leaves dispatch unverified. Scheduled Actions reports managed completion separately.
-The previous status request still returns payroll dispatch only for older clients.
+Older status requests keep the same responses, including their existing job lists for cron evidence.
 
 When systemd confirms a completion-based interval, an enabled timer is overdue after two installed
 intervals plus the scheduler accuracy and randomized delay. Timers with other schedule types retain

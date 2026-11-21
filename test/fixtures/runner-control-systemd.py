@@ -126,9 +126,8 @@ WantedBy=timers.target
     try:
         # Root can reach the socket but is NOT the enrolled web UID.
         assert root_request({'op':'status'})[0]==409
-        assert root_request({'op':'status_with_cron'})[0]==409
-        assert root_request({'op':'status_with_worker_cron'})[0]==409
-        for op in ('status_with_cron','status_with_worker_cron'):
+        for op in ('status_with_cron','status_with_worker_cron','status_with_review_cron'):
+            assert root_request({'op':op})[0]==409
             code,extended=request({'op':op});assert code==200
             assert not any('legacyCronDispatchedAt' in row for row in extended['runners'])
         print(run('/usr/bin/systemctl','show',UNIT+'.timer','--property=NextElapseUSecRealtime','--property=NextElapseUSecMonotonic','--property=TimersMonotonic').stdout)

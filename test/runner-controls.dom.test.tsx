@@ -57,12 +57,14 @@ describe('runner control inventory',()=>{
   await view(null,true);
   expect(screen.getByText(en.runnerControl.controllerMissing)).toBeInTheDocument();expect(screen.queryByText('Disabled')).toBeNull();expect(screen.queryByText('Configure runner')).toBeNull();
  });
- it('shows legacy payroll and alerts dispatches with separate completion evidence',async()=>{
+ it('shows legacy payroll, review and alerts dispatches with separate completion evidence',async()=>{
   const value=snapshot();
   const payroll=value.runners.find(row=>row.id==='payroll-loops')!;
   Object.assign(payroll,{managed:false,installed:false,enabled:false,health:'missing',lastRun:null,nextRun:null,schedule:null,legacyCronDispatchedAt:'2026-11-21T15:45:00Z'});
   const alerts=value.runners.find(row=>row.id==='ai-alerts')!;
   Object.assign(alerts,{managed:false,installed:false,enabled:false,health:'missing',lastRun:null,nextRun:null,schedule:null,legacyCronDispatchedAt:'2026-11-21T16:15:00Z'});
+  const reviews=value.runners.find(row=>row.id==='reviews')!;
+  Object.assign(reviews,{managed:false,installed:false,enabled:false,health:'missing',lastRun:null,nextRun:null,schedule:null,legacyCronDispatchedAt:'2026-11-20T19:00:00Z'});
   const rendered=await view(runnerSnapshotSchema.parse(value),true);
   const row=within(rendered.container.querySelector('#runner-payroll-loops')!);
   expect(row.getByText('Latest legacy cron dispatch').nextElementSibling).toHaveAttribute('datetime','2026-11-21T15:45:00Z');
@@ -73,6 +75,10 @@ describe('runner control inventory',()=>{
   expect(alertRow.getByText('Latest legacy cron dispatch').nextElementSibling).toHaveAttribute('datetime','2026-11-21T16:15:00Z');
   expect(alertRow.getByText(/Protected monitoring logs/)).toBeInTheDocument();
   expect(alertRow.queryByText('Last run succeeded')).toBeNull();
-  expect(runnerSnapshotSchema.safeParse({...value,runners:value.runners.map(r=>r.id==='reviews'?{...r,legacyCronDispatchedAt:payroll.legacyCronDispatchedAt}:r)}).success).toBe(false);
+  const reviewRow=within(rendered.container.querySelector('#runner-reviews')!);
+  expect(reviewRow.getByText('Latest legacy cron dispatch').nextElementSibling).toHaveAttribute('datetime','2026-11-20T19:00:00Z');
+  expect(reviewRow.queryByText('Last run succeeded')).toBeNull();
+  expect(reviewRow.queryByText('Configure runner')).toBeNull();
+  expect(runnerSnapshotSchema.safeParse({...value,runners:value.runners.map(r=>r.id==='notifications'?{...r,legacyCronDispatchedAt:payroll.legacyCronDispatchedAt}:r)}).success).toBe(false);
  });
 });

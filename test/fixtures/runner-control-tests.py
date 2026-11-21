@@ -99,12 +99,23 @@ class RunnerControlTests(unittest.TestCase):
             rows=b.handle({'op':'status_with_cron'},self.policy,CATALOG)['runners']
             evidence.assert_called_once_with('payroll-loops')
             self.assertEqual([row for row in rows if 'legacyCronDispatchedAt' in row],[{'id':'payroll-loops','installed':False,'lastRun':None,'legacyCronDispatchedAt':'2026-11-21T15:45:00Z'}])
+    def test_daily_review_dispatch_does_not_expire_in_two_hours(self):
+        now=datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+        for hours in (23,49):
+            when=now-datetime.timedelta(hours=hours)
+            raw=json.dumps({'__REALTIME_TIMESTAMP':str(int(when.timestamp())*1000000)})
+            with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],0,raw,'')) as run:
+                expected=when.isoformat().replace('+00:00','Z') if hours==23 else None
+                self.assertEqual(b.legacy_worker_dispatch('reviews'),expected)
+                self.assertIn('--since=-48h',run.call_args.args[0])
+                self.assertIsNone(b.legacy_worker_dispatch('ai-alerts'))
     def test_legacy_worker_patterns_match_wrappers_and_refuse_lookalikes(self):
         prefix='(fixture) CMD (cd /opt/ai-hr && '
         command=lambda job: 'deploy/cron-alert.sh '+job+' /private/fixture.log /opt/node20/bin/node --env-file=.env.production --import tsx scripts/'+job+'.ts)'
         alerts=prefix+command('ai-alerts')
         payroll=prefix+'/usr/bin/flock -n /private/fixture.lock '+command('payroll-loop-tick')
-        for key,genuine,other in [('payroll-loops',payroll,alerts),('ai-alerts',alerts,payroll)]:
+        reviews=prefix+command('review-sweep')
+        for key,genuine,other in [('payroll-loops',payroll,reviews),('ai-alerts',alerts,reviews),('reviews',reviews,alerts)]:
             pattern=b.legacy_worker_cron_pattern(key)
             self.assertRegex(genuine,pattern)
             self.assertNotRegex(other,pattern)
@@ -114,6 +125,10 @@ class RunnerControlTests(unittest.TestCase):
             rows=b.handle({'op':'status_with_worker_cron'},self.policy,CATALOG)['runners']
             self.assertEqual({call.args[0] for call in evidence.call_args_list},{'payroll-loops','ai-alerts'})
             self.assertEqual({row['id'] for row in rows if 'legacyCronDispatchedAt' in row},{'payroll-loops','ai-alerts'})
+            evidence.reset_mock()
+            rows=b.handle({'op':'status_with_review_cron'},self.policy,CATALOG)['runners']
+            self.assertEqual({call.args[0] for call in evidence.call_args_list},{'payroll-loops','ai-alerts','reviews'})
+            self.assertEqual({row['id'] for row in rows if 'legacyCronDispatchedAt' in row},{'payroll-loops','ai-alerts','reviews'})
             self.assertTrue(all(row['lastRun'] is None and not row['installed'] for row in rows))
     def test_installed_interval_drives_overdue_status(self):
         retention=next(row for row in CATALOG if row['id']=='ai-retention')
