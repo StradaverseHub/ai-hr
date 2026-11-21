@@ -6,7 +6,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {updateLeaveType} from '../core/admin';
-import {grantAssistant} from '../core/assistant-grant';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {askAssistant} from '../core/assistant';
 import {withAssistantRead,withAssistantAdmissionReadsTx} from '../core/assistant-read-session';
 import {ASSISTANT_TOOLS,specsFor} from '../core/assistant-tools';
 import {loadAiWorkspace} from '../core/ai-workspace';
@@ -16,7 +17,7 @@ import {serializeAgentReadResult} from '../lib/ai/agent-read-batch';
 import {prepareAssistantConversation} from '../core/assistant-provider-input';
 import {preparePrivateAiTask} from '../core/ai-governance';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
-import {ASSISTANT_PRIVATE_CONTRACT,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
+import {ASSISTANT_PRIVATE_CONTRACT,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {isGroundedToolName,presentGroundedToolOutcome} from '../lib/ai/grounded-tool-presentation';
 import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {AiGatewayError} from '../lib/ai/types';
@@ -25,6 +26,7 @@ import {converse} from '../lib/ai';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {ConverseArgs,ConverseResult} from '../lib/ai/types';
+import {selectProtectedLeaveCount} from '../scripts/experiments/protected-leave-comparison';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -40,6 +42,43 @@ async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,
   entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
+ it('evaluates the leave-count candidate on actual Assistant catalogues and declines a newly hidden value',async()=>{
+  const {admin,ctx,userId}=await fixture();
+  const selections:ReturnType<typeof selectProtectedLeaveCount>[]=[];
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_configuration,args)=>{
+   const turn=args.turns[0];
+   if(turn?.role!=='user')throw Error('Expected one protected user catalogue.');
+   expect(args.turns).toHaveLength(1);
+   expect(args.tools).toEqual([]);
+   expect(turn.content).not.toContain('Fictional Mine Visibility');
+   expect(turn.content).not.toContain('113.75');
+   expect(turn.content).not.toContain('My leave balance');
+   const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
+   const selection=selectProtectedLeaveCount(local);
+   selections.push(selection);
+   if(!selection)throw Error('Fictional fallback received no eligible leave count.');
+   return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[selection]})};
+  });
+  const ask=()=>askAssistant(ctx,{question:'My leave balance'});
+  const served=await ask();
+  expect(transport).toHaveBeenCalledOnce();
+  expect(selections).toEqual([expect.objectContaining({kind:'fact',read:0,card:0})]);
+  const before=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
+  expect(before.history[0].grounded?.mode).toBe('grounded');
+  expect(JSON.stringify(before.history[0].grounded)).toContain('113.75');
+
+  await updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  await expect(ask()).rejects.toMatchObject({code:'provider_error'});
+  expect(transport).toHaveBeenCalledTimes(2);
+  expect(selections[1]).toBeNull();
+  const after=await loadAiWorkspace(ctx,{selectedExchangeId:served.exchangeId,includeGovernance:false});
+  expect(after.history.find(row=>row.id===served.exchangeId)).toMatchObject({answer:null,grounded:{mode:'unavailable',views:[]}});
+
+  await revokeAssistant(admin,{appUserId:userId});
+  await expect(ask()).rejects.toThrow();
+  expect(transport).toHaveBeenCalledTimes(2);
+ });
+
  it.each(['my_leave_balances','leave_entitlement_explain','my_module_work'] as const)('%s refuses an old visible transcript after the canonical flag is hidden',async name=>{
   const {admin,ctx,userId}=await fixture(),tool=ASSISTANT_TOOLS.find(row=>row.spec.name===name)!;
   const input=name==='leave_entitlement_explain'?{leave_type_id:base.annualLeaveTypeId,as_of:todayInKualaLumpur()}:name==='my_module_work'?{module:'leave'}:{};
