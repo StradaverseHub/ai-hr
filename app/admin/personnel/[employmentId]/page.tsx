@@ -374,7 +374,12 @@ export default async function EmployeePage({
   // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
   const emp = await employeeDetail(s,employmentId,'workforce');
   if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
-  const [canMaintainWorkforce,canDeleteMovement]=await Promise.all([workforceEmploymentAccess(s,employmentId,'maintain'),movementDeleteAccess(s,employmentId)]);
+  const [canMaintainWorkforce,canDeleteMovement] = movementPage === 'view'
+    ? [false, false]
+    : await Promise.all([
+        workforceEmploymentAccess(s, employmentId, 'maintain'),
+        movementDeleteAccess(s, employmentId),
+      ]);
   const tAccess=await getTranslations('accessConfiguration');
   const today = todayInKualaLumpur();
   // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
