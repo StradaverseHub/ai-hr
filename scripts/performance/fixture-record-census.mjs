@@ -517,7 +517,7 @@ function importHistoryRoutes(fixture) {
   assert.equal(company.role, 'companyHR');
   assert.equal(group.companyId, companyId);
   assert.equal(company.companyId, companyId);
-  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId, fixed.id]) {
+  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId, fixed.groupHR.id, fixed.companyHR.id]) {
     assert.match(id, /^[0-9a-f-]{36}$/i);
   }
   const personnelBase = '/admin/personnel/import/history';
@@ -525,7 +525,14 @@ function importHistoryRoutes(fixture) {
   const personnelRun = `${personnelBase}/runs/${personnel.runId}`;
   const payrollLog = `${payrollBase}/logs/${payroll.attemptId}`;
   const fixedBase = '/payroll/transactions/fixed/imports';
-  const fixedPath = fixedBase + '/' + fixed.id;
+  const fixedRead = actor => {
+    const job = fixed[actor.role];
+    const path = fixedBase + '/' + job.id;
+    return { actor, template: fixedBase + '/[id]', path,
+      exactHeading: 'Batch ' + job.id.slice(0, 8).toUpperCase(), content: job.file,
+      witness: `tbody tr:has(td:text-is("${job.missingEmployee}")) td:has-text("does not exist")`,
+      download: { href: path + '/errors', filename: 'fixed-transaction-import-errors.xlsx' } };
+  };
   return [group, company].flatMap(actor => [
     { actor, template: personnelBase + '/[attemptId]', path: personnelBase + '/' + personnel.attemptId,
       exactHeading: personnel.file, witness: `tbody td:has-text("${employeeName}")` },
@@ -535,10 +542,7 @@ function importHistoryRoutes(fixture) {
       exactHeading: payroll.file, witness: `a[href="${payrollLog}/report"]` },
     { actor, template: payrollBase + '/records/[recordId]', path: payrollBase + '/records/' + payroll.recordId,
       exactHeading: `${employeeCode} · ${employeeName}`, witness: `a[href="${payrollLog}"]:text-is("${payroll.file}")` },
-    { actor, template: fixedBase + '/[id]', path: fixedPath,
-      exactHeading: 'Batch ' + fixed.id.slice(0, 8).toUpperCase(), content: fixed.file,
-      witness: `tbody tr:has(td:text-is("${fixed.missingEmployee}")) td:has-text("does not exist")`,
-      download: { href: fixedPath + '/errors', filename: 'fixed-transaction-import-errors.xlsx' } },
+    fixedRead(actor),
   ]);
 }
 

@@ -77,29 +77,39 @@ try{
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
 
  mark('fixed-transaction');
- const fixedFile='fictional-fixed-transaction-errors.xlsx';
  const missingEmployee='PERF-UNKNOWN-FIXED';
  const scope=[group.companyId];
- const fixedId=await fixedImports.queueFixedTransactionImport(ctx,{
-  csv:toCsv([['Employee ID','Pay Item Code','Amount','Start Date'],
-   [missingEmployee,'BONUS','100',fixture.month+'-01']]),
-  fileName:fixedFile,companyIds:scope,operationKey:randomUUID(),validationOnly:true,
- });
- let job=await fixedImports.readFixedTransactionImport(ctx,fixedId,scope);
- for(let tick=0;tick<10&&!['completed','failed'].includes(job.state);tick++){
-  await runBulkJobTick(owner.client,{handlers:[fixedImports.fixedTransactionImportJobHandler]});
-  job=await fixedImports.readFixedTransactionImport(ctx,fixedId,scope);
+ const [companyPrincipal]=await owner.client`select tenant_id,grants from app.principal(${companyHr.userId}::uuid)`;
+ assert(companyPrincipal?.tenant_id===group.tenantId&&companyPrincipal.grants.some(grant=>
+  grant.role==='hr_admin'&&grant.companyId===companyHr.companyId));
+ const companyContext={...ctx,userId:companyHr.userId,personId:companyHr.personId,grants:companyPrincipal.grants,
+  roles:[...new Set(companyPrincipal.grants.map(grant=>grant.role))]};
+ const fixed={};
+ for(const {key,author} of [{key:'groupHR',author:ctx},{key:'companyHR',author:companyContext}]){
+  const file='fictional-fixed-'+key+'-errors.xlsx';
+  const id=await fixedImports.queueFixedTransactionImport(author,{
+   csv:toCsv([['Employee ID','Pay Item Code','Amount','Start Date'],
+    [missingEmployee,'BONUS','100',fixture.month+'-01']]),
+   fileName:file,companyIds:scope,operationKey:randomUUID(),validationOnly:true,
+  });
+  let job=await fixedImports.readFixedTransactionImport(author,id,scope);
+  for(let tick=0;tick<10&&!['completed','failed'].includes(job.state);tick++){
+   await runBulkJobTick(owner.client,{handlers:[fixedImports.fixedTransactionImportJobHandler]});
+   job=await fixedImports.readFixedTransactionImport(author,id,scope);
+  }
+  assert.equal(job.state,'failed');
+  assert.equal(job.error,'noValidRows');
+  assert.equal(job.counters.invalid,1);
+  assert.equal(job.counters.written??0,0);
+  assert(job.rows.some(row=>row.employeeId===missingEmployee&&row.reason==='employeeUnknown'));
+  fixed[key]={id,file,missingEmployee};
  }
- assert.equal(job.state,'failed');
- assert.equal(job.error,'noValidRows');
- assert.equal(job.counters.invalid,1);
- assert.equal(job.counters.written??0,0);
- assert(job.rows.some(row=>row.employeeId===missingEmployee&&row.reason==='employeeUnknown'));
+ await assert.rejects(fixedImports.readFixedTransactionImport(companyContext,fixed.groupHR.id,scope),/Job unavailable/);
  writeFileSync(resultPath('import-history-browser.json'),JSON.stringify({
   companyId:group.companyId,employeeName,employeeCode,
   personnel:{attemptId:imported.attemptId,runId:imported.runId,file:personnelFile},
   payroll:{attemptId:preview.attemptId,recordId:record.id,file:payrollFile},
-  fixed:{id:fixedId,file:fixedFile,missingEmployee},
+  fixed,
  }),{mode:0o600});
  mark('complete');
 }finally{await Promise.all([owner.client.end(),client.end()]);}
