@@ -587,7 +587,7 @@ async function measureShellPrefetchAfterIntent(fixture){
  try{
   const page=await context.newPage();
   const activePath=origin+row.route;
-  const home=page.locator('aside[data-app-sidebar] a[href="/"]:visible');
+  const home=page.locator('aside[data-app-sidebar] a[href="/"][aria-label="AIHR home"]:visible');
   const deadline=performance.now()+45000;
   const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
   const matchesRouteData=(request,path)=>{
