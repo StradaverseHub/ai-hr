@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
+import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
@@ -132,6 +133,22 @@ describe('protected work summary comparison', () => {
       { kind: { const: 'explanation' }, read: { const: 0 }, card: { const: null }, code: { const: 'specialist_finding:claim_pending_not_approved' } },
     ]);
     expect(() => protectedCatalogueAnswerJsonSchema({ ...catalogue, reads: [] })).toThrow('requires an available reference');
+
+    const indexed = protectedIndexedAnswer(catalogue);
+    expect(indexed.format.properties.selection.items.enum).toEqual([0, 1, 2]);
+    expect(JSON.parse(indexed.prompt).choices).toEqual([
+      { index: 0, read: 0, card: 0, module: 'claims', field: 'status' },
+      { index: 1, read: 0, card: 1, module: 'claims', field: 'status' },
+      { index: 2, read: 0, card: null, module: 'claims', explanation: 'specialist_finding:claim_pending_not_approved' },
+    ]);
+    expect(JSON.parse(indexed.decode('{"selection":[1,2]}')).blocks).toEqual([
+      { kind: 'fact', read: 0, card: 1, fact: 0 },
+      { kind: 'explanation', read: 0, card: null, code: 'specialist_finding:claim_pending_not_approved' },
+    ]);
+    for (const invalid of ['{"selection":[]}', '{"selection":[0,0]}', '{"selection":[3]}',
+      '{"selection":["1"]}', '{"selection":[1],"prose":"x"}', 'untrusted prose']) {
+      expect(indexed.decode(invalid)).toBe('{}');
+    }
   });
 
   it('checks complete multi-record answers and canonical specialist explanations without disclosing source values', async () => {

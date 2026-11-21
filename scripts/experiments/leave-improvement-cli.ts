@@ -4,6 +4,7 @@ import { runProtectedWorkSummaryComparison } from './protected-work-summary-comp
 import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } from './protected-work-summary-improvement';
 import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
+import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
 import { localOutputPath, writeLocalOutput } from '../teras/output';
 
@@ -22,11 +23,13 @@ async function main() {
   const [benchmark] = benchmarks;
   const useCatalogueFormat = flags.includes('--catalogue-schema');
   const useStaticSchema = flags.includes('--schema');
+  const useIndexedFormat = flags.includes('--indexed-catalogue');
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
-      flags.some(flag => flag !== '--schema' && flag !== '--catalogue-schema' && !isBenchmark(flag)) ||
-      new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && (!benchmark || useStaticSchema)))
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema] [--protected | --protected-work-summary | --improve-protected-work-summary]');
+      flags.some(flag => !['--schema', '--catalogue-schema', '--indexed-catalogue'].includes(flag) && !isBenchmark(flag)) ||
+      new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && (!benchmark || useStaticSchema)) ||
+      (useIndexedFormat && (benchmark !== '--protected-work-summary' || useStaticSchema || useCatalogueFormat)))
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary]');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   localOutputPath(outfile);
   const deadline = AbortSignal.timeout(30 * 60_000);
@@ -48,19 +51,23 @@ async function main() {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
     const revisionFormat = benchmark === '--improve-protected-work-summary' ? protectedGuidanceProposalSchema : 'json';
     const format = mode !== 'answer' ? revisionFormat : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
+    const indexed = useIndexedFormat ? protectedIndexedAnswer(JSON.parse(prompt)) : null;
     const result = await request('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system, prompt, stream: false, format, options: generationOptions }),
+      body: JSON.stringify({
+        model, system: indexed?.system ?? system, prompt: indexed?.prompt ?? prompt, stream: false,
+        format: indexed?.format ?? format, options: generationOptions,
+      }),
     });
     if (result?.done !== true || result.model !== model || typeof result.response !== 'string')
       throw Error('Local model returned an incomplete response.');
-    return { text: result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
+    return { text: indexed ? indexed.decode(result.response) : result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
   const report = await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
-  const answerFormatDigest = routingDigest(useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
+  const answerFormatDigest = routingDigest(useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
 }
 
