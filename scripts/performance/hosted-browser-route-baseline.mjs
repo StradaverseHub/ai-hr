@@ -555,6 +555,7 @@ async function documentTiming(page){
      &&resource.responseEnd<=entry.domContentLoadedEventStart).length,
     transferBytes:scripts.reduce((total,resource)=>total+resource.transferSize,0),
     decodedBodyBytes:scripts.reduce((total,resource)=>total+resource.decodedBodySize,0),
+    largestDecodedScriptBytes:scripts.reduce((largest,resource)=>Math.max(largest,resource.decodedBodySize),0),
     lastResponseEndMs:round(scripts.reduce((latest,resource)=>Math.max(latest,resource.responseEnd),0))},
    ...globalThis.readFixtureStartupTiming?.(),
   };

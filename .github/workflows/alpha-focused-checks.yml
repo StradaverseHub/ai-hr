@@ -162,7 +162,7 @@ jobs:
           if [[ "$REUSE_ACTION_BUILD" == true ]]; then
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2
             case "$BROWSER_SURFACE_PROBE" in
-              actions|attendance|rewards|leave-balances|command-delegation) ;;
+              actions|attendance|rewards|leave-balances|content-readiness|command-delegation) ;;
               '') [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
               *) exit 2 ;;
             esac
