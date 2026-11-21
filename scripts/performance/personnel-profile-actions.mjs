@@ -39,7 +39,7 @@ export async function measurePersonnelProfileActions({ db, fixture, origin, sign
       const before = await readState();
       assert.equal((await page.goto(url, { waitUntil: 'commit', timeout: 15000 }))?.status(), 200);
       const profile = page.locator(profilePanel);
-      const family = page.locator(familyPanel);
+      const family = page.locator(familyPanel + ' #section-family');
       const name = profile.locator(nameControl);
       const tab = key => page.locator(`button[role="tab"][aria-controls$="-panel-${key}"]`);
       const editor = button => profile.getByRole('button', { name: button, exact: true });
@@ -59,6 +59,7 @@ export async function measurePersonnelProfileActions({ db, fixture, origin, sign
       };
       await name.waitFor({ state: 'visible' });
       assert.equal(await name.inputValue(), subject.name);
+      result.familyContentOnProfile = await family.count() > 0;
       await timed('open Family tab', () => tab('family').click(), () => family.waitFor({ state: 'visible' }));
       assert.equal(new URL(page.url()).searchParams.get('tab'), 'family');
       await timed('return to Profile', () => tab('profile').click(), () => name.waitFor({ state: 'visible' }));
