@@ -83,6 +83,7 @@ it('compares one model-proposed explanation revision on an unseen development mo
     let reply;
     if (mode === 'revise') {
       expect(request.development).toEqual({ cases: 4, correct: 2, rejected: 0, maximumCorrectWithCurrentInputs: 2 });
+      expect(Object.keys(request.options)).toEqual(['include_source_focus']);
       expect(prompt).not.toMatch(/toil|attendance|notifications|expired|payslip|expected/);
       proposed = true;
       reply = { change: 'include_source_focus' };
@@ -100,8 +101,23 @@ it('compares one model-proposed explanation revision on an unseen development mo
   });
   expect(report).toMatchObject({
     validationCases: 2, baseline: { correct: 1 }, candidate: { correct: 2, rejected: 0 },
-    revision: 'include_source_focus', regressions: 0, advanced: true, releaseAuthorized: false,
+    eligibleRevisions: ['include_source_focus'], revision: 'include_source_focus',
+    regressions: 0, advanced: true, releaseAuthorized: false,
     budget: { calls: 9, inputTokens: 18, outputTokens: 9 },
+  });
+});
+
+it('refuses a proposed wording change that leaves colliding inputs unchanged', async () => {
+  const report = await runProtectedExplanationImprovement(async ({ mode, system, prompt }) => {
+    if (mode === 'revise') return { text: '{"change":"compare_choice_meanings"}', inputTokens: 2, outputTokens: 1 };
+    const request = JSON.parse(prompt);
+    expect(request).not.toHaveProperty('focus');
+    expect(system).not.toContain('Compare the meanings');
+    return { text: JSON.stringify({ choice: request.choices[0] }), inputTokens: 2, outputTokens: 1 };
+  });
+  expect(report).toMatchObject({
+    eligibleRevisions: ['include_source_focus'], revision: null, candidate: null, advanced: false,
+    validationCases: 2, budget: { calls: 7 },
   });
 });
 

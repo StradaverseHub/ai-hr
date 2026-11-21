@@ -132,6 +132,8 @@ Neither model proposal advanced. The control isolates why the narrower task is a
 
 Report SHA-256 values in table order are `44a1c1cc4e06aa3257ac05934e9e85308f499c926f4a3eacf6b14116ab0278fb`, `302e6b46889ce5995f3301fed6841c9b2a96bedecc005cd55f585b3ba1f92b02`, and `e00e3441f259323e529c0c3a6c01f66d34eb3ccd50dc7756e017ec8b15ef9491`.
 
+The offline explanation optimizer now computes the deterministic ceiling from the exact request fields used by the answering model. When distinct expected answers share one prompt, a change is eligible only if it raises that ceiling on development cases. The model receives only eligible choices and aggregate diagnostics. The report records the eligible set, and the evaluator refuses a choice outside it. The current cases leave one eligible change, supplying the source-owned focus. A successful run in that setting tests the bounded workflow and the resulting answer quality. It supplies no evidence of open-ended model discovery.
+
 ### Numbered choices for protected answers
 
 At `fa61dc3a92b4764cfb4f0ff3de94ca136f36369d`, the offline `--indexed-catalogue` mode lists the available closed field labels and explanation codes with numbered choices. It asks for one ordered list of indices. The decoder rejects unknown or repeated indices and extra fields. It expands a valid selection into the same answer plan and passes it through both existing adjudicators. The new format changes the model instructions and representation together. It supplies neither source values nor expected answers.

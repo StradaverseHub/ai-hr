@@ -79,13 +79,17 @@ function readChoice(text: string, key: string): unknown {
   } catch { /* Invalid replies are rejected without retaining their text. */ }
 }
 
-export async function choose(model: PilotModel, { module, choices, focus, expected }: ExplanationCase,
+function explanationPrompt({ module, choices, focus }: ExplanationCase, includeFocus: boolean) {
+  return { module, choices, ...(includeFocus ? { focus } : {}) };
+}
+
+export async function choose(model: PilotModel, fixture: ExplanationCase,
   includeFocus: boolean, instruction = system, meanings?: Readonly<Record<string, string>>): Promise<Outcome> {
   const response = await model({ mode: 'answer', system: instruction,
-    prompt: JSON.stringify({ module, choices, ...(includeFocus ? { focus } : {}), ...(meanings ? { meanings } : {}) }) });
+    prompt: JSON.stringify({ ...explanationPrompt(fixture, includeFocus), ...(meanings ? { meanings } : {}) }) });
   const choice = readChoice(response.text, 'choice');
-  if (!choices.includes(choice as AssistantExplanationCode)) return 'rejected';
-  return choice === expected ? 'correct' : 'incorrect';
+  if (!fixture.choices.includes(choice as AssistantExplanationCode)) return 'rejected';
+  return choice === fixture.expected ? 'correct' : 'incorrect';
 }
 
 /** Fictional, offline diagnosis of which supported explanation would accompany
@@ -119,17 +123,12 @@ const revisions = {
 } as const;
 type Revision = keyof typeof revisions;
 
-export const explanationRevisionSchema = {
-  type: 'object', additionalProperties: false, required: ['change'],
-  properties: { change: { type: 'string', enum: Object.keys(revisions) } },
-};
-
-function maximumCorrectWithCurrentInputs(cases: readonly ExplanationCase[]) {
+function maximumCorrectWithInputs(cases: readonly ExplanationCase[], includeFocus: boolean) {
   const groups = new Map<string, Map<string, number>>();
-  for (const { module, choices, expected } of cases) {
-    const input = routingDigest({ module, choices });
+  for (const fixture of cases) {
+    const input = JSON.stringify(explanationPrompt(fixture, includeFocus));
     const counts = groups.get(input) ?? new Map();
-    counts.set(expected, (counts.get(expected) ?? 0) + 1);
+    counts.set(fixture.expected, (counts.get(fixture.expected) ?? 0) + 1);
     groups.set(input, counts);
   }
   // A deterministic selector has just one answer for a byte-identical input.
@@ -155,17 +154,23 @@ export async function runProtectedExplanationImprovement(model: PilotModel) {
     rejected: rows.filter(outcome => outcome === 'rejected').length,
   });
   const discovery = await score(development);
+  const ceiling = maximumCorrectWithInputs(development, false);
   const diagnostics = {
     cases: development.length, ...summarize(discovery),
-    maximumCorrectWithCurrentInputs: maximumCorrectWithCurrentInputs(development),
+    maximumCorrectWithCurrentInputs: ceiling,
   };
-  const proposal = await call({
+  // Changing shared instructions cannot separate cases with identical model inputs.
+  // Keep a candidate eligible only if it raises the measured ceiling when there is a collision.
+  const eligible = (Object.keys(revisions) as Revision[]).filter(revision =>
+    ceiling === development.length || maximumCorrectWithInputs(development, revision === 'include_source_focus') > ceiling);
+  const options = Object.fromEntries(eligible.map(revision => [revision, revisions[revision]]));
+  const proposal = eligible.length > 0 ? await call({
     mode: 'revise',
     system: 'Choose one listed change to address the development results. maximumCorrectWithCurrentInputs measures the ceiling caused by identical prompts with different expected answers. Prefer a change that addresses any measured ceiling. Return only an object with the change key.',
-    prompt: JSON.stringify({ options: revisions, development: diagnostics }),
-  });
-  const change = readChoice(proposal.text, 'change');
-  const revision = typeof change === 'string' && Object.hasOwn(revisions, change) ? change as Revision : null;
+    prompt: JSON.stringify({ options, development: diagnostics }),
+  }) : null;
+  const change = proposal ? readChoice(proposal.text, 'change') : null;
+  const revision = eligible.find(option => option === change) ?? null;
   const parent = await score(validation);
   const candidate = revision ? await score(validation, revision) : null;
   const regressions = candidate?.filter((outcome, index) => parent[index] === 'correct' && outcome !== 'correct').length;
@@ -175,7 +180,8 @@ export async function runProtectedExplanationImprovement(model: PilotModel) {
   return {
     evidence: 'offline_explanation_revision_development', releaseAuthorized: false,
     developmentDigest: routingDigest(development), validationDigest: routingDigest(validation),
-    development: diagnostics, validationCases: validation.length, baseline, revision, candidate: revised, regressions: regressions ?? null,
+    development: diagnostics, eligibleRevisions: eligible, validationCases: validation.length, baseline,
+    revision, candidate: revised, regressions: regressions ?? null,
     advanced, budget,
   };
 }

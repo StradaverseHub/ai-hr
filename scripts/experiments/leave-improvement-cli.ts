@@ -15,7 +15,7 @@ import {
 import { scoreFreshExplanationRouting, scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
 import { compareProtectedExplanationMeanings } from './protected-explanation-meanings';
 import {
-  EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationRevisionSchema,
+  EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS,
   runProtectedExplanationImprovement, runProtectedExplanationPriority,
 } from './protected-explanation-priority';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
@@ -112,7 +112,10 @@ async function main() {
   const generate: PilotModel = async ({ mode, system, prompt }) => {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
     const revisionFormat = benchmark === '--improve-protected-work-summary' ? protectedGuidanceProposalSchema : 'json';
-    const format = mode === 'revise' && improveExplanation ? explanationRevisionSchema : explanationPriority ? {
+    const format = mode === 'revise' && improveExplanation ? {
+      type: 'object', additionalProperties: false, required: ['change'],
+      properties: { change: { type: 'string', enum: Object.keys(JSON.parse(prompt).options) } },
+    } : explanationPriority ? {
       type: 'object', additionalProperties: false, required: ['choice'],
       properties: { choice: { type: 'string', enum: JSON.parse(prompt).choices } },
     } : mode !== 'answer' ? revisionFormat : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
