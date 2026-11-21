@@ -31,8 +31,13 @@ describe('runner control inventory',()=>{
   await captureAiReviewScreenshots(document.body.innerHTML,'en','runner-controls-dark','real components; synthetic scheduler snapshot; no live operation','atelier','dark');
  },60000);
  it('offers no write controls to customer administrators',async()=>{
-  await view(snapshot(),false);expect(screen.getByRole('link',{name:'Replacement holidays and calendars'})).toHaveAttribute('href','/admin/holidays/replacements');
+  const rendered=await view(snapshot(),false);expect(screen.getByRole('link',{name:'Replacement holidays and calendars'})).toHaveAttribute('href','/admin/holidays/replacements');
   expect(screen.getByRole('link',{name:'Run history below'})).toHaveAttribute('href','#recent-run-history');
+  for(const id of ['ai-retention','payroll-loops'] as const){
+   const runner=rendered.container.querySelector<HTMLElement>(`#runner-${id}`)!;
+   expect(within(runner).getByRole('heading',{name:en.runnerControl.jobs[id].name})).toBeInTheDocument();
+   expect(within(runner).getByText('Last run succeeded')).toBeInTheDocument();
+  }
   expect(screen.queryByText('Configure runner')).toBeNull();expect(screen.queryByRole('button',{name:'Save configuration'})).toBeNull();
  });
  it('keeps production replacement holidays and backups held even in an otherwise commissioned snapshot',async()=>{

@@ -36,7 +36,7 @@ vi.mock('../core/ai-inventory',async()=>{
   register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
    actionPaused:c.kind==='action'?c.id==='leave.cancel':null,allowance:c.featureId&&c.kind!=='action'?{dailyRequests:50,monthlyTokens:200000}:null,
-   lastRun:c.featureId?at:null,use30:c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
+   lastRun:c.featureId||c.id==='ai-alerts'?at:null,use30:c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
    outcomes:c.kind==='action'&&c.tier!=='automatic'?{
     prepared:state.actionActivity?(c.id==='leave.cancel'?8:c.id==='leave.edit'?3:0):0,
     completed:state.actionActivity?(c.id==='leave.cancel'?6:c.id==='leave.edit'?1:0):0,
@@ -65,6 +65,30 @@ const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',sear
 };
 
 describe('AI inventory in six rendered locales',()=>{
+ it('distinguishes scheduler-owned status, empty history and a recorded run on desktop and mobile',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
+  const section=view.container.querySelector<HTMLElement>('section[aria-labelledby="ai-kind-scheduled_job"]')!;
+  section.querySelector<HTMLDetailsElement>('details')!.open=true;
+  for(const id of ['ai-retention','payroll-loops']){
+   const desktop=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}`)!;
+   const mobile=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}-card`)!;
+   mobile.querySelector('details')!.open=true;
+   for(const row of [desktop,mobile]){
+    const link=within(row).getByRole('link',{name:/Check scheduler status/});
+    expect(link).toHaveAttribute('href',`/admin/scheduled-actions#runner-${id}`);
+    expect(within(row).queryByText(en.aiManagement.inv.never)).toBeNull();
+   }
+  }
+  const empty=section.querySelector<HTMLElement>('#ai-component-scheduled_job-review-sweep')!;
+  expect(within(empty).getByText('No recorded run')).toBeInTheDocument();
+  const recorded=section.querySelector<HTMLElement>('#ai-component-scheduled_job-ai-alerts')!;
+  expect(within(recorded).getByText(/Oct 29, 2026/)).toBeInTheDocument();
+  expect(within(recorded).queryByRole('link')).toBeNull();
+  await captureAiReviewScreenshots(`<main class="p-4">${section.outerHTML}</main>`,'en','ai-centre-scheduled-evidence');
+ },60000);
+
  it('puts recorded activity ahead of the collapsed controls',async()=>{
   state.locale='en';
   const view=await renderPage('en','features');
@@ -117,6 +141,8 @@ describe('AI inventory in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: group administrator sees every component group, the pause control, alerts and the data register',async locale=>{
   state.locale=locale;state.group=true;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
+  expect(screen.getAllByText(workerOverviewMessages[locale].checkScheduler)).toHaveLength(4);
+  expect(screen.getAllByText(workerOverviewMessages[locale].noScheduledRunRecorded)).toHaveLength(2);
   expect(screen.getByRole('link',{name:workerOverviewMessages[locale].actionDetails})).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent(inv.alerts.title);
   for(const kind of Object.keys(inv.kinds) as (keyof typeof inv.kinds)[])expect(screen.getByRole('heading',{level:3,name:new RegExp(inv.kinds[kind].replace(/[()]/g,'\\$&'))})).toBeInTheDocument();
@@ -143,6 +169,7 @@ describe('AI inventory in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: company HR sees the read-only registry and tier view only',async locale=>{
   state.locale=locale;state.group=false;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
+  expect(screen.queryByText(workerOverviewMessages[locale].checkScheduler)).toBeNull();
   expect(screen.getByRole('note')).toHaveTextContent(inv.registryNotice);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();

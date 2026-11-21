@@ -17,7 +17,7 @@ export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnap
   <div className="divide-y divide-border rounded-xl border border-border bg-card">
    {ordered.map(entry=>{
     const status=snapshot?.runners.find(row=>row.id===entry.id);
-    return <div key={entry.id} className="p-4 sm:p-5">
+    return <div key={entry.id} id={`runner-${entry.id}`} className="scroll-mt-4 p-4 sm:p-5">
      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-medium">{t(`jobs.${entry.id}.name`)}</h3><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t(`jobs.${entry.id}.description`)}</p></div>
       <div className="flex flex-wrap gap-2"><Badge variant="default">{!status?t('unavailable'):!status.installed?(status.managed?t('health.missing'):t('unavailable')):status.enabled?t('enabled'):t('disabled')}{status&&!status.managed&&status.installed?' · systemd':''}</Badge>{status?.hold&&<Badge variant="warning">{t('held')}</Badge>}{status&&!status.managed&&<Badge variant="default">{t('external')}</Badge>}{status&&<Badge variant={status.health==='failed'?'danger':status.health==='success'?'success':'default'}>{t(`health.${!status.managed&&status.health==='missing'?'unknown':status.health}`)}</Badge>}</div>
      </div>

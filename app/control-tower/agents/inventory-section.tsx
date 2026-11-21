@@ -2,19 +2,21 @@
  * Desktop: one table per group. Mobile: each row stacks into a card. A company HR administrator gets the read-only
  * registry/tier columns only (core/ai-inventory.ts already withheld everything else). */
 import { ActionButton } from '@/components/ui/action-button';
+import Link from 'next/link';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { Badge, Card, SectionHeader, btnGhost } from '@/components/ui';
 import { AI_COMPONENT_KINDS, type AiComponentKind } from '@/lib/ai/ai-inventory';
+import { RUNNERS } from '@/lib/runner-control-model';
 import type { AiInventoryView, AiInventoryRuntime } from '@/core/ai-inventory';
 import { setAgentActionPauseAction } from './actions';
+import { getWorkerOverviewCopy } from './worker-overview-copy';
 
 type Row = Extract<AiInventoryView,{scope:'full'}>['rows'][number] | Extract<AiInventoryView,{scope:'registry'}>['rows'][number];
 const isPaused = (r:Row) => ('runtime' in r ? r.runtime.actionPaused : r.actionPaused) === true;
 const rowAnchor = (key:string) => `ai-component-${key.replace(/[^a-z0-9_-]/gi,'-')}`;
 
 export async function AiInventorySection({inventory,mayPause}:{inventory:AiInventoryView;mayPause:boolean}) {
-  const t = await getTranslations('aiManagement');
-  const f = await getFormatter();
+  const [t, f, workerCopy] = await Promise.all([getTranslations('aiManagement'), getFormatter(), getWorkerOverviewCopy()]);
   const full = inventory.scope==='full';
   const n = (v:number) => f.number(v);
   const date = (d:Date|null) => d ? f.dateTime(d,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}) : t('inv.never');
@@ -50,7 +52,16 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
       case 'pauseKey': return <div className="flex flex-col items-start gap-1">{pause(r)}{pausedState(r)}{pauseControl(r)}</div>;
       case 'switch': return rt ? sw(rt,r) : null;
       case 'allowance': return rt ? <span className="text-xs">{allowance(rt)}</span> : null;
-      case 'lastRun': return rt ? <span className="whitespace-nowrap text-xs">{r.kind==='action'?'—':date(rt.lastRun)}</span> : null;
+      case 'lastRun': {
+        if (!('runtime' in r)) return null;
+        if (r.kind === 'scheduled_job' && !r.runtime.lastRun) {
+          if (!r.jobKey && RUNNERS.some(runner => runner.id === r.id)) return <Link href={`/admin/scheduled-actions#runner-${r.id}`} prefetch={false}
+            aria-label={workerCopy('checkNamedScheduler', {worker: name(r)})}
+            className="text-xs text-primary underline underline-offset-4">{workerCopy('checkScheduler')}</Link>;
+          return <span className="text-xs text-muted-foreground">{workerCopy(r.jobKey ? 'noScheduledRunRecorded' : 'unavailable')}</span>;
+        }
+        return <span className="whitespace-nowrap text-xs">{r.kind==='action'?'—':date(r.runtime.lastRun)}</span>;
+      }
       case 'use30': return rt ? use(rt,r) : null;
       case 'outcomes': return rt ? outcomes(rt) : null;
       case 'audit': return rt ? <span className="text-xs">{audit(rt)}</span> : null;
