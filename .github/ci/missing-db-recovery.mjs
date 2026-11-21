@@ -1,7 +1,7 @@
 /** Independently verify original and replacement evidence without granting a staging install. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdtempSync, readFileSync, writeFileSync} from 'node:fs';
+import {mkdtempSync, readFileSync, realpathSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -123,7 +123,7 @@ async function verifyEvidence({candidatePath, sourceRunId, replayRunId, baseline
     artifacts: pages(`actions/runs/${replayRunId}/artifacts`, 'artifacts')};
   const replayJob = validateMissingDbReplacement(replayMetadata, expectations);
   const reuse = evidenceDirectory !== undefined;
-  const dir = evidenceDirectory ?? mkdtempSync(join(tmpdir(), 'aihr-missing-db-proof-'));
+  const dir = evidenceDirectory ?? mkdtempSync(join(realpathSync(tmpdir()), 'aihr-missing-db-proof-'));
   const source = await collectRecoveryEvidence(sourceRunId, dir, {reuse, prefetchDirectory: process.env.AIHR_CI_PREFETCH_DIR || undefined});
   const replay = await collectRecoveryEvidence(replayRunId, join(dir, 'replay'), {reuse});
   assert.deepEqual(source.run, originalRun, 'Original run changed during retrieval');
