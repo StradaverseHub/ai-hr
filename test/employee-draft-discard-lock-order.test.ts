@@ -1,7 +1,7 @@
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant} from '../db/client';
-import {lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from '../core/access-configuration-lock';
 import {discardEmployeeDraft,saveEmployeeDraft} from '../core/employee-draft';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -78,3 +78,58 @@ it('retries an owned draft discard after an audit lock timeout and commits one d
   await Promise.allSettled([holder,...(discard?[discard]:[])]);
  }
 });
+
+it('observes the standalone Personnel discard fallback queue a shared Access read', async () => {
+  await resetDb();
+  const base = await seedBase();
+  await setModule(base.tenantId, 'lifecycle', 'active');
+  const ctx = await entitledCtx(base);
+  const draft = await saveEmployeeDraft(ctx, { data: {}, currentStep: 1 });
+  let discard: Promise<void> | undefined;
+  let read: Promise<boolean> | undefined;
+
+  try {
+    await owner.db.transaction(async holder => {
+      await lockAccessConfigurationReadTx(holder, base.tenantId);
+      const [holderBackend] = await holder.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+      const waiters = () => holder.execute<{
+        pid: number; mode: 'ExclusiveLock' | 'ShareLock'; blockedBy: number[]; nativeDiscardBarrier: boolean;
+      }>(sql`
+        with access_key as (select hashtextextended(${'access-configuration:' + base.tenantId}, 0) as id)
+        select l.pid, l.mode, pg_blocking_pids(l.pid) as "blockedBy",
+          a.query like 'select app.access_configuration_write_lock()%' as "nativeDiscardBarrier"
+        from pg_locks l join pg_stat_activity a on a.pid=l.pid cross join access_key k
+        where a.datname=current_database() and l.locktype='advisory' and not l.granted and l.objsubid=1
+          and l.classid::bigint=((k.id>>32)&4294967295) and l.objid::bigint=(k.id&4294967295)
+      `);
+
+      discard = discardEmployeeDraft(ctx, draft.id);
+      void discard.catch(() => undefined);
+      let discardPid: number | undefined;
+      await expect.poll(async () => {
+        discardPid = (await waiters()).find(lock => lock.mode === 'ExclusiveLock'
+          && lock.nativeDiscardBarrier && lock.blockedBy.includes(holderBackend.pid))?.pid;
+        return discardPid !== undefined;
+      }, { timeout: 4000, interval: 10 }).toBe(true);
+
+      read = withTenant(ctx, async tx => {
+        await lockAccessConfigurationReadTx(tx, base.tenantId);
+        const [principal] = await tx.execute<{ current: boolean }>(sql`select app.principal_snapshot_current() as current`);
+        return principal.current;
+      });
+      void read.catch(() => undefined);
+      await expect.poll(async () => (await waiters()).some(lock => lock.mode === 'ShareLock'
+        && lock.blockedBy.some(pid => pid === discardPid)), { timeout: 1000, interval: 10 }).toBe(true);
+    });
+
+    await expect(discard).resolves.toBeUndefined();
+    await expect(read).resolves.toBe(true);
+    const [result] = await owner.client`select
+      (select count(*)::int from employee_draft where id=${draft.id}::uuid) as drafts,
+      (select count(*)::int from domain_event where aggregate_id=${draft.id}::uuid
+        and event_type='employee-draft.discarded') as events`;
+    expect(result).toEqual({ drafts: 0, events: 1 });
+  } finally {
+    await Promise.allSettled([discard, read]);
+  }
+}, 15000);
