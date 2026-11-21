@@ -1,5 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { hydrateRoot, type Root } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
 import type { OnboardingTask } from '../packs/lifecycle/service';
@@ -148,7 +150,7 @@ describe('V3.1 localized task controls', () => {
         fireEvent.click(screen.getByRole('button',{name:'Confirm selection'}));
         await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'saveSubmit',patch:expect.objectContaining({checklistOverride:'alternative'})}));
     });
-    it('retains older unfinished equipment and pending preparation while recent filtering excludes old cancelled or completed work', () => {
+    it('retains unfinished joiners and applies the first filter once the visible register is interactive', async () => {
         const today=todayInKualaLumpur(), join=dayDate(today,-40), actor={id:'owner',name:'HR',module:true,hr:true,master:false};
         let id=0;
         const env={today,now:today+'T02:00:00.000Z',id:()=>String(++id),nextNumber:()=> 'IT-'+(++id),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
@@ -169,14 +171,37 @@ describe('V3.1 localized task controls', () => {
         expect(screen.getByRole('button',{name:/Progress 0%.*Older pending preparation/})).toHaveTextContent('Pending submission');
         expect(screen.getByText('Due '+new Intl.DateTimeFormat('en',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(dayDate(join,-7)+'T00:00:00Z')))).toBeInTheDocument();
         unmount();
-        render(<NextIntlClientProvider locale="en" messages={messages('en')}>
+        const register = <NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={messages('en')}>
             <Joiners rows={[working,pending].map(c=>({case:c,isNew:false}))} display={{today,latestSync:'2099-01-01T00:00:00.000Z'}} config={config} options={options}/>
-        </NextIntlClientProvider>);
-        expect(screen.getByText(/Latest Personnel sync/)).toHaveTextContent('2099');
-        expect(screen.getByRole('link',{name:'Older equipment work'})).toBeVisible();
-        fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'pending preparation'}});
-        expect(screen.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
-        expect(screen.queryByRole('link',{name:'Older equipment work'})).not.toBeInTheDocument();
+        </NextIntlClientProvider>;
+        const host = document.createElement('div');
+        host.innerHTML = renderToString(register);
+        document.body.append(host);
+        const view = within(host);
+        const search = () => view.getByRole('textbox', { name: 'Search by name' });
+        const clear = () => view.getByRole('button', { name: 'Clear filters' });
+        const recover = vi.fn();
+        let root: Root | undefined;
+        try {
+            expect(view.getByText(/Latest Personnel sync/)).toHaveTextContent('2099');
+            expect(view.getByRole('link',{name:'Older equipment work'})).toBeVisible();
+            expect(search()).toBeDisabled();
+            expect(clear()).toBeDisabled();
+            await act(async () => { root = hydrateRoot(host, register, { onRecoverableError: recover }); });
+            expect(recover).not.toHaveBeenCalled();
+            expect(search()).toBeEnabled();
+            expect(clear()).toBeEnabled();
+            fireEvent.change(search(), { target: { value: 'Fictional unmatched joiner' } });
+            expect(view.getByText('No new joiners match your search or filters.')).toBeVisible();
+            fireEvent.click(clear());
+            expect(view.getByRole('link',{name:'Older equipment work'})).toBeVisible();
+            fireEvent.change(search(), { target: { value: 'pending preparation' } });
+            expect(view.getByRole('link',{name:'Older pending preparation'})).toBeVisible();
+            expect(view.queryByRole('link',{name:'Older equipment work'})).not.toBeInTheDocument();
+        } finally {
+            await act(async () => { root?.unmount(); });
+            host.remove();
+        }
     });
     it('keeps a future task visible with its status control locked', () => {
         render(<NextIntlClientProvider locale="en" messages={messages('en')} timeZone="Asia/Kuala_Lumpur"><TasksView items={[{ ...task, locked: true, lockReason: 'After Day 1 handover' }]} existing={[]}/></NextIntlClientProvider>);
