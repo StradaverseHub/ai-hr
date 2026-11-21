@@ -65,7 +65,7 @@ on:
         default: ''
         type: string
       reuse_combined_census_build:
-        description: Compare populated record pages using pinned production builds
+        description: Measure the static census or populated records using a pinned production build
         default: false
         type: boolean
       model_eval:
@@ -137,7 +137,7 @@ jobs:
             exit 2
           fi
           if [[ "$REUSE_CENSUS_BUILD" == true ]]; then
-            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation)$ && "$RUN_BUILD" != true ]]
+            [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all|split:[0-7]|fixture-records|payroll-corrections|personnel-movement|payroll-formula-evaluation)$ && "$RUN_BUILD" != true ]]
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/fixture-record-builds.json > /dev/null
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
