@@ -174,7 +174,8 @@ jobs:
           combined_group_build=false
           if [[ ( "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ||
                   "$EXPECTED_SHA" == 71e0dceb1a393817f3040518e82dc845a27700b0 ||
-                  "$EXPECTED_SHA" == 5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4 ) && "$MIXED_GROUP_SCALE" == true &&
+                  "$EXPECTED_SHA" == 5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4 ||
+                  "$EXPECTED_SHA" == 0ba883e0aa294bb0f15dcfe2433deedb52d11996 ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then

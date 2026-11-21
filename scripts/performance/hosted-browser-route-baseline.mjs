@@ -49,7 +49,8 @@ const combinedGroupArtifacts=new Map([
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
 const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
-const combinedGroupBuild=(Boolean(combinedGroupArtifact)||env.AIHR_CI_HEAD===detachedShellBuild)&&groupScale&&establishedAttendance
+const freshGroupBuilds=new Set([detachedShellBuild,'0ba883e0aa294bb0f15dcfe2433deedb52d11996']);
+const combinedGroupBuild=(Boolean(combinedGroupArtifact)||freshGroupBuilds.has(env.AIHR_CI_HEAD))&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
