@@ -1150,6 +1150,24 @@ async function measureTp3Catalogue(fixture){
     .waitFor({state:'visible',timeout});
    row.languageSwitchMs=Math.round(performance.now()-started);
    row.afterLocaleChange=(await documentTiming(page))?.appScripts;
+   if(visit===3){
+    row.step='client-navigation-home';
+    await page.evaluate(()=>{window.__aihrPerfTp3ClientTransition=true;});
+    const outbound=performance.now();
+    await page.locator('[data-app-sidebar] a[href="/"]:visible').first().click({timeout});
+    await page.waitForURL(url=>url.pathname==='/',{timeout});
+    await readyContent(page,actor,'/',()=>timeout,undefined,fixture);
+    assert.equal(await page.evaluate(()=>window.__aihrPerfTp3ClientTransition),true,'Home opened a new document');
+    const homeReadyMs=Math.round(performance.now()-outbound);
+    row.step='client-navigation-return';
+    const returning=performance.now();
+    await page.goBack({waitUntil:'commit',timeout});
+    await page.waitForURL(url=>url.pathname===path,{timeout});
+    await form.getByRole('button',{name:copies.ms.saveDraft,exact:true}).waitFor({state:'visible',timeout});
+    await month.waitFor({state:'visible',timeout});
+    assert.equal(await page.evaluate(()=>window.__aihrPerfTp3ClientTransition),true,'TP3 returned in a new document');
+    row.clientNavigation={homeReadyMs,returnReadyMs:Math.round(performance.now()-returning)};
+   }
    assert.equal(row.translationErrors,0,'A translation was missing in the TP3 page or shell');
    if(network)assert(row.throttledRequests>0,'Expected requests to use the Chromium network profile');
    row.status='observed';
