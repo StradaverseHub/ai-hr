@@ -18,7 +18,8 @@ import {prepareAssistantConversation} from '../core/assistant-provider-input';
 import {preparePrivateAiTask} from '../core/ai-governance';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {assertAiCentreRunningTx} from '../core/ai-centre-control';
-import {lockLeaveDependencyReadConfigurationTx} from '../core/leave-dependency-lock';
+import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '../core/leave-dependency-lock';
+import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
 import {ASSISTANT_PRIVATE_CONTRACT,adjudicatePrivateAssistantTerminal,capturePrivateAssistantTask,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
@@ -44,11 +45,11 @@ async function fixture(){const admin=adminCtx(base);await seedEntitlement(admin,
  const userId=await createAppUser(base.tenantId,mine.personId,'employee');await grantAssistant(admin,{appUserId:userId});
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:mine.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:mine.employmentId,leaveTypeId:base.annualLeaveTypeId,
-  entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId};}
+  entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return {admin,ctx,userId,employmentId:mine.employmentId};}
 const response:ConverseResult={text:'Fictional response',stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
 describe('actual Mine flags bind current provider input and historical source disclosure',()=>{
- it('rehearses local leave custody with zero provider calls, native quota and a same-transaction source recheck',async()=>{
-  const {admin,ctx,userId}=await fixture();
+ it.each(['visibility','balance'] as const)('rehearses zero-provider leave accounting across a concurrent %s edit',async change=>{
+  const {admin,ctx,userId,employmentId}=await fixture();
   const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('No model request is expected.'));
   await owner.db.insert(schema.assistantBudget).values({
    tenantId:base.tenantId,effectiveFrom:todayInKualaLumpur(),perUserDailyQuestions:2,monthlyTokenCeiling:1000,
@@ -83,7 +84,12 @@ describe('actual Mine flags bind current provider input and historical source di
     await withTenant(ctx,async tx=>{
      await assertAiCentreRunningTx(tx,ctx);
      await lockLeaveDependencyReadConfigurationTx(tx,ctx.tenantId);
-     const valid=await withAssistantAdmissionReadsTx(ctx,tx,read=>assistantSourceReplay(ctx,read)(draft.evidence));
+     const valid=await withAssistantAdmissionReadsTx(ctx,tx,async read=>{
+      const [subject,...others]=await read.myEmployments();
+      if(!subject||others.length)throw Error('Expected one active own employment.');
+      await lockLeaveDependenciesTx(tx,ctx.tenantId,[subject.employmentId]);
+      return assistantSourceReplay(ctx,read)(draft.evidence);
+     });
      if(!valid)throw Error('The canonical leave source changed.');
      await afterReplay?.();
      const disclosureReceipt=sealAssistantDisclosure(binding,draft.evidence,draft.plan);
@@ -98,17 +104,26 @@ describe('actual Mine flags bind current provider input and historical source di
    } finally {retireAssistantConversationStrategyCapability(draft.strategy.capability);}
    return exchangeId;
   }
-  const hideBalance=()=>updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}});
+  const changeSource=()=>change==='visibility'
+   ? updateLeaveType(admin,{id:base.annualLeaveTypeId,name:'Annual Leave',essViewConfig:{available:false}})
+   : applyLeaveAdjustmentBatch(admin,{leaveTypeIds:[base.annualLeaveTypeId],employmentIds:[employmentId],
+    targetMode:'individual',effectiveOn:todayInKualaLumpur(),days:5,reason:'Fictional leave balance correction'});
   const visible=await persistLocalLeave(await prepareLocalLeave(),async()=>{
-   await expect(hideBalance()).rejects.toMatchObject({name:'LeaveDependencyUnavailable',reason:'busy'});
+   await expect(changeSource()).rejects.toMatchObject({name:'LeaveDependencyUnavailable',reason:'busy'});
   });
   const before=await loadAiWorkspace(ctx,{selectedExchangeId:visible,includeGovernance:false});
   expect(before.history[0].grounded?.mode).toBe('grounded');
   expect(JSON.stringify(before.history[0].grounded)).toContain('113.75');
 
   const stale=await prepareLocalLeave();
-  await hideBalance();
+  await changeSource();
   await expect(persistLocalLeave(stale)).rejects.toThrow('The canonical leave source changed.');
+  if(change==='balance'){
+   const current=await tool.run(ctx,{});
+   expect(current.ok).toBe(true);
+   const facts=presentGroundedToolOutcome('my_leave_balances',current)?.cards.flatMap(card=>card.facts);
+   expect(facts).toContainEqual(expect.objectContaining({field:'available',value:118.75}));
+  }
   await expect(askAssistant(ctx,{question})).rejects.toMatchObject({code:'budget_daily'});
   expect(transport).not.toHaveBeenCalled();
   expect(await owner.db.select().from(schema.aiModelRun).where(eq(schema.aiModelRun.tenantId,base.tenantId))).toEqual([]);
