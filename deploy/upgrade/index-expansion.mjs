@@ -39,7 +39,7 @@ export function deriveExpansion(baseline, candidate) {
 }
 
 async function readLedger(sql) {
-  return sql`SELECT id::text, hash, created_at::text FROM drizzle.__drizzle_migrations ORDER BY id`;
+  return sql`SELECT m.id::text, m.hash, m.created_at::text FROM drizzle.__drizzle_migrations m ORDER BY m.id`;
 }
 
 async function inspectIndex(sql, plan) {

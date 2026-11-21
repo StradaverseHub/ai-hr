@@ -35,8 +35,7 @@ try {
   console.log(JSON.stringify(result));
 } catch (error) {
   console.error(JSON.stringify({error: error.name, code: error.code ?? 'upgrade-refused',
-    detail: error.code && !/^[A-Z0-9]{5}$/.test(error.code) ? undefined :
-      error.name === 'AssertionError' ? error.message.split('\n', 1)[0] : undefined}));
+    detail: error.name === 'AssertionError' ? error.message.split('\n', 1)[0] : undefined}));
   process.exitCode = 1;
 } finally {
   await client.end({timeout: 2});
