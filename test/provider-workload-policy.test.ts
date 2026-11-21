@@ -35,7 +35,10 @@ describe('purpose-specific protected workload contracts',()=>{
   if(!('turns' in args)||args.turns[0].role!=='user')throw Error('Expected an ordinal catalogue');
   expect(JSON.parse(args.turns[0].content)).toMatchObject({
    version:1,operation:'conversation',intent:'attendance',strategy:'baseline_v1',
-   reads:[{read:0,module:'attendance',cards:[{card:0,facts:[{field:'date',available:true},{field:'status',available:true},{field:'workedMinutes',available:true},{field:'otMinutes',available:true}]}]}],
+   reads:[{read:0,module:'attendance',cards:[
+    {card:0,facts:[{fact:0,field:'date',available:true},{fact:1,field:'status',available:true},{fact:2,field:'workedMinutes',available:true},{fact:3,field:'otMinutes',available:true}]},
+    {card:1,facts:[]},{card:2,facts:[]},{card:3,facts:[]},
+   ]}],
   });
   expect(args.turns[0].content).not.toMatch(/My attendance|2026-01-01|470|fixtureId|expected/);
   expect(()=>contract.capture({fixtureId,strategy,steps:[{calls:[{id:'invented',expectedIndex:0}]}]})).toThrow();
