@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { and, eq, sql } from 'drizzle-orm';
 import { beforeAll,beforeEach,afterAll,describe,it,expect } from 'vitest';
 import { withTenant,type SessionContext } from '../db/client';
@@ -86,14 +87,23 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
   expect(statements).toHaveLength(1);
   expect(statements[0].params).toEqual([]);
 
-  for(const [name,actor] of Object.entries({staff,reviewer,groupRewards:gr})){
-   const timing=await owner.client.begin(async tx=>{
-    type Counter={id:string;name:string;calls:number;selfMs:number;totalMs:number};
-    const counters=()=>tx<Counter[]>`select f.funcid::text as id,p.proname as name,
-     f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
-     from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
-     where f.schemaname='app' and f.calls>0`;
-    await tx.unsafe("set local track_functions='all'");
+  const groupGrant:SessionContext={...staff,personId:people[1].id,
+   userId:await createAppUser(base.tenantId,people[1].id,'employee')};
+  await owner.db.execute(sql`insert into reward_group_role_grant (tenant_id,user_id,role,active,revision)
+   values(${base.tenantId}::uuid,${groupGrant.userId}::uuid,'ctro',true,1)`);
+  const actors=[['staff',staff],['reviewer',reviewer],['groupRewards',gr],['wholeGroupGrant',groupGrant]] as const;
+  const replacement=readFileSync(new URL('./fixtures/rewards-navigation-group-grant.sql',import.meta.url),'utf8');
+  const rollback=new Error('Roll back the Rewards grant optimization proof');
+  await expect(owner.client.begin(async tx=>{
+   type Counter={id:string;name:string;calls:number;selfMs:number;totalMs:number};
+   const counters=()=>tx<Counter[]>`select f.funcid::text as id,p.proname as name,
+    f.calls::int,f.self_time as "selfMs",f.total_time as "totalMs"
+    from pg_stat_xact_user_functions f join pg_proc p on p.oid=f.funcid
+    where f.schemaname='app' and f.calls>0`;
+   const readBoundary=()=>tx`select p.oid::text,p.proacl::text,p.prosecdef,p.provolatile,p.proconfig,
+    pg_get_userbyid(p.proowner) as owner from pg_proc p where p.oid='app.reward_current_group_roles()'::regprocedure`;
+   await tx.unsafe("set local track_functions='all'");
+   const measure=async(actor:SessionContext)=>{
     const before=new Map((await counters()).map(row=>[row.id,row]));
     await tx.unsafe('set local role ai_hr_app');
     const grants=actor.grants??(actor.roles??[]).map(role=>({role,companyId:null}));
@@ -102,21 +112,39 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
      set_config('app.roles',${roles.join(',')},true),set_config('app.grants',${JSON.stringify(grants)},true),
      set_config('app.agent_principal_id','',true),set_config('jit','off',true)`;
     const started=performance.now();
+    const outputs=[];
     for(let trial=0;trial<5;trial++){
-     const [row]=await tx.unsafe<{review:boolean}[]>(statements[0].sql);
-     expect(row.review,name).toBe(name!=='staff');
+     const [row]=await tx.unsafe<Record<string,boolean>[]>(statements[0].sql);
+     outputs.push(row);
     }
     const totalMs=performance.now()-started;
+    const groupRoles=(await tx<{role:string}[]>`select app.reward_current_group_roles() as role order by role`).map(row=>row.role);
     await tx.unsafe('reset role');
-    const top=(await counters()).map(({id,name,calls,selfMs,totalMs})=>({name,
+    const work=(await counters()).map(({id,name,calls,selfMs,totalMs})=>({name,
      calls:calls-(before.get(id)?.calls??0),selfMs:selfMs-(before.get(id)?.selfMs??0),
-     totalMs:totalMs-(before.get(id)?.totalMs??0)})).filter(row=>row.calls>0)
-     .sort((a,b)=>b.selfMs-a.selfMs).slice(0,12);
-    expect(top.length,name).toBeGreaterThan(1);
-    return {totalMs,top};
-   });
-   console.info('REWARDS_NAVIGATION_NATIVE_WORK '+JSON.stringify({name,...timing}));
-  }
+     totalMs:totalMs-(before.get(id)?.totalMs??0)})).filter(row=>row.calls>0);
+    const principalChecks=work.filter(row=>row.name==='principal_snapshot_current').reduce((n,row)=>n+row.calls,0);
+    return {outputs,groupRoles,totalMs,principalChecks};
+   };
+   const boundary=await readBoundary();
+   const canonical=new Map<string,Awaited<ReturnType<typeof measure>>>();
+   for(const [name,actor] of actors)canonical.set(name,await measure(actor));
+   expect(canonical.get('wholeGroupGrant')?.groupRoles).toEqual(['ctro']);
+   expect(canonical.get('staff')?.groupRoles).toEqual([]);
+   await tx.unsafe(replacement);
+   expect(await readBoundary()).toEqual(boundary);
+   for(const [name,actor] of actors){
+    const before=canonical.get(name)!;
+    const after=await measure(actor);
+    expect(after.outputs,name).toEqual(before.outputs);
+    expect(after.groupRoles,name).toEqual(before.groupRoles);
+    console.info('REWARDS_NAVIGATION_GRANT_PROOF '+JSON.stringify({name,
+     canonicalMs:before.totalMs,candidateMs:after.totalMs,
+     canonicalPrincipalChecks:before.principalChecks,candidatePrincipalChecks:after.principalChecks}));
+    if(name==='staff')expect(after.principalChecks).toBeLessThan(before.principalChecks/4);
+   }
+   throw rollback;
+  })).rejects.toBe(rollback);
  },180000);
 
  it('refuses an incomplete or stale release and lets the preparer release with a reason (board 60f1fdcd)',async()=>{
