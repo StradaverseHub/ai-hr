@@ -1,13 +1,17 @@
 /** Canonical Claims specialist read and Assistant consumer; authored UNRUN. No provider calls. */
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { ownClaimStatuses, createClaimType, submitClaim, saveClaimDraft, addClaimAttachment } from '../packs/claims/service';
 import { ASSISTANT_TOOLS, toolsFor } from '../core/assistant-tools';
 import { grantAssistant } from '../core/assistant-grant';
+import { askAssistant } from '../core/assistant';
+import { withAssistantRead } from '../core/assistant-read-session';
+import { workspaceGroundedAnswers } from '../core/workspace-grounded-answers';
 import { hireEmployee } from '../core/org';
+import { openaiAdapter } from '../lib/ai/providers/openai';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 let base: Base;
@@ -104,4 +108,48 @@ describe('own Claims status specialist', () => {
     await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId, ctx.userId!));
     await expect(ownClaimStatuses(ctx, 5)).rejects.toThrow('Current AI calling authority');
   });
+});
+
+it('summarizes own Claims and Leave statuses from the canonical reads without contacting the provider', async () => {
+  const { ctx, mine, other, typeId } = await fixture();
+  const { tenantId, annualLeaveTypeId } = base;
+  const latest = '2026-02-03';
+  const earlier = '2026-02-01';
+  await owner.db.insert(schema.claimRequest).values([
+    { tenantId, claimTypeId: typeId, employmentId: mine.employmentId, amount: '12.00', incurredOn: latest, createdAt: new Date(latest), status: 'pending' },
+    { tenantId, claimTypeId: typeId, employmentId: mine.employmentId, amount: '11.00', incurredOn: earlier, createdAt: new Date(earlier), status: 'draft' },
+    { tenantId, claimTypeId: typeId, employmentId: other.employmentId, amount: '99.00', incurredOn: '2026-02-04', status: 'pending' },
+  ]);
+  await owner.db.insert(schema.leaveRequest).values([
+    { tenantId, leaveTypeId: annualLeaveTypeId, employmentId: mine.employmentId, days: '1', startDate: latest, endDate: latest, status: 'pending' },
+    { tenantId, leaveTypeId: annualLeaveTypeId, employmentId: mine.employmentId, days: '1', startDate: earlier, endDate: earlier, status: 'cancelled' },
+    { tenantId, leaveTypeId: annualLeaveTypeId, employmentId: other.employmentId, days: '1', startDate: '2026-02-04', endDate: '2026-02-04', status: 'pending' },
+  ]);
+  vi.stubEnv('AI_CONFIG_SECRET', 'fictional-private-status-receipt');
+  vi.stubEnv('OPENAI_API_KEY', 'fictional-status-transport');
+  const transport = vi.spyOn(openaiAdapter, 'converse');
+  try {
+    for (const [question, tool, dateField, oldStatus] of [
+      ['My claims', 'my_claim_statuses', 'incurredOn', 'draft'],
+      ['My leave requests', 'my_leave_requests', 'from', 'cancelled'],
+    ] as const) {
+      const result = await askAssistant(ctx, { question });
+      expect(result).toMatchObject({ stop: 'end', turns: 0, toolsUsed: [tool] });
+      const [row] = await owner.db.select().from(schema.assistantExchange).where(eq(schema.assistantExchange.id, result.exchangeId));
+      expect(row).toMatchObject({ turnCount: 0, inputTokens: 0, outputTokens: 0 });
+      const binding = { tenantId, userId: ctx.userId!, exchangeId: row.id, question, answer: row.answer ?? '' };
+      const answer = await withAssistantRead(ctx, null, read => workspaceGroundedAnswers(ctx, read)(binding, row.disclosureReceipt));
+      expect(answer).toMatchObject({ mode: 'grounded', partial: false });
+      const facts = answer.conversation?.facts.map(({ view, card, fact }) => {
+        if (view.state !== 'ready') throw Error('Expected an authorized source view');
+        const { field, value } = view.presentation.cards[card].facts[fact];
+        return [field, value];
+      });
+      expect(facts).toEqual([['status', 'pending'], [dateField, latest], ['status', oldStatus], [dateField, earlier]]);
+    }
+    expect(transport).not.toHaveBeenCalled();
+  } finally {
+    transport.mockRestore();
+    vi.unstubAllEnvs();
+  }
 });

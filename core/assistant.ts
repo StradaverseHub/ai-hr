@@ -46,6 +46,7 @@ import {preparePrivateAiTask} from './ai-governance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {isOwnLeaveBalanceIntent,selectOwnLeaveBalance} from '../lib/ai/assistant-owned-leave-balance';
+import {isOwnRequestStatusIntent,selectOwnRequestStatuses} from '../lib/ai/assistant-owned-request-status';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
@@ -290,10 +291,10 @@ async function askAssistantActivity(
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
-      else if(ownLeaveBalance){
-        const selectedBalance=selectOwnLeaveBalance(catalogue);
-        if(selectedBalance){
-          answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(selectedBalance),catalogue),answerReads);
+      else if(ownLeaveBalance||isOwnRequestStatusIntent(intent.intent)){
+        const localPlan=ownLeaveBalance?selectOwnLeaveBalance(catalogue):selectOwnRequestStatuses(catalogue);
+        if(localPlan){
+          answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(localPlan),catalogue),answerReads);
           replayBeforeRetention=tx=>checkCurrentSources(tx,ctx);
           stop='end';answer=JSON.stringify(answerPlan);
         }
