@@ -27,8 +27,14 @@ printf '%s  %s\n' "$digest" build.tar.gz "$manifest" build-manifest.json "$sourc
 test "$(sha256sum "$canonical/pnpm-lock.yaml" | cut -d' ' -f1)" = "$lock"
 test "$(sha256sum "$canonical/package.json" | cut -d' ' -f1)" = "$package"
 test "$("$node" -v)" = "v$(reader .runtime.node)"
-available=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-(( available >= 1048576 ))
+deadline=$((SECONDS + 60))
+while (( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) < 1048576 )); do
+  if (( SECONDS >= deadline )); then
+    echo 'Staging needs 1 GiB of available memory before warming the second runtime.' >&2
+    exit 1
+  fi
+  sleep 2
+done
 target=$root/source/$digest
 mkdir -m 700 "$target"
 tar -xzf source.tar.gz --no-same-owner -C "$target"
