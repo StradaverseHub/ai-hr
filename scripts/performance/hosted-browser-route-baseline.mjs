@@ -34,7 +34,9 @@ const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusPersonnelMovement=shardInput==='personnel-movement';
-const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections||censusPersonnelMovement;
+const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
+const censusFullFixtureRecords=shardInput==='fixture-records';
+const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1542,7 +1544,7 @@ try{
  }finally{retainSeedPhases();}
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
-   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections&&!censusPersonnelMovement),
+   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFullFixtureRecords),
   });
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
@@ -1552,7 +1554,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   if(censusFixtureRecords&&!censusPayrollCorrections&&!censusPersonnelMovement){
+   if(censusFullFixtureRecords){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
@@ -1580,6 +1582,20 @@ try{
    save();
   }
  }
+ if(censusPayrollFormulaEvaluation){
+  try{
+   await run('seed-payroll-formula-evaluation',process.execPath,
+    ['--conditions=react-server','--import','tsx','../automation/scripts/performance/payroll-formula-evaluation-fixture.mjs'],dbEnv);
+   fixture.payrollFormulaEvaluation=JSON.parse(readFileSync(join(privateDir,'payroll-formula-evaluation.json'),'utf8'));
+  }finally{
+   const path=join(privateDir,'payroll-formula-seed-stage');
+   if(existsSync(path)){
+    const stage=readFileSync(path,'utf8');
+    if(['principal','formula','calculate','complete'].includes(stage))report.payrollFormulaSeedStage=stage;
+    save();
+   }
+  }
+ }
  assert(Array.isArray(fixture.users)&&fixture.users.length===500&&Array.isArray(fixture.tenants)
   &&fixture.tenants.length===2,'Fictional fixture inventory incomplete');
  assert.equal(new Set(fixture.joiners).size,2,'Expected two fictional New Joiners');
@@ -1599,8 +1615,8 @@ try{
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
     await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
-     payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement});
-    if(!censusPayrollCorrections&&!censusPersonnelMovement)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+     payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement,payrollFormulaEvaluation:censusPayrollFormulaEvaluation});
+    if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);

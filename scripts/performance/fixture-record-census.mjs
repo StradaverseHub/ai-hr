@@ -412,9 +412,27 @@ async function personnelMovementRoutes(db, fixture) {
   }));
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement }) {
+function payrollFormulaEvaluationRoutes(fixture) {
+  const [group, company] = fixture.users;
+  const evaluation = fixture.payrollFormulaEvaluation;
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(evaluation.companyId, company.companyId);
+  assert.match(evaluation.id, /^[0-9a-f-]{36}$/i);
+  assert.equal(Number(evaluation.amount), 25);
+  assert.equal(evaluation.componentCode, 'PERF_TRACE_AMOUNT');
+  return [group, company].map(actor => ({
+    actor, template: '/payroll/formula-builder/evaluations/[id]',
+    path: '/payroll/formula-builder/evaluations/' + evaluation.id,
+    exactHeading: 'Saved formula calculation', content: evaluation.componentCode, exactContent: true,
+    witness: 'dl div:has(dt:text-is("Calculated amount")) dd:text-is("' + evaluation.amount + '")',
+  }));
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
+    : payrollFormulaEvaluation ? payrollFormulaEvaluationRoutes(fixture)
     : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
