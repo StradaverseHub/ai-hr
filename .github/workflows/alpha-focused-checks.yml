@@ -287,16 +287,24 @@ jobs:
         if: ${{ inputs.reuse_first_use_build }}
         env:
           GH_TOKEN: ${{ github.token }}
+          MIXED_GROUP_SCALE: ${{ inputs.mixed_group_scale }}
         run: |
           build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
-          case "$AIHR_CI_HEAD" in
+          harness_head="$AIHR_CI_HEAD"
+          if [[ "$AIHR_CI_HEAD" == 497768e0210433bcf6723f42182d7f2b46111241 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
+            test "$(git rev-parse HEAD^)" = "$harness_head"
+            test "$(git diff --name-status "$harness_head" HEAD)" = "$(printf '%s\t%s' M scripts/performance/system-load-owner.mjs)"
+          fi
+          case "$harness_head" in
             "$build_source") ;;
             a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55)
-              test "$(git rev-parse HEAD~2)" = "$build_source"
+              test "$(git rev-parse "$harness_head~2")" = "$build_source"
               harness_diff="$(printf '%s\t%s\n' M scripts/performance/mixed-workflows.mjs M scripts/performance/route-latency.mjs \
                 M scripts/performance/system-load-owner.mjs A test/performance-attendance-capture.test.ts M test/performance-route-latency.test.ts)"
-              test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
+              test "$(git diff --name-status "$build_source" "$harness_head")" = "$harness_diff"
               ;;
             *) exit 2 ;;
           esac

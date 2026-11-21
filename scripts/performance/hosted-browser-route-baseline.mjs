@@ -1891,7 +1891,9 @@ try{
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
   const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
   try{
-   const {counts}=await seedBrowserGroupShape(owner,fixture);
+   const {counts,workforce}=await seedBrowserGroupShape(owner,fixture);
+   fixture.groupScaleWorkforce=workforce;
+   writeFileSync(join(privateDir,'fixture.json'),JSON.stringify(fixture),{mode:0o600});
    report.fixture.groupShape=counts;
    report.fixture.companies=counts.companies+counts.otherTenantCompanies;
    save();
