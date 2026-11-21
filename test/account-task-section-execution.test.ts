@@ -1,7 +1,7 @@
 /** Attribute the shared task statement's database work on a fictional group fixture. */
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { sql, type SQL } from 'drizzle-orm';
+import { sql, SQL } from 'drizzle-orm';
 import { afterAll, expect, it } from 'vitest';
 import { accountTaskCallerSql, accountTaskStatement, accountTaskStatementSections } from '../core/account-task-bundle';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -95,7 +95,25 @@ it('measures each signed-in shell task section with live identity and company sc
         const timing = await profile(tx, sql`with ${accountTaskCallerSql(session)} select ${expression} as section`, 5);
         breakdown.push({ section, ...timing });
       }
-      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs) };
+      const performance = sections.find(([name]) => name === 'performance')?.[1];
+      expect(performance, role).toBeDefined();
+      // Profile the actual SQL fragments used by the live projection. Keep the
+      // caller CTE for the assessment's own-employment check.
+      const names = ['reviews', 'assessment', 'calibration'] as const;
+      const expressions = performance!.queryChunks.filter((chunk): chunk is SQL => chunk instanceof SQL);
+      expect(expressions).toHaveLength(names.length);
+      const caller = accountTaskCallerSql(session);
+      const [original] = await tx.execute<{ value: Record<string, unknown> }>(
+        sql`with ${caller} select ${performance!} as value`,
+      );
+      const performanceOwners = [];
+      for (const [index, owner] of names.entries()) {
+        const ownerStatement = sql`with ${caller} select ${expressions[index]} as value`;
+        const [fragment] = await tx.execute<{ value: unknown }>(ownerStatement);
+        expect(fragment.value, owner).toEqual(original.value[owner]);
+        performanceOwners.push({ owner, ...await profile(tx, ownerStatement, 5) });
+      }
+      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs), performanceOwners };
     }, { readOnlySnapshot: true });
     results.push({ role, selectedCompanies: companyIds.length, ...result });
     console.info('ACCOUNT_TASK_SECTION_EXECUTION '+JSON.stringify(results.at(-1)));
