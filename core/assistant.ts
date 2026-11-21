@@ -47,6 +47,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {isOwnLeaveBalanceIntent,selectOwnLeaveBalance} from '../lib/ai/assistant-owned-leave-balance';
 import {isOwnRequestStatusIntent,selectOwnRequestStatuses} from '../lib/ai/assistant-owned-request-status';
+import {selectOwnOnboardingProgress} from '../lib/ai/assistant-owned-onboarding-progress';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
@@ -198,7 +199,9 @@ async function askAssistantActivity(
   const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const ownLeaveBalance=intent.intent!==null&&isOwnLeaveBalanceIntent(intent.intent);
   const ownRequestStatus=intent.intent!==null&&isOwnRequestStatusIntent(intent.intent);
-  const localOnly=intent.social!==null||proposal!==null||intent.intent===null||intent.intent==='pay_change'||ownLeaveBalance||ownRequestStatus;
+  const localAnswer=ownLeaveBalance?selectOwnLeaveBalance:ownRequestStatus?selectOwnRequestStatuses:
+    intent.intent==='lifecycle'?selectOwnOnboardingProgress:null;
+  const localOnly=intent.social!==null||proposal!==null||intent.intent===null||intent.intent==='pay_change'||localAnswer!==null;
 
   const now = p.now ?? new Date();
   const deadline = now.getTime() + EXCHANGE_DEADLINE_MS;
@@ -287,8 +290,8 @@ async function askAssistantActivity(
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
-      else if(ownLeaveBalance||ownRequestStatus){
-        const localPlan=ownLeaveBalance?selectOwnLeaveBalance(catalogue):selectOwnRequestStatuses(catalogue);
+      else if(localAnswer){
+        const localPlan=localAnswer(catalogue);
         if(localPlan){
           answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(localPlan),catalogue),answerReads);
           replayBeforeRetention=tx=>checkCurrentSources(tx,ctx);

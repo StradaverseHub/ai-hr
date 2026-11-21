@@ -3,16 +3,19 @@
  * Requires normally installed AI action controls; fixture absence fails rather than skips coverage. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {assignRole} from '../core/admin';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {askAssistant} from '../core/assistant';
 import {withAssistantRead} from '../core/assistant-read-session';
+import {workspaceGroundedAnswers} from '../core/workspace-grounded-answers';
 import {executeSpecialistHoldout,type SpecialistEvaluationReport} from '../core/module-specialist-harness';
 import {executeCanonicalSpecialist} from '../lib/ai/module-specialists';
 import type {AgentModuleCode} from '../lib/ai/module-agents';
+import {openaiAdapter} from '../lib/ai/providers/openai';
 import {createArticle} from '../core/knowledge-base';
 import {createNotice,publishNotice} from '../core/notice';
 import {dispatchNotifications,listNotifications,markNotificationRead} from '../core/notifications';
@@ -114,6 +117,33 @@ describe('canonical specialist native business controls (seven modules)',()=>{
   expect(native.data).toMatchObject({progress:actual!.progress,steps:expect.arrayContaining([expect.objectContaining({key:'p_file',done:true})])});
   expect(assessment.findings).toContain('lifecycle_steps_remaining');expect(assessment.findings).not.toContain('lifecycle_progress_complete');
   for(const secret of ['PRIVATE_','PEER-NATIVE',peer.email])expect(JSON.stringify({native,assessment})).not.toContain(secret);
+
+  vi.stubEnv('AI_CONFIG_SECRET','fictional-onboarding-source-receipt');
+  vi.stubEnv('OPENAI_API_KEY','fictional-onboarding-transport');
+  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async()=>{throw Error('Unexpected provider call');});
+  try{
+   const question='My onboarding';
+   const result=await askAssistant(self.ctx,{question});
+   expect(result).toMatchObject({stop:'end',turns:0,toolsUsed:['my_module_work']});
+   const [exchange]=await owner.db.select().from(s.assistantExchange).where(eq(s.assistantExchange.id,result.exchangeId));
+   expect(exchange).toMatchObject({turnCount:0,inputTokens:0,outputTokens:0});
+   const binding={tenantId:b.tenantId,userId:self.ctx.userId!,exchangeId:exchange.id,question,answer:exchange.answer??''};
+   const shown=await withAssistantRead(self.ctx,null,read=>workspaceGroundedAnswers(self.ctx,read)(binding,exchange.disclosureReceipt));
+   expect(shown).toMatchObject({mode:'grounded',partial:false,conversation:{plan:{mode:'answer',blocks:[
+    {kind:'fact',read:0,card:0,fact:1},
+    {kind:'fact',read:0,card:0,fact:2},
+    {kind:'explanation',read:0,card:null,code:'specialist_finding:lifecycle_steps_remaining'},
+   ]}}});
+   expect(shown.conversation?.facts.map(({view,card,fact})=>{
+    if(view.state!=='ready')throw Error('Expected an authorized onboarding summary');
+    const {field,value}=view.presentation.cards[card].facts[fact];
+    return [field,value];
+   })).toEqual([['progressDone',actual!.progress.done],['progressTotal',actual!.progress.total]]);
+   expect(transport).not.toHaveBeenCalled();
+  }finally{
+   transport.mockRestore();
+   vi.unstubAllEnvs();
+  }
   await revoke(self.ctx,'lifecycle');
  });
 
