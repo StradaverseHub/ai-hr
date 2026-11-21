@@ -28,7 +28,7 @@ async function probe({delayBell,total,monolith,lifecycleCount}:{delayBell:boolea
  let client=false,blocked=delayBell;
  function Bell(){
   if(client&&blocked)throw gate.promise;
-  return <NotificationCenter unread={0} items={[]} lifecyclePreview={lifecycle?.promise} canApprove/>;
+  return <NotificationCenter unread={0} items={[]} taskCount={lifecycle?2:0} lifecyclePreview={lifecycle?.promise} canApprove/>;
  }
  function Tree(){return <NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>
   <ShellApprovalFactsProvider source={source.promise} canOpenApprovalsWithoutAssignment={false}>
@@ -69,7 +69,7 @@ describe('approval facts and notification bell hydration ordering',()=>{
   const result=await probe({delayBell:false,total:3,lifecycleCount:4,monolith:true});
   expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);
   expect(result.pendingLabel).not.toContain('open tasks');
-  expect(result.label).toContain('7 open tasks');
+  expect(result.label).toContain('9 open tasks');
  });
  it('hydrates a delayed bell with no assigned task count without mismatch',async()=>{
   const result=await probe({delayBell:true,total:0,monolith:true});
