@@ -139,6 +139,16 @@ if(nativePreflight){
  nativePreflightRoutePlan();
 }
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
+const fixtureWorkforce=[...fixture.users,...(fixture.groupScaleWorkforce??[]),
+ ...fixture.tenants.flatMap((tenant,index)=>tenant.rewardDraft
+  ? [{tenant:index,companyId:tenant.rewardDraft.companyId,employmentId:tenant.rewardDraft.employmentId}]
+  : [])];
+assert.equal(new Set(fixtureWorkforce.map(row=>row.employmentId)).size,fixtureWorkforce.length,
+ 'Fictional workforce contains duplicate employments');
+
+function scopedFixtureWorkforce(user){
+ return fixtureWorkforce.filter(row=>row.tenant===user.tenant&&(user.role==='groupHR'||row.companyId===user.companyId));
+}
 let db,measuredLockDb,agent,browser,ownedBrowser,chromiumEnv,nativeAuditClient;
 const acquired={observer:'absent',agent:'absent',browser:'absent',audit:'absent'};
 const failures=createDriverFailures(),contexts=createDriverContexts(failures),sockets=createDriverSockets(failures);
@@ -884,9 +894,7 @@ async function main(){
     assert((key==='turnoverRate'?/^-?\d+(?:\.\d+)?%$/:/^\d+$/).test(observed[key]),'Analytics '+key+' must display a usable value');
    }
    assert.deepEqual(await metrics.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-analytics-metric')).sort()),[...metricKeys].sort(),'Analytics metric inventory incomplete');
-   const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
-   const rewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
-   const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+rewardEmployee;
+   const expected=scopedFixtureWorkforce(user).length;
    assert.equal(observed.activeHeadcount,String(expected),'Analytics headcount must match the independently seeded company/tenant population');
    await page.locator('main form[method="get"] select[name="companyId"]').waitFor({state:'visible',timeout:timeout()});
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Analytics rendered an unavailable state');
@@ -900,13 +908,11 @@ async function main(){
    const rendered=await rows.evaluateAll(elements=>elements.map(row=>({id:row.getAttribute('data-roster-employment-id'),text:row.textContent??''})));
    assert(rendered.length>0&&rendered.length<=25,'default Roster must render a bounded nonempty employee page');
    assert.equal(new Set(rendered.map(row=>row.id)).size,rendered.length,'Roster employee rows must be unique');
-   const allowed=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId));
-   const reward=fixture.tenants[user.tenant].rewardDraft;
+   const allowed=new Map(scopedFixtureWorkforce(user).map(row=>[row.employmentId,row]));
    for(const row of rendered){
-    const actor=allowed.find(actor=>actor.employmentId===row.id);
-    const rewardAllowed=reward&&row.id===reward.employmentId&&(user.role==='groupHR'||reward.companyId===user.companyId);
-    assert(actor||rewardAllowed,'Roster rendered an employee outside its independently seeded company/tenant scope');
-    if(actor)assert(row.text.includes(actor.name),'Roster row omitted the expected employee name');
+    const employment=allowed.get(row.id);
+    assert(employment,'Roster rendered an employee outside its independently seeded company/tenant scope');
+    if(employment.name)assert(row.text.includes(employment.name),'Roster row omitted the expected employee name');
    }
    assert.equal(await page.locator('main [role="alert"], main [data-read-unavailable]').count(),0,'Roster rendered an unavailable state');
    witness='roster-scoped-employments';
@@ -977,9 +983,7 @@ async function main(){
     if(cardFailures===0)witness='home-card-inventory';
    }
    if(!personal){
-    const rewardDraft=fixture.tenants[user.tenant].rewardDraft;
-    const extraRewardEmployee=rewardDraft&&(user.role==='groupHR'||rewardDraft.companyId===user.companyId)?1:0;
-    const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&(user.role==='groupHR'||actor.companyId===user.companyId)).length+extraRewardEmployee;
+    const expected=scopedFixtureWorkforce(user).length;
     assert(await page.locator('[data-dashboard-card="headcount"]').getByText(String(expected),{exact:true}).count()>0,'HR dashboard headcount must match its actual fixture scope');
    }
    homeCards=homeCardIds.length;assert(homeCards>0,'expected fictional Home cards');
