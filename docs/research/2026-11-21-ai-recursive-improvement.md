@@ -106,7 +106,7 @@ All ten valid catalogue-constrained replies omitted required content. None faile
 
 The promotion candidate at `b79ed58a7` adds protected evaluation cases for work profile, attendance, replacement credits and notifications. It uses the serving projection and answer adjudicators. The provider receives closed reference metadata, with one request per arm and no tools. The existing synthetic tool cases still check regressions. Promotion requires a strict improvement on protected selection and a perfect candidate result across the full suite. The versioned suite binds the new cases to evaluation receipts.
 
-AI Centre Candidate Reviews shows how many protected cases each arm checked and answered correctly, and identifies an unrun arm. These cases are public fictional regression cases. The promotion gate still needs evidence from a separately held case set before claiming generalization, followed by a bounded trial and rollback rehearsal. [Candidate checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44896694981)
+AI Centre Candidate Reviews shows how many protected cases each arm checked and answered correctly, and identifies an unrun arm. These cases are public fictional regression cases. The promotion gate still needs evidence from a separately held case set before claiming generalization, followed by a bounded trial and rollback rehearsal. [Protected acceptance and transport tests](https://github.com/StradaverseHub/ai-hr/actions/runs/44897151786)
 
 ### Model-proposed guidance for protected work summaries
 
