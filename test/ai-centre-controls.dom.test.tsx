@@ -1,11 +1,12 @@
-import {render,screen} from '@testing-library/react';
+import {fireEvent,render,screen} from '@testing-library/react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {createElement} from 'react';
 import en from '../messages/ai-centre/en.json';
+import overview from '../app/control-tower/agents/worker-overview-messages.json';
 
 const owners=vi.hoisted(()=>({state:vi.fn(),reads:vi.fn(),withTenant:vi.fn(),keys:vi.fn()}));
 vi.mock('next/link',()=>({default:({children,...props}:{children:unknown})=>createElement('a',props,children as never)}));
-vi.mock('next-intl/server',()=>({getTranslations:async()=>Object.assign((key:string,values?:Record<string,unknown>)=>{
+vi.mock('next-intl/server',()=>({getLocale:async()=> 'en',getTranslations:async()=>Object.assign((key:string,values?:Record<string,unknown>)=>{
  let text=(en.aiCentre.controls as Record<string,string>)[key]??key;
  for(const [name,value] of Object.entries(values??{}))text=text.replaceAll('{'+name+'}',String(value));
  return text;
@@ -35,7 +36,12 @@ describe('AI centre control status',()=>{
   await renderControls();
   expect(screen.getByRole('button',{name:'Stop all AI activity'})).toBeInTheDocument();
   expect(screen.getByRole('button',{name:'Turn on · Pay difference explanation',hidden:true})).toBeInTheDocument();
-  expect(screen.getByText(/Unsettled provider requests: 2/)).toBeInTheDocument();
+  expect(screen.getByText('2 unsettled provider requests')).toBeVisible();
+  const details=screen.getByText('What stops and resumes');
+  expect(details.closest('details')?.open).toBe(false);
+  fireEvent.click(details);
+  expect(details.closest('details')?.open).toBe(true);
+  expect(screen.getByText(overview.en.pendingHelp)).toBeVisible();
   expect(screen.queryByRole('button',{name:/Required HR validation/})).not.toBeInTheDocument();
  });
  it('does not display a missing function registration as enabled',async()=>{
@@ -49,11 +55,13 @@ describe('AI centre control status',()=>{
   await renderControls();
   expect(screen.getByRole('button',{name:'Resume eligible AI activity'})).toBeInTheDocument();
   expect(screen.getByText('AI activity is stopped.')).toBeInTheDocument();
+  expect(screen.getByText('0 unsettled provider requests')).toBeVisible();
  });
  it('never presents an unreadable control as running or offers a stale resume',async()=>{
   owners.state.mockRejectedValue(Error('unavailable'));owners.reads.mockRejectedValue(Error('unavailable'));
   await renderControls();
   expect(screen.getAllByText(/Control status could not be confirmed/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/unsettled provider requests/)).toBeNull();
   expect(screen.queryByRole('button',{name:/Resume eligible/})).not.toBeInTheDocument();
   expect(screen.queryByRole('button',{name:/Turn on/})).not.toBeInTheDocument();
  });

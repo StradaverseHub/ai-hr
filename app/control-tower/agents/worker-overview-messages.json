@@ -21,7 +21,11 @@
     "assistantActions": "Assistant actions · Last 30 days",
     "actionCounts": "{prepared, number} prepared · {completed, number} completed",
     "actionCountsEmpty": "No actions prepared in 30 days",
-    "actionDetails": "View action outcomes"
+    "actionDetails": "View action outcomes",
+    "stopTitle": "AI activity status",
+    "pending": "{count} unsettled provider requests",
+    "pendingHelp": "Requests already sent cannot always be recalled; their results cannot authorise new actions after stopping.",
+    "stopDetails": "What stops and resumes"
   },
   "ms": {
     "title": "Ringkasan aktiviti",
@@ -45,7 +49,11 @@
     "assistantActions": "Tindakan Pembantu · 30 hari lalu",
     "actionCounts": "{prepared, number} disediakan · {completed, number} selesai",
     "actionCountsEmpty": "Tiada tindakan disediakan dalam 30 hari",
-    "actionDetails": "Lihat hasil tindakan"
+    "actionDetails": "Lihat hasil tindakan",
+    "stopTitle": "Status aktiviti AI",
+    "pending": "{count} permintaan penyedia belum selesai",
+    "pendingHelp": "Permintaan yang telah dihantar mungkin tidak dapat ditarik balik; hasilnya tidak boleh membenarkan tindakan baharu selepas dihentikan.",
+    "stopDetails": "Apabila AI dihentikan atau disambung"
   },
   "zh": {
     "title": "活动概览",
@@ -69,7 +77,11 @@
     "assistantActions": "助手操作 · 过去 30 天",
     "actionCounts": "已准备 {prepared, number} 项 · 已完成 {completed, number} 项",
     "actionCountsEmpty": "过去 30 天没有准备任何操作",
-    "actionDetails": "查看操作结果"
+    "actionDetails": "查看操作结果",
+    "stopTitle": "AI 活动状态",
+    "pending": "{count} 个供应商请求尚未结算",
+    "pendingHelp": "已发送的请求不一定能够撤回；停止后，其结果不能授权新的操作。",
+    "stopDetails": "停止和恢复的影响"
   },
   "vi": {
     "title": "Tổng quan hoạt động",
@@ -93,7 +105,11 @@
     "assistantActions": "Hành động của trợ lý · 30 ngày qua",
     "actionCounts": "{prepared, number} đã chuẩn bị · {completed, number} đã hoàn tất",
     "actionCountsEmpty": "Không có hành động nào được chuẩn bị trong 30 ngày",
-    "actionDetails": "Xem kết quả hành động"
+    "actionDetails": "Xem kết quả hành động",
+    "stopTitle": "Trạng thái hoạt động AI",
+    "pending": "{count} yêu cầu nhà cung cấp chưa quyết toán",
+    "pendingHelp": "Không phải yêu cầu đã gửi nào cũng thu hồi được; kết quả không thể cho phép hành động mới sau khi dừng.",
+    "stopDetails": "Điều gì xảy ra khi dừng hoặc tiếp tục"
   },
   "th": {
     "title": "ภาพรวมกิจกรรม",
@@ -117,7 +133,11 @@
     "assistantActions": "การดำเนินการของผู้ช่วย · 30 วันที่ผ่านมา",
     "actionCounts": "เตรียมแล้ว {prepared, number} รายการ · เสร็จสิ้น {completed, number} รายการ",
     "actionCountsEmpty": "ไม่มีการเตรียมการดำเนินการใน 30 วันที่ผ่านมา",
-    "actionDetails": "ดูผลการดำเนินการ"
+    "actionDetails": "ดูผลการดำเนินการ",
+    "stopTitle": "สถานะกิจกรรม AI",
+    "pending": "คำขอผู้ให้บริการที่ยังไม่สรุป {count} รายการ",
+    "pendingHelp": "คำขอที่ส่งแล้วอาจเรียกคืนไม่ได้ ผลลัพธ์จะไม่สามารถอนุญาตการดำเนินการใหม่หลังหยุด",
+    "stopDetails": "สิ่งที่เกิดขึ้นเมื่อหยุดหรือดำเนินการต่อ"
   },
   "ta": {
     "title": "செயல்பாட்டுச் சுருக்கம்",
@@ -141,6 +161,10 @@
     "assistantActions": "உதவியாளர் செயல்கள் · கடந்த 30 நாட்கள்",
     "actionCounts": "{prepared, number} தயாரிக்கப்பட்டன · {completed, number} முடிக்கப்பட்டன",
     "actionCountsEmpty": "30 நாட்களில் எந்தச் செயலும் தயாரிக்கப்படவில்லை",
-    "actionDetails": "செயல் முடிவுகளைப் பார்க்கவும்"
+    "actionDetails": "செயல் முடிவுகளைப் பார்க்கவும்",
+    "stopTitle": "AI செயல்பாட்டு நிலை",
+    "pending": "{count} வழங்குநர் கோரிக்கைகள் இன்னும் முடிவடையவில்லை",
+    "pendingHelp": "ஏற்கனவே அனுப்பிய கோரிக்கைகளை எப்போதும் திரும்பப் பெற முடியாது; நிறுத்திய பின் அவற்றின் முடிவுகள் புதிய செயல்களை அனுமதிக்க முடியாது.",
+    "stopDetails": "நிறுத்தும்போதும் தொடரும்போதும் என்ன நடக்கும்"
   }
 }

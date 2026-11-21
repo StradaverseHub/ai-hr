@@ -3,8 +3,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import {nanosToUsd} from '@/lib/ai/spend-allocation';
-import { createTranslator } from 'next-intl';
-import { getFormatter, getLocale, getTranslations } from 'next-intl/server';
+import { getFormatter, getTranslations } from 'next-intl/server';
 import { type requireAdmin, isAdmin, isGroupAdmin } from '@/lib/authz';
 import { AI_RUN_STATE_FILTERS, aiManagementPageView, bulkAssistantDepartments, previewBulkAssistantAccess, type BulkAssistantPreview, type AiAllowanceUse, type AiRunFilter, type AiUsageSummary, type AiManagementAllowanceUser } from '@/core/ai-management';
 import { AI_FEATURES, isAiFeature, isTemplateOnlyAiFeature } from '@/lib/ai/features';
@@ -26,8 +25,7 @@ import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily }
 import type { AgentStatus } from '@/core/control-domains';
 import type { WorkerDetail, WorkerRow } from '@/core/agent-registry/views';
 import type { OutcomeSummary } from '@/core/agent-registry/export';
-import { isLocale } from '@/i18n/config';
-import workerOverviewMessages from './worker-overview-messages.json';
+import { getWorkerOverviewCopy } from './worker-overview-copy';
 import { WorkerRegistry } from './worker-registry';
 import { WorkerDetails } from './worker-details';
 import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
@@ -82,11 +80,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     return totals;
   }, {prepared: 0, completed: 0}) : null;
   const workerActivity = registry?.rows.filter(row => row.trigger.kind === 'schedule');
-  const overviewLocale = section === 'features' ? await getLocale() : null;
-  const workerOverview = overviewLocale === null ? null : createTranslator({
-    locale: overviewLocale,
-    messages: workerOverviewMessages[isLocale(overviewLocale) ? overviewLocale : 'en'],
-  });
+  const workerOverview = section === 'features' ? await getWorkerOverviewCopy() : null;
   const alertBanner = await aiManagementAlerts(s, view);
   const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
   const history = section==='runs' && isGroupAdmin(s) ? await aiRunHistory(s,{from:sp.from,to:sp.to,page:sp.page},runFilter) : null;
@@ -244,6 +238,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
+    {section==='features'&&workerControls?.stop}
     {workerOverview && <section aria-labelledby="worker-overview-title" className="border-y border-border py-4">
       <h2 id="worker-overview-title" className="text-base font-semibold">{workerOverview('title')}</h2>
       <dl className="mt-2 divide-y divide-border text-sm">
@@ -302,7 +297,6 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         </div>
       </dl>
     </section>}
-    {section==='features'&&workerControls?.stop}
     {workerOverview && <WorkerDetails label={workerOverview('details')} initiallyOpen={Boolean(sp.worker || sp.toast || sp.error)}>
     {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">

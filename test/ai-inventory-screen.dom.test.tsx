@@ -70,8 +70,10 @@ describe('AI inventory in six rendered locales',()=>{
   const view=await renderPage('en','features');
   const overview=screen.getByRole('region',{name:'Activity overview'});
   const details=view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!;
+  const pause=screen.getByText('Pause control');
   expect(details.open).toBe(false);
-  expect(details).not.toContainElement(screen.getByText('Pause control'));
+  expect(details).not.toContainElement(pause);
+  expect(pause.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(details).toContainElement(screen.getByText('Scheduled job controls'));
   const moreFeatures=overview.querySelector<HTMLDetailsElement>('details')!;
   expect(moreFeatures.open).toBe(false);

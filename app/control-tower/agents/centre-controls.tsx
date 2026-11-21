@@ -9,6 +9,7 @@ import {aiCentreFunctions,aiCentreReadControls,aiCentreJobTypes} from '@/core/ai
 import {readMandateKeysTx} from '@/core/mandates/mandates';
 import {delegableJobType} from '@/core/mandates/job-types';
 import {setAiCentreFunctionAction,setAiCentreJobAction,setAiCentreStopAction} from './centre-control-actions';
+import {getWorkerOverviewCopy} from './worker-overview-copy';
 
 /** Exact independent display reads shared with the server-owner timing course. No action authority. */
 export async function aiCentreControlReads(session:SessionContext){
@@ -25,22 +26,32 @@ export async function aiCentreControlSections(session:SessionContext){
  const t=await getTranslations('aiCentre.controls');
  const features=await getTranslations('aiManagement');
  const workers=await getTranslations('aiCentre.registry');
+ const overview=await getWorkerOverviewCopy();
  const [state,controls,jobs]=await aiCentreControlReads(session);
  const functions=aiCentreFunctions();
  const label=(name:string)=>name.replaceAll('_',' ').replaceAll('.',' ');
  const functionName=(row:(typeof functions)[number])=>row.key.startsWith('feature:')&&features.has('features.'+row.name)?features('features.'+row.name):row.key.startsWith('worker:')&&workers.has('workers.'+row.key.slice(7))?workers('workers.'+row.key.slice(7)):label(row.name);
- const stop = <Card id="ai-centre-stop" className="scroll-mt-4 space-y-3 p-5">
-   <SectionHeader title={t('stopTitle')}/>
-   <p role="status" className="text-sm" data-ai-centre-state={state?state.stopped?'stopped':'running':'unknown'}>{state?t(state.stopped?'stopped':'running'):t('unknown')}</p>
-   <p className="max-w-4xl text-sm text-muted-foreground">{t('stopHelp')}</p>
-   {state&&<>
-    <p className="text-sm text-muted-foreground">{t('pending',{count:state.pending})}</p>
+ const stop = <Card id="ai-centre-stop" className="scroll-mt-4 p-4 sm:p-5">
+   <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3">
+    <div className="min-w-0">
+     <SectionHeader title={overview('stopTitle')}/>
+     <p role="status" className="mt-1 text-sm" data-ai-centre-state={state?state.stopped?'stopped':'running':'unknown'}>{state?t(state.stopped?'stopped':'running'):t('unknown')}</p>
+     {state&&<p className="mt-1 text-sm text-muted-foreground">{overview('pending',{count:state.pending})}</p>}
+    </div>
+    {state&&
     <form action={setAiCentreStopAction}>
      <input type="hidden" name="generation" value={state.generation}/><input type="hidden" name="stopped" value={String(!state.stopped)}/>
      <ActionButton actionKind="saving" type="submit" className={state.stopped?btnGhost:btnPrimary}>{t(state.stopped?'resume':'stop')}</ActionButton>
-    </form>
-   </>}
-   <p className="text-xs text-muted-foreground">{t('resumeHelp')}</p>
+    </form>}
+   </div>
+   <details className="mt-2">
+    <summary className="min-h-11 w-fit cursor-pointer py-3 text-sm font-medium text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{overview('stopDetails')}</summary>
+    <div className="max-w-4xl space-y-2 pb-2 text-sm text-muted-foreground">
+     <p>{t('stopHelp')}</p>
+     <p>{overview('pendingHelp')}</p>
+     <p>{t('resumeHelp')}</p>
+    </div>
+   </details>
   </Card>;
  const settings = <>
   <Card id="ai-centre-functions" className="scroll-mt-4 space-y-3 p-5">

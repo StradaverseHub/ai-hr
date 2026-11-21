@@ -14,7 +14,7 @@ vi.mock('../../core/mandates/mandates',()=>({readMandateKeysTx:async()=>({enable
 vi.mock('../../app/control-tower/agents/centre-control-actions',()=>({setAiCentreFunctionAction:vi.fn(),setAiCentreJobAction:vi.fn(),setAiCentreStopAction:vi.fn()}));
 
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }) }));
+vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async (namespace: any) => createTranslator({ locale: 'en', messages: enWithAiCentre as never, namespace }) }));
 vi.mock('../../app/control-tower/agents/actions', () => ({ setAiFeatureAction: vi.fn() }));
 
 import { WorkerRegistry } from '../../app/control-tower/agents/worker-registry';
