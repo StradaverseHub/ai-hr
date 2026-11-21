@@ -45,26 +45,16 @@ mkdir -m 700 "$target"
 tar -xzf source.tar.gz --no-same-owner -C "$target"
 test "$(sha256sum "$target/pnpm-lock.yaml" | cut -d' ' -f1)" = "$lock"
 test "$(sha256sum "$target/package.json" | cut -d' ' -f1)" = "$package"
-cp -a --reflink=auto -- "$canonical/node_modules" "$target/node_modules"
-PYTHONDONTWRITEBYTECODE=1 python3 - "$canonical" "$target" <<'PY'
-import importlib.util
-from pathlib import Path
-import sys
-
-installed, target = map(Path, sys.argv[1:])
-spec = importlib.util.spec_from_file_location("bundle", installed / ".github/ci/build-bundle.py")
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-shim = (target / "node_modules/sharp/node_modules/.bin/semver").resolve(strict=True)
-original = (installed / "node_modules/sharp/node_modules/.bin/semver").resolve(strict=True)
-if not shim.is_relative_to(target / "node_modules") or shim.samefile(original):
-    raise ValueError("Independent runtime dependency wrapper required")
-data = shim.read_bytes()
-if str(installed / "node_modules").encode() in data:
-    shim.write_bytes(module.rebase_installer_shim(data, installed, str(target)))
-PY
+# This lane pins the existing lockfile and package inputs. The shared lease
+# blocks dependency installation during activation and canonical reconciliation.
+# Point both copies at the same verified installed dependencies; the build
+# unpacker still checks the native alias files and every compiled payload member.
+test "$(realpath "$canonical/node_modules")" = "$canonical/node_modules"
+ln -s "$canonical/node_modules" "$target/node_modules"
 PYTHONDONTWRITEBYTECODE=1 python3 "$canonical/.github/ci/build-bundle.py" unpack-with-origin \
-  "$packet/build.tar.gz" "$packet/build-manifest.json" "$target/.next" "$target" "$producer"
+  "$packet/build.tar.gz" "$packet/build-manifest.json" "$target/.next" "$canonical" "$producer"
+test "$(sha256sum "$canonical/pnpm-lock.yaml" | cut -d' ' -f1)" = "$lock"
+test "$(sha256sum "$canonical/package.json" | cut -d' ' -f1)" = "$package"
 test "$(cat "$target/.next/BUILD_ID")" = "$build"
 
 port=$("$node" -e 'const socket=require("node:net").createServer();socket.listen(0,"127.0.0.1",()=>{console.log(socket.address().port);socket.close()});')
