@@ -33,7 +33,8 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
-const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections;
+const censusPersonnelMovement=shardInput==='personnel-movement';
+const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections||censusPersonnelMovement;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -1541,7 +1542,7 @@ try{
  }finally{retainSeedPhases();}
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
-   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections),
+   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections&&!censusPersonnelMovement),
   });
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
@@ -1551,7 +1552,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   if(censusFixtureRecords&&!censusPayrollCorrections){
+   if(censusFixtureRecords&&!censusPayrollCorrections&&!censusPersonnelMovement){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
@@ -1597,8 +1598,9 @@ try{
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,payrollCorrections:censusPayrollCorrections});
-    if(!censusPayrollCorrections)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,
+     payrollCorrections:censusPayrollCorrections,personnelMovement:censusPersonnelMovement});
+    if(!censusPayrollCorrections&&!censusPersonnelMovement)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);

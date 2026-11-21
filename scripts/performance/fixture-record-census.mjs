@@ -394,9 +394,28 @@ async function payrollCorrectionRoutes(db, fixture) {
   ];
 }
 
-export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
+async function personnelMovementRoutes(db, fixture) {
+  return Promise.all(['groupHR', 'companyHR'].map(async role => {
+    const actor = fixture.users.find(user => user.role === role && user.tenant === 0);
+    const subject = actor && fixture.users.find(user =>
+      user.role === 'employee' && user.tenant === actor.tenant && user.company === actor.company);
+    assert(actor && subject, 'Expected a scoped fictional Personnel movement actor and subject');
+    const events = await db`select id from domain_event
+      where tenant_id=${actor.tenantId}::uuid and subject_employment_id=${subject.employmentId}::uuid
+        and event_type='employment.hired'`;
+    assert.equal(events.length, 1, 'Expected one native hire event for the fixture employment');
+    return {
+      actor, template: '/admin/personnel/[employmentId]/movement/[mode]/[movementId]',
+      path: `/admin/personnel/${subject.employmentId}/movement/view/${events[0].id}`,
+      content: subject.name, witness: '#section-movement-detail dd:text-is("Hired")',
+    };
+  }));
+}
+
+export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
-  const cases = payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
+  const cases = personnelMovement ? await personnelMovementRoutes(db, fixture)
+    : payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [
       ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
       ...await organisationLifecycleRoutes(db, fixture), ...await performanceRoutes(db, fixture),
