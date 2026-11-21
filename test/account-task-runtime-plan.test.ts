@@ -77,6 +77,54 @@ it('uses the production prepared reader across company widths and retains transa
       expect(settings.mode).toBe('auto');
     });
 
+    // The signed-in shell reads this shape with Claims disabled inside a shared carrier.
+    // Compare automatic and forced planning on separate connections so one mode cannot warm the other.
+    url.searchParams.set('application_name', 'aihr-account-shell-generic-plan-test');
+    const forced = createDb(url.toString(), { max: 1 });
+    const samples = Array.from({ length: 24 }, (_, index) => ({
+      actor: [session, fixture.personas.multi, fixture.personas.single][index % 3],
+      companyIds: fixture.companyIds.slice(0, [1, 17, 35, 71][index % 4]),
+    }));
+    const shellModules = { ...modules, claims: false };
+    const shellShapes = new Set<string>();
+    const planCounts = async (database: typeof isolated) => database.withTenant(session, async tx => {
+      const [counts] = await tx.execute<{ generic: number; custom: number; shapes: number }>(sql`
+        select coalesce(sum(generic_plans),0)::int as generic, coalesce(sum(custom_plans),0)::int as custom,
+          count(*)::int as shapes
+        from pg_prepared_statements where statement in (${sql.join([...shellShapes].map(shape => sql`${shape}`), sql`, `)})
+      `);
+      return counts;
+    });
+    const shellTimes = { carrier: [] as number[], standalone: [] as number[] };
+    try {
+      for (const { actor, companyIds } of samples) {
+        const shellStatement = (tx: Tx) => accountTaskStatement(accountTaskStatementSections(tx, actor,
+          shellModules, { companyIds, personal: false, notices: true }), actor);
+        const carrierStarted = performance.now();
+        const shared = await isolated.withSharedReadSnapshot(actor, () =>
+          isolated.readPreparedTenantRows<Row>(actor, tx => {
+            expect(isSharedCarrierTransaction(tx)).toBe(true);
+            const statement = shellStatement(tx);
+            shellShapes.add(dialect.sqlToQuery(statement).sql);
+            return statement;
+          }));
+        shellTimes.carrier.push(Math.round(performance.now() - carrierStarted));
+        const standaloneStarted = performance.now();
+        const standalone = await forced.readPreparedTenantRows<Row>(actor, shellStatement);
+        shellTimes.standalone.push(Math.round(performance.now() - standaloneStarted));
+        expect(shared[0]?.principal).toBe(true);
+        expect([...shared]).toEqual([...standalone]);
+      }
+      const [auto, generic] = await Promise.all([planCounts(isolated), planCounts(forced)]);
+      expect(auto.generic + auto.custom).toBe(samples.length);
+      expect(generic).toEqual({ generic: samples.length, custom: 0, shapes: shellShapes.size });
+      const p95 = (durations: number[]) => durations.sort((a, b) => a - b)[Math.ceil(durations.length * 0.95) - 1];
+      console.info(JSON.stringify({ shellPlanComparison: { auto, generic,
+        carrierP95Ms: p95(shellTimes.carrier), standaloneP95Ms: p95(shellTimes.standalone) } }));
+    } finally {
+      await forced.client.end({ timeout: 5 });
+    }
+
     const readOptions = { personal: false, notices: true };
     expect((await readAccountTaskBundle(session, modules, { ...readOptions, companyIds: [] }))?.claims?.total).toBe(0);
     expect((await readAccountTaskBundle(session, modules, readOptions))?.claims?.total).toBe(all.claims.total);
