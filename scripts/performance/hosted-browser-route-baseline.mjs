@@ -576,6 +576,65 @@ async function measureShellLinks(fixture){
   }
  }finally{await context.close();}
 }
+
+async function measureShellPrefetchAfterIntent(fixture){
+ const actor=fixture.users[0],context=await signedInContext(actor);
+ const row={journey:'shell-prefetch-after-intent',role:actor.role,route:'/payroll',destination:'/',status:'incomplete'};
+ report.journeys.push(row);
+ try{
+  const page=await context.newPage();
+  const activePath=origin+row.route;
+  const home=page.locator('aside[data-app-sidebar] a[href="/"]:visible');
+  const deadline=performance.now()+45000;
+  const remaining=()=>Math.max(1,Math.floor(deadline-performance.now()));
+  const matchesRouteData=(request,path)=>{
+   const url=new URL(request.url());
+   return request.method()==='GET'&&url.origin===origin&&url.pathname===path&&
+    (url.searchParams.has('_rsc')||request.headers().rsc==='1');
+  };
+  const requests={beforeHover:0,duringHover:0,afterPointerLeave:0,afterRefresh:0};
+  const afterRefreshObservationMs=1500;
+  let phase='beforeHover',documentRequests=0;
+  await page.goto(activePath,{waitUntil:'domcontentloaded',timeout:remaining()});
+  page.on('request',request=>{
+   if(request.resourceType()==='document'&&request.frame()===page.mainFrame())documentRequests++;
+   if(matchesRouteData(request,row.destination))requests[phase]++;
+  });
+  assert.equal(await readyContent(page,actor,row.route,remaining),'usable-content');
+  await home.waitFor({state:'visible',timeout:remaining()});
+  const node=await home.elementHandle({timeout:remaining()});
+  assert(node,'The persistent home link is unavailable');
+  await page.waitForFunction(()=>typeof window.next?.router?.refresh==='function',null,{timeout:remaining()});
+  phase='duringHover';
+  const [prefetched]=await Promise.all([
+   page.waitForResponse(response=>matchesRouteData(response.request(),row.destination),{timeout:remaining()}),
+   home.hover({timeout:remaining()}),
+  ]);
+  assert(prefetched.ok(),'The intentional prefetch must receive a successful response');
+  assert.equal(await prefetched.finished(),null);
+  await page.locator('main').hover({position:{x:12,y:12},timeout:remaining()});
+  phase='afterPointerLeave';
+  assert(await node.evaluate(link=>link.isConnected&&!link.matches(':hover')&&!link.contains(document.activeElement)),
+   'The link must remain mounted with no pointer or focus intent');
+  await pause(250);
+  phase='afterRefresh';
+  const [refreshed]=await Promise.all([
+   page.waitForResponse(response=>matchesRouteData(response.request(),row.route),{timeout:remaining()}),
+   page.evaluate(()=>window.next.router.refresh()),
+  ]);
+  assert(refreshed.ok(),'The real router refresh must receive a successful response');
+  assert.equal(await refreshed.finished(),null);
+  await pause(afterRefreshObservationMs);
+  assert.equal(page.url(),activePath);
+  assert.equal(documentRequests,0,'The refresh must keep the same browser document');
+  assert(await node.evaluate(link=>link.isConnected&&!link.matches(':hover')&&!link.contains(document.activeElement)),
+   'The same link must survive the refresh without fresh intent');
+  assert.equal(await readyContent(page,actor,row.route,remaining),'usable-content');
+  Object.assign(row,{status:'observed',requests,afterRefreshObservationMs,documentRequests});
+ }catch(error){row.failure=error?.name==='TimeoutError'?'timeout':error?.code==='ERR_ASSERTION'?'assertion':'browser';}
+ finally{await context.close();save();}
+}
+
 async function measureRoutes(fixture){
  let plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
@@ -1650,6 +1709,7 @@ try{
   else{
    await measureRoutes(fixture);
    await measureShellLinks(fixture);
+   if(censusShellStartup)await measureShellPrefetchAfterIntent(fixture);
    if(!censusShellStartup){
     await measureActions(fixture);
     await measurePublicLogin();
