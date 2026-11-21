@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
-import {createRewards} from './performance-rewards-draft-browser.mjs';
 
 const budgetMs=20000;
 
@@ -8,18 +7,9 @@ export async function measureRewardsRecords({db,fixture,origin,compiledPages,sig
  const tenant=fixture.tenants[0];
  const target=tenant.rewardDraft;
  const user=fixture.users.find(actor=>actor.tenant===0&&actor.role==='groupHR');
- assert(target?.expectedEmploymentIds?.length&&user,'Missing authorized annual Rewards fixture');
+ assert(target?.unitId&&target.expectedEmploymentIds?.length&&user,'Missing authorized annual Rewards fixture');
  report.fixture.rewardsDraftSeeded=true;
- const creator=await signedInContext(user);
- let draft;
- try{
-  const page=await creator.newPage();
-  const tour=page.getByRole('dialog',{name:'Product tour',exact:true});
-  await page.addLocatorHandler(tour,()=>tour.getByRole('button',{name:'Skip',exact:true}).click({timeout:budgetMs}));
-  draft=await createRewards({base:origin,page,user,target,tenantId:tenant.tenantId,db,report,save});
- }finally{
-  await creator.close();
- }
+ const draft={id:target.unitId,name:target.planName};
 
  const entries=await db`select id,source->>'name' as name,source->>'employeeCode' as employee_code
   from reward_entry where tenant_id=${tenant.tenantId}::uuid and unit_id=${draft.id}::uuid

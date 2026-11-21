@@ -1549,6 +1549,7 @@ try{
   await run('seed-system-fixture',process.execPath,['--import','tsx',
    'scripts/performance/system-fixture.mjs'],{...dbEnv,
     NODE_OPTIONS:'--conditions=react-server',
+    PERF_CREATE_REWARD_CENSUS_RECORD:String(censusRewards),
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{
   if(originalSeeder){

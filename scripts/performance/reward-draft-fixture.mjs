@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {approvedRewardFixtures} from '../fixtures/reward-approved.ts';
+import {createRewardUnit} from '../../packs/rewards/service.ts';
 import {saveRewardSetupPlan,submitRewardSetupPlan,approveRewardSetupPlan} from '../../packs/rewards/plan-configuration.ts';
 import {establishRewardMembership} from '../../test/rewards-shared-policy-fixture.ts';
 import {REWARDS_ORG_FIXTURE_NAME} from './fixture-workload.mjs';
@@ -80,6 +81,22 @@ export async function prepareRewardDraftFixture({owner,schema,ctx,tenant,compani
  // is derived from the fixture's explicit hires, not from the Rewards projection under test.
  const rewardDraft={companyId:company.companyId,businessUnitId:unit.id,employmentId:person.employmentId,year,snapshotDate:today,
    planVersionId:source.versionId,planName:name,expectedEmploymentIds:[...expectedCompanyEmploymentIds,person.employmentId]};
+ if(process.env.PERF_CREATE_REWARD_CENSUS_RECORD==='true'){
+  const id=await phase('record',()=>createRewardUnit(maker,{
+   name,year,companyId:company.companyId,businessUnitId:unit.id,snapshotDate:today,approvedPlanVersionId:source.versionId,
+  }));
+  const rows=await owner.client`select u.id,u.status,u.kind,u.created_by,c.name
+   from reward_unit u join reward_cycle c on c.id=u.cycle_id and c.tenant_id=u.tenant_id
+   where u.tenant_id=${tenant.tenantId}::uuid and u.id=${id}::uuid and u.company_id=${company.companyId}::uuid`;
+  assert.deepEqual(rows.map(row=>[row.id,row.status,row.kind,row.created_by,row.name]),[[id,'draft','annual',actor.userId,name]]);
+  const entries=await owner.client`select employment_id from reward_entry
+   where tenant_id=${tenant.tenantId}::uuid and unit_id=${id}::uuid`;
+  assert.deepEqual(entries.map(row=>row.employment_id).sort(),[...rewardDraft.expectedEmploymentIds].sort());
+  const events=await owner.client`select actor_id,actor_type from domain_event
+   where tenant_id=${tenant.tenantId}::uuid and aggregate_id=${id}::uuid and event_type='reward-unit.created'`;
+  assert.deepEqual(events.map(row=>[row.actor_id,row.actor_type]),[[actor.userId,'user']]);
+  rewardDraft.unitId=id;
+ }
  if(!includeOrgExplorerMember)return rewardDraft;
  const members=await owner.client`select true as verified
    from public.employment e join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id
