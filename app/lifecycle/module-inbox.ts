@@ -4,7 +4,7 @@ import type { SessionContext } from '@/db/client';
 import type { LifecycleTaskItem } from '@/lib/lifecycle-task-item';
 import { contractInbox, contractSharedWorkPage, contractSharedPostingWorkPage } from '@/packs/contracts/service';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { lifecycleModuleNavigation } from './workflow-availability';
+import type { lifecycleModuleNavigation } from './workflow-availability';
 import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
 /**
  * Lifecycle module work beside the shared task list. Probation work is not listed here: it is a shared task source
@@ -13,7 +13,7 @@ import { v9EmailHoldInbox } from '@/packs/lifecycle/service';
  */
 export async function lifecycleModuleInbox(
   ctx: SessionContext,
-  navigation: Awaited<ReturnType<typeof lifecycleModuleNavigation>>,
+  navigation: Pick<Awaited<ReturnType<typeof lifecycleModuleNavigation>>, 'contractStaff'>,
   options: { includeShared?: boolean } = {},
 ) {
   // Held On/Off Boarding emails: rechecked against Full case view and company access on every read.
