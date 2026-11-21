@@ -7,6 +7,7 @@ import { accountTaskCallerSql, accountTaskStatement, accountTaskStatementSection
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { leaveType } from '../db/schema';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
+import { assessmentWithOwnSet } from './helpers/assessment-task-scope-probe';
 import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 
 afterAll(closeAll);
@@ -113,7 +114,14 @@ it('measures each signed-in shell task section with live identity and company sc
         expect(fragment.value, owner).toEqual(original.value[owner]);
         performanceOwners.push({ owner, ...await profile(tx, ownerStatement, 5) });
       }
-      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs), performanceOwners };
+      const own = sql`cast((select task_caller.own_ids from task_caller) as uuid[])`;
+      const candidate = assessmentWithOwnSet(expressions[1], own);
+      const tested = sql`with ${caller} select ${candidate} as value`;
+      const [candidateRow] = await tx.execute<{ value: unknown }>(tested);
+      expect(candidateRow.value).toEqual(original.value.assessment);
+      const assessmentReuse = await profile(tx, tested, 5);
+      return { full, breakdown: breakdown.sort((a, b) => b.executionMs - a.executionMs),
+        performanceOwners, assessmentReuse };
     }, { readOnlySnapshot: true });
     results.push({ role, selectedCompanies: companyIds.length, ...result });
     console.info('ACCOUNT_TASK_SECTION_EXECUTION '+JSON.stringify(results.at(-1)));

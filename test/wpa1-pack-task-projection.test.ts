@@ -14,8 +14,10 @@ import {setRewardMember} from './rewards-access-fixture';
  */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { and, eq } from 'drizzle-orm';
-import type { SessionContext } from '../db/client';
+import { and, eq, sql } from 'drizzle-orm';
+import { withTenant, type SessionContext } from '../db/client';
+import { accountTaskCallerSql } from '../core/account-task-bundle';
+import { assessmentWithOwnSet } from './helpers/assessment-task-scope-probe';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
@@ -216,7 +218,21 @@ describe('performance work in the shared task list', () => {
     // The subject shares their own plan; it is not their task.
     expect(packItems(await listPendingTasks(self, undefined, ALL))).toEqual([]);
     // Assessment work and the career plan through the account task statement, exactly as the provider reads them.
-    for(const viewer of [matrix.ctx,mgr,self])expect((await expectBundledPackTasks(viewer)).performance).not.toBeNull();
+    for (const viewer of [matrix.ctx, mgr, self]) {
+      expect((await expectBundledPackTasks(viewer)).performance).not.toBeNull();
+      const result = await withTenant(viewer, async tx => {
+        const own = sql`cast((select task_caller.own_ids from task_caller) as uuid[])`;
+        const caller = accountTaskCallerSql(viewer);
+        const original = perf.pendingPerformanceTasksBundleSql(viewer, own);
+        const candidate = assessmentWithOwnSet(original, own);
+        const [row] = await tx.execute<{ original: unknown; candidate: unknown }>(
+          sql`with ${caller} select ${original} as original, ${candidate} as candidate`,
+        );
+        expect(row.candidate).toEqual(row.original);
+        return perf.pendingPerformanceTasksFromBundle(row.candidate, [b.companyId], viewer);
+      }, { readOnlySnapshot: true });
+      expect(result).toEqual(await perf.pendingPerformanceTasks(viewer, [b.companyId]));
+    }
 
     // Exactly five keys on every projected item; nothing that looks like a band, rating, score or pay.
     for (const item of packItems([...matrixTasks, ...managerTasks])) {
