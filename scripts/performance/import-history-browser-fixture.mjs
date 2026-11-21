@@ -96,7 +96,7 @@ try{
  const taxUpload=await payroll.previewPayrollHistoryUpload(ctx,{name:'fictional-tax-basis.csv',content:Buffer.from(taxSource)});
  assert.equal(taxUpload.plan.counts.invalid,0);
  mark('tax-basis-import-commit');
- await payroll.confirmPayrollHistoryUpload(ctx,{attemptId:taxUpload.attemptId,previewHash:taxUpload.plan.previewHash,confirmReplacement:true});
+ await payroll.confirmPayrollHistoryUpload(ctx,{attemptId:taxUpload.attemptId,previewHash:taxUpload.plan.previewHash,confirmReplacement:true,acknowledgeWarnings:true});
  await owner.client`update pay_component set included_in_pcb=true where id=${travel.id}::uuid`;
  const [employment]=await owner.client`select id from employment where tenant_id=${group.tenantId}::uuid
   and company_id=${group.companyId}::uuid and employee_code=${employeeCode}`;
@@ -197,5 +197,11 @@ try{
 }catch(error){
  const code=pgSqlState(error);
  if(code)writeFileSync(resultPath('import-history-seed-sqlstate'),code,{mode:0o600});
+ if(error?.name==='PayrollHistoryRevisionError'){
+  const message=typeof error.message==='string'?error.message:'';
+  const reason=message.includes('Acknowledge what has already gone out')?'history-warning-unacknowledged':
+   message.includes('source, master data, permissions or target revisions changed')?'history-preview-changed':'history-refused';
+  writeFileSync(resultPath('import-history-seed-refusal'),reason,{mode:0o600});
+ }
  throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

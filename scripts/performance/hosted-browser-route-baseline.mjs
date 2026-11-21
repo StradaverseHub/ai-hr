@@ -1642,6 +1642,11 @@ try{
      const code=readFileSync(sqlStatePath,'utf8');
      if(/^[A-Z0-9]{5}$/.test(code))report.importHistorySeedSqlState=code;
     }
+    const refusalPath=join(privateDir,'import-history-seed-refusal');
+    if(existsSync(refusalPath)){
+     const refusal=readFileSync(refusalPath,'utf8');
+     if(['history-warning-unacknowledged','history-preview-changed','history-refused'].includes(refusal))report.importHistorySeedRefusal=refusal;
+    }
     const taxFactsPath=join(privateDir,'tax-basis-seed-facts.json');
     if(existsSync(taxFactsPath)){
      const {eligible,blocked,records,reason}=JSON.parse(readFileSync(taxFactsPath,'utf8'));
