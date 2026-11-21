@@ -43,8 +43,8 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
     : rt.use30 ? <span className="text-xs">{t('inv.use30',{runs:n(rt.use30.runs),tokens:n(rt.use30.tokens),failed:n(rt.use30.failed),blocked:n(rt.use30.blocked)})}<br/><span className="text-muted-foreground">{rt.use30.reportedCredits==null?t('inv.creditsUnknown'):t('inv.credits',{credits:f.number(rt.use30.reportedCredits,{maximumSignificantDigits:6})})}</span></span> : '—';
   const outcomes = (rt:AiInventoryRuntime) => rt.outcomes ? <span className="text-xs">{t('inv.outcomes',{prepared:n(rt.outcomes.prepared),completed:n(rt.outcomes.completed),refused:n(rt.outcomes.refused),discarded:n(rt.outcomes.discarded),expired:n(rt.outcomes.expired)})}{rt.outcomes.prepared>0&&<><br/><span className="text-muted-foreground">{t('inv.rates',{completed:f.number(rt.outcomes.completed/rt.outcomes.prepared,{style:'percent'}),refused:f.number(rt.outcomes.refused/rt.outcomes.prepared,{style:'percent'})})}</span></>}</span> : '—';
   const audit = (rt:AiInventoryRuntime) => rt.audit.count ? t('inv.audit',{count:rt.audit.count,date:date(rt.audit.latestAt)}) : t('inv.auditNone');
-  const cols = full ? ['component','tier','switch','pauseKey','allowance','lastRun','use30','outcomes','audit'] as const : ['component','tier','pauseKey'] as const;
-  const cell = (r:Row, col:typeof cols[number]) => {
+  const inventoryColumns = full ? ['component','tier','switch','pauseKey','allowance','lastRun','use30','outcomes','audit'] as const : ['component','tier','pauseKey'] as const;
+  const cell = (r:Row, col:typeof inventoryColumns[number]) => {
     const rt = 'runtime' in r ? r.runtime : null;
     switch (col) {
       case 'component': return <><p className="font-medium break-words">{name(r)}</p>{r.kind!=='action'&&r.kind!=='read_binding'?null:<p className="text-xs text-muted-foreground">{r.module}</p>}{r.outOfBand&&<p className="text-xs text-amber-700 dark:text-amber-300">{t('inv.outOfBandHelp')}</p>}</>;
@@ -57,7 +57,7 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
         if (r.kind === 'scheduled_job' && !r.runtime.lastRun) {
           if (!r.jobKey && RUNNERS.some(runner => runner.id === r.id)) return <Link href={`/admin/scheduled-actions#runner-${r.id}`} prefetch={false}
             aria-label={workerCopy('checkNamedScheduler', {worker: name(r)})}
-            className="text-xs text-primary underline underline-offset-4">{workerCopy('checkScheduler')}</Link>;
+            className="inline-flex min-h-9 items-center text-xs text-primary underline underline-offset-4 pointer-coarse:min-h-11">{workerCopy('checkScheduler')}</Link>;
           return <span className="text-xs text-muted-foreground">{workerCopy(r.jobKey ? 'noScheduledRunRecorded' : 'unavailable')}</span>;
         }
         return <span className="whitespace-nowrap text-xs">{r.kind==='action'?'—':date(r.runtime.lastRun)}</span>;
@@ -79,10 +79,13 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
         <h3 id="ai-paused-mobile" className="text-sm font-semibold">{t('inv.pausedTitle')} <span className="font-normal text-muted-foreground">({n(pausedRows.length)})</span></h3>
         <ul className="mt-1 space-y-1">{pausedRows.map(r=><li key={r.key} className="flex flex-wrap items-center gap-2 text-sm"><a href={`#${rowAnchor(r.key)}-card`} className="break-all text-primary hover:underline">{name(r)}</a>{pausedState(r)}</li>)}</ul>
       </section>}
-      {groups.map(({kind,rows})=><section key={kind} id={kind==='action'?'ai-inventory-actions':undefined} aria-labelledby={`ai-kind-${kind}`} className="scroll-mt-4 border-t border-border">
+      {groups.map(({kind,rows})=>{
+        const scheduledHistory = full && kind === 'scheduled_job';
+        const cols = scheduledHistory ? ['component','lastRun'] as const : inventoryColumns;
+        return <section key={kind} id={kind==='action'?'ai-inventory-actions':undefined} aria-labelledby={`ai-kind-${kind}`} className="scroll-mt-4 border-t border-border">
         <div className="hidden md:block">
           <h3 id={`ai-kind-${kind}`} className="bg-muted/40 px-5 py-2 text-sm font-semibold">{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></h3>
-          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><caption className="sr-only">{t(`inv.kinds.${kind as AiComponentKind}`)}</caption>
+          <div className="overflow-x-auto"><table className={scheduledHistory?'w-full text-left text-sm':'w-full min-w-[900px] text-left text-sm'}><caption className="sr-only">{t(`inv.kinds.${kind as AiComponentKind}`)}</caption>
             <thead className="border-b border-border"><tr>{cols.map(c=><th key={c} scope="col" className="px-5 py-2 text-xs font-medium text-muted-foreground">{t(`inv.cols.${c}`)}</th>)}</tr></thead>
             <tbody className="divide-y divide-border">{rows.map(r=><tr key={r.key} id={rowAnchor(r.key)} className="scroll-mt-4 align-top">{cols.map(c=><td key={c} className="px-5 py-3">{cell(r,c)}</td>)}</tr>)}</tbody>
           </table></div>
@@ -92,7 +95,13 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
             <span>{t(`inv.kinds.${kind as AiComponentKind}`)} <span className="font-normal text-muted-foreground">({n(rows.length)})</span></span>
             {rows.some(isPaused)&&<Badge className="whitespace-nowrap" variant="danger">{t('inv.actionPaused')}</Badge>}
           </summary>
-          <ul className="divide-y divide-border">{[...rows].sort((a,b)=>Number(isPaused(b))-Number(isPaused(a))).map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`} className="scroll-mt-4">
+          {scheduledHistory ? <>
+            <p className="border-b border-border px-4 py-2 text-end text-xs text-muted-foreground">{t('inv.cols.lastRun')}</p>
+            <ul className="divide-y divide-border">{rows.map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`}
+              className="flex min-h-11 scroll-mt-4 flex-wrap items-center justify-between gap-x-4 px-4 py-1 text-sm">
+              <span className="font-medium">{name(r)}</span>{cell(r,'lastRun')}
+            </li>)}</ul>
+          </> : <ul className="divide-y divide-border">{[...rows].sort((a,b)=>Number(isPaused(b))-Number(isPaused(a))).map(r=><li key={r.key} id={`${rowAnchor(r.key)}-card`} className="scroll-mt-4">
             <details>
               <summary className="flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 text-sm">
                 <span className="min-w-0 break-all font-medium">{name(r)}</span>{r.tier&&tier(r)}{r.kind==='action'&&isPaused(r)&&pausedState(r)}
@@ -102,9 +111,9 @@ export async function AiInventorySection({inventory,mayPause}:{inventory:AiInven
                 <dl className="mt-2 grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">{cols.filter(c=>c!=='component').map(c=><div key={c} className="contents"><dt className="break-words text-xs text-muted-foreground">{t(`inv.cols.${c}`)}</dt><dd className="min-w-0 break-words">{cell(r,c)}</dd></div>)}</dl>
               </div>
             </details>
-          </li>)}</ul>
+          </li>)}</ul>}
         </details>
-      </section>)}
+      </section>})}
     </Card>
     {inventory.scope==='full'&&<Card id="ai-data-register" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inv.register.title')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inv.register.intro')}</p>

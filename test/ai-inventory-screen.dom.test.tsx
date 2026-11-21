@@ -71,10 +71,13 @@ describe('AI inventory in six rendered locales',()=>{
   view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
   const section=view.container.querySelector<HTMLElement>('section[aria-labelledby="ai-kind-scheduled_job"]')!;
   section.querySelector<HTMLDetailsElement>('details')!.open=true;
+  expect(within(section).getAllByRole('columnheader').map(header=>header.textContent)).toEqual([
+   en.aiManagement.inv.cols.component,en.aiManagement.inv.cols.lastRun,
+  ]);
   for(const id of ['ai-retention','payroll-loops']){
    const desktop=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}`)!;
    const mobile=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}-card`)!;
-   mobile.querySelector('details')!.open=true;
+   expect(mobile.querySelector('details')).toBeNull();
    for(const row of [desktop,mobile]){
     const link=within(row).getByRole('link',{name:/Check scheduler status/});
     expect(link).toHaveAttribute('href',`/admin/scheduled-actions#runner-${id}`);
@@ -83,8 +86,10 @@ describe('AI inventory in six rendered locales',()=>{
   }
   const empty=section.querySelector<HTMLElement>('#ai-component-scheduled_job-review-sweep')!;
   expect(within(empty).getByText('No recorded run')).toBeInTheDocument();
+  expect(within(section.querySelector<HTMLElement>('#ai-component-scheduled_job-review-sweep-card')!).getByText('No recorded run')).toBeInTheDocument();
   const recorded=section.querySelector<HTMLElement>('#ai-component-scheduled_job-ai-alerts')!;
   expect(within(recorded).getByText(/Oct 29, 2026/)).toBeInTheDocument();
+  expect(within(section.querySelector<HTMLElement>('#ai-component-scheduled_job-ai-alerts-card')!).getByText(/Oct 29, 2026/)).toBeInTheDocument();
   expect(within(recorded).queryByRole('link')).toBeNull();
   await captureAiReviewScreenshots(`<main class="p-4">${section.outerHTML}</main>`,'en','ai-centre-scheduled-evidence');
  },60000);
