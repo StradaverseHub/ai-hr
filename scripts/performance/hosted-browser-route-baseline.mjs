@@ -26,6 +26,7 @@ import {exerciseSavedReport} from './reports-browser.mjs';
 import {exerciseMovement} from './movement-browser.mjs';
 import {verifyAssistantHistoryBrowser} from './assistant-history-browser.mjs';
 import {clickNativeShellDestination} from './navigation-shell-browser.ts';
+import {MAIN_POOLER,poolerTarget} from '../../test/helpers/pgbouncer-target.ts';
 
 const origin='https://localhost:3443';
 const appPort=3174;
@@ -37,6 +38,11 @@ const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
 const shellPermissionVariant=env.AIHR_BROWSER_SHELL_PERMISSION_VARIANT??'none';
 assert(['none','control','optimized'].includes(shellPermissionVariant));
 assert(shellPermissionVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
+const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
+assert(['direct','transaction-pool'].includes(databaseTopology));
+assert(databaseTopology==='direct'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly&&shellPermissionVariant==='none'));
+assert(!env.DATABASE_POOLED_URL?.trim(),'The benchmark owns its web database topology');
+const webDatabaseConnections=8;
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -68,6 +74,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
  phases:[],observations:[],journeys:[]};
+if(mixedLoad)report.mixedDatabaseTopology={mode:databaseTopology,webConnections:webDatabaseConnections,workerMode:'direct'};
 const save=()=>writeFileSync(evidencePath,JSON.stringify(report,null,2),{mode:0o600});
 const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
@@ -126,7 +133,7 @@ function retainSeedPhases(){
  save();
 }
 
-let server,app,browser,mixedWorker,databaseStarted=false;
+let server,app,browser,mixedWorker,webPooler,databaseStarted=false;
 async function stopProcess(child){
  if(!child||child.exitCode!==null||child.signalCode!==null)return;
  const closed=once(child,'close');
@@ -138,6 +145,20 @@ function namedDatabase(url,name){
  const connection=new URL(url);
  connection.searchParams.set('application_name',name);
  return connection.href;
+}
+async function readWebPoolerWork(target){
+ const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
+ const consoleUrl=new URL(target.appUrl);
+ consoleUrl.pathname='/pgbouncer';
+ const connection=postgres(consoleUrl.href,{max:1,prepare:false,fetch_types:false,connect_timeout:5});
+ try{
+  const stats=await connection.unsafe('SHOW STATS').simple();
+  const rows=stats.filter(row=>row.database==='ai_hr_dev');
+  assert.equal(rows.length,1,'Expected the fictional app database in the pooler statistics');
+  const transactions=Number(rows[0].total_xact_count),queries=Number(rows[0].total_query_count);
+  assert(Number.isSafeInteger(transactions)&&transactions>0&&Number.isSafeInteger(queries)&&queries>=transactions);
+  return {available:true,transactions,queries};
+ }finally{await connection.end({timeout:5});}
 }
 async function startMixedWorker(command){
  mixedWorker=start('bulk-job-worker',command,['--import','tsx','scripts/bank-import-runner.ts'],
@@ -1857,9 +1878,19 @@ try{
  save();
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
+  if(databaseTopology==='transaction-pool'){
+   webPooler=await poolerTarget({...MAIN_POOLER,serverConnections:webDatabaseConnections},dbEnv.DATABASE_URL);
+   assert(webPooler,'Expected the job-owned PgBouncer fixture');
+   report.mixedDatabaseTopology.poolerServerConnections=webPooler.serverConnections;
+   save();
+  }
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
-   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',
-    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')})});
+   '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(webDatabaseConnections),
+    ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web')}),
+    ...(webPooler&&{
+     DATABASE_POOLED_URL:namedDatabase(webPooler.appUrl,'aihr-fixture-mixed-web'),
+     AIHR_DB_POOLER_SERVER_CONNECTIONS:String(webPooler.serverConnections),
+    })});
   try{
    await waitForApp();
    await proxy();
@@ -1871,7 +1902,14 @@ try{
  if(driverCommand&&!fixtureOnly){
   await withMixedShellPermissionComparison(async()=>{
    await startMixedWorker(driverCommand);
-   await measureMixedLoad(driverCommand,fixture);
+   try{await measureMixedLoad(driverCommand,fixture);}
+   finally{
+    if(webPooler){
+     report.mixedDatabaseTopology.poolerWork=await readWebPoolerWork(webPooler).catch(()=>({available:false}));
+     save();
+    }
+   }
+   if(webPooler)assert(report.mixedDatabaseTopology.poolerWork.available,'Could not verify app transactions passed through PgBouncer');
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
   });
  }
@@ -1920,6 +1958,7 @@ try{
     if(approvals.length)report.approvalsPreparation=approvals;
    }
   }finally{
+   webPooler?.stop();
    if(databaseStarted)await run('postgres-cleanup','bash',['../automation/.github/ci/postgres.sh','stop'],pgEnv);
    save();
   }

@@ -8,6 +8,7 @@
  * skipped, never silently faked.
  */
 import {execFileSync} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
 import {mkdtempSync, writeFileSync} from 'node:fs';
 import {createConnection} from 'node:net';
 import {tmpdir} from 'node:os';
@@ -37,25 +38,27 @@ async function waitForPort(host: string, port: number): Promise<void> {
   throw new Error('The test PgBouncer did not start listening.');
 }
 
-function throughPooler(hostPort: string): string {
-  const url = new URL(process.env.TEST_DATABASE_URL!);
+function throughPooler(databaseUrl: string, hostPort: string): string {
+  const url = new URL(databaseUrl);
   url.host = hostPort;
   return url.toString();
 }
 
 const dockerAllowed = () => (process.env.CI === 'true' && process.env.GITHUB_ACTIONS === 'true') || process.env.TEST_PGBOUNCER_DOCKER === '1';
 
-export async function poolerTarget(shape: PoolerShape = MAIN_POOLER): Promise<PoolerTarget | null> {
-  const explicit = shape.name === 'main' ? process.env.TEST_PGBOUNCER_HOSTPORT : process.env.TEST_PGBOUNCER_SHORT_WAIT_HOSTPORT;
+export async function poolerTarget(shape: PoolerShape = MAIN_POOLER, fixtureDatabaseUrl?: string): Promise<PoolerTarget | null> {
+  const databaseUrl = fixtureDatabaseUrl ?? process.env.TEST_DATABASE_URL!;
+  const explicit = fixtureDatabaseUrl ? undefined
+    : shape.name === 'main' ? process.env.TEST_PGBOUNCER_HOSTPORT : process.env.TEST_PGBOUNCER_SHORT_WAIT_HOSTPORT;
   if (explicit) {
     const serverConnections = shape.name === 'main' ? Number(process.env.TEST_PGBOUNCER_SERVER_CONNECTIONS ?? shape.serverConnections) : shape.serverConnections;
-    return {appUrl: throughPooler(explicit), serverConnections, stop: () => {}};
+    return {appUrl: throughPooler(databaseUrl, explicit), serverConnections, stop: () => {}};
   }
   if (!dockerAllowed()) return null;
 
-  const database = new URL(process.env.TEST_DATABASE_URL!);
+  const database = new URL(databaseUrl);
   const port = 56432 + (shape.name === 'main' ? 0 : 20) + Number(process.env.VITEST_POOL_ID ?? 1);
-  const name = `aihr-pooler-test-${process.env.GITHUB_RUN_ID ?? 'local'}-${port}`;
+  const name = `aihr-pooler-test-${process.env.GITHUB_RUN_ID ?? 'local'}-${port}-${randomUUID()}`;
   const directory = mkdtempSync(join(tmpdir(), 'aihr-pooler-'));
   writeFileSync(join(directory, 'userlist.txt'), `"${decodeURIComponent(database.username)}" ""\n`);
   writeFileSync(join(directory, 'pgbouncer.ini'), [
@@ -63,16 +66,22 @@ export async function poolerTarget(shape: PoolerShape = MAIN_POOLER): Promise<Po
     '[pgbouncer]', 'listen_addr = 127.0.0.1', `listen_port = ${port}`, 'unix_socket_dir =',
     // trust only where the job's own PostgreSQL trusts its loopback. Production uses SCRAM verifiers (deploy/pgbouncer).
     database.password ? 'auth_type = scram-sha-256' : 'auth_type = trust', 'auth_file = /etc/pgbouncer/userlist.txt',
+    ...(fixtureDatabaseUrl ? [`stats_users = ${decodeURIComponent(database.username)}`] : []),
     'pool_mode = transaction', `default_pool_size = ${shape.serverConnections}`, 'reserve_pool_size = 0',
     `max_db_connections = ${shape.serverConnections}`, 'max_client_conn = 1000', 'max_prepared_statements = 200',
     'server_reset_query =', `query_wait_timeout = ${shape.queryWaitTimeoutSeconds}`, '',
   ].join('\n'));
   if (database.password) writeFileSync(join(directory, 'userlist.txt'), `"${decodeURIComponent(database.username)}" "${decodeURIComponent(database.password)}"\n`);
-  docker('rm', '-fv', name);
   docker('create', '--name', name, '--label', 'aihr-owner=pooler-test', '--network', 'host', '--entrypoint', '/usr/bin/pgbouncer', IMAGE, '/etc/pgbouncer/pgbouncer.ini');
-  docker('cp', join(directory, 'pgbouncer.ini'), `${name}:/etc/pgbouncer/pgbouncer.ini`);
-  docker('cp', join(directory, 'userlist.txt'), `${name}:/etc/pgbouncer/userlist.txt`);
-  docker('start', name);
-  await waitForPort('127.0.0.1', port);
-  return {appUrl: throughPooler(`127.0.0.1:${port}`), serverConnections: shape.serverConnections, stop: () => { try { docker('rm', '-fv', name); } catch { /* the job's teardown removes it */ } }};
+  const stop = () => { try { docker('rm', '-fv', name); } catch { /* the job's teardown removes it */ } };
+  try {
+    docker('cp', join(directory, 'pgbouncer.ini'), `${name}:/etc/pgbouncer/pgbouncer.ini`);
+    docker('cp', join(directory, 'userlist.txt'), `${name}:/etc/pgbouncer/userlist.txt`);
+    docker('start', name);
+    await waitForPort('127.0.0.1', port);
+    return {appUrl: throughPooler(databaseUrl, `127.0.0.1:${port}`), serverConnections: shape.serverConnections, stop};
+  } catch (error) {
+    stop();
+    throw error;
+  }
 }

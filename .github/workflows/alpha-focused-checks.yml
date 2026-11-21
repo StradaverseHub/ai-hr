@@ -85,6 +85,11 @@ on:
         type: choice
         default: none
         options: [none, control, optimized]
+      mixed_database_topology:
+        description: Compare direct web connections with transaction pooling on the pinned fictional workload
+        type: choice
+        default: direct
+        options: [direct, transaction-pool]
       model_eval:
         description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
         required: false
@@ -104,7 +109,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}
+  group: alpha-focused-shell-permissions-${{ inputs.candidate_ref }}-${{ inputs.mixed_shell_permission_variant }}-${{ inputs.mixed_database_topology }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -167,6 +172,11 @@ jobs:
             control|optimized) [[ "$REUSE_BUILD" == true ]] || exit 2 ;;
             *) exit 2 ;;
           esac
+          case "$MIXED_DATABASE_TOPOLOGY" in
+            direct) ;;
+            transaction-pool) [[ "$REUSE_BUILD" == true && "$SHELL_PERMISSION_VARIANT" == none ]] || exit 2 ;;
+            *) exit 2 ;;
+          esac
           node .github/ci/focused-checks.mjs selection
         env:
           AIHR_FOCUSED_TESTS: ${{ inputs.selected_tests }}
@@ -179,6 +189,7 @@ jobs:
           REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           REUSE_BUILD: ${{ inputs.reuse_first_use_build }}
           SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
+          MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
       - name: Resolve frozen same-repository candidate
@@ -308,6 +319,7 @@ jobs:
           AIHR_BROWSER_REPLACEMENT_CATALOGUE: ${{ inputs.browser_replacement_catalogue }}
           AIHR_BROWSER_REUSED_BUILD: ${{ inputs.reuse_first_use_build }}
           AIHR_BROWSER_SHELL_PERMISSION_VARIANT: ${{ inputs.mixed_shell_permission_variant }}
+          AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY: ${{ inputs.mixed_database_topology }}
           AIHR_MIXED_DRIVER_NODE: ${{ steps.mixed-driver-node.outputs.exec-path }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
