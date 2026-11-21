@@ -1,4 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
+import {databaseReadSignal} from '../db/workload';
 const f=vi.hoisted(()=>({session:{tenantId:'fictional'},allowed:{canOpen:true,companyIds:['allowed']},search:vi.fn(),scope:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:async()=>f.session}));
 vi.mock('../lib/scope',()=>({getScopeIds:f.scope}));
@@ -14,4 +15,28 @@ it('uses fresh authorized scope, ignores posted companies and returns only switc
 it('refuses denied actors and oversized input before reading employees',async()=>{
  f.allowed.canOpen=false;expect((await GET(new Request('https://example.test/?q=EMP'))).status).toBe(403);expect(f.search).not.toHaveBeenCalled();
  f.allowed.canOpen=true;expect((await GET(new Request('https://example.test/?q='+ 'x'.repeat(201)))).status).toBe(400);expect(f.search).not.toHaveBeenCalled();
+});
+
+it('passes the request cancellation scope to the authenticated search read',async()=>{
+ const request=new Request('https://example.test/api/personnel/search?q=EMP');
+ f.search.mockImplementationOnce(async()=>{
+  expect(databaseReadSignal()).toBe(request.signal);
+  return [];
+ });
+ expect((await GET(request)).status).toBe(200);
+ expect(f.search).toHaveBeenCalledOnce();
+});
+
+it('skips the active search when typing or navigation cancels its request during scope lookup',async()=>{
+ const controller=new AbortController();
+ f.scope.mockImplementationOnce(async()=>{
+  controller.abort();
+  return ['scoped'];
+ });
+ const request=new Request('https://example.test/api/personnel/search?q=EMP',{signal:controller.signal});
+ const response=await GET(request);
+ expect(response.status).toBe(503);
+ expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+ expect(f.scope).toHaveBeenCalledOnce();
+ expect(f.search).not.toHaveBeenCalled();
 });
