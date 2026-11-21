@@ -34,7 +34,8 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
-const profileRewards=shardInput==='rewards-read-profile';
+const proveRewardsBatch=shardInput==='rewards-batch-proof';
+const profileRewards=shardInput==='rewards-read-profile'||proveRewardsBatch;
 const censusRewards=shardInput==='rewards-records'||profileRewards;
 const censusLifecycle=shardInput==='fixture-records';
 const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
@@ -1623,7 +1624,7 @@ try{
  if(profileRewards){
   try{
    await run('profile-rewards-reads',process.execPath,['--conditions=react-server','--import','tsx',
-    '../automation/scripts/performance/rewards-read-profile.mjs'],{...dbEnv,AIHR_DB_POOL_MAX:'8'},240000);
+    '../automation/scripts/performance/rewards-read-profile.mjs'],{...dbEnv,AIHR_DB_POOL_MAX:'8',PERF_REWARDS_BATCH_PROOF:String(proveRewardsBatch)},240000);
    report.complete=true;
   }finally{
    const observations=join(privateDir,'rewards-read-profile.json');

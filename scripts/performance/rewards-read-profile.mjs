@@ -36,39 +36,48 @@ try{
  const [draft]=await owner.client`select revision from reward_unit
   where id=${target.unitId}::uuid and tenant_id=${tenant.tenantId}::uuid and status='draft'`;
  assert(Number.isInteger(draft?.revision));
- const unitId=target.unitId;
- const reads=[
-  ['preparation-status',()=>rewards.getRewardPreparationStatus(ctx,unitId),result=>result.setupVisible&&result.isGr],
-  ['checklist',()=>rewards.getRewardPreparationChecklist(ctx,unitId),result=>result.canEdit&&result.revision===draft.revision&&Object.keys(result.checks??{}).length===6],
-  ['refresh-preview',()=>rewards.previewRewardSourceRefresh(ctx,unitId,draft.revision,target.snapshotDate),result=>result.asOf===target.snapshotDate&&/^[a-f0-9]{64}$/.test(result.digest)],
-  ['review-projection',()=>rewards.getRewardUnit(ctx,unitId),result=>result.cycle?.name===target.planName&&result.rows.length>0],
-  ['unit-governance',()=>rewards.getRewardUnitGovernance(ctx,unitId),result=>result.isGr&&result.revision===draft.revision],
-  ['senior-membership',()=>rewards.getRewardSeniorMembership(ctx,unitId),result=>result.canEdit&&result.revision===draft.revision],
- ];
- for(let pass=0;pass<6;pass++){
-  for(const [phase,read,valid] of [...reads.slice(pass),...reads.slice(0,pass)]){
-   const counts={statements:0,compensation:0,performanceReview:0,onehr:0,architecture:0};
-   client.options.debug=(_connection,statement)=>{
-    counts.statements++;
-    if(/\bfrom\s+"compensation"/i.test(statement))counts.compensation++;
-    if(/\bfrom\s+"performance_review"/i.test(statement))counts.performanceReview++;
-    if(/\bapp\.reward_onehr_source\(/i.test(statement))counts.onehr++;
-    if(/\bapp\.reward_architecture_for_source\(/i.test(statement))counts.architecture++;
-   };
-   const started=performance.now();
-   try{
-    const result=await read();
-    assert(valid(result),'Unexpected Rewards read result');
-    report.reads.push({phase,pass,elapsedMs:Math.round((performance.now()-started)*100)/100,...counts});
-   }catch(error){
-    report.reads.push({phase,pass,failure:error.code==='ERR_ASSERTION'?'assertion':'read'});
-   }finally{
-    client.options.debug=debug;
-    save();
+ if(env.PERF_REWARDS_BATCH_PROOF==='true'){
+  const [{compareRewardsRosterReads},{withRewardsTenant},{sql}]=await Promise.all([
+   import('./rewards-roster-batch-proof.mjs'),source('core/module-gate.ts'),
+   import(pathToFileURL(resolve(process.cwd(),'node_modules/drizzle-orm/index.js')).href),
+  ]);
+  report.batch=await compareRewardsRosterReads({ctx,target,owner,withRewardsTenant,sql});
+  save();
+ }else{
+  const unitId=target.unitId;
+  const reads=[
+   ['preparation-status',()=>rewards.getRewardPreparationStatus(ctx,unitId),result=>result.setupVisible&&result.isGr],
+   ['checklist',()=>rewards.getRewardPreparationChecklist(ctx,unitId),result=>result.canEdit&&result.revision===draft.revision&&Object.keys(result.checks??{}).length===6],
+   ['refresh-preview',()=>rewards.previewRewardSourceRefresh(ctx,unitId,draft.revision,target.snapshotDate),result=>result.asOf===target.snapshotDate&&/^[a-f0-9]{64}$/.test(result.digest)],
+   ['review-projection',()=>rewards.getRewardUnit(ctx,unitId),result=>result.cycle?.name===target.planName&&result.rows.length>0],
+   ['unit-governance',()=>rewards.getRewardUnitGovernance(ctx,unitId),result=>result.isGr&&result.revision===draft.revision],
+   ['senior-membership',()=>rewards.getRewardSeniorMembership(ctx,unitId),result=>result.canEdit&&result.revision===draft.revision],
+  ];
+  for(let pass=0;pass<6;pass++){
+   for(const [phase,read,valid] of [...reads.slice(pass),...reads.slice(0,pass)]){
+    const counts={statements:0,compensation:0,performanceReview:0,onehr:0,architecture:0};
+    client.options.debug=(_connection,statement)=>{
+     counts.statements++;
+     if(/\bfrom\s+"compensation"/i.test(statement))counts.compensation++;
+     if(/\bfrom\s+"performance_review"/i.test(statement))counts.performanceReview++;
+     if(/\bapp\.reward_onehr_source\(/i.test(statement))counts.onehr++;
+     if(/\bapp\.reward_architecture_for_source\(/i.test(statement))counts.architecture++;
+    };
+    const started=performance.now();
+    try{
+     const result=await read();
+     assert(valid(result),'Unexpected Rewards read result');
+     report.reads.push({phase,pass,elapsedMs:Math.round((performance.now()-started)*100)/100,...counts});
+    }catch(error){
+     report.reads.push({phase,pass,failure:error.code==='ERR_ASSERTION'?'assertion':'read'});
+    }finally{
+     client.options.debug=debug;
+     save();
+    }
    }
   }
+  assert(report.reads.length===36&&report.reads.every(row=>!row.failure&&row.statements>0));
  }
- assert(report.reads.length===36&&report.reads.every(row=>!row.failure&&row.statements>0));
 }finally{
  client.options.debug=debug;
  await Promise.all([client.end({timeout:5}),owner.client.end({timeout:5})]);
