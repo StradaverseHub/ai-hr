@@ -64,6 +64,7 @@ export function attendanceCorrectionOutcome(response,expected){
 export async function prepareMixedWorkflows({context,withContext,closeContext,notePrimary,noteEvidence,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs,withLockWorkload}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  const failedAttendanceActions=[];
+ const attemptedPayroll=[];
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
   const marker={attendanceCreate:'PERF_ATTENDANCE_BROWSER',attendanceApprove:attendanceApprovalMarker,leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
@@ -463,6 +464,20 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
     as f(action text,employment_id uuid,marker text,correction_id uuid)
    group by action order by action`;
  }
+ async function verifyPayrollAfterTraffic(){
+  if(!attemptedPayroll.length)return [];
+  const attempts=attemptedPayroll.map(({tenant,tenantId,batchId,userId})=>({tenant,tenant_id:tenantId,batch_id:batchId,user_id:userId}));
+  return db`select target.tenant,batch.status as "batchState",jobs.count as "jobCount",
+   case when jobs.count=1 then jobs.state end as "jobState",slips.count as "payslipCount"
+   from jsonb_to_recordset(${JSON.stringify(attempts)}::jsonb) as target(tenant int,tenant_id uuid,batch_id uuid,user_id uuid)
+   left join public.payroll_batch batch on batch.id=target.batch_id and batch.tenant_id=target.tenant_id
+   cross join lateral (select count(*)::int as count,min(job.state) as state from public.bulk_job job
+    where job.tenant_id=target.tenant_id and job.created_by=target.user_id and job.kind='payroll_process'
+     and job.input->>'batchId'=target.batch_id::text) jobs
+   cross join lateral (select count(*)::int as count from public.payslip slip
+    where slip.tenant_id=target.tenant_id and slip.batch_id=target.batch_id) slips
+   order by target.tenant`;
+ }
  async function runPayroll(user,loadState){
   assert.equal(user.role,'groupHR');
   const startedWith=loadState(),started=performance.now();
@@ -470,6 +485,7 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   (report.mixedWorkflows.loadedPayroll??=[]).push(row);
   save();
   assert(startedWith.active===500&&startedWith.inSteadyWindow,'Payroll processing did not start at steady 500-user load');
+  attemptedPayroll.push(user);
   const elapsed=()=>Math.round(performance.now()-started);
   await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
   row.responseMs=elapsed();save();
@@ -544,5 +560,5 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   }
   return [...cases.values()];
  }
- return {run,runPayroll,verifyFailedAttendanceActions,plannedWrites};
+ return {run,runPayroll,verifyFailedAttendanceActions,verifyPayrollAfterTraffic,plannedWrites};
 }

@@ -1921,6 +1921,10 @@ async function main(){
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');
  if(mixedWorkflows){
+  // Observe durable effects after the workload and timed resource sampling have settled.
+  try{report.mixedWorkflows.payrollAfterTraffic={status:'checked',rows:await mixedWorkflows.verifyPayrollAfterTraffic()};}
+  catch{report.mixedWorkflows.payrollAfterTraffic={status:'unavailable'};}
+  save();
   try{report.mixedWorkflows.failedAttendanceEffects={status:'checked',rows:await mixedWorkflows.verifyFailedAttendanceActions()};}
   catch(error){
    const code=typeof error?.code==='string'&&/^[A-Z0-9_]{1,40}$/.test(error.code)?error.code:null;
