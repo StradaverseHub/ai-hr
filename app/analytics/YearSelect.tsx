@@ -21,7 +21,7 @@ export function YearSelect({
   years: number[];
 }) {
   return (
-    <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    <label className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-muted-foreground">
       {label}
       <select
         name={name}
