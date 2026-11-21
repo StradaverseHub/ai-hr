@@ -1,6 +1,8 @@
 import { presentGroundedToolOutcome } from '../../lib/ai/grounded-tool-presentation';
+import { adjudicateAssistantAnswerPlan } from '../../lib/ai/assistant-answer-plan';
 import {
-  resolvePrivateAssistantIntent, selectPrivateAssistantCards,
+  adjudicatePrivateAssistantTerminal, privateAssistantCatalogue, resolvePrivateAssistantIntent, selectPrivateAssistantCards,
+  type PrivateAssistantPayload,
 } from '../../lib/ai/provider-assistant-policy';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { compareProtectedAnswers } from './protected-answer-comparison';
@@ -18,9 +20,8 @@ const balances = [
   { name: 'partial', available: 7.5, taken: 1, pending: 4, withheld: true },
 ] as const;
 
-/** Fictional source recreation through the same owned projection and terminal adjudicator as the app. */
-export async function runProtectedLeaveComparison(model: PilotModel) {
-  const cases = questions.flatMap(({ question, intent, field }) => balances.map(balance => {
+function leaveFixtures() {
+  return questions.flatMap(({ question, intent, field }) => balances.map(balance => {
     const resolved = resolvePrivateAssistantIntent(question);
     if (resolved.intent !== intent) throw Error('Protected leave fixture no longer routes to the expected intent.');
     const { name, ...counts } = balance;
@@ -45,7 +46,11 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
     const expected = { version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card: 0, fact }] };
     return { id: intent + ':' + name, intent, reads, selected, expected };
   }));
+}
 
+/** Fictional source recreation through the same owned projection and terminal adjudicator as the app. */
+export async function runProtectedLeaveComparison(model: PilotModel) {
+  const cases = leaveFixtures();
   const localCases = ['Show my colleague’s leave balance', 'How much annual leave do I have?', 'Why did my annual leave not match eligibility?']
     .map(question => ({ question, intent: resolvePrivateAssistantIntent(question).intent }));
   return {
@@ -54,4 +59,63 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
     localCases,
     ...await compareProtectedAnswers(cases, model),
   };
+}
+
+/** An offline routing candidate for explicit, unambiguous own leave counts. */
+export function selectProtectedLeaveCount(local: PrivateAssistantPayload) {
+  if (local.operation !== 'conversation') return null;
+  const request = questions.find(row => row.intent === local.intent);
+  const [read] = local.reads;
+  if (!request || local.reads.length !== 1 || read.module !== 'leave' || read.cards.length !== 1) return null;
+  const [card] = read.cards;
+  const matches = card.facts.filter(fact => fact.available && fact.field === request.field);
+  if (matches.length !== 1) return null;
+  return {kind: 'fact' as const, read: read.read, card: card.card, fact: matches[0].fact};
+}
+
+function clarifiedLeaveFixtures() {
+  return questions.map(({question,intent,field}) => {
+    const companies = ['Fictional other company', 'Fictional selected company'];
+    const employments = companies.map((company, card) => ({
+      company, employmentId: 'fictional-own-' + card,
+      balances: [{leaveType: 'Fictional annual leave', available: 9 + card, pending: 2 + card, taken: 4 + card}],
+    }));
+    const presentation = presentGroundedToolOutcome('my_leave_balances', {ok:true,employments});
+    if (!presentation || presentation.cards.length !== 2) throw Error('Clarified leave must begin with two own records.');
+    const reads = [{read:0,presentation,explanations:[]}];
+    const local = employments.map(({company,employmentId},card) => ({read:0,card,key:employmentId,labels:[company]}));
+    const unclarified = selectPrivateAssistantCards(intent,reads,null,local);
+    const selected = selectPrivateAssistantCards(intent,reads,{originalQuestion:question,slot:'employment',answer:companies[1],earlier:[]},local);
+    if (unclarified.slot !== 'employment' || selected.slot || selected.selection[0]?.cards.join(',') !== '1')
+      throw Error('Clarified leave did not follow the existing company-selection rule.');
+    const fact = presentation.cards[1].facts.findIndex(value => value.field === field && value.value !== null);
+    if (fact < 0) throw Error('Missing requested fact in the selected company.');
+    return {id:intent + ':clarified-company',intent,reads,selected,
+      expected:{version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:1,fact}]}};
+  });
+}
+
+export async function runProtectedLeaveRouting(model: PilotModel) {
+  const cases = [...leaveFixtures(), ...clarifiedLeaveFixtures()];
+  const comparison = await compareProtectedAnswers(cases, model);
+  const direct = new Map(cases.flatMap(fixture => {
+    const catalogue = privateAssistantCatalogue(fixture.intent, fixture.reads, 'baseline_v1', fixture.selected.selection);
+    const chosen = selectProtectedLeaveCount(catalogue);
+    if (!chosen) return [];
+    const plan = adjudicatePrivateAssistantTerminal(JSON.stringify({version: 1, mode: 'answer', blocks: [chosen]}), catalogue);
+    const checked = adjudicateAssistantAnswerPlan(plan, fixture.reads);
+    const expected = adjudicateAssistantAnswerPlan(fixture.expected, fixture.reads);
+    return [[fixture.id, routingDigest(checked) === routingDigest(expected)] as const];
+  }));
+  const references = comparison.strategies.map(reference => {
+    const rows = comparison.comparisons.filter(row => row.strategy === reference.strategy);
+    const gains = rows.filter(row => direct.get(row.id) === true && row.outcome !== 'correct').length;
+    const regressions = rows.filter(row => direct.get(row.id) === false && row.outcome === 'correct').length;
+    return {...reference, gains, regressions, routedCorrect: reference.correct + gains - regressions};
+  });
+  return {evidence: 'offline_protected_leave_routing_development', releaseAuthorized: false,
+    fixtureDigest: routingDigest(cases), cases: cases.length, direct: direct.size,
+    directCorrect: [...direct.values()].filter(Boolean).length,
+    estimatedCallsPerStrategy: cases.length - direct.size,
+    references, budget: comparison.budget};
 }

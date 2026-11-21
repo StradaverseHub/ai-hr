@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
+import { runProtectedLeaveComparison, runProtectedLeaveRouting, selectProtectedLeaveCount } from '../scripts/experiments/protected-leave-comparison';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
@@ -19,6 +19,7 @@ import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-imp
 import { adjudicateAssistantAnswerPlan } from '../lib/ai/assistant-answer-plan';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
 import { routingDigest } from '../lib/ai/module-agent-routing';
+import { capturePrivateAssistantTask } from '../lib/ai/provider-assistant-policy';
 
 it('separates source-resolved findings from genuinely competing explanations', async () => {
   const report = await runProtectedExplanationPriority(async ({ mode, prompt }) => {
@@ -430,6 +431,40 @@ describe('protected leave comparison', () => {
       inputTokens: 1, outputTokens: 1,
     }));
     expect(report.strategies.map(item => [item.correct, item.rejected])).toEqual([[0, 9], [0, 9]]);
+  });
+
+  it('routes the exact selected own leave count and preserves the reviewed strategies on the same catalogue', async () => {
+    const report = await runProtectedLeaveRouting(async ({prompt}) => {
+      expect(prompt).not.toMatch(/Fictional|annual leave/i);
+      const {local} = capturePrivateAssistantTask(JSON.parse(prompt));
+      if (local.operation !== 'conversation') throw Error('Expected a conversation catalogue.');
+      const fields = {leave_available:'available',leave_pending:'pending',leave_taken:'taken'};
+      const [read] = local.reads;
+      const [card] = read.cards;
+      const fact = card.facts.find(row => row.field === fields[local.intent as keyof typeof fields] && row.available);
+      expect(fact).toBeDefined();
+      return {text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact!.fact}]}),
+        inputTokens:1,outputTokens:1};
+    });
+    expect(report).toMatchObject({releaseAuthorized:false,cases:12,direct:12,directCorrect:12,
+      estimatedCallsPerStrategy:0,budget:{calls:24}});
+    expect(report.references.map(row=>[row.correct,row.routedCorrect,row.regressions])).toEqual([[12,12,0],[12,12,0]]);
+  });
+
+  it('abstains on unavailable counts, multiple candidates and intents without an exact leave field', () => {
+    const fact = {fact:2,field:'pending',available:true};
+    const card = {card:0,facts:[fact]};
+    const read = {read:0,module:'leave',cards:[card],explanations:[]};
+    const request = {version:1,operation:'conversation',intent:'leave_pending',strategy:'baseline_v1',reads:[read]};
+    const select = (input: unknown) => selectProtectedLeaveCount(capturePrivateAssistantTask(input).local);
+    expect(select(request)).toEqual({kind:'fact',read:0,card:0,fact:2});
+    for(const input of [
+      {...request,intent:'leave_requests'},
+      {...request,reads:[{...read,module:'payroll'}]},
+      {...request,reads:[{...read,cards:[{...card,facts:[{...fact,available:false}]}]}]},
+      {...request,reads:[{...read,cards:[{...card,facts:[fact,{...fact,fact:3}]}]}]},
+      {...request,reads:[{...read,cards:[card,{...card,card:1}]}]},
+    ]) expect(select(input)).toBeNull();
   });
 });
 

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
-import { runProtectedLeaveComparison } from './protected-leave-comparison';
+import { runProtectedLeaveComparison, runProtectedLeaveRouting } from './protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
 import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } from './protected-work-summary-improvement';
 import { leaveAnswerJsonSchema } from './leave-answer-format';
@@ -40,6 +40,7 @@ async function main() {
   const flags = holdoutMode ? [] : args;
   const runners = {
     '--protected': runProtectedLeaveComparison,
+    '--protected-leave-routing': runProtectedLeaveRouting,
     '--protected-work-summary': runProtectedWorkSummaryComparison,
     '--improve-protected-work-summary': runProtectedWorkSummaryImprovement,
     '--protected-explanation-priority': runProtectedExplanationPriority,
@@ -59,7 +60,7 @@ async function main() {
       new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && !holdoutMode && (!benchmark || useStaticSchema)) ||
       (explanationPriority && (useStaticSchema || useCatalogueFormat)) ||
       (useIndexedFormat && (benchmark !== '--protected-work-summary' || useStaticSchema || useCatalogueFormat)))
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [--protected | --protected-work-summary | --improve-protected-work-summary | --protected-explanation-priority | --improve-protected-explanation]');
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema | --indexed-catalogue] [' + Object.keys(runners).join(' | ') + ']');
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   const target = localOutputPath(outfile);
   if (holdoutMode && existsSync(target)) throw Error('Use a new report path.');
