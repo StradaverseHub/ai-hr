@@ -34,9 +34,9 @@ const env=process.env;
 const fixtureOnly=env.AIHR_BROWSER_FIXTURE_ONLY==='true';
 const mixedLoad=env.AIHR_BROWSER_MIXED_LOAD==='true';
 const establishedAttendance=env.AIHR_BROWSER_ESTABLISHED_ATTENDANCE==='true';
-const offboardingVariant=env.AIHR_BROWSER_OFFBOARDING_VARIANT??'none';
-assert(['none','control','optimized'].includes(offboardingVariant));
-assert(offboardingVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
+const contractNavigationVariant=env.AIHR_BROWSER_CONTRACT_NAVIGATION_VARIANT??'none';
+assert(['none','control','optimized'].includes(contractNavigationVariant));
+assert(contractNavigationVariant==='none'||(mixedLoad&&env.AIHR_BROWSER_REUSED_BUILD==='true'&&!fixtureOnly));
 const replacementCatalogue=env.AIHR_BROWSER_REPLACEMENT_CATALOGUE??'';
 assert(['','absent','present'].includes(replacementCatalogue));
 assert(!replacementCatalogue||(establishedAttendance&&!fixtureOnly));
@@ -544,13 +544,13 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
  }
 }
 
-async function withMixedOffboardingComparison(work){
- if(offboardingVariant==='none')return work();
+async function withMixedContractNavigationComparison(work){
+ if(contractNavigationVariant==='none')return work();
  assert.equal(sha,'b00e2b2738312d87d5bea6f0ac7c877517d0b75d');
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
- const dockerConfig=join(privateDir,'offboarding-docker-config');
+ const dockerConfig=join(privateDir,'contract-navigation-docker-config');
  mkdirSync(dockerConfig,{mode:0o700});
  const label=execFileSync('/usr/bin/docker',[
   '--config',dockerConfig,'--host','unix:///var/run/docker.sock','inspect','--type','container',
@@ -560,48 +560,51 @@ async function withMixedOffboardingComparison(work){
 
  const require=createRequire(join(process.cwd(),'package.json'));
  const owner=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{statement_timeout:'90s',lock_timeout:'3s'}});
- const readFunction=async sql=>{
-  const [row]=await sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
-   pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition,md5(p.prosrc) as "bodyHash"
-   from pg_proc p where p.oid='app.offboarding_posting_queue_access()'::regprocedure`;
-  return row;
- };
+ const readFunctions=sql=>sql`select p.oid::text,p.proacl::text,p.proconfig,p.prosecdef,p.provolatile,
+  pg_get_userbyid(p.proowner) as owner,pg_get_functiondef(p.oid) as definition,
+  encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') as "bodyHash"
+  from pg_proc p where p.oid in ('app.contract_shared_navigation_access()'::regprocedure,'app.automation_can_configure(text)'::regprocedure)
+  order by p.oid`;
+ const boundaries=rows=>rows.map(({definition,bodyHash,...boundary})=>boundary);
  try{
-  const {definition:original,bodyHash,...boundary}=await readFunction(owner);
-  assert.equal(bodyHash,'0b244f4aa1621807d85b8bc27d5dc41e','Expected the original fixture function');
-  assert(['postgres','ai_hr_owner'].includes(boundary.owner));
-  const install=(statement,expected)=>owner.begin(async tx=>{
-   if(boundary.owner==='ai_hr_owner')await tx.unsafe('set local role ai_hr_owner');
-   await tx.unsafe(statement);
-   const {definition,bodyHash:observedBody,...observed}=await readFunction(tx);
-   assert.deepEqual(observed,boundary);
-   if(expected==='original'){
-    assert.equal(definition,original);
-    assert.equal(observedBody,bodyHash);
+  const original=await readFunctions(owner);
+  assert.deepEqual(original.map(row=>row.bodyHash).sort(),[
+   'b0bb6d4e2743d83d6ab14ee757555fbfd6707db0bb82ff0b8505a44484a434fc',
+   'b6aa90640d3ce45dc2fb1135af3008d7dc297090071ca8ff7534bb18624e288c',
+  ]);
+  const functionOwner=original[0].owner;
+  assert(['postgres','ai_hr_owner'].includes(functionOwner)&&original.every(row=>row.owner===functionOwner));
+  const install=(statements,restoring)=>owner.begin(async tx=>{
+   if(functionOwner==='ai_hr_owner')await tx.unsafe('set local role ai_hr_owner');
+   for(const statement of statements)await tx.unsafe(statement);
+   const current=await readFunctions(tx);
+   assert.deepEqual(boundaries(current),boundaries(original));
+   for(const [index,row] of current.entries()){
+    if(restoring)assert.equal(row.definition,original[index].definition);
+    else assert.notEqual(row.bodyHash,original[index].bodyHash);
    }
-   else assert.notEqual(definition,original);
   });
-  report.mixedOffboarding={variant:offboardingVariant,fixtureFunctionOwner:boundary.owner,replacementInstalled:false,restored:false};
+  report.mixedContractNavigation={variant:contractNavigationVariant,fixtureFunctionOwner:functionOwner,
+   replacementInstalled:false,restored:false};
   try{
-   if(offboardingVariant==='optimized'){
-    const replacement=readFileSync(new URL('../../test/fixtures/offboarding-posting-queue-replacement.sql',import.meta.url),'utf8');
-    const digest=createHash('sha256').update(replacement).digest('hex');
-    assert.equal(digest,'98377e8ad38ce15950965f7def886f52642a65e8b153cbaacb02c162b2616539');
-    // The separate restricted-owner rehearsal verifies the same replacement.
-    // Preserve this browser fixture's existing schema ownership in both arms.
-    const marker='\nCREATE OR REPLACE FUNCTION app.offboarding_posting_queue_access()';
-    const start=replacement.indexOf(marker);
-    assert(start>0&&start===replacement.lastIndexOf(marker));
-    await install(replacement.slice(start),'optimized');
-    report.mixedOffboarding.replacementSha256=digest;
-    report.mixedOffboarding.replacementInstalled=true;
+   if(contractNavigationVariant==='optimized'){
+    const proof=readFileSync(new URL('../../test/fixtures/contract-navigation-intake-scope.sql',import.meta.url),'utf8');
+    const digest=createHash('sha256').update(proof).digest('hex');
+    assert.equal(digest,'fb28975b2a1d0e3ad6ecacff472c1d4204a5e1ee6a996a75acb679a995c51f96');
+    const restrictedOnly=' AND NOT owner_role.rolsuper AND NOT owner_role.rolbypassrls';
+    assert.equal(proof.split(restrictedOnly).length,3);
+    // PostgreSQL on this isolated fixture may be the original owner. Both arms retain the same owner and ACLs.
+    const replacement=functionOwner==='postgres'?proof.replaceAll(restrictedOnly,''):proof;
+    await install([replacement],false);
+    report.mixedContractNavigation.replacementSha256=digest;
+    report.mixedContractNavigation.replacementInstalled=true;
    }
    save();
    return await work();
   }finally{
-   if(report.mixedOffboarding.replacementInstalled){
-    await install(original,'original');
-    report.mixedOffboarding.restored=true;
+   if(report.mixedContractNavigation.replacementInstalled){
+    await install(original.map(row=>row.definition),true);
+    report.mixedContractNavigation.restored=true;
     save();
    }
   }
@@ -1847,7 +1850,7 @@ try{
   }
  }
  if(driverCommand&&!fixtureOnly){
-  await withMixedOffboardingComparison(async()=>{
+  await withMixedContractNavigationComparison(async()=>{
    await startMixedWorker(driverCommand);
    await measureMixedLoad(driverCommand,fixture);
    assert(mixedWorker.exitCode===null&&mixedWorker.signalCode===null,'The mixed workload worker stopped before workload completion');
