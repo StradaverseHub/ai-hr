@@ -27,3 +27,5 @@ python3 deploy/cutover/controller.py --root /run/aihr-release --port 3200 recove
 ```
 
 A preparation request contains `baseline` and `candidate` objects with the health identity fields, plus the expected `smoke` object. Activation reports preparation time, time waiting for the target lock, and time holding it. Record those separately from build and external approval time.
+
+For Next.js runtime preparation, `next_probe.py` confirms that the installed `.next/BUILD_ID` matches the verified package and that the selected local endpoint serves both application health and the byte-for-byte compiled build manifest. Run the same probe through the trusted ingress after switching. The probe supplies build arrival evidence. The launcher still validates the complete artifact, and the live journey supplies the user outcome.

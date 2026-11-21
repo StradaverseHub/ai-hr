@@ -39,18 +39,23 @@ class UnixHTTPConnection(http.client.HTTPConnection):
         self.sock.connect(str(self.endpoint))
 
 
-def get_json(connection, path):
+def get_bytes(connection, path, limit):
     try:
         connection.request("GET", path)
         response = connection.getresponse()
         if response.status != 200:
             raise RuntimeError(f"{path} returned HTTP {response.status}")
-        data = response.read(8193)
-        if len(data) > 8192:
-            raise RuntimeError("Release probe response exceeded 8 KiB")
-        return json.loads(data)
+        data = response.read(limit + 1)
+        if len(data) > limit:
+            raise RuntimeError("Release probe response exceeded its byte limit")
+        return data
     finally:
         connection.close()
+
+
+
+def get_json(connection, path):
+    return json.loads(get_bytes(connection, path, 8192))
 
 
 def sync_directory(path):
