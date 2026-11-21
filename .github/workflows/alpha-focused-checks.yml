@@ -182,7 +182,8 @@ jobs:
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
               false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
-              true:5175d387846c18fcc83ef96091cb1b4e1b538241) [[ "$combined_group_build" == true ]] || exit 2 ;;
+              true:5175d387846c18fcc83ef96091cb1b4e1b538241|true:71e0dceb1a393817f3040518e82dc845a27700b0)
+                [[ "$combined_group_build" == true ]] || exit 2 ;;
               *) exit 2 ;;
             esac
           fi
@@ -310,7 +311,14 @@ jobs:
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
-          if [[ "$AIHR_CI_HEAD" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ]]; then
+          if [[ "$AIHR_CI_HEAD" == 71e0dceb1a393817f3040518e82dc845a27700b0 ]]; then
+            test "$MIXED_GROUP_SCALE" = true
+            gh api repos/StradaverseHub/ai-hr/actions/jobs/136916537962 --jq '
+              .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
+              .run_id == 44927404845 and .head_sha == "99c1821e77d52e36b49d879f1936e3270651c1ef"' | grep -qx true
+            gh api repos/StradaverseHub/ai-hr/actions/artifacts/14716484117/zip > "$archive"
+            digest=a6c59e018d35a21e390fb2f3aacb54784bdbad071b4900a187293e696e62f0bc
+          elif [[ "$AIHR_CI_HEAD" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             gh api repos/StradaverseHub/ai-hr/actions/jobs/136898799232 --jq '
               .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
@@ -355,7 +363,8 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
-          if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 ]]; then
+          if [[ "$REUSE_BUILD" == true && "$AIHR_CI_HEAD" != 5175d387846c18fcc83ef96091cb1b4e1b538241 &&
+                "$AIHR_CI_HEAD" != 71e0dceb1a393817f3040518e82dc845a27700b0 ]]; then
             expected_build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
