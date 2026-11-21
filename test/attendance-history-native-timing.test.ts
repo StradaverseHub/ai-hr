@@ -1,6 +1,8 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { withTenant } from '../db/client';
 import { attendanceApplicationFilterOptions, countOfflineClaimsAwaitingReview, listAttendanceApplicationHistory } from '../packs/attendance/service';
 import { closeAll, migrateTestDb, resetDb, seedBase, setModule } from './harness';
 import { buildScaleFixture, type ScaleFixture } from './helpers/ai-centre-scale-fixture';
@@ -42,9 +44,16 @@ it('attributes empty-results History load to the browser page’s existing read 
     expect(choices.value.companies.map(row => row.id).sort()).toEqual([...companies].sort());
     expect(choices.value.employees.length).toBeGreaterThan(0);
     expect(choices.value.employees.every(employee => companies.includes(employee.companyId))).toBe(true);
+    const orderedCompanyIds = choices.value.companies.map(row => sql`${row.id}::uuid`);
+    const approvers = await timed(() => withTenant(actor, tx => tx.execute<{
+      id: string; name: string; employeeCode: string | null;
+    }>(sql`select id,name,employee_code as "employeeCode"
+      from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(orderedCompanyIds, sql`, `)}]::uuid[]) limit 50`)));
+    expect([...approvers.value]).toEqual(choices.value.approverEmployees);
     return {
       scope: name, companies: companies.length, employees: choices.value.employees.length,
       resultsMs: results.elapsedMs, filterOptionsMs: choices.elapsedMs, offlineCountMs: offlineCount.elapsedMs,
+      workflowApproverOptionsMs: approvers.elapsedMs, workflowApproverOptionsCount: approvers.value.length,
     };
   };
   for (const scope of scopes) await measure(scope);
@@ -58,4 +67,4 @@ it('attributes empty-results History load to the browser page’s existing read 
   if (directory) writeFileSync(join(directory, 'attendance-history-native-timing.json'), JSON.stringify({
     kind: 'FICTIONAL_ATTENDANCE_HISTORY_READ_TIMING', releaseEligible: false, samples,
   }, null, 2), { mode: 0o600 });
-}, 120_000);
+}, 180_000);
