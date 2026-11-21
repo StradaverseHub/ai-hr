@@ -1,0 +1,11 @@
+# Normal cleanup failure diagnostics
+
+The accepted PR209 operator stopped with Cleanup channel EOF after its owned cleanup completed. Independent read-only reconciliation established arrival/cleanup and allowed scoped handback; its original failure remains failed. The precise terminal cause is unproven. The existing cleanup-session tests deliberately refuse success if the original grant expires during the post-removal audit. That expiry policy is preserved.
+
+This isolated candidate changes parent-side diagnostic observation only. Incomplete records add the protocol phase, whether COMMIT was submitted to the local stream, whether any result frame arrived, actual observation time versus original grant expiry, observed child terminal state, and bounded stderr byte-count/hash metadata. No raw stderr is copied. EOF can precede child close; an open/null terminal snapshot accurately records uncertainty. COMMIT submission does not establish remote receipt, authorization, deletion or success. These records confer no recovery/deletion authority.
+
+Every READY/COMMIT/source/nonce/grant/lease/fence/runtime/ledger check remains in its original order. No receiver, mutation engine, timeout, grant duration, result marker or accepted-success condition is changed. Unknown transport still closes input, retains the lease and requires remote reconciliation before any new attempt. It never automatically retries mutation, renews the grant, deletes after expiry or fabricates success. Installed PR209 bytes and its receipts are not edited.
+
+Three added behavioral controls cover EOF after COMMIT, dirty checksum refusal before COMMIT, and an actual child process emitting private stderr and exiting17. The full existing cleanup expiry, IPC, nonce/replay, installer, source/ledger and Python engine controls must run on standard GitHub Actions using the existing normal-cleanup diagnostic profile. No local tests/compiler/build, SSH or staging changes are part of this patch. Canonical provider/module source closures are unchanged at the verified6ea baseline.
+
+This is future diagnostic reliability work, not a complete recovery-route implementation or evidence that the original EOF cause is fixed. PR210 retains active release ownership. Keep the candidate separate for review; no release admission or deployment is implied.
