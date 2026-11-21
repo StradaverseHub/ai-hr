@@ -245,7 +245,17 @@ class Coordinator:
                 self.ready(p['baseline'], p['baselineBuild']); state = 'failed'
             else:
                 require(r.get('acknowledgeUncertainAttempt') is True, 'Explicit uncertain-attempt acknowledgement required')
-                self.ready(sha(r['observedSource']), text(r['observedBuild']))
+                observed = self.ready(sha(r['observedSource']), text(r['observedBuild']))
+                if p.get('lane') == 'index-expansion':
+                    require(observed.get('backend') == 'canonical',
+                            'Upgrade recovery requires a verified canonical route')
+                    ledger = subprocess.run(
+                        ['/opt/node22/bin/node', '--env-file=.env.production',
+                         '.github/ci/staging-migration-ledger.mjs'],
+                        cwd=APP, capture_output=True, timeout=25,
+                    )
+                    require(ledger.returncode == 0,
+                            'Applied schema does not match the running source. Retain the upgrade lease and resume.')
                 state = 'failed'
             self.db.execute('UPDATE batches SET state=? WHERE id=?', (state, l['batch']))
             for i in p['tickets']: self.db.execute('UPDATE tickets SET state=? WHERE id=?', (state, i))
