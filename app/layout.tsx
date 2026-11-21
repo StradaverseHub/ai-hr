@@ -59,9 +59,7 @@ import {withBackgroundReadWork,withSharedReadSnapshot} from '@/db/client';
 import '@/core/home-request-preamble';
 import {requestReadScope} from '@/lib/request-read-scope';
 import {lifecycleModuleInbox} from './lifecycle/module-inbox';
-import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
-import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
-import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
+import { onboardingTasks } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
@@ -190,8 +188,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // identity at all. It always resolves to something renderable — an employed viewer, a named principal
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
-  const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
-    await readSignedInShellNavigation(session);
+  const {
+    context: [{ allowed, scopeIds }, viewer, navigationAccess], features,
+    lifecycleEnabled, onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess,
+  } = await readSignedInShellNavigation(session);
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
     letters: letterDestinations,
@@ -233,12 +233,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
-  const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
-  ]);
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');

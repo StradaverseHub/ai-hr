@@ -1,6 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { withIndependentTransactions, type SessionContext } from '../db/client';
+import { lifecycleModuleNavigation } from '../app/lifecycle/workflow-availability';
+import { onboardingNavigation } from '../packs/lifecycle/service';
+import { offboardingPostingAccess } from '../packs/personnel-postings/service';
 import type { SharedReadStats } from '../db/shared-read';
 import { employment } from '../db/schema';
 import { readShellNavigationContext, readSignedInShellNavigation } from '../lib/shell-navigation-context';
@@ -24,7 +27,7 @@ beforeAll(async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
-  for (const module of ['assistant', 'rewards', 'recruitment']) await setModule(base.tenantId, module, 'active');
+  for (const module of ['assistant', 'rewards', 'recruitment', 'lifecycle']) await setModule(base.tenantId, module, 'active');
   group = await buildScaleFixture(base, { employments: 1000, events: 0 });
   const [staff] = await owner.db
     .select({ personId: employment.personId, companyId: employment.companyId })
@@ -68,7 +71,15 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
 
       const shared = await readSignedInShellNavigation(session);
       const independent = await withIndependentTransactions(() => readSignedInShellNavigation(session));
-      expect(shared).toEqual({ context, features });
+      hooks.__aihrPerfSharedRead = undefined;
+      const [onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess] = await Promise.all([
+        onboardingNavigation(session),
+        lifecycleModuleNavigation(session),
+        offboardingPostingAccess(session).catch(() => false),
+      ]);
+      expect(shared).toEqual({
+        context, features, lifecycleEnabled: true, onboardingNav, scopedLifecycleNavigation, offboardingPostingsAccess,
+      });
       expect(shared).toEqual(independent);
       const [companies, viewer] = shared.context;
       expect([...companies.scopeIds].sort()).toEqual([...expected].sort());
@@ -76,7 +87,7 @@ it('keeps shell identity, scope and features equivalent on one connection at gro
       expect(viewer.employed).toBe(true);
       expect(proof).toHaveLength(1);
       expect(proof[0]).toMatchObject({ carriers: 1, fallbacks: 0 });
-      expect(proof[0].joins).toBeGreaterThanOrEqual(8);
+      expect(proof[0].joins).toBeGreaterThanOrEqual(12);
     }
   } finally {
     browser.companyScope = undefined;
