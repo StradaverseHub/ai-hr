@@ -42,15 +42,23 @@ describe('Home claims destination uses its selected own employment',()=>{
   const stream=await renderPage(own);
   const reader=stream.getReader();
   try {
-   const {value}=await reader.read();
-   const shell=new TextDecoder().decode(value);
-   expect(shell).toContain('data-tour="claims-compose"');
-   expect(shell).toContain(en.common.loading);
-   expect(shell).not.toContain(en.claims.empty);
+   try {
+    const {value}=await reader.read();
+    const shell=new TextDecoder().decode(value);
+    expect(shell).toContain('data-tour="claims-compose"');
+    expect(shell).toContain(en.common.loading);
+    expect(shell).not.toContain(en.claims.empty);
+   } finally {
+    finishHistory(emptyHistory());
+   }
+   const decoder=new TextDecoder();
+   let history='';
+   for(let chunk=await reader.read();!chunk.done;chunk=await reader.read()){
+    history+=decoder.decode(chunk.value,{stream:true});
+   }
+   expect(history+decoder.decode()).toContain(en.claims.empty);
   } finally {
-   finishHistory(emptyHistory());
    reader.releaseLock();
   }
-  expect(await new Response(stream).text()).toContain(en.claims.empty);
  });
 });
