@@ -8,6 +8,7 @@ import {browserFailureLocation,browserPreflightClickObstruction,browserPreflight
 import {mixedActionRoute,routeLatency} from './route-latency.mjs';
 import {centreTabsFor} from '../../lib/ai-centre/centre-nav.ts';
 import {createSteadyRouteScheduler,planSteadyRouteCoverage,navigationProtocol} from './route-scheduling.mjs';
+import {createShellPreviewReplay,shellPreviewPath} from './shell-preview-replay.mjs';
 import {createNavigationCaptureCollector,writeNavigationCaptureBundle,writeDevelopmentRenderedRouteUnion,
  installNativePrimaryFailureObserver,createNativeBrowserFailureObservation,legacyNavigationFailureCounts,legacyNavigationFailureFacts,legacyNavigationLinkFailureCounts} from './navigation-browser-capture.ts';
 import {fullDevelopmentBrowserRouteCourse} from './development-browser-route-course.mjs';
@@ -295,10 +296,10 @@ function readRoute(user,route){return readManifestRoute(route,(path,status)=>req
 // Private request facts keyed by the error an owned request threw. Only the primary failure's facts are
 // projected, through the closed workerRequestFailureFact, so a failure names its route but never its path.
 const ownedRequestFailures=new WeakMap();
-async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt){
+async function requestBody(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[],action,claimAttempt,requestSignal){
  const attempt={stage:comparisonStage,role:user?.role??null,route:mixedActionRoute(readRouteForMeasurement(path),action),method:fields?'POST':'GET',
   startedMs:performance.now(),deadlineMs:null,deadline:null,headers:null};
- try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt);}
+ try{return await sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt,requestSignal);}
  catch(error){
   if(error!==null&&typeof error==='object'&&!ownedRequestFailures.has(error))
    ownedRequestFailures.set(error,{...attempt,elapsedMs:performance.now()-attempt.startedMs});
@@ -311,7 +312,7 @@ function recordPrimaryRequestFailure(){
  report.workerRequestFailure??=workerRequestFailureFact({stage:facts.stage,role:facts.role,route:facts.route,method:facts.method,
   deadlineMs:facts.deadlineMs,elapsedMs:facts.elapsedMs,ttfbMs:facts.headers?.ttfbMs,httpStatus:facts.headers?.status,error:reason,deadline:facts.deadline});
 }
-async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt){
+async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,actionHeaders,fieldOrder,action,claimAttempt,requestSignal){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=attempt.startedMs;let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
  else if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
@@ -326,14 +327,14 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
    if(claimAttempt){claimAttempt.beforeDispatch();checkAdmission();}
    attempt.deadlineMs=nativePreflight?Math.min(90000,nativeRemaining(nativeDeadline)):90000;
    attempt.deadline=AbortSignal.timeout(attempt.deadlineMs);
-   return https.request(base+path,{agent,signal:attempt.deadline,method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
+   return https.request(base+path,{agent,signal:requestSignal?AbortSignal.any([attempt.deadline,requestSignal]):attempt.deadline,method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
     Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
   },
   onHeaders:(res,ttfbMs)=>{responseHeaders=attempt.headers={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
-  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,timed:record===true,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
+  if(!requestSignal?.aborted)noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,timed:record===true,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
   throw error;
  });
  response.durationMs=performance.now()-started;
@@ -1795,18 +1796,24 @@ async function main(){
     loadState,waitForFirstWrite:waitForSteadyUsers});
   });
  }):null;
+ const shellPreviews=suite==='whole-system'&&!nativePreflight?createShellPreviewReplay(
+  (user,signal)=>request(user,shellPreviewPath,undefined,200,false,{},[],undefined,undefined,signal),summary,
+ ):null;
  const results=await runLanes(fixture.users.map((user,i)=>({user,i})),async({user,i})=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
   if(progress.active===500)fullConcurrencyAt??=performance.now();
+  const shellPreview=shellPreviews?.actor(user);
   let iteration=0,loadPhase='navigation',loadRoute;
   try{do{
   const ordinal=roleOrdinals.get(user.index),slots=navigationScheduler?.slots(user.role,ordinal,iteration)??measuredRoutePools[user.role].length;
   for(let slot=0;slot<slots;slot++){
+   if(shellPreview)await shellPreview.replace();
    const navigationStarted=performance.now(),lease=navigationScheduler?.reserve({role:user.role,ordinal,actors:roleCounts.get(user.role),iteration,slot,startedMs:navigationStarted});
    const route=lease?.route??measuredRoutePools[user.role][slot];let usable=false;
    loadPhase='navigation';loadRoute=route;
    try{
-    await readRoute(user,route);
+    const document=await readRoute(user,route);
+    if(document.status===200&&String(document.headers['content-type']).includes('text/html'))shellPreview?.start();
     if(route==='/'&&['employee','manager'].includes(user.role)){
      loadPhase='home-read';await homeHttp.read(user,true);
     }
@@ -1844,6 +1851,7 @@ async function main(){
   }finally{
    if(performance.now()<steadyUntil)earlyLaneExits++;
    progress.active--;
+   await shellPreview?.finish();
   }
  });
  const browserResults=await browserLoad;
@@ -1868,6 +1876,11 @@ async function main(){
   report.movementLoad=result.status==='fulfilled'?{status:'completed'}:{status:'failed',error:errorLabel(result.reason)};
  }
 
+ if(shellPreviews)report.shellPreviewReplay={
+  protocol:'after-document-complete-v1',
+  scope:'Raw loaded HTML journeys, excluding redirect-only entries. One cancellable preview per document. Real Chromium pages run the application client.',
+  roles:shellPreviews.snapshot(),
+ };
  report.trafficSettled=true;
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:errorLabel(v.reason)}]:[])};
  const loadedWindowReached=measureDevelopment&&performance.now()>=loadedWindow.endMs;
