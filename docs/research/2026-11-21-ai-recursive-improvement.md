@@ -115,3 +115,16 @@ The offline runner at `74d3771bd6a497d2321300cd6b3aa6986b702b29` gives the optim
 The pinned Qwen 2.5 3B model proposed grouping related facts before their explanation. Both baseline and candidate scored 0/4 on validation. The baseline had zero rejected replies and the candidate had one. The selection gate kept the baseline and stopped after one round and 13 calls. This establishes one measured propose-and-reject cycle. Successful recursive advancement has yet to be demonstrated with a real model. [Runner checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44896915780)
 
 IBM Granite 3.3 2B provided a second model family for the same experiment. The run kept the source, development and validation cases, catalogue schema, generation settings and guidance options fixed. The local `granite3.3:2b` GGUF had digest `07bd1f170855240f9e162bf54ea494a8bc1c73d8cbd1365d7fccbeb7d2504947`. Granite also proposed grouping related evidence. Baseline and candidate each scored 0/4 exact with zero rejected replies. The gate kept the baseline after 13 calls, with 13,396 reported input tokens and 344 output tokens. Across both model families, admissible output has yet to yield an exact protected answer on these validation cases. [IBM Granite model card](https://huggingface.co/ibm-granite/granite-3.3-2b-instruct) · [Ollama model distribution](https://ollama.com/library/granite3.3:2b)
+
+### Numbered choices for protected answers
+
+At `fa61dc3a92b4764cfb4f0ff3de94ca136f36369d`, the offline `--indexed-catalogue` mode lists the available closed field labels and explanation codes with numbered choices. It asks for one ordered list of indices. The decoder rejects unknown or repeated indices and extra fields. It expands a valid selection into the same answer plan and passes it through both existing adjudicators. The new format changes the model instructions and representation together. It supplies neither source values nor expected answers.
+
+The same pinned Qwen 2.5 3B model ran both formats on the same six public work-summary development cases using the same generation settings. Each format used 12 calls across the two strategies. The runner repeated the nested-format comparison at this source.
+
+| Format | Exact selections | Rejected replies | Input tokens | Output tokens |
+| --- | ---: | ---: | ---: | ---: |
+| Nested catalogue schema | 0/12 | 2/12 | 13,202 | 583 |
+| Numbered choices | 0/12 | 0/12 | 3,104 | 100 |
+
+Every numbered reply omitted at least one required block. None failed on order alone. The measured savings apply to prompt and response tokens on this model and these cases. A shorter response format did not meet the quality threshold, so it remains an offline experiment. Future model-quality checks should distinguish source-required answer components from choices where the model can add useful context. [Format and decoder tests](https://github.com/StradaverseHub/ai-hr/actions/runs/44898870772)
