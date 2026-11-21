@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls } from './ui';
@@ -26,7 +27,7 @@ export function PersonnelImportEvaluationSummary({ receipts, companyId, activeCo
     return <section className="mt-5 space-y-3 border-t border-border pt-4" aria-label={t('title')}><h4 className="font-semibold">{t('title')}</h4><p className="text-sm text-muted-foreground">{t('scope')}</p>
   {(summary.invalidReceipts > 0 || summary.conflictingAttempts > 0 || summary.inputOverflow) && <p role="alert" className="text-sm">{t('invalidEvidence', { invalid: summary.invalidReceipts, conflicts: summary.conflictingAttempts })}</p>}
   {summary.windowIncomplete && <p role="status" className="text-sm">{t('windowIncomplete')}</p>}
-  {groups.size === 0 ? <p className="text-sm">{t('empty')}</p> : <><label className="block text-sm font-medium">{t('comparison')}<select className={`${inputCls} mt-1`} value={cohortId} onChange={e => setChosen(e.target.value)}>{[...groups].map(([id, date]) => <option key={id} value={id}>{t('groupAt', { date: new Date(date).toLocaleString() })}</option>)}</select></label>
+  {groups.size === 0 ? <p className="text-sm">{t('empty')}</p> : <><label className="block text-sm font-medium">{t('comparison')}<select className={`${inputCls} mt-1`} value={cohortId} onChange={e => setChosen(e.target.value)}>{[...groups].map(([id, date]) => <option key={id} value={id}>{t('groupAt', { date: new Date(date).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ }) })}</option>)}</select></label>
   <p className="text-xs text-muted-foreground">{t('successDefinition')} {t('percentileRule')}</p>
   <div className="grid gap-4 lg:grid-cols-2">{summary.modes.map(mode => <article key={mode.mode} className="space-y-3 rounded-md border border-border p-3"><h5 className="font-medium">{t(mode.mode)}</h5><dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
    <dt>{t('workflows')}</dt><dd>{mode.workflows}</dd><dt>{t('committed')}</dt><dd>{mode.committed}</dd><dt>{t('successful')}</dt><dd>{mode.successful}</dd><dt>{t('partial')}</dt><dd>{mode.partial}</dd><dt>{t('unfinished')}</dt><dd>{mode.unfinished}</dd>

@@ -1,4 +1,5 @@
 'use client';
+import { formatDmyTime } from '@/lib/date-display';
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
@@ -54,7 +55,7 @@ export function OffboardingCaseCancelPanel({resumeActionId}:{resumeActionId?:str
   </div>}
   {result?.kind==='completed'&&<p role="status">{t('recorded')}</p>}{result?.kind==='retired'&&<p role="status">{t('retired')}</p>}
   <Button aria-busy={busy} variant="outline" disabled={busy} onClick={()=>void dispatch({action:C.action,operation:'list'})}>{t('find')}</Button>
-  {result?.kind==='offboarding_case_cancel_review_index'&&<ul className="space-y-2">{result.reviews.map(row=><li key={row.actionId}><Button aria-busy={busy} variant="outline" disabled={busy||typeof uncertain==='string'&&uncertain!==row.actionId} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:row.actionId})}>{t('reopen')} · {row.createdAt}</Button></li>)}</ul>}
+  {result?.kind==='offboarding_case_cancel_review_index'&&<ul className="space-y-2">{result.reviews.map(row=><li key={row.actionId}><Button aria-busy={busy} variant="outline" disabled={busy||typeof uncertain==='string'&&uncertain!==row.actionId} onClick={()=>void dispatch({action:C.action,operation:'reopen',actionId:row.actionId})}>{t('reopen')} · {formatDmyTime(row.createdAt)}</Button></li>)}</ul>}
   <p><Link className="underline" href="/lifecycle/offboarding">{t('manual')}</Link></p>
  </section>;
 }

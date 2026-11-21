@@ -1603,3 +1603,9 @@ Exactly 28 approved digests move from `5a3f56621225400761307d739fd8d99391c106c6c
 The repository owner approved carrying forward the same 28 existing provider approvals to staging fingerprint `f5db9c3caab0bffe3368c66d40f96d695ec3f09516160178cb1ddd859e01a5b8`. The reviewed source is `bd65acc891a371caad90b403a93582ed0f5dedad`, covering 1,833 files. PR #266 adds a human-operated grouped tax preview and confirmation, payroll and workbook presentation changes, and a session warning. The changes preserve the existing provider fields, purposes, transports, and model-executable actions.
 
 Exactly 28 active digests move from `65440170ff7c02918cd7ac458d4b95a3afc8456e2d0a6e66b1cfc8e861e4e441`. Reversing the replacements restores the prior registry byte for byte. Pending and retired records, approval metadata, and evaluation identities are preserved. The derived module-agent fingerprint is `e183e42f7af8572d91fa9ae0d2b4181dc8795054c09b992a97656e7f1c69ee5f` across 497 files. The passing checks from any prior commit retain their own source identities.
+
+### Actionable errors and Malaysia time staging approval, 21 November 2026 MYT
+
+The repository owner approved carrying forward the 28 existing provider approvals to staging fingerprint `77c730fdc7c2927ecf4be129b18cd0e5304e6fdd4ec1e48713c9e1139f85daa2`. The reviewed source is `8d3eae64042b1d9a070950827f80bd5a4491ba50` and covers 1,833 files. The covered changes improve payroll and personnel error presentation, shared error copy, and audit dates. Provider fields, purposes, and transports are unchanged.
+
+Exactly 28 approved digests move from `f5db9c3caab0bffe3368c66d40f96d695ec3f09516160178cb1ddd859e01a5b8`. Reversing those substitutions restores the registry byte for byte. The derived module-agent fingerprint is `271eed506ac3af764ee10eebebbdc139693b07e95f3b9f3690d43d254b9bdf01` across 497 files.

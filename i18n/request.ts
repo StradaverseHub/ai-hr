@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '../lib/hr-date';
 import { getRequestConfig } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import { defaultLocale, isLocale, LOCALE_COOKIE, type Locale } from './config';
@@ -25,5 +26,5 @@ export default getRequestConfig(async ({ locale: requested }) => {
       ? cookieLocale
       : defaultLocale;
 
-  return { locale, messages: await messagesForLocale(locale) };
+  return { locale, timeZone: HR_LOCAL_TZ, messages: await messagesForLocale(locale) };
 });

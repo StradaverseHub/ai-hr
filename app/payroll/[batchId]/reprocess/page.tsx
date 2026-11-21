@@ -1,3 +1,4 @@
+import { kualaLumpurLocalInput } from '@/lib/hr-date';
 import Link from 'next/link';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { cookies } from 'next/headers';
@@ -378,7 +379,7 @@ export default async function ReprocessPage({
                         : t('disclosureRevision', { before: d.versionBefore ?? '?', after: d.versionAfter ?? '?' })}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {r.at.toISOString().slice(0, 16).replace('T', ' ')}
+                      {kualaLumpurLocalInput(r.at).replace('T', ' ')}
                     </span>
                     {r.reason && (
                       <span className="text-xs text-muted-foreground">{t('disclosureReason', { reason: r.reason })}</span>

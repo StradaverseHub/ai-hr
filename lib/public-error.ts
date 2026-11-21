@@ -34,14 +34,14 @@ import { CHECK_CONSTRAINT_REASONS, CHOICE_CONSTRAINT } from './database-check-re
 /** English source of common.databaseError.* — pinned against messages/en.json by the r388 test. Each says
  *  what happened and what the reader can do next; the reference is for support, not for the reader. */
 export const DATABASE_ERROR_TEXT_EN: Record<DatabaseErrorKind, string> = {
-  system: 'Something went wrong on our side and nothing was saved. Try again in a moment; if it keeps happening, send reference {ref} to your administrator.',
-  permission: 'You do not have permission to make this change, so nothing was saved. Ask your administrator if you need access. Reference {ref}.',
-  duplicate: 'This would create a second copy of a record that already exists, so nothing was saved. Open the existing record and change it instead. Reference {ref}.',
-  linked: 'This record is connected to other records, so it cannot be changed or removed this way. Nothing was saved. Reference {ref}.',
-  invalidValue: 'One of the values entered breaks a rule for this record, so nothing was saved. Check the values you changed and try again. Reference {ref}.',
-  rule: 'A safeguard that protects existing records refused this change, so nothing was saved. Check what you changed against the records it affects and try again. Reference {ref}.',
-  nricDuplicate: 'This NRIC already exists in another employee record. Duplicate NRIC numbers are not allowed under the current People General Settings. Reference {ref}.',
-  busy: 'The system was busy with another change to the same records, so this one was not saved. Wait a moment and try again. Reference {ref}.',
+  system: 'The system could not complete this action. Refresh the page and check its status. If the error continues, contact support with reference {ref}.',
+  permission: 'Your account does not have permission for this action. Ask your administrator to check your access. Reference {ref}.',
+  duplicate: 'A matching record already exists. Search for the record and update it if needed. Reference {ref}.',
+  linked: 'Other records still use this record. Review those links before trying to change or remove it. Reference {ref}.',
+  invalidValue: 'One or more values are missing or invalid. Check the required fields and accepted formats before retrying. Reference {ref}.',
+  rule: 'A system rule prevented this change. Check the record’s status and any closed periods. Contact support with reference {ref} if you need help.',
+  nricDuplicate: 'Another employee record already uses this NRIC. Check the number and search for the existing employee record before retrying. Reference {ref}.',
+  busy: 'The system was busy. Refresh to check the action’s status, then retry if needed. Reference {ref}.',
 };
 
 /** English source of common.databaseErrorReason.* — the specific explanations (03877e). */

@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import {notFound} from 'next/navigation';
 import {ownAttendanceRecordSubject} from '../my-records/subject';
 import {personalCalendarHolidayContext} from './holiday-context';
@@ -87,7 +88,7 @@ export default async function MyRosterPage({
   const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const fmtMonth = (month: string) => new Date(`${month}-01T00:00:00`).toLocaleDateString(dl, { month: 'long', year: 'numeric' });
   const fmtWeekday = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(dl, { weekday: 'short' });
-  const fmtStamp = (d: Date) => d.toLocaleString(dl, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtStamp = (d: Date) => d.toLocaleString(dl, { timeZone: HR_LOCAL_TZ, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   // Hours to one decimal: the tile says "180 hrs", not "180.00". Minutes are the stored unit everywhere
   // else on this screen, so the division happens once, here.
   const fmtHrs = (min: number) => (min / 60).toLocaleString(dl, { maximumFractionDigits: 1 });

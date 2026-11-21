@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import {DerivedOrganisationPayroll} from '@/components/derived-organisation-payroll';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
@@ -678,14 +679,14 @@ export default async function BatchPage({
       {/* Imported runs may have no close event. Keep the existing scheduled or no-record fallback. */}
       {(pubState === 'published' || pubState === 'scheduled') &&
         (() => {
-          const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString() : null;
+          const releasedOn = batch.releasedAt ? new Date(batch.releasedAt).toLocaleDateString(undefined, { timeZone: HR_LOCAL_TZ }) : null;
           return (
             <div className="text-xs text-muted-foreground">
               <div>
                 {closeEv
                   ? t('publishedBy', {
                       actor: closeEv.actorName ?? t('historySystemActor'),
-                      when: new Date(closeEv.occurredAt).toLocaleString(),
+                      when: new Date(closeEv.occurredAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ }),
                     })
                   : pubState === 'scheduled' && releasedOn
                     ? t('publishedScheduledOn', { when: releasedOn })
