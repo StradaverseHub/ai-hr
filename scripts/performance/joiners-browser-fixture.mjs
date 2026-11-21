@@ -12,6 +12,8 @@ assert(env.PERF_HTTP_SUITE==='browser-route-baseline'&&env.AUTH_PROVIDER==='inte
 assert.equal(env.DATABASE_URL,'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev');
 assert.equal(env.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
 const path=resolve(env.PERF_PRIVATE_DIR,'fixture.json');
+const setStage=stage=>writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-stage'),stage,{mode:0o600});
+setStage('fixture');
 const fixture=JSON.parse(readFileSync(path,'utf8'));
 const [group,company]=fixture.users;
 assert(fixture.users.length===500&&fixture.tenants.length===2&&group.tenant===0&&company.tenant===0);
@@ -30,10 +32,12 @@ try{
  ];
  const ctx={tenantId:group.tenantId,userId:group.userId,personId:group.personId,grants,
   roles:grants.map(grant=>grant.role),entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId))};
+ setStage('onboarding-config');
  await v9Setup(ctx);
  const {config,revision}=await onboardingContext(ctx);
  config.access.onboarding=[...new Set([...config.access.onboarding,group.userId,company.userId])];
  await onboardingSaveConfig(ctx,revision,config);
+ setStage('draft-joiners');
  const drafts=[];
  for(const [index,organization] of fixture.tenants[0].companies.slice(0,2).entries()){
   const name='Fictional Browser Joiner '+(index+1);
@@ -54,17 +58,22 @@ try{
   const leaver='Fictional Lifecycle Legacy Leaver';
   const model='Fictional Lifecycle Browser Laptop';
   const justification='Fictional Lifecycle Browser Request';
+  setStage('lifecycle-defaults');
   await lifecycle.loadHandoverDefaults(ctx);
+  setStage('legacy-onboarding');
   const onboarding=await lifecycle.createOnboardingCase(ctx,{
    companyId,fullName:joiner,employeeNo:'PERF-LEGACY-ONB',joinDate:fixture.today,
   });
+  setStage('legacy-offboarding');
   const offboarding=await lifecycle.createOffboardingCase(ctx,{
    companyId,fullName:leaver,employeeNo:'PERF-LEGACY-OFB',
    resignationDate:fixture.today,lastWorkingDay:fixture.today,
   });
+  setStage('lifecycle-asset');
   const asset=await lifecycle.registerAsset(ctx,{companyId,assetType:'laptop',model});
   const catalogue=(await lifecycle.listCatalogue(ctx)).find(item=>item.itemCode==='HW-001'&&item.active);
   assert(catalogue,'Expected the standard active Laptop catalogue item');
+  setStage('lifecycle-asset-request');
   const request=await lifecycle.createAssetRequest(ctx,{companyId,catalogueId:catalogue.id,justification});
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
@@ -72,13 +81,21 @@ try{
   const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
+  setStage('performance-cycle-create');
   const {cycleId}=await createCycle(ctx,{
    companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',
   });
+  setStage('performance-cycle-open');
   await configureOnehrCycle(ctx,cycleId,null);
   const opened=await openCycle(ctx,{cycleId});
   assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
   fixture.performanceRecords={cycleId,name};
  }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
+ setStage('complete');
+}catch(error){
+ const code=error?.code;
+ const category=typeof code==='string'&&/^(?:[0-9A-Z]{5}|ERR_ASSERTION)$/.test(code)?code:'unclassified';
+ writeFileSync(resolve(env.PERF_PRIVATE_DIR,'record-fixture-failure'),category,{mode:0o600});
+ throw error;
 }finally{await Promise.all([owner.client.end(),client.end()]);}

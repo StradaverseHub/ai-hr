@@ -1543,10 +1543,27 @@ try{
     NODE_OPTIONS:'--conditions=react-server',
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
- await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
-  '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
-   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFullFixtureRecords),
-  });
+ try{
+  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
+   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
+    ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFullFixtureRecords),
+   });
+ }finally{
+  const stagePath=join(privateDir,'record-fixture-stage');
+  if(existsSync(stagePath)){
+   const stage=readFileSync(stagePath,'utf8');
+   if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
+    'lifecycle-asset','lifecycle-asset-request','performance-cycle-create','performance-cycle-open','complete'].includes(stage)){
+    report.recordFixtureStage=stage;
+   }
+  }
+  const failurePath=join(privateDir,'record-fixture-failure');
+  if(existsSync(failurePath)){
+   const failure=readFileSync(failurePath,'utf8');
+   if(/^(?:[0-9A-Z]{5}|ERR_ASSERTION|unclassified)$/.test(failure))report.recordFixtureFailure=failure;
+  }
+  save();
+ }
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
