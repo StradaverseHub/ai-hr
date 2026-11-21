@@ -54,6 +54,21 @@ async function inspectIndex(sql, plan) {
   return index.definition;
 }
 
+export async function inspectExpansion(client, plan) {
+  return client.begin('read only', async tx => {
+    await tx`SET LOCAL statement_timeout = '5s'`;
+    const ledger = await readLedger(tx);
+    if (ledger.length === plan.expanded.length) {
+      validateMigrationLedgerRows(plan.expanded, ledger);
+      return {state: 'expanded', rows: ledger.length, definition: await inspectIndex(tx, plan)};
+    }
+    validateMigrationLedgerRows(plan.original, ledger);
+    const [found] = await tx`SELECT to_regclass(${'public.' + plan.index.index}) IS NOT NULL AS present`;
+    assert(!found.present, 'Index exists without its exact migration entry');
+    return {state: 'baseline', rows: ledger.length};
+  });
+}
+
 /** Both the catalog change and its Drizzle entry commit in one transaction. */
 export async function applyIndexExpansion(client, plan, {beforeCommit = async () => {}} = {}) {
   return client.begin(async tx => {

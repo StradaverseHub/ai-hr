@@ -68,7 +68,7 @@ test('populated restricted-role upgrade proves lock refusal, rollback, RLS and q
     FROM pg_class WHERE oid='public.job_run'::regclass`;
   const before = {rows: await readAsAdmin(), ledger: await history(), acl: await acl()};
   assert.equal(before.rows.length, 10);
-  assert.deepEqual(await read(app), []);
+  assert.equal((await read(app)).length, 0);
   await assert.rejects(async () => app`INSERT INTO public.job_run(job_key,outcome) VALUES('review.sweep','success')`, {code: '42501'});
   await assert.rejects(applyIndexExpansion(admin, plan), /restricted migration owner/);
 
@@ -87,7 +87,7 @@ test('populated restricted-role upgrade proves lock refusal, rollback, RLS and q
   assert.equal(applied.applied, true);
   assert.equal(applied.rows, 2);
   assert.deepEqual(await readAsAdmin(), before.rows);
-  assert.deepEqual(await read(app), []);
+  assert.equal((await read(app)).length, 0);
   assert.deepEqual(await acl(), before.acl);
   const [query] = await owner`EXPLAIN (FORMAT JSON) SELECT id FROM public.job_run
     WHERE job_key='review.sweep' ORDER BY ran_at DESC,id DESC LIMIT 10`;
