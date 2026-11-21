@@ -5,7 +5,7 @@ import {act} from '@testing-library/react';
 import {describe,expect,it,vi} from 'vitest';
 import {NextIntlClientProvider} from 'next-intl';
 import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components/shell-approval-facts';
-import {NotificationCenter} from '../components/notification-center';
+import {NotificationCenter,type NotificationLifecyclePreview} from '../components/notification-center';
 import en from '../messages/en.json';
 
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
@@ -21,13 +21,14 @@ function deferred<T>(){
 
 // The server can finish a streamed segment while its client code/data still waits.
 // Control that hydration delay without replacing either production component.
-async function probe({delayBell,total,monolith}:{delayBell:boolean;total:number;monolith:boolean}){
+async function probe({delayBell,total,monolith,lifecycleCount}:{delayBell:boolean;total:number;monolith:boolean;lifecycleCount?:number}){
  theme.monolith=monolith;
  const source=deferred<ShellApprovalResult>(),gate=deferred<void>();
+ const lifecycle=lifecycleCount===undefined?undefined:deferred<NotificationLifecyclePreview>();
  let client=false,blocked=delayBell;
  function Bell(){
   if(client&&blocked)throw gate.promise;
-  return <NotificationCenter unread={0} items={[]} canApprove/>;
+  return <NotificationCenter unread={0} items={[]} lifecyclePreview={lifecycle?.promise} canApprove/>;
  }
  function Tree(){return <NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>
   <ShellApprovalFactsProvider source={source.promise} canOpenApprovalsWithoutAssignment={false}>
@@ -45,9 +46,13 @@ async function probe({delayBell,total,monolith}:{delayBell:boolean;total:number;
   await act(async()=>{root=hydrateRoot(host,<Tree/>,{onRecoverableError(error,info){errors.push(String(error)+'\n'+info.componentStack);}});});
   await act(async()=>{source.resolve({state:'ready',items:[],total,approvalCount:total,claimTotal:0,hasAssignedAttendanceApproval:total>0,hasAssignedApproval:total>0});await source.promise;});
   await act(async()=>{blocked=false;gate.resolve();await gate.promise;});
+  const pendingLabel=host.querySelector('button')!.getAttribute('aria-label');
+  if(lifecycle&&lifecycleCount!==undefined){
+   await act(async()=>{lifecycle.resolve({items:[],queueLinks:[],count:lifecycleCount});await lifecycle.promise;});
+  }
   const clientBell=host.querySelector('button')!.outerHTML;
   console.log(JSON.stringify({delayBell,total,monolith,serverBell,clientBell,errors,warnings}));
-  return {errors,warnings,label:host.querySelector('button')!.getAttribute('aria-label')};
+  return {errors,warnings,pendingLabel,label:host.querySelector('button')!.getAttribute('aria-label')};
  }finally{await act(async()=>root?.unmount());host.remove();consoleError.mockRestore();}
 }
 
@@ -59,6 +64,12 @@ describe('approval facts and notification bell hydration ordering',()=>{
  it.each([true,false])('hydrates a delayed bell with pending task count without mismatch (monolith=%s)',async monolith=>{
   const result=await probe({delayBell:true,total:3,monolith});
   expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);expect(result.label).toContain('3 open tasks');
+ });
+ it('keeps the bell available while Lifecycle loads and then includes its count',async()=>{
+  const result=await probe({delayBell:false,total:3,lifecycleCount:4,monolith:true});
+  expect(result.errors).toEqual([]);expect(result.warnings).toEqual([]);
+  expect(result.pendingLabel).not.toContain('open tasks');
+  expect(result.label).toContain('7 open tasks');
  });
  it('hydrates a delayed bell with no assigned task count without mismatch',async()=>{
   const result=await probe({delayBell:true,total:0,monolith:true});

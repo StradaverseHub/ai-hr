@@ -11,22 +11,29 @@ export type ShellApprovalResult=
 type ShellApprovalFacts={result:ShellApprovalResult|{state:'pending'};canOpenApprovalsWithoutAssignment:boolean};
 const Context=createContext<ShellApprovalFacts|undefined>(undefined);
 
+type ShellStreamResult<T>={state:'ready';value:T}|{state:'unavailable'};
+
+export function useShellStreamValue<T>(source:Promise<T>|undefined){
+ const [resolved,setResolved]=useState<{source:Promise<T>;result:ShellStreamResult<T>}>();
+ useEffect(()=>{
+  if(!source)return;
+  let current=true;
+  const publish=(result:ShellStreamResult<T>)=>{
+   if(current)setResolved({source,result});
+  };
+  void source.then(value=>publish({state:'ready',value}),()=>publish({state:'unavailable'}));
+  return ()=>{current=false;};
+ },[source]);
+ // A new render cannot display data from the previous scope while its replacement is pending.
+ return resolved?.source===source?resolved?.result:undefined;
+}
+
 /** Flight streams the promise separately. No reader suspends the interactive shell. */
 export function ShellApprovalFactsProvider({source,canOpenApprovalsWithoutAssignment,children}:{
  source:Promise<ShellApprovalResult>;canOpenApprovalsWithoutAssignment:boolean;children:ReactNode;
 }){
- const [resolved,setResolved]=useState<{source:Promise<ShellApprovalResult>;result:ShellApprovalResult}>();
- useEffect(()=>{
-  let current=true;
-  const publish=(result:ShellApprovalResult)=>{
-   if(current)setResolved({source,result});
-  };
-  void source.then(publish,()=>publish({state:'unavailable'}));
-  return ()=>{current=false;};
- },[source]);
- // A new layout render (including scope, principal and explicit refresh changes) cannot paint
- // the previous result while the replacement is pending, even before any effect runs.
- const result=resolved?.source===source?resolved.result:{state:'pending' as const};
+ const streamed=useShellStreamValue(source);
+ const result=streamed?.state==='ready'?streamed.value:streamed??pendingResult;
  return <Context.Provider value={{result,canOpenApprovalsWithoutAssignment}}>{children}</Context.Provider>;
 }
 
