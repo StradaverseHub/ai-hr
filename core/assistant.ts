@@ -47,7 +47,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
-import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '../packs/leave/service';
+import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from './leave-dependency-lock';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
 import { adjudicateAssistantAnswerPlan, type AssistantAnswerPlan, type AssistantAnswerRead } from '../lib/ai/assistant-answer-plan';
 import { assistantToolAnswerExplanations } from '../lib/ai/assistant-tool-answer-evidence';
