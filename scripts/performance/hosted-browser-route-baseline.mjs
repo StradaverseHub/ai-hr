@@ -3,6 +3,7 @@ import {projectLoadedAccessBlockers} from './loaded-access-blockers.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
 import assert from 'node:assert/strict';
 import {projectMixedRootStatementWork} from './mixed-root-statement-work.mjs';
+import {projectLoadedPayrollJobs} from './loaded-payroll-jobs.mjs';
 import {randomBytes} from 'node:crypto';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {closeSync,existsSync,mkdirSync,mkdtempSync,openSync,readFileSync,statSync,writeFileSync} from 'node:fs';
@@ -692,6 +693,8 @@ async function measureMixedLoad(command,fixture){
     const origin=mixedDriverPrimaryOrigin(readFileSync(privateFailureLog,'utf8').slice(0,32000));
     if(origin)report.mixedDriverPrimaryOrigin=origin;
    }
+   const loadedPayroll=projectLoadedPayrollJobs(data.mixedWorkflows?.loadedPayroll);
+   if(loadedPayroll)report.mixedLoadedPayrollJobs=loadedPayroll;
    const payroll=data.mixedWorkflows?.baseline?.find(workflow=>workflow.workflow==='payroll calculation and scoped CSV export');
    if(payroll?.persisted===true&&payroll.employees===50&&Number.isSafeInteger(payroll.completionObservedMs)
       &&payroll.completionObservedMs>=0&&payroll.completionObservedMs<=90000){
