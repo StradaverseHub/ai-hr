@@ -49,7 +49,9 @@ const fx=vi.hoisted(()=>{
  const FUTURE=new Date('2099-01-01T00:00:00Z'),PAST=new Date('2020-01-01T00:00:00Z');
  const row=(id:string)=>({id,level:'prepare',on:true,stopped:false,running:true,sponsor:{userId:'u-2',name:'Daniel Fictional'},
   lastRun:{at:new Date('2026-11-03T15:05:00Z'),status:'ran',capped:false},prepared:4,confirmed:1,changed:1,correctionRate:0.5,proposesValue:id==='loop_missed_clock_outs',openNow:2,waitingNow:1,pausedCompanies:0});
- const detail=(id:string)=>({row:row(id),canSwitch:false,windowDays:30,companies:[],runs:[],cases:[]});
+ const detail=(id:string)=>({row:row(id),canSwitch:false,windowDays:30,companies:[],cases:[],
+  runs:id==='loop_payroll_inputs'?[{at:new Date('2026-11-03T01:30:00Z'),companyName:'Fictional A Sdn Bhd',
+   status:'ran',opened:1,reopened:0,closed:0,openNow:1,waitingNow:0,capped:false}]:[]});
  const company=(companyId:string,companyName:string,level:number,extra:Record<string,unknown>={})=>({companyId,companyName,level,limits:level>=2?{maxActionsPerNight:50,undoDays:3,condition:'roster_end'}:null,
   changedAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,changedBy:level>=2?'administrator':null,changedByName:level>=2?'Aisyah Fictional':null,lastChange:level>=2?'promoted':null,
   conditionSetByName:level>=2?'Aisyah Fictional':null,conditionSetAt:level>=2?new Date('2026-10-01T02:00:00Z'):null,...extra});
@@ -190,6 +192,8 @@ describe('loop pages preserve review-only attendance and the remaining acting lo
   expect(text(view.container.querySelector('[data-loop-autonomy-help]'))).toBe(messagesFor('en').aiCentre.autonomy.capped);
   expect(view.container.querySelectorAll('[data-loop-level-company] a')).toHaveLength(0);
   expect(view.container.querySelector('[data-loop-actions]')).toBeNull();
+  expect(view.container.querySelector('#loop-recent-runs')).toHaveTextContent('Fictional A Sdn Bhd');
+  expect(view.container.querySelector('#loop-recent-runs')).toHaveTextContent(/9:30 AM/);
  });
 });
 

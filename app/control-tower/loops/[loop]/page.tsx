@@ -117,7 +117,7 @@ export default async function LoopPage({ params, searchParams }: { params: Promi
       {await LoopGuardsAndOwner({ autonomy, loop: id, name, on: row.on, sponsorName: row.sponsor ? row.sponsor.name ?? t('sponsorUnnamed') : null,
         sponsorLost: row.lastRun?.status === 'sponsor_lost' })}
 
-      <Card className="overflow-hidden">
+      <Card id="loop-recent-runs" className="scroll-mt-4 overflow-hidden">
         <SectionHeader title={t('runs.title')} />
         {detail.runs.length === 0 ? <p className="px-4 pb-4 text-sm text-muted-foreground">{t('runs.none')}</p> : (
           <ul className="divide-y divide-border border-t border-border">

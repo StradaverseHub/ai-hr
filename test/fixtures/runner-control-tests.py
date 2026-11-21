@@ -8,6 +8,8 @@ import socket
 import socketserver
 import threading
 import os
+import datetime
+import subprocess
 import unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('broker',Path(__file__).resolve().parents[2]/'deploy/runner-control/broker.py')
@@ -73,6 +75,30 @@ class RunnerControlTests(unittest.TestCase):
         self.assertIn('OnUnitInactiveUSec=2min',values['TimersMonotonic'])
         self.assertIn('OnBootUSec=1s',values['TimersMonotonic'])
         self.assertEqual(b.displayed_schedule(values),'2min after completion')
+    def test_recent_payroll_dispatch_projects_only_the_trusted_journal_timestamp(self):
+        when=datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)-datetime.timedelta(minutes=10)
+        stamp=str(int(when.timestamp())*1000000)
+        raw=json.dumps({'__REALTIME_TIMESTAMP':stamp,'MESSAGE':'Private cron command from fixture'})
+        with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],0,raw,'')) as run:
+            self.assertEqual(b.legacy_payroll_dispatch(),when.isoformat().replace('+00:00','Z'))
+            args=run.call_args.args[0]
+            self.assertEqual(args[0],'/usr/bin/journalctl')
+            for option in ['--output-fields=__REALTIME_TIMESTAMP','--since=-2h','--lines=1','_UID=0','_EXE=/usr/sbin/cron','_SYSTEMD_UNIT=cron.service']:
+                self.assertIn(option,args)
+            self.assertEqual(run.call_args.kwargs['timeout'],2)
+    def test_legacy_dispatch_absence_or_failure_never_changes_native_state(self):
+        for raw in ['', '{"__REALTIME_TIMESTAMP":[]}', '{"__REALTIME_TIMESTAMP":"1000000000000000"}', '{"__REALTIME_TIMESTAMP":"9000000000000000"}']:
+            with patch.object(b.subprocess,'run',return_value=subprocess.CompletedProcess([],0,raw,'')):
+                self.assertIsNone(b.legacy_payroll_dispatch())
+        with patch.object(b.subprocess,'run',side_effect=subprocess.TimeoutExpired('journalctl',2)):
+            self.assertIsNone(b.legacy_payroll_dispatch())
+        with patch.object(b,'row_status',side_effect=lambda _policy,row:{'id':row['id'],'installed':False,'lastRun':None}),patch.object(b,'legacy_payroll_dispatch',return_value='2026-11-21T15:45:00Z') as evidence:
+            old=b.handle({'op':'status'},self.policy,CATALOG)['runners']
+            self.assertFalse(any('legacyCronDispatchedAt' in row for row in old))
+            evidence.assert_not_called()
+            rows=b.handle({'op':'status_with_cron'},self.policy,CATALOG)['runners']
+            evidence.assert_called_once_with()
+            self.assertEqual([row for row in rows if 'legacyCronDispatchedAt' in row],[{'id':'payroll-loops','installed':False,'lastRun':None,'legacyCronDispatchedAt':'2026-11-21T15:45:00Z'}])
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:

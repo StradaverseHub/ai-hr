@@ -5,7 +5,7 @@ import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
  *  captures desktop and mobile screenshots (test/helpers/ai-review-screenshots.ts). */
 import {withAiCentre} from './helpers/ai-centre-messages';
 import {afterEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen,within} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {createFormatter,createTranslator,NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -15,10 +15,11 @@ import th from '../messages/th.json';
 import ta from '../messages/ta.json';
 import {aiInventoryComponents,registryRow,AI_DATA_REGISTER} from '../lib/ai/ai-inventory';
 import {AI_FEATURES} from '../lib/ai/features';
+import workerOverviewMessages from '../app/control-tower/agents/worker-overview-messages.json';
 const copies={en,ms,zh,vi:viCopy,th,ta};
-const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false}));
+const state=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'vi'|'th'|'ta',group:true,alertsUnavailable:false,inventoryUnavailable:false,actionActivity:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:state.locale,messages:withAiCentre(state.locale,copies[state.locale] as any),namespace}),getLocale: async () => state.locale, getFormatter:async()=>createFormatter({locale:state.locale,timeZone:'Asia/Kuala_Lumpur'})}));
 vi.mock('next/navigation',()=>({redirect:vi.fn(),usePathname:()=>'/control-tower/agents/inventory',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>state.group,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
@@ -35,27 +36,135 @@ vi.mock('../core/ai-inventory',async()=>{
   register:AI_FEATURES.map(f=>({featureId:f.id,entry:AI_DATA_REGISTER[f.id]})),
   rows:aiInventoryComponents().map(c=>({...c,runtime:{switch:{kind:c.outOfBand?'platform':c.featureId?'policy':'none',on:c.featureId?true:null,state:c.featureId?'ready':null},
    actionPaused:c.kind==='action'?c.id==='leave.cancel':null,allowance:c.featureId&&c.kind!=='action'?{dailyRequests:50,monthlyTokens:200000}:null,
-   lastRun:c.featureId?at:null,use30:c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
-   outcomes:c.kind==='action'?{prepared:8,completed:6,refused:1,discarded:1,expired:0,reversed:null}:null,audit:{count:c.id==='leave.cancel'?1:0,latestAt:c.id==='leave.cancel'?at:null}}}))});
+   lastRun:c.id!=='payroll_explanation'&&(c.featureId||c.id==='ai-alerts')?at:null,
+   use30:c.key==='embedded_feature:payroll_explanation'?{runs:0,failed:0,blocked:1,tokens:0,reportedCredits:null}:
+    c.featureId&&c.kind!=='action'&&c.kind!=='read_binding'?{runs:12,failed:1,blocked:0,tokens:5400,reportedCredits:0.0123}:null,
+   outcomes:c.kind==='action'&&c.tier!=='automatic'?{
+    prepared:state.actionActivity?(c.id==='leave.cancel'?8:c.id==='leave.edit'?3:0):0,
+    completed:state.actionActivity?(c.id==='leave.cancel'?6:c.id==='leave.edit'?1:0):0,
+    refused:0,discarded:0,expired:0,reversed:null,
+   }:null,audit:{count:c.id==='leave.cancel'?1:0,latestAt:c.id==='leave.cancel'?at:null}}}))});
  const registry=()=>({scope:'registry',rows:aiInventoryComponents().map(c=>({...registryRow(c),actionPaused:c.kind==='action'?c.id==='leave.cancel':null}))});
  return {
-  aiInventoryView:async()=>(state.group?full():registry()),
+  aiInventoryView:async()=>{
+   if(state.inventoryUnavailable)throw Error('Inventory unavailable');
+   return state.group?full():registry();
+  },
   aiManagementAlerts:async()=>(!state.group?{status:'not_shown'}:state.alertsUnavailable?{status:'unavailable'}:{status:'ok',alerts:full().alerts}),
   aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:2},hasMore:true,rows:Array.from({length:3},(_,i)=>({id:`fictional-run-${i}`,actor:'Fictional reviewer',feature:'hr_assistant',operation:'conversation',provider:'openrouter',model:'fictional/model',state:i===1?'failed':'completed',reason:null,actual:120,reserved:400,startedAt:new Date(at.getTime()-i*60000),reportedCredits:'0.001',roundTripMs:900,observationStatus:'reported'}))}),
  };
 });
 import {AiManagementScreen} from '../app/control-tower/agents/screen';
-afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
+afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;state.inventoryUnavailable=false;state.actionActivity=true;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'features'|'runs',searchParams={})=>{
- const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams)});
+ const workerControls=state.group&&section==='features'?{
+  stop:<section id="ai-centre-stop">Pause control</section>,
+  settings:<section id="ai-centre-jobs">Scheduled job controls</section>,
+ }:undefined;
+ const page=await AiManagementScreen({session,section,searchParams:Promise.resolve(searchParams),workerControls});
  return render(<NextIntlClientProvider locale={locale} messages={withAiCentre(locale,copies[locale] as any)}><main className="min-w-0 p-4">{page}</main></NextIntlClientProvider>);
 };
 
 describe('AI inventory in six rendered locales',()=>{
+ it('distinguishes scheduler-owned status, empty history and a recorded run on desktop and mobile',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
+  const section=view.container.querySelector<HTMLElement>('section[aria-labelledby="ai-kind-scheduled_job"]')!;
+  section.querySelector<HTMLDetailsElement>('details')!.open=true;
+  expect(within(section).getAllByRole('columnheader').map(header=>header.textContent)).toEqual([
+   en.aiManagement.inv.cols.component,en.aiManagement.inv.cols.lastRun,
+  ]);
+  for(const id of ['ai-retention','payroll-loops']){
+   const desktop=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}`)!;
+   const mobile=section.querySelector<HTMLElement>(`#ai-component-scheduled_job-${id}-card`)!;
+   expect(mobile.querySelector('details')).toBeNull();
+   for(const row of [desktop,mobile]){
+    const link=within(row).getByRole('link',{name:/Check scheduler status/});
+    expect(link).toHaveAttribute('href',`/admin/scheduled-actions#runner-${id}`);
+    expect(within(row).queryByText(en.aiManagement.inv.never)).toBeNull();
+   }
+  }
+  const empty=section.querySelector<HTMLElement>('#ai-component-scheduled_job-review-sweep')!;
+  expect(within(empty).getByText('No recorded run')).toBeInTheDocument();
+  expect(within(section.querySelector<HTMLElement>('#ai-component-scheduled_job-review-sweep-card')!).getByText('No recorded run')).toBeInTheDocument();
+  const recorded=section.querySelector<HTMLElement>('#ai-component-scheduled_job-ai-alerts')!;
+  expect(within(recorded).getByText(/Oct 29, 2026/)).toBeInTheDocument();
+  expect(within(section.querySelector<HTMLElement>('#ai-component-scheduled_job-ai-alerts-card')!).getByText(/Oct 29, 2026/)).toBeInTheDocument();
+  expect(within(recorded).queryByRole('link')).toBeNull();
+  await captureAiReviewScreenshots(`<main class="p-4">${section.outerHTML}</main>`,'en','ai-centre-scheduled-evidence');
+ },60000);
+
+ it('puts recorded activity ahead of the collapsed controls',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  const overview=screen.getByRole('region',{name:'Activity overview'});
+  const details=view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!;
+  const pause=screen.getByText('Pause control');
+  expect(details.open).toBe(false);
+  expect(details).not.toContainElement(pause);
+  expect(pause.compareDocumentPosition(overview) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(details).toContainElement(screen.getByText('Scheduled job controls'));
+  const moreFeatures=overview.querySelector<HTMLDetailsElement>('details')!;
+  expect(moreFeatures.open).toBe(false);
+  expect(moreFeatures.querySelectorAll('li').length).toBeGreaterThan(0);
+  expect(moreFeatures.previousElementSibling?.children).toHaveLength(3);
+  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 without');
+  expect(within(overview).getByText(/features with admitted requests/)).toHaveTextContent('1 blocked attempt');
+  expect(within(overview).getByText('Activity evidence unavailable')).toBeInTheDocument();
+  expect(within(overview).getByRole('link',{name:en.aiManagement.features.hr_assistant})).toHaveAttribute('href','/control-tower/agents/runs?feature=hr_assistant');
+  expect(within(overview).getByRole('link',{name:'Candidate reviews'})).toHaveAttribute('href','/control-tower/agents/assistant#ai-reviews-heading');
+  expect(within(overview).getByRole('link',{name:'Run history'})).toHaveAttribute('href','/control-tower/agents/runs');
+  expect(within(overview).getByText('11 prepared · 7 completed')).toBeInTheDocument();
+  const actionLink=within(overview).getByRole('link',{name:'View action outcomes'});
+  expect(actionLink).toHaveAttribute('href','#ai-inventory-actions');
+  expect(view.container.querySelector('#ai-inventory-actions')).toBeInTheDocument();
+  fireEvent.click(actionLink);
+  expect(details.open).toBe(true);
+ });
+
+ it('shows separate evidence for admitted requests, blocked-only features and individual reads',async()=>{
+  state.locale='en';
+  const view=await renderPage('en','features');
+  view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')!.open=true;
+  const inventory=view.container.querySelector<HTMLElement>('#ai-inventory')!;
+  const row=(id:string)=>within(inventory.querySelector<HTMLElement>(`#ai-component-${id}`)!);
+  expect(row('chat-hr_assistant').getByText(/Latest admitted request.*Oct 29, 2026/)).toBeInTheDocument();
+  expect(row('embedded_feature-payroll_explanation').getByText('No admitted request recorded')).toBeInTheDocument();
+  const read=inventory.querySelector<HTMLElement>('tr[id^="ai-component-read_binding-"]')!;
+  expect(within(read).getByText('Individual read activity unavailable')).toBeInTheDocument();
+  expect(within(read).queryByText(/Oct 29, 2026/)).toBeNull();
+ });
+
+ it.each([false,true])('distinguishes empty from unavailable action evidence when inventory fails=%s',async inventoryUnavailable=>{
+  state.locale='en';
+  state.actionActivity=false;
+  state.inventoryUnavailable=inventoryUnavailable;
+  await renderPage('en','features');
+  const title=screen.getByText('Assistant actions · Last 30 days');
+  const row=within(title.parentElement!);
+  expect(row.getByText(inventoryUnavailable?'Activity evidence unavailable':'No actions prepared in 30 days')).toBeInTheDocument();
+  expect(Boolean(row.queryByRole('link',{name:'View action outcomes'}))).toBe(!inventoryUnavailable);
+ });
+
+ it.each(['#ai-inventory','#ai-centre-jobs'])('reveals a bookmarked worker section on entry at %s',async hash=>{
+  const location=window.location.href;
+  try {
+   window.history.replaceState(null,'',hash);
+   const view=await renderPage('en','features');
+   expect(view.container.querySelector<HTMLDetailsElement>('[data-ai-worker-details]')?.open).toBe(true);
+  } finally {
+   window.history.replaceState(null,'',location);
+  }
+ });
+
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: group administrator sees every component group, the pause control, alerts and the data register',async locale=>{
   state.locale=locale;state.group=true;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
+  expect(screen.getAllByText(workerOverviewMessages[locale].checkScheduler)).toHaveLength(4);
+  expect(screen.getAllByText(workerOverviewMessages[locale].noScheduledRunRecorded)).toHaveLength(2);
+  expect(screen.getByRole('link',{name:workerOverviewMessages[locale].actionDetails})).toBeInTheDocument();
   expect(screen.getByRole('alert')).toHaveTextContent(inv.alerts.title);
   for(const kind of Object.keys(inv.kinds) as (keyof typeof inv.kinds)[])expect(screen.getByRole('heading',{level:3,name:new RegExp(inv.kinds[kind].replace(/[()]/g,'\\$&'))})).toBeInTheDocument();
   expect(screen.getAllByText('hr_assistant:leave.cancel').length).toBeGreaterThan(0);
@@ -81,10 +190,12 @@ describe('AI inventory in six rendered locales',()=>{
  it.each(Object.keys(copies) as (keyof typeof copies)[])('%s: company HR sees the read-only registry and tier view only',async locale=>{
   state.locale=locale;state.group=false;const inv=copies[locale].aiManagement.inv;
   await renderPage(locale,'features');
+  expect(screen.queryByText(workerOverviewMessages[locale].checkScheduler)).toBeNull();
   expect(screen.getByRole('note')).toHaveTextContent(inv.registryNotice);
   expect(screen.queryByRole('alert')).toBeNull();
   expect(screen.queryByRole('button',{name:new RegExp(inv.pauseAction)})).toBeNull();
   expect(screen.queryByRole('table',{name:inv.register.title})).toBeNull();
+  expect(screen.queryByText(workerOverviewMessages[locale].assistantActions)).toBeNull();
   expect(screen.queryByText(inv.cols.use30)).toBeNull();
   expect(screen.getAllByText(inv.cols.tier).length).toBeGreaterThan(0);
   expect(screen.getAllByText(inv.actionPaused).length).toBeGreaterThan(0);

@@ -39,7 +39,12 @@ def validate_managed(row,web_uid):
     if row['frequency']!='continuous':
         timer=b.properties(row['unit']+'.timer');b.require(timer.get('LoadState')=='loaded','timer missing')
     # Cron adoption is intentionally explicit: duplicated legacy schedules are not silently removed.
-    script_names={'provision':'provision-runner.ts','accrual':'accrue-earned.ts','carry-expiry':'expire-carry.ts','reviews':'review-sweep.ts','notifications':'notification-email-sweep.ts','anomalies':'anomaly-sweep.ts','child-relief':'resync-child-relief-grid.ts','usage':'capture-usage.ts','entitlement-alarm':'entitlement-alarm.ts','ai-alerts':'ai-alerts.ts'}
+    script_names={
+        'provision':'provision-runner.ts','accrual':'accrue-earned.ts','carry-expiry':'expire-carry.ts',
+        'reviews':'review-sweep.ts','notifications':'notification-email-sweep.ts','anomalies':'anomaly-sweep.ts',
+        'child-relief':'resync-child-relief-grid.ts','usage':'capture-usage.ts',
+        'entitlement-alarm':'entitlement-alarm.ts','ai-alerts':'ai-alerts.ts','payroll-loops':'payroll-loop-tick.ts',
+    }
     needle=script_names.get(row['id'])
     if needle:
         for user in pwd.getpwall():

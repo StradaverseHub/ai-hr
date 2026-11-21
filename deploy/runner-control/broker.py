@@ -92,6 +92,25 @@ def next_run(timer):
         return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=monotonic-time.monotonic())).isoformat()
     return None
 
+def legacy_payroll_dispatch():
+    # The Debian cron daemon owns these journal fields. Return only its dispatch time.
+    # Missing or inaccessible logs provide no evidence about whether a schedule exists.
+    try:
+        result=subprocess.run([
+            '/usr/bin/journalctl','--quiet','--no-pager','--since=-2h','--lines=1','--output=json',
+            '--output-fields=__REALTIME_TIMESTAMP',
+            r'--grep=^\([^()]+\) CMD \(.*\bnode[[:space:]]+.*\bscripts/payroll-loop-tick[.]ts(?=[[:space:])]|$)',
+            '_UID=0','_EXE=/usr/sbin/cron','_SYSTEMD_UNIT=cron.service','SYSLOG_IDENTIFIER=CRON',
+        ],capture_output=True,text=True,timeout=2,env={'PATH':'/usr/bin:/bin','LC_ALL':'C'})
+        if result.returncode or not result.stdout or len(result.stdout)>4096:return None
+        stamp=json.loads(result.stdout)['__REALTIME_TIMESTAMP']
+        if not isinstance(stamp,str) or re.fullmatch(r'[0-9]{16}',stamp) is None:return None
+        dispatched=datetime.datetime.fromtimestamp(int(stamp)/1000000,datetime.timezone.utc)
+        if not datetime.timedelta(0)<=datetime.datetime.now(datetime.timezone.utc)-dispatched<=datetime.timedelta(hours=2):return None
+        return dispatched.isoformat(timespec='seconds').replace('+00:00','Z')
+    except (OSError,subprocess.TimeoutExpired,ValueError,KeyError,TypeError):
+        return None
+
 def row_status(policy,row):
     setting=policy['jobs'].get(row['id'],{'managed':False,'note':'Not commissioned; existing external schedules must be checked.'})
     service=properties(row['unit']+'.service')
@@ -148,8 +167,13 @@ def separate_capability(row):
 
 def handle(body,policy,catalog):
     require(isinstance(body,dict),'invalid request')
-    if body=={'op':'status'}:
-        return {'environment':policy['environment'],'checkedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'runners':[row_status(policy,row) for row in catalog]}
+    if body in ({'op':'status'},{'op':'status_with_cron'}):
+        runners=[row_status(policy,row) for row in catalog]
+        payroll=next((row for row in runners if row['id']=='payroll-loops'),None)
+        if body['op']=='status_with_cron' and payroll is not None:
+            dispatched=legacy_payroll_dispatch()
+            if dispatched:payroll['legacyCronDispatchedAt']=dispatched
+        return {'environment':policy['environment'],'checkedAt':datetime.datetime.now(datetime.timezone.utc).isoformat(),'runners':runners}
     require(set(body)=={'op','id','actor','revision','enabled','schedule'} and body['op']=='configure','invalid request fields')
     require(isinstance(body['actor'],str) and str(uuid.UUID(body['actor']))==body['actor'],'operator identity required')
     require(type(body['enabled']) is bool and isinstance(body['revision'],str),'invalid change')

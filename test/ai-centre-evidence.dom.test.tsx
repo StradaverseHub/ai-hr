@@ -19,7 +19,7 @@ const messagesFor = (locale: string) => withAiCentre(locale, copies[locale as Lo
 vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: state.locale, messages: messagesFor(state.locale), namespace }),
-  getFormatter: async () => createFormatter({ locale: state.locale, timeZone: 'Asia/Kuala_Lumpur' }),
+  getLocale: async () => state.locale, getFormatter: async () => createFormatter({ locale: state.locale, timeZone: 'Asia/Kuala_Lumpur' }),
 }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn(), usePathname: () => '/leave', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../lib/authz', () => ({ isGroupAdmin: () => true, isAdmin: () => true, requireAdmin: async () => ({}) }));

@@ -12,7 +12,7 @@ const data=vi.hoisted(()=>({view:undefined as unknown,groupAdmin:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({
   getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:enWithAiCentre,namespace}),
-  getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
+  getLocale: async () => 'en', getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));

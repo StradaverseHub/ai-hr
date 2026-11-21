@@ -60,6 +60,11 @@ the scheduler: refresh actual state before retrying. Keep audit records under th
 approved retention/backup procedure. Raw worker logs, HR values and credentials never enter responses.
 Systemd's last success is process-exit evidence, not proof of email receipt or business correctness.
 Missing/unmanaged jobs can still have external cron schedules: the UI explicitly says not managed here.
+On Debian-style cron installations, Scheduled Actions can show a recent dispatch of the pre-salary
+payroll check. The broker checks its fixed, trusted cron journal source over the last two hours and
+returns the newest matching timestamp only. It leaves the evidence absent when that source is
+unavailable. A dispatch does not establish that the command ran successfully or that the cron entry
+still exists. The payroll worker's own run history records the outcome.
 
 Acceptance must include an actual scheduled invocation, expected data effects, history/delivery
 outcomes, failure visibility, persistence after restart, stale edits, customer-denied writes and
