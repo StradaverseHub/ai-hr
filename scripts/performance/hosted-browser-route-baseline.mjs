@@ -10,6 +10,7 @@ import {createRequire} from 'node:module';
 import {join} from 'node:path';
 import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,staticPageCensusPlan,STATIC_CENSUS_SHARDS,dynamicPageCensusMatcher,serverActionRegistry,serverActionCoverage,serverActionPageMatcher} from './system-route-manifest.mjs';
+import {actionCensusIdentity} from './browser-action-census.mjs';
 import {isAuthRoute} from '../../lib/auth-routes.ts';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {requireNativePreflightFixtureDay,verifyNativePreflightContent} from './native-preflight-content.ts';
@@ -2016,6 +2017,8 @@ async function measureActions(fixture){
  assert(registrations.size>0,'The measured build must have registered Server Actions');
  const routesManifest=JSON.parse(readFileSync('.next/routes-manifest.json','utf8'));
  const actionPageFor=serverActionPageMatcher(appPathRoutes,routesManifest);
+ const {identity,ordinals}=actionCensusIdentity(registrations);
+ report.serverActionCensus=identity;
  const acceptedByAction=new Map();
  report.serverActionInventory=serverActionCoverage(registrations,acceptedByAction);
  const require=createRequire(join(process.cwd(),'package.json'));
@@ -2166,8 +2169,9 @@ async function measureActions(fixture){
     if(result.failureLandmarks)row.failureLandmarks=result.failureLandmarks;
    }
    finally{
-    row.serverActionResponses=[...actionRequests.values()].map(({page,matchedWorker,status,elapsedMs})=>
-     ({page,matchedWorker,status:status??null,elapsedMs:elapsedMs??null}));
+    row.serverActionResponses=[...actionRequests.values()].map(({id,page,matchedWorker,status,elapsedMs})=>
+     ({page,matchedWorker,status:status??null,elapsedMs:elapsedMs??null,
+       ...(row.status==='observed'&&matchedWorker&&status>=200&&status<400?{actionOrdinal:ordinals.get(id)}:{})}));
     report.serverActionInventory=serverActionCoverage(registrations,acceptedByAction);
     retain();
     await context.close();
