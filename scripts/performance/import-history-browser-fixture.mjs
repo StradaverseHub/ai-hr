@@ -20,12 +20,12 @@ assert.equal(companyHr.companyId,group.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
 const [{client,createDb},{resolveEntitlementsTx},{commitEmployeeImport},{getImportAttempt,getImportRun},
  payroll,{parseCsvRecords,toCsv},{PAYROLL_HISTORY_HEADERS},fixedImports,{runBulkJobTick},
- individualJobs,{runIndividualImportTick},{buildXlsx},{INDIVIDUAL_IMPORT_HEADERS}]=await Promise.all([
+ individualJobs,{runIndividualImportTick},{buildXlsx},{INDIVIDUAL_IMPORT_HEADERS},{pgSqlState}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),source('core/import.ts'),source('core/import-history.ts'),
  source('packs/payroll/service.ts'),source('lib/csv.ts'),source('lib/payroll-history-import-schema.ts'),
  source('core/fixed-transaction-import-job.ts'),source('core/bulk-job-worker.ts'),
  source('core/individual-import-job.ts'),source('core/individual-import-worker.ts'),
- source('lib/spreadsheet.ts'),source('lib/payroll-txn-import-schema.ts'),
+ source('lib/spreadsheet.ts'),source('lib/payroll-txn-import-schema.ts'),source('lib/db-error.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
 const resultPath=name=>resolve(env.PERF_PRIVATE_DIR,name);
@@ -117,7 +117,20 @@ try{
    [unknownEmployee,'',fixture.month,'ME','BONUS',fixture.month+'-01','amount','','100','fictional row'],
   ]));
   mark('individual-submit');
-  await individualJobs.submitIndividualImportJob(author,{id,name:file,content,method:'monthly',scopeIds:scope});
+  const submit=()=>individualJobs.submitIndividualImportJob(author,{id,name:file,content,method:'monthly',scopeIds:scope});
+  if(key==='groupHR'){
+   const [privilege]=await owner.client`select has_column_privilege('ai_hr_app',
+    'public.payroll_individual_import_job','template_version','insert') as allowed`;
+   assert.equal(privilege?.allowed,false);
+   await assert.rejects(submit,error=>pgSqlState(error)==='42501');
+   mark('individual-missing-column-grant-verified');
+   const grantReceipt=resultPath('individual-import-grant-probe');
+   writeFileSync(grantReceipt,'missing-grant-reproduced',{mode:0o600});
+   // Probe the narrow repair on this workflow's disposable database only.
+   await owner.client`grant insert (template_version) on public.payroll_individual_import_job to ai_hr_app`;
+   writeFileSync(grantReceipt,'disposable-grant-applied',{mode:0o600});
+  }
+  assert.equal(await submit(),id);
   mark('individual-worker');
   assert(await runIndividualImportTick(owner.client,async session=>({...session,entitlements:author.entitlements})));
   mark('individual-job');

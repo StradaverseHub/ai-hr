@@ -1634,8 +1634,13 @@ try{
    const path=join(privateDir,'import-history-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['principal','personnel','payroll','fixed-transaction','individual-workbook','individual-submit',
+    if(['principal','personnel','payroll','fixed-transaction','individual-workbook','individual-submit','individual-missing-column-grant-verified',
      'individual-worker','individual-job','individual-attempt','complete'].includes(stage))report.importHistorySeedStage=stage;
+    const grantPath=join(privateDir,'individual-import-grant-probe');
+    if(existsSync(grantPath)){
+     const grantProbe=readFileSync(grantPath,'utf8');
+     if(['missing-grant-reproduced','disposable-grant-applied'].includes(grantProbe))report.individualImportGrantProbe=grantProbe;
+    }
     const factsPath=join(privateDir,'individual-import-seed-facts.json');
     if(existsSync(factsPath)){
      const {role,state,hasAttempt,error}=JSON.parse(readFileSync(factsPath,'utf8'));
