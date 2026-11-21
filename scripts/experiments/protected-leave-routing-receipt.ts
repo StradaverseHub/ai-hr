@@ -17,6 +17,7 @@ const planSchema = z.object({
 }).strict();
 const reportSchema = z.object({
   evidence: z.literal('offline_paired_leave_routing_holdout'), candidateSha: planSchema.shape.candidateSha,
+  scope: z.literal('single_active_own_employment'),
   holdoutDigest: digest, modelDigest: digest, minimumSavedCalls: count.min(1),
   cases: count.min(4), expectedDirect: count.min(2), correctDirect: count, correctDeferrals: count, wrongDirect: z.literal(0),
   unexpectedDirect: z.literal(0), missedDirect: z.literal(0), meetsThreshold: z.literal(true), releaseAuthorized: z.literal(false),

@@ -522,7 +522,10 @@ describe('evaluator-owned leave routing suite', () => {
   });
 
   const modelDigest = 'f'.repeat(64);
-  function pair(rows: readonly unknown[] = cases, minimumSavedCalls = 2) {
+  const trialCases = [cases[0], { scenario:{ question:'How much leave have I taken?', employments:[otherCompany] },
+    expected:{ kind:'direct', employment:0, balance:0, field:'taken', value:17.25 } },
+    ...cases.slice(2), { ...cases[1], expected:defer }];
+  function pair(rows: readonly unknown[] = trialCases, minimumSavedCalls = 2) {
     const bytes = Buffer.from(JSON.stringify({ version: 2, candidateSha, modelDigest, minimumSavedCalls, cases: rows }));
     return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
   }
@@ -544,21 +547,23 @@ describe('evaluator-owned leave routing suite', () => {
     const score = await scorePairedLeaveRoutingHoldout(bytes, digest, candidateSha, modelDigest, baseline());
     expect(score).toMatchObject({ meetsThreshold: true, releaseAuthorized: false, baselineCalls: 2, baselineCorrect: 2,
       candidateFallbackCalls: 0, candidateCorrect: 2, gains: 0, regressions: 0, savedCalls: 2,
-      baselineInputTokens: 18, baselineOutputTokens: 8, correctDeferrals: 3 });
+      baselineInputTokens: 18, baselineOutputTokens: 8, correctDeferrals: 4, scope: 'single_active_own_employment' });
     expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
   });
 
   it('blocks a paired regression and preflights source and budget mismatches before transport', async () => {
-    const regressed = pair(cases.map((item, index) => index === 0 ? { ...item,
+    const regressed = pair(trialCases.map((item, index) => index === 0 ? { ...item,
       expected: { kind: 'direct', employment: 0, balance: 0, field: 'pending', value: 1 } } : item));
     await expect(scorePairedLeaveRoutingHoldout(regressed.bytes, regressed.digest, candidateSha, modelDigest, baseline('pending')))
       .resolves.toMatchObject({ meetsThreshold: false, regressions: 1, savedCalls: 1 });
     let calls = 0;
     const guard: PilotModel = async input => { calls++; return baseline()(input); };
-    const missing = pair(cases.map((item, index) => index === 1 ? { ...item, expected: { ...item.expected, value: 99 } } : item));
+    const missing = pair(trialCases.map((item, index) => index === 1 ? { ...item, expected: { ...item.expected, value: 99 } } : item));
     await expect(scorePairedLeaveRoutingHoldout(missing.bytes, missing.digest, candidateSha, modelDigest, guard)).rejects.toThrow('no verified source');
-    const excessive = pair(cases, 3);
+    const excessive = pair(trialCases, 3);
     await expect(scorePairedLeaveRoutingHoldout(excessive.bytes, excessive.digest, candidateSha, modelDigest, guard)).rejects.toThrow('Saved-call target');
+    const broad = pair(cases);
+    await expect(scorePairedLeaveRoutingHoldout(broad.bytes, broad.digest, candidateSha, modelDigest, guard)).rejects.toThrow('trial employment scope');
     await expect(scorePairedLeaveRoutingHoldout(regressed.bytes, regressed.digest, candidateSha, 'a'.repeat(64), guard)).rejects.toThrow('Invalid frozen paired leave suite');
     expect(calls).toBe(0);
   });
@@ -566,7 +571,7 @@ describe('evaluator-owned leave routing suite', () => {
   it('authenticates two independently enrolled fictional scorers without exposing the held cases', async () => {
     const id = (suffix: string) => `11111111-1111-4111-8111-${suffix.padStart(12, '0')}`;
     const keys = [generateKeyPairSync('ed25519'), generateKeyPairSync('ed25519')];
-    const inputs = [pair(), pair([{ ...cases[0], scenario: { ...cases[0].scenario, question: 'How much leave do I have?' } }, ...cases.slice(1)])];
+    const inputs = [pair(), pair([{ ...trialCases[0], scenario: { ...trialCases[0].scenario, question: 'How much leave do I have?' } }, ...trialCases.slice(1)])];
     const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
     const answerFormatDigest = routingDigest('json');
     const plan = {

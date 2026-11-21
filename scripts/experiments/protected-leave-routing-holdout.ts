@@ -75,7 +75,7 @@ function observe(source: ReturnType<typeof project>): z.infer<typeof expected> {
 }
 
 /** Score a precommitted fictional suite. The report carries neither individual results nor case contents. */
-function scoreCases(cases: z.infer<typeof casesSchema>) {
+function scoreCases(cases: z.infer<typeof casesSchema>, requireOneEmployment = false) {
   const expectedDirect = cases.filter(row => row.expected.kind === 'direct').length;
   if (expectedDirect < 2 || cases.length - expectedDirect < 2 ||
       new Set(cases.map(row => routingDigest(row.scenario))).size !== cases.length)
@@ -84,7 +84,7 @@ function scoreCases(cases: z.infer<typeof casesSchema>) {
   const scores = { correctDirect: 0, correctDeferrals: 0, wrongDirect: 0, unexpectedDirect: 0, missedDirect: 0 };
   const paired = cases.map(item => {
     const source = project(item.scenario);
-    const observed = observe(source);
+    const observed = observe(requireOneEmployment && item.scenario.employments.length !== 1 ? null : source);
     const correct = routingDigest(item.expected) === routingDigest(observed);
     if (item.expected.kind === 'defer') {
       if (observed.kind === 'defer') scores.correctDeferrals++;
@@ -112,11 +112,12 @@ export async function scorePairedLeaveRoutingHoldout(bytes: Buffer, holdoutDiges
   const parsed = pairedHoldout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
   if (!parsed.success || parsed.data.candidateSha !== candidateSha || parsed.data.modelDigest !== modelDigest)
     throw Error('Invalid frozen paired leave suite.');
-  const { paired, result } = scoreCases(parsed.data.cases);
+  const { paired, result } = scoreCases(parsed.data.cases, true);
   const { minimumSavedCalls } = parsed.data;
   if (minimumSavedCalls > result.expectedDirect) throw Error('Saved-call target exceeds the direct case count.');
-  const comparisons = paired.flatMap(({ expected, source, observed, correct }, index) => {
+  const comparisons = paired.flatMap(({ scenario, expected, source, observed, correct }, index) => {
     if (expected.kind !== 'direct') return [];
+    if (scenario.employments.length !== 1) throw Error('Expected direct answer exceeds the trial employment scope.');
     if (!source) throw Error('Expected direct answer has no verified source.');
     const card = source.cards.findIndex(row => row.employment === expected.employment && row.balance === expected.balance);
     const fact = card < 0 ? -1 : source.presentation.cards[card].facts.findIndex(row => row.field === expected.field && row.value === expected.value);
@@ -143,7 +144,7 @@ export async function scorePairedLeaveRoutingHoldout(bytes: Buffer, holdoutDiges
     if (baselineCorrect && !candidateCorrect) comparison.regressions++;
     if (!defers && correct) comparison.savedCalls++;
   }
-  return { evidence: 'offline_paired_leave_routing_holdout', candidateSha, holdoutDigest, modelDigest, minimumSavedCalls,
+  return { evidence: 'offline_paired_leave_routing_holdout', scope: 'single_active_own_employment', candidateSha, holdoutDigest, modelDigest, minimumSavedCalls,
     ...result, ...comparison, meetsThreshold: result.meetsThreshold && comparison.regressions === 0 && comparison.savedCalls >= minimumSavedCalls,
     releaseAuthorized: false };
 }
