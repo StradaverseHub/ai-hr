@@ -2,6 +2,7 @@ import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { runProtectedLeaveComparison } from './protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
 import { leaveAnswerJsonSchema } from './leave-answer-format';
+import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
 import { localOutputPath, writeLocalOutput } from '../teras/output';
 
@@ -13,11 +14,15 @@ async function main() {
   const runners = { '--protected': runProtectedLeaveComparison, '--protected-work-summary': runProtectedWorkSummaryComparison };
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
+  const [benchmark] = benchmarks;
+  const useCatalogueFormat = flags.includes('--catalogue-schema');
+  const useStaticSchema = flags.includes('--schema');
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
-      flags.some(flag => flag !== '--schema' && !isBenchmark(flag)) || new Set(flags).size !== flags.length || benchmarks.length > 1)
-    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema] [--protected | --protected-work-summary]');
-  const answerFormat = flags.includes('--schema') ? leaveAnswerJsonSchema : 'json';
+      flags.some(flag => flag !== '--schema' && flag !== '--catalogue-schema' && !isBenchmark(flag)) ||
+      new Set(flags).size !== flags.length || benchmarks.length > 1 || (useCatalogueFormat && (!benchmark || useStaticSchema)))
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json [--schema | --catalogue-schema] [--protected | --protected-work-summary]');
+  const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   localOutputPath(outfile);
   const deadline = AbortSignal.timeout(30 * 60_000);
   const request = async (path: string, init?: RequestInit) => {
@@ -36,20 +41,21 @@ async function main() {
   const modelDigest = await models();
   const generate: PilotModel = async ({ mode, system, prompt }) => {
     if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
+    const format = mode !== 'answer' ? 'json' : useCatalogueFormat ? protectedCatalogueAnswerJsonSchema(JSON.parse(prompt)) : answerFormat;
     const result = await request('/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, system, prompt, stream: false, format: mode === 'answer' ? answerFormat : 'json', options: generationOptions }),
+      body: JSON.stringify({ model, system, prompt, stream: false, format, options: generationOptions }),
     });
     if (result?.done !== true || result.model !== model || typeof result.response !== 'string')
       throw Error('Local model returned an incomplete response.');
     return { text: result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
-  const [benchmark] = benchmarks;
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
   const report = await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
-  writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest: routingDigest(answerFormat) }, null, 2));
+  const answerFormatDigest = routingDigest(useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
+  writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
 }
 
 main().catch(error => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
 import { runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
+import { protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
@@ -113,6 +114,25 @@ describe('protected leave comparison', () => {
 });
 
 describe('protected work summary comparison', () => {
+  it('compiles a per-request schema from available references, without adding a correct answer', () => {
+    const catalogue = { version: 1, operation: 'conversation', intent: 'claim_statuses', strategy: 'baseline_v1', reads: [{
+      read: 0, module: 'claims', cards: [{ card: 0, facts: [
+        { fact: 0, field: 'status', available: true }, { fact: 4, field: 'paidAt', available: false },
+      ] }, { card: 1, facts: [{ fact: 0, field: 'status', available: true }] }],
+      explanations: [{ card: null, code: 'specialist_finding:claim_pending_not_approved' }],
+    }] };
+    const schema = protectedCatalogueAnswerJsonSchema(catalogue);
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties.mode.const).toBe('answer');
+    expect(schema.properties.blocks.maxItems).toBe(3);
+    expect(schema.properties.blocks.items.anyOf.map(choice => choice.properties)).toMatchObject([
+      { kind: { const: 'fact' }, read: { const: 0 }, card: { const: 0 }, fact: { const: 0 } },
+      { kind: { const: 'fact' }, read: { const: 0 }, card: { const: 1 }, fact: { const: 0 } },
+      { kind: { const: 'explanation' }, read: { const: 0 }, card: { const: null }, code: { const: 'specialist_finding:claim_pending_not_approved' } },
+    ]);
+    expect(() => protectedCatalogueAnswerJsonSchema({ ...catalogue, reads: [] })).toThrow('requires an available reference');
+  });
+
   it('checks complete multi-record answers and canonical specialist explanations without disclosing source values', async () => {
     const expected = {
       attendance: { facts: [[0, 2]], code: 'specialist_finding:attendance_exception_recorded' },
