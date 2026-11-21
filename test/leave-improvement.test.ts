@@ -173,6 +173,29 @@ describe('evaluator-held explanation choices', () => {
     expect(JSON.stringify(result)).not.toContain(cases[0].focus);
   });
 
+  it('directly routes before the references and counts only the actual calls after a lexical abstention', async () => {
+    const savedReport = bytes(report);
+    const input = spec(savedReport);
+    let calls = 0;
+    const result = await scoreProtectedExplanationHoldout(input, sha(input), savedReport, modelDigest, async ({ prompt }) => {
+      const request = JSON.parse(prompt);
+      const fixture = cases.find(row => row.focus === request.focus);
+      if (++calls === 1) {
+        expect(fixture).toBeDefined();
+        return { text: '{}', inputTokens: 3, outputTokens: 2 };
+      }
+      const choice = fixture ? 'specialist_finding:' + fixture.expected : request.choices[0];
+      return { text: JSON.stringify({ choice }), inputTokens: 1, outputTokens: 1 };
+    }, 'direct');
+    expect(calls).toBe(9);
+    expect(result).toMatchObject({
+      evidence: 'offline_direct_explanation_fallback', releaseAuthorized: false,
+      candidate: { correct: 4, rejected: 0 },
+      retrievalFirst: { correct: 3, rejected: 1, modelCalls: 1, versusFocused: {gains: 0, regressions: 1} },
+      routedBudget: { calls: 1, inputTokens: 3, outputTokens: 2 }, budget: { calls: 8, inputTokens: 8, outputTokens: 8 },
+    });
+  });
+
   it('rejects exposed catalogues and substituted development bytes before inference', async () => {
     const savedReport = bytes(report);
     const input = spec(savedReport);

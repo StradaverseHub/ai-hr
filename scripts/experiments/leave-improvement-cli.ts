@@ -37,7 +37,8 @@ async function main() {
   const [model, outfile, ...args] = process.argv.slice(2);
   const pairedLeave = args[0] === '--paired-leave-routing';
   const freshRouting = args[0] === '--fresh-explanation-routing';
-  const explanationHoldout = freshRouting || args[0] === '--protected-explanation-holdout';
+  const directFallback = args[0] === '--direct-explanation-fallback';
+  const explanationHoldout = freshRouting || directFallback || args[0] === '--protected-explanation-holdout';
   const workSummaryHoldout = args[0] === '--protected-holdout';
   const holdoutMode = pairedLeave || explanationHoldout || workSummaryHoldout;
   const [, holdoutPath, holdoutSha, developmentReportPath, previousReportPath, previousCasesPath] = args;
@@ -136,7 +137,8 @@ async function main() {
   const report = candidateSha && cases ? await scorePairedLeaveRoutingHoldout(cases, holdoutSha, candidateSha, modelDigest, generate)
     : freshInput ? await scoreFreshExplanationRouting(freshInput, modelDigest, generate)
     : cases && developmentReport ? await (explanationHoldout
-      ? scoreProtectedExplanationHoldout(cases, holdoutSha, developmentReport, modelDigest, generate)
+      ? scoreProtectedExplanationHoldout(cases, holdoutSha, developmentReport, modelDigest, generate,
+        directFallback ? 'direct' : 'replay')
       : scoreProtectedWorkSummaryHoldout(cases, holdoutSha, developmentReport, modelDigest, generate, previousHoldout))
     : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');

@@ -136,33 +136,46 @@ function prepareExplanationHoldout(bytes: Buffer, expectedSha: string, developme
   return {spec, locale, cases, expectedSha};
 }
 
-async function evaluateExplanationHoldout(prepared: ReturnType<typeof prepareExplanationHoldout>, model: PilotModel, margins: readonly number[]) {
+async function evaluateExplanationHoldout(prepared: ReturnType<typeof prepareExplanationHoldout>, model: PilotModel,
+  margins: readonly number[], execution: 'replay' | 'direct' = 'replay') {
   const {spec, locale, cases, expectedSha} = prepared;
   const { call, budget } = observeModel(model);
+  const fixedChoices = cases.map(fixture => deterministicChoice(fixture, locale));
+  const routedRun = execution === 'direct' ? observeModel(model) : null;
+  const directlyRouted: Awaited<ReturnType<typeof choose>>[] = [];
+  if (routedRun) {
+    if (margins.length !== 1) throw Error('Direct routing requires a single frozen margin.');
+    // Run the route before the reference arms. A deterministic return never invokes the model.
+    for (const [index, fixture] of cases.entries()) {
+      const {choice, margin} = fixedChoices[index];
+      directlyRouted.push(margin < margins[0]
+        ? await choose(routedRun.call, fixture, true)
+        : choice === fixture.expected ? 'correct' : 'incorrect');
+    }
+  }
   const original = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
   const deterministic = { correct: 0, abstained: 0, gains: 0, regressions: 0 };
   const candidate = { correct: 0, rejected: 0 };
   const retrievalMargins = margins.map(minimumMargin => ({
     minimumMargin,
-    correct: 0, rejected: 0, modelCalls: 0,
+    correct: 0, rejected: 0, modelCalls: routedRun?.budget.calls ?? 0,
     versusFocused: { gains: 0, regressions: 0 },
     versusOriginal: { gains: 0, regressions: 0 },
     versusDeterministic: { gains: 0, regressions: 0 },
   }));
-  for (const fixture of cases) {
+  for (const [index, fixture] of cases.entries()) {
     const past = await choose(call, fixture, false);
     const next = await choose(call, fixture, true);
     const originalCorrect = past === 'correct';
     const focusedCorrect = next === 'correct';
-    const {choice: fixed, margin} = deterministicChoice(fixture, locale);
+    const {choice: fixed, margin} = fixedChoices[index];
     const deterministicCorrect = fixed === fixture.expected;
-    // Both policies would send the identical focused request on a retrieval abstention.
-    // Reuse that observed response to attribute accuracy and calls without extra sampling.
+    // The margin sweep replays a reference answer. A direct route has its own observed answer.
     for (const policy of retrievalMargins) {
       const usesModel = margin < policy.minimumMargin;
-      const routed = usesModel ? next : deterministicCorrect ? 'correct' : 'incorrect';
+      const routed = directlyRouted[index] ?? (usesModel ? next : deterministicCorrect ? 'correct' : 'incorrect');
       const routedCorrect = routed === 'correct';
-      if (usesModel) policy.modelCalls++;
+      if (!routedRun && usesModel) policy.modelCalls++;
       if (routedCorrect) policy.correct++;
       if (routed === 'rejected') policy.rejected++;
       recordComparison(policy.versusFocused, routedCorrect, focusedCorrect);
@@ -181,22 +194,23 @@ async function evaluateExplanationHoldout(prepared: ReturnType<typeof prepareExp
   const confirmedGain = candidate.rejected === 0 && original.gains >= spec.minimumGain && original.regressions === 0;
   const {minimumMargin: _, ...retrievalFirst} = retrievalMargins[0];
   return {
-    evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
+    evidence: execution === 'direct' ? 'offline_direct_explanation_fallback' : 'offline_explanation_revision_holdout',
+    releaseAuthorized: false,
     holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
     comparator: locale === 'en' ? 'canonical_english_explanation_retrieval_v2' : 'canonical_malay_explanation_retrieval_v1',
     locale, cases: cases.length, minimumGain: spec.minimumGain,
     original, deterministic, candidate, retrievalFirst, retrievalMargins, confirmedGain,
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
-    budget,
+    budget, ...(routedRun ? { routedBudget: routedRun.budget } : {}),
   };
 }
 
 /** Evaluator-owned fictional cases, scored against both the original model
  * contract and a fixed lexical selector that receives the same focus. */
 export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSha: string, developmentReport: Buffer,
-  modelDigest: string, model: PilotModel) {
+  modelDigest: string, model: PilotModel, execution: 'replay' | 'direct' = 'replay') {
   return evaluateExplanationHoldout(prepareExplanationHoldout(bytes, expectedSha, developmentReport, modelDigest),
-    model, [1, 2, 3, 4, 5, 6, 8]);
+    model, execution === 'direct' ? [1] : [1, 2, 3, 4, 5, 6, 8], execution);
 }
 
 type ExposureCase = Pick<ExplanationCase, 'module' | 'focus' | 'expected'>;
