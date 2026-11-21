@@ -1,63 +1,64 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { requestPayrollProcessingReceipt } from '../actions';
 
 type Receipt = Awaited<ReturnType<typeof requestPayrollProcessingReceipt>>;
+type Feedback = { receipt: Receipt; refresh: boolean; finishedAt: string | null };
 
-/** After hydration, post the same form and let the register refresh separately. */
-export function PayrollProcessingReceipt({ children, unavailable }: { children: ReactNode; unavailable: string }) {
+/** Keep the acknowledgement mounted as the register removes the draft form. */
+export function PayrollProcessingReceipt({ children, unavailable, finishedAt }: {
+  children?: ReactNode;
+  unavailable: string;
+  finishedAt: string | null;
+}) {
   const router = useRouter();
-  const fields = useRef<HTMLFieldSetElement>(null);
-  const submitting = useRef(false);
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
+  const sending = useRef(false);
+  const refreshedFeedback = useRef<Feedback | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [pending, setPending] = useState(false);
+  const visibleFeedback = children && feedback?.finishedAt !== finishedAt ? null : feedback;
 
   useEffect(() => {
-    const form = fields.current?.form;
-    if (!form) return;
-
-    async function submit(event: SubmitEvent) {
-      if (event.defaultPrevented) return;
-      event.preventDefault();
-      if (!form || submitting.current) return;
-      submitting.current = true;
-      const data = new FormData(form);
-      setPending(true);
-      setReceipt(null);
-      try {
-        const result = await requestPayrollProcessingReceipt(data);
-        if (!form.isConnected) return;
-        setReceipt(result);
-        if (result.status === 'queued') {
-          const current = new URL(form.ownerDocument.location.href);
-          if (current.searchParams.has('error')) {
-            current.searchParams.delete('error');
-            router.replace(current.pathname + current.search, { scroll: false });
-          } else {
-            router.refresh();
-          }
-          return;
-        }
-      } catch {
-        if (form.isConnected) {
-          setReceipt({ status: 'refused', message: unavailable });
-          router.refresh();
-        }
-      } finally {
-        setPending(false);
-      }
-      submitting.current = false;
+    if (!feedback?.refresh || refreshedFeedback.current === feedback) return;
+    refreshedFeedback.current = feedback;
+    const current = new URL(window.location.href);
+    if (feedback.receipt.status === 'queued' && current.searchParams.has('error')) {
+      current.searchParams.delete('error');
+      router.replace(current.pathname + current.search, { scroll: false });
+    } else {
+      router.refresh();
     }
+  }, [feedback, router]);
 
-    form.addEventListener('submit', submit);
-    return () => form.removeEventListener('submit', submit);
-  }, [router, unavailable]);
+  async function submit(event: FormEvent<HTMLFieldSetElement>) {
+    if (event.defaultPrevented || !(event.target instanceof HTMLFormElement)) return;
+    event.preventDefault();
+    if (sending.current || visibleFeedback?.receipt.status === 'queued') return;
+    sending.current = true;
+    const data = new FormData(event.target);
+    setPending(true);
+    setFeedback(null);
+    try {
+      const receipt = await requestPayrollProcessingReceipt(data);
+      setFeedback({ receipt, refresh: receipt.status === 'queued', finishedAt });
+    } catch {
+      setFeedback({ receipt: { status: 'refused', message: unavailable }, refresh: true, finishedAt });
+    } finally {
+      sending.current = false;
+      setPending(false);
+    }
+  }
 
+  const receipt = visibleFeedback?.receipt;
   return (
-    <fieldset ref={fields} disabled={pending || receipt?.status === 'queued'} aria-busy={pending} className="min-w-0">
-      {children}
+    <>
+      {children && (
+        <fieldset disabled={pending || receipt?.status === 'queued'} aria-busy={pending} onSubmit={submit} className="min-w-0">
+          {children}
+        </fieldset>
+      )}
       {receipt && (
         <p
           role={receipt.status === 'queued' ? 'status' : 'alert'}
@@ -66,6 +67,6 @@ export function PayrollProcessingReceipt({ children, unavailable }: { children: 
           {receipt.message}
         </p>
       )}
-    </fieldset>
+    </>
   );
 }
