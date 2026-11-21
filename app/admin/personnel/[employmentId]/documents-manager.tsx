@@ -1,4 +1,5 @@
 'use client';
+import { formatDmyTime } from '@/lib/date-display';
 
 import { ActionButton } from '@/components/ui/action-button';
 // f018ce8d — client half of the Documents tab: the Add-Document dialog, the searchable/filterable grid, and
@@ -255,7 +256,7 @@ export function DocumentsManager({
                     <div>{d.uploadedBy || '—'}</div>
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted-foreground">
-                    <div className="tabular-nums">{d.updatedAt}</div>
+                    <div className="tabular-nums">{formatDmyTime(d.updatedAt)}</div>
                     <div>{d.updatedBy || '—'}</div>
                   </td>
                   <td className="py-2">

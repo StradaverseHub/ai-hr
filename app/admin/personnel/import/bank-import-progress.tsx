@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import {useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
@@ -80,7 +81,7 @@ export function BankImportProgress(){
   </Card>
   {error&&<p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{error}</p>}
   {duplicate&&<p role="status" className="text-sm text-muted-foreground">{j('duplicate')}</p>}
-  {jobs.length>1&&<label className="block text-sm">{j('recent')}<select className="ml-3 max-w-full rounded border border-border bg-background p-2" value={job?.id??''} disabled={busy} onChange={event=>{setPage(0);setRows([]);setJob(jobs.find(v=>v.id===event.target.value)??null);}}>{jobs.map(v=><option key={v.id} value={v.id}>{v.sourceName} · {new Date(v.createdAt).toLocaleString()}</option>)}</select></label>}
+  {jobs.length>1&&<label className="block text-sm">{j('recent')}<select className="ml-3 max-w-full rounded border border-border bg-background p-2" value={job?.id??''} disabled={busy} onChange={event=>{setPage(0);setRows([]);setJob(jobs.find(v=>v.id===event.target.value)??null);}}>{jobs.map(v=><option key={v.id} value={v.id}>{v.sourceName} · {new Date(v.createdAt).toLocaleString(undefined, { timeZone: HR_LOCAL_TZ })}</option>)}</select></label>}
   {job&&<Card className="space-y-4 p-5">
    <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="break-all text-sm font-semibold">{job.sourceName}</h3><span role="status" className="text-sm">{stateLabels[job.state]}</span></div>
    {bankImportActive(job.state)&&job.state!=='ready'&&<><progress aria-label={stateLabels[job.state]} value={progress} max={100} className="h-2 w-full accent-primary"/><p className="text-xs text-muted-foreground">{job.state==='uploading'?j('uploadCount',{done:job.uploadedBytes,total:job.sourceBytes}):job.state==='importing'?j('savedCount',{saved:job.saved,done:job.processed,total:job.total}):j('validationCount',{done:job.validated,total:job.total})}</p></>}

@@ -1,3 +1,4 @@
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -103,7 +104,7 @@ export default async function CompanyPayrollCyclesPage({
                     <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                       {/* Blank until the row is next edited — migration 0443 deliberately backfilled
                           nothing, because any backfilled date would be a claim about history. */}
-                      {c.updatedAt ? c.updatedAt.toISOString().slice(0, 10) : '—'}
+                      {c.updatedAt ? todayInKualaLumpur(c.updatedAt) : '—'}
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center justify-end gap-3">

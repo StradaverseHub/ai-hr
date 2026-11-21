@@ -1,3 +1,4 @@
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { Button, Card, ErrorBanner, PageHeader } from '@/components/ui';
@@ -118,7 +119,7 @@ export default async function StatutoryConfigPage({
         ) : source === 'pack' && packVersion ? (
           <div className="text-xs text-muted-foreground">
             {t('packVersion')} {packVersion}
-            {issuedAt ? ` · ${t('issued')} ${issuedAt.slice(0, 10)}` : ''}
+            {issuedAt ? ` · ${t('issued')} ${todayInKualaLumpur(new Date(issuedAt))}` : ''}
           </div>
         ) : null}
       </Card>

@@ -28,6 +28,7 @@ export type RunGroupReasonCode =
   | 'NON_CASH_NORMAL_REMUNERATION_REQUIRED'
   | 'NON_CASH_MONTH_BASELINE_UNAVAILABLE'
   | 'NON_CASH_CONFIGURATION_INVALID'
+  | 'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED'
   | 'TRANSACTION_AFTER_LEAVING'
   | 'SYSTEM_VALIDATION_ERROR'
   | 'EMPTY_SELECTION'
@@ -81,6 +82,7 @@ export type CompanyOutcome = {
   /** Set on a failed company. */
   reason?: RunGroupReasonCode;
   transactionFailure?: PayrollTransactionFailure;
+  historicalTaxPeriod?: string;
   /** Organization Module (361e3b15) — on an INVALID_CYCLE failure, the run TYPE that had no active cycle in
    *  this company, so the result page can name the company AND the missing cycle type (not a bare "no cycle"). */
   missingCycleRunType?: IntendedRunType;
@@ -105,8 +107,14 @@ export type RunGroupResult = {
   perCompany: CompanyOutcome[];
 };
 
+/** Recognize the persisted historical tax refusal and expose only its validated payroll period. */
+export function importedTaxReviewPeriod(message: string | null | undefined): string | undefined {
+  return message?.match(/^Imported wage inputs require review for (\d{4}-(?:0[1-9]|1[0-2]))\. Preview the historical tax inputs and resolve the named missing evidence\.$/)?.[1];
+}
+
 /** Map a thrown engine error to a stable reason code (pure — unit-tested directly). */
 export function reasonForError(message: string): RunGroupReasonCode {
+  if (importedTaxReviewPeriod(message)) return 'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED';
   if (message.startsWith('PCB tax scheme declaration: ')) return 'TAX_SCHEME_DECLARATION_REQUIRED';
   if (message.includes('A payroll process already exists for this period')) return 'PERIOD_ALREADY_PROCESSED';
   if (/No localization pack/i.test(message)) return 'NO_PAYROLL_CONFIG';

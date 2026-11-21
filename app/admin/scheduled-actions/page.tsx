@@ -1,3 +1,4 @@
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { isGroupAdmin, isOperator } from '@/lib/authz';
@@ -27,7 +28,7 @@ export default async function ScheduledActionsPage() {
 
   const now = Date.now();
   const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
-  const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
+  const dateTime = new Intl.DateTimeFormat(locale, { timeZone: HR_LOCAL_TZ, dateStyle: 'medium', timeStyle: 'short' });
   const number = new Intl.NumberFormat(locale);
 
   // Relative time via the platform formatter, not message keys: Intl.RelativeTimeFormat already knows
