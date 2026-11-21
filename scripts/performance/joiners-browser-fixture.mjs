@@ -74,6 +74,21 @@ try{
   const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
+  performanceSeedStage='grade';
+  // Match the existing OneHR service fixture's native grade code and framework range.
+  const cohort=fixture.users.filter(user=>user.tenantId===group.tenantId&&user.companyId===company.companyId);
+  assert.equal(cohort.length,50,'Expected the exact fictional Performance cohort');
+  await owner.client.begin(async tx=>{
+   const [grade]=await tx`insert into job_grade (tenant_id,code,name)
+    values (${group.tenantId}::uuid,'12','Grade 12')
+    on conflict do nothing returning id`;
+   assert(grade,'The fixture must own a newly assigned OneHR grade');
+   const assignments=await tx`update employment set grade_id=${grade.id}::uuid
+    where tenant_id=${group.tenantId}::uuid and company_id=${company.companyId}::uuid
+      and id=any(${cohort.map(user=>user.employmentId)}::uuid[]) and grade_id is null
+    returning id`;
+   assert.equal(assignments.length,cohort.length,'Expected a valid grade on every fixture subject');
+  });
   performanceSeedStage='create';
   const {cycleId}=await createCycle(ctx,{
    companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',
