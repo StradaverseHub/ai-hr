@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison } from '../scripts/experiments/protected-leave-comparison';
+import { runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
 import { runLeaveImprovement, type PilotModel } from '../scripts/teras/leave-improvement';
 import { ASSISTANT_CONVERSATION_HOLDOUTS } from '../lib/ai/assistant-conversation-holdouts';
@@ -108,5 +109,38 @@ describe('protected leave comparison', () => {
       inputTokens: 1, outputTokens: 1,
     }));
     expect(report.strategies.map(item => [item.correct, item.rejected])).toEqual([[0, 9], [0, 9]]);
+  });
+});
+
+describe('protected work summary comparison', () => {
+  it('checks complete multi-record answers and canonical specialist explanations without disclosing source values', async () => {
+    const expected = {
+      attendance: { facts: [[0, 2]], code: 'specialist_finding:attendance_exception_recorded' },
+      lifecycle: { facts: [[0, 1], [0, 2]], code: 'specialist_finding:lifecycle_steps_remaining' },
+      toil: { facts: [[0, 0]], code: 'specialist_finding:credit_recorded_not_new_eligibility' },
+      notifications: { facts: [[0, 0]], code: 'specialist_finding:notification_unread_not_delivery_proof' },
+      claim_statuses: { facts: [[0, 0], [1, 0]], code: null },
+      leave_requests: { facts: [[0, 1], [0, 2], [1, 1], [1, 2]], code: null },
+    };
+    const report = await runProtectedWorkSummaryComparison(async ({ prompt }) => {
+      expect(prompt).not.toMatch(/Fictional|Human equipment|2026-|\b470\b|My attendance|pending|approved|\/me\//i);
+      const catalogue = JSON.parse(prompt);
+      const { facts, code } = expected[catalogue.intent as keyof typeof expected];
+      const blocks = facts.map(([card, fact]) => ({ kind: 'fact', read: 0, card, fact }));
+      const explanation = code ? [{ kind: 'explanation', read: 0, card: null, code }] : [];
+      return { text: JSON.stringify({ version: 1, mode: 'answer', blocks: [...blocks, ...explanation] }), inputTokens: 1, outputTokens: 1 };
+    });
+    expect(report.budget.calls).toBe(12);
+    expect(report.strategies.map(item => item.correct)).toEqual([6, 6]);
+  });
+
+  it('separates incomplete answers from attempts to use withheld facts', async () => {
+    const report = await runProtectedWorkSummaryComparison(async ({ prompt }) => {
+      const catalogue = JSON.parse(prompt);
+      const blocks = [{ kind: 'fact', read: 0, card: 0, fact: catalogue.intent === 'claim_statuses' ? 4 : 0 }];
+      return { text: JSON.stringify({ version: 1, mode: 'answer', blocks }), inputTokens: 1, outputTokens: 1 };
+    });
+    expect(report.comparisons.filter(row => row.id === 'claims:two-statuses').map(row => row.outcome)).toEqual(['rejected', 'rejected']);
+    expect(report.comparisons.filter(row => row.id === 'attendance:late').map(row => row.outcome)).toEqual(['wrong_selection', 'wrong_selection']);
   });
 });

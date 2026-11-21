@@ -1,10 +1,9 @@
 import { presentGroundedToolOutcome } from '../../lib/ai/grounded-tool-presentation';
 import {
-  adjudicatePrivateAssistantTerminal, capturePrivateAssistantTask, privateAssistantCatalogue,
   resolvePrivateAssistantIntent, selectPrivateAssistantCards,
 } from '../../lib/ai/provider-assistant-policy';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
-import type { ConverseArgs } from '../../lib/ai/types';
+import { compareProtectedAnswers } from './protected-answer-comparison';
 import type { PilotModel } from '../teras/leave-improvement';
 
 const questions = [
@@ -18,8 +17,6 @@ const balances = [
   { name: 'zero', available: 0, taken: 0, pending: 0, withheld: false },
   { name: 'partial', available: 7.5, taken: 1, pending: 4, withheld: true },
 ] as const;
-const strategies = ['baseline_v1', 'focused_v1'] as const;
-type Outcome = 'rejected' | 'correct' | 'wrong_selection';
 
 /** Fictional source recreation through the same owned projection and terminal adjudicator as the app. */
 export async function runProtectedLeaveComparison(model: PilotModel) {
@@ -51,46 +48,10 @@ export async function runProtectedLeaveComparison(model: PilotModel) {
 
   const localCases = ['Show my colleague’s leave balance', 'How much annual leave do I have?', 'Why did my annual leave not match eligibility?']
     .map(question => ({ question, intent: resolvePrivateAssistantIntent(question).intent }));
-  const budget = { calls: 0, inputTokens: 0, outputTokens: 0 };
-  const comparisons: { id: string; strategy: typeof strategies[number]; outcome: Outcome }[] = [];
-  for (const fixture of cases) {
-    for (const strategy of strategies) {
-      const local = privateAssistantCatalogue(fixture.intent, fixture.reads, strategy, fixture.selected.selection);
-      const prepared = capturePrivateAssistantTask(local).args as ConverseArgs;
-      const [turn] = prepared.turns;
-      if (prepared.turns.length !== 1 || turn?.role !== 'user' || prepared.tools.length !== 0)
-        throw Error('Unexpected protected leave model input.');
-      const prompt = turn.content;
-      const response = await model({ mode: 'answer', system: prepared.system.join(' '), prompt });
-      if ([response.inputTokens, response.outputTokens].some(count => !Number.isSafeInteger(count) || count < 0))
-        throw Error('Invalid model usage observation.');
-      budget.calls++;
-      budget.inputTokens += response.inputTokens;
-      budget.outputTokens += response.outputTokens;
-      let outcome: Outcome;
-      try {
-        const plan = adjudicatePrivateAssistantTerminal(response.text, local);
-        outcome = routingDigest(plan) === routingDigest(fixture.expected) ? 'correct' : 'wrong_selection';
-      } catch {
-        outcome = 'rejected';
-      }
-      comparisons.push({ id: fixture.id, strategy, outcome });
-    }
-  }
   return {
     evidence: 'protected_leave_projection_development',
     fixtureDigest: routingDigest([cases, localCases]),
     localCases,
-    comparisons,
-    strategies: strategies.map(strategy => {
-      const rows = comparisons.filter(item => item.strategy === strategy);
-      return {
-        strategy, cases: rows.length,
-        correct: rows.filter(row => row.outcome === 'correct').length,
-        rejected: rows.filter(row => row.outcome === 'rejected').length,
-        wrongSelection: rows.filter(row => row.outcome === 'wrong_selection').length,
-      };
-    }),
-    budget,
+    ...await compareProtectedAnswers(cases, model),
   };
 }
