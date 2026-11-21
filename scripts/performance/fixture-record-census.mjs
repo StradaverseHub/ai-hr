@@ -567,7 +567,9 @@ async function personnelProfileCostRoutes(db, fixture) {
 }
 
 async function personnelDocumentWork(page) {
-  await page.waitForLoadState('domcontentloaded', { timeout: 2000 });
+  // These controls can be usable while the document is still streaming. Keep
+  // their counts even when the response body has not finished.
+  await page.waitForLoadState('domcontentloaded', { timeout: 2000 }).catch(() => {});
   return page.evaluate(() => {
     const main = document.querySelector('main');
     const panels = Array.from(main?.querySelectorAll('[data-tabpanel]') ?? []);
@@ -580,6 +582,7 @@ async function personnelDocumentWork(page) {
       hiddenPanels: hidden.length,
       hiddenPanelControls: hidden.reduce((total, panel) => total + controls(panel), 0),
       decodedBodyBytes: navigation?.responseEnd > 0 && navigation.decodedBodySize > 0 ? navigation.decodedBodySize : null,
+      encodedBodyBytes: navigation?.responseEnd > 0 && navigation.encodedBodySize > 0 ? navigation.encodedBodySize : null,
     };
   });
 }
