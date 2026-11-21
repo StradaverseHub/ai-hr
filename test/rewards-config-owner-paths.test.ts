@@ -208,7 +208,7 @@ it('keeps Rewards upload choices and their order for group and company HR on a g
  const companyIds=[b.companyId,...companies.map(company=>company.id)];
  await owner.db.execute(sql`
   with workforce as materialized (
-   select gen_random_uuid() as person_id,n, (${companyIds}::uuid[])[1+(n-1)%70] as company_id
+   select gen_random_uuid() as person_id,n, (ARRAY[${sql.join(companyIds.map(companyId=>sql`${companyId}::uuid`),sql`, `)}])[1+(n-1)%70] as company_id
    from generate_series(1,1000) as source(n)
   ), people as (
    insert into person (id,tenant_id,full_name)
