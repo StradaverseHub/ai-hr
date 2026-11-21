@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import {parseBulkJobNoticeKey} from '@/lib/bulk-job';
 import { useIsMonolith } from '@/components/ui-theme-context';
 import {useShellApprovalFacts,useShellStreamValue} from '@/components/shell-approval-facts';
+import {useClientReady} from '@/components/use-client-ready';
 import { Bell, Search } from 'lucide-react';
 import { markAllNotificationsReadAction, markNotificationReadAction } from '@/app/notification-actions';
 import type { NotificationRow as StoredNotificationRow } from '@/core/notifications';
@@ -94,6 +95,7 @@ export function NotificationCenter({
   readItems?: NotificationRow[];
   canApprove?: boolean;
 }) {
+  const interactive=useClientReady();
   const approvals=useShellApprovalFacts()?.result;
   const lifecycleStream=useShellStreamValue(lifecyclePreview);
   const lifecycle=lifecycleStream?.state==='ready'?lifecycleStream.value:undefined;
@@ -345,6 +347,8 @@ export function NotificationCenter({
     <div className="relative">
       <button
         type="button"
+        disabled={!interactive}
+        aria-expanded={open}
         onClick={() => {
           if (!open) {
             setApprovalHistory(null);

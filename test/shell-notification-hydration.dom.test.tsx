@@ -38,7 +38,9 @@ async function probe({delayBell,total,monolith,lifecycleCount}:{delayBell:boolea
  </NextIntlClientProvider>;}
  const host=document.createElement('div');document.body.append(host);
  host.innerHTML=renderToString(<Tree/>);
- const serverBell=host.querySelector('button')!.outerHTML;
+ const serverTrigger=host.querySelector('button')!;
+ const serverBell=serverTrigger.outerHTML;
+ expect(serverTrigger.disabled).toBe(true);
  const errors:string[]=[];let root:Root|undefined;
  const warnings:string[]=[];const consoleError=vi.spyOn(console,'error').mockImplementation((...args)=>warnings.push(args.map(String).join(' ')));
  try{
@@ -46,7 +48,12 @@ async function probe({delayBell,total,monolith,lifecycleCount}:{delayBell:boolea
   await act(async()=>{root=hydrateRoot(host,<Tree/>,{onRecoverableError(error,info){errors.push(String(error)+'\n'+info.componentStack);}});});
   await act(async()=>{source.resolve({state:'ready',items:[],total,approvalCount:total,claimTotal:0,hasAssignedAttendanceApproval:total>0,hasAssignedApproval:total>0});await source.promise;});
   await act(async()=>{blocked=false;gate.resolve();await gate.promise;});
-  const pendingLabel=host.querySelector('button')!.getAttribute('aria-label');
+  const trigger=host.querySelector('button')!;
+  expect(trigger.disabled).toBe(false);
+  const pendingLabel=trigger.getAttribute('aria-label');
+  await act(async()=>trigger.click());
+  expect(trigger.getAttribute('aria-expanded')).toBe('true');
+  expect([...host.querySelectorAll('button')].some(button=>button.textContent?.trim()==='History')).toBe(true);
   if(lifecycle&&lifecycleCount!==undefined){
    await act(async()=>{lifecycle.resolve({items:[],queueLinks:[],count:lifecycleCount});await lifecycle.promise;});
   }
