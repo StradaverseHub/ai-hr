@@ -3,6 +3,20 @@ import {mixedActionRoute,routeLatency} from '../scripts/performance/route-latenc
 import {workerRequestFailureFact} from '../scripts/performance/worker-comparison-failure.mjs';
 const read=(role:string,route:string,durationMs:number,startedMs=20,action?:string)=>({role,route,durationMs,startedMs,action,method:'GET'});
 const navigation=(role:string,route:string,durationMs:number,startedMs=20)=>({role,route,durationMs,startedMs});
+it('counts timed transport failures in each route target without turning them into latency samples',()=>{
+ const success=read('employee','/',100);
+ const failure={role:'employee',route:'/',method:'GET',startedMs:20,timed:true};
+ const options={samples:Array.from({length:20},()=>success),pageInteractions:[],routePools:{employee:['/']},homeTemplates:[],steadyStart:10,steadyUntil:100};
+ const result=routeLatency({...options,requestErrors:[
+  failure,failure,{...failure,timed:false},{...failure,startedMs:9},{...failure,startedMs:100},
+ ]});
+ expect(result.rows[0]).toMatchObject({kind:'read',samples:20,p95Ms:100,attempts:22,transportFailures:2,completedWithinTarget:20,targetMet:false});
+ expect(routeLatency({...options,requestErrors:[failure]}).rows[0]).toMatchObject({attempts:21,transportFailures:1,targetMet:true});
+ const action={role:'groupHR',route:'/payroll/10000000-0000-4000-8000-000000000001',method:'POST',action:'payrollProcess',startedMs:20,timed:true};
+ expect(routeLatency({...options,requestErrors:[action]}).missing).toContainEqual(expect.objectContaining({
+  role:'groupHR',route:'/payroll/[batchId]',action:'payrollProcess',samples:0,attempts:1,transportFailures:1,p95Ms:null,
+ }));
+});
 const input=()=>({samples:[read('employee','/',100)],pageInteractions:[navigation('employee','/',150)],routePools:{employee:['/']},homeTemplates:[] as {role:string;requests:{path:string}[]}[],steadyStart:10,steadyUntil:100});
 it('refuses a slow minority route even when the pooled role p95 is fast',()=>{
  const fixture=input();fixture.routePools.employee.push('/slow');

@@ -323,7 +323,7 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
-  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
+  noteEvidence(()=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:attempt.route,method:attempt.method,action,startedMs:started,timed:record===true,elapsedMs:performance.now()-started,responseHeaders:responseHeaders??null,error:errorLabel(error)});});
   throw error;
  });
  response.durationMs=performance.now()-started;
@@ -1904,7 +1904,7 @@ async function main(){
  const plannedWrites=claimWriteRoles.flatMap(role=>['claimsCreate','claimsEdit','claimsDelete']
   .map(action=>({role,route:'/claims',action}))).concat(mixedWorkflows?.plannedWrites()??[]);
  const plannedReads=plannedWrites.filter(row=>row.action==='attendanceCreate').map(row=>({...row,action:'attendanceForm'}));
- report.steady.routeLatency=routeLatency({samples:loaded,pageInteractions,routePools:measuredRoutePools,
+ report.steady.routeLatency=routeLatency({samples:loaded,requestErrors:report.requestErrors,pageInteractions,routePools:measuredRoutePools,
   homeTemplates:suite==='whole-system'?report.homeApiTraffic.templates:[],plannedReads,plannedWrites,steadyStart,steadyUntil});
  report.latencyTargetMet=(suite!=='whole-system'||developmentSteadyLoadPass(developmentLoad))&&(!navigationScheduler||report.steady.navigationCoverage.every(row=>row.pending.length===0&&row.inflight.length===0))&&progress.peakActive===500&&earlyLaneExits===0&&report.steady.routeLatency.targetMet&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  await Promise.all([lockDrain,progressDrain]);
