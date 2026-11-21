@@ -85,7 +85,12 @@ case "$mode" in
     observed=$("${queue[@]}" observe)
     candidate=$(jq -er .candidate.source "$work/prepared.json")
     jq -e --arg source "$candidate" '.runtime.backend=="canonical" and .runtime.ref==$source' >/dev/null <<< "$observed"
-    "${ssh[@]}" "test "\$(readlink /var/lib/aihr-cutover/active.sock)" = /var/lib/aihr-cutover/canonical.sock && systemctl --user disable --now 'aihr-cutover-$digest.service' 'aihr-cutover-$digest.socket' && systemctl --user stop 'aihr-cutover-$digest-proxy.service'"
+    "${ssh[@]}" "bash -se -- '$digest'" <<'REMOTE'
+digest=$1
+test "$(readlink /var/lib/aihr-cutover/active.sock)" = /var/lib/aihr-cutover/canonical.sock
+systemctl --user disable --now "aihr-cutover-$digest.service" "aihr-cutover-$digest.socket"
+systemctl --user stop "aihr-cutover-$digest-proxy.service"
+REMOTE
     build=$(jq -er .nextBuildId "$work/build/verified.json")
     jq -cn --arg build "$build" '{phase:"accepting",build:$build}' > "$work/accepting.json"
     "${queue[@]}" phase --request "$work/accepting.json" --lease-file "$work/lease.json"
