@@ -349,7 +349,7 @@ describe('multi-company payroll — orchestration (DB)', () => {
     // The group is settled by its last job's settle, in the kernel's owner transaction (unit.ownerTx): the event
     // carries that job (migration 5014). The second company's job waited for the first, so it is the last.
     expect((events[0].payload as { bulkJob?: unknown }).bulkJob).toEqual({ id: runs.find((r) => r.companyId === companyB)!.jobId, kind: 'payroll_process' });
-    // Only the run's creator follows it.
+    // A fabricated user identity cannot follow it.
     expect(await readRunGroup({ ...a, userId: randomUUID() }, groupId).catch(() => null)).toBeNull();
   });
 

@@ -1324,7 +1324,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // The guarded bridge retains one original OID privately; no application/PUBLIC execution.
   const archivedContractDirectory='app.contract_configuration_directory_before_combined(uuid[],text,uuid[])';
   addedFunctions.push(archivedContractDirectory);privateFunctions.push(archivedContractDirectory);
-  addedFunctions.push('app.payroll_leaver_self_history()');
+  addedFunctions.push('app.payroll_leaver_self_history()','app.payroll_run_review(uuid)');
   expect(new Set(addedFunctions).size).toBe(addedFunctions.length);
   addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
@@ -1383,6 +1383,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(routeGuard.config).toHaveLength(1);expect(routeGuard.config[0].replaceAll(' ','')).toBe('search_path=pg_catalog,public,pg_temp');
   // Literal new routine security metadata; never infer expected privileges from the final function.
   const maintenanceRoutineSecurity=[
+   {"fn":"app.payroll_run_review(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.v9_document_shared_routing_row(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.v9_offboarding_document_routings(uuid,integer,text[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    // Reviewed protocol-specific metadata; aliases preserve the canonical source owner.

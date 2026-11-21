@@ -105,6 +105,7 @@ vi.mock('@/lib/scope', async (orig) => ({
 vi.mock('@/lib/authz', async (orig) => ({
   ...(await orig<typeof import('../lib/authz')>()),
   requireAdmin: async () => scope.s,
+  requirePayrollAccess: async () => scope.s,
   requireModule: async () => scope.s,
 }));
 // r253 — the server ACTIONS are entry points: they resolve their own session rather than being handed
