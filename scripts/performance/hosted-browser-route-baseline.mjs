@@ -1539,7 +1539,9 @@ try{
     TEST_DATABASE_URL:dbEnv.DATABASE_URL,TEST_MIGRATION_DATABASE_URL:dbEnv.MIGRATION_DATABASE_URL},600000);
  }finally{retainSeedPhases();}
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
-  '../automation/scripts/performance/joiners-browser-fixture.mjs'],dbEnv);
+  '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
+   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections),
+  });
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');

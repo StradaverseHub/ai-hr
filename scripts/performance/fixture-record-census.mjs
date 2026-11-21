@@ -261,6 +261,37 @@ async function organisationLifecycleRoutes(db, fixture) {
   `;
   assert.equal(cases.length, 1, 'Expected the seeded company-scoped onboarding case');
   const organisation = `/admin/organization/${record.id}`;
+  const { onboarding, offboarding, asset, request, joiner, leaver, model, justification } = fixture.lifecycleRecords;
+  const lifecycleRoutes = [
+    {
+      template: '/lifecycle/v9/onboarding/[id]', path: `/lifecycle/v9/onboarding/${cases[0].id}`,
+      exactHeading: ownJoiner, witness: '.onb-workspace a[href="/lifecycle/v9"]',
+    },
+    {
+      template: '/lifecycle/onboarding/[number]', path: `/lifecycle/onboarding/${onboarding.number}`,
+      exactHeading: `${onboarding.number} · ${joiner}`,
+      content: 'Collect new hire bank account details for payroll setup', exactContent: true,
+    },
+    {
+      template: '/lifecycle/offboarding/[number]', path: `/lifecycle/offboarding/${offboarding.number}`,
+      exactHeading: `${offboarding.number} · ${leaver}`,
+      witness: `form:has(input[name="number"][value="${offboarding.number}"]) button[name="outcome"][value="accepted"]`,
+    },
+    {
+      template: '/lifecycle/requisitions/[number]', path: `/lifecycle/requisitions/${onboarding.requisitionNumber}`,
+      exactHeading: `${onboarding.requisitionNumber} · ${joiner}`,
+      witness: `form:has(input[name="number"][value="${onboarding.requisitionNumber}"]):has(input[name="key"][value="laptop_issue"]) select[name="assetCode"]`,
+    },
+    {
+      template: '/lifecycle/assets/[code]', path: `/lifecycle/assets/${asset.code}`,
+      exactHeading: `${asset.code} · Laptop`, content: model, witness: 'a[href="/lifecycle/assets"]',
+    },
+    {
+      template: '/lifecycle/asset-requests/[number]', path: `/lifecycle/asset-requests/${request.number}`,
+      exactHeading: `${request.number} · Laptop`, content: justification,
+      witness: `form:has(input[name="number"][value="${request.number}"]) select[name="handler"]`,
+    },
+  ];
   return [
     {
       actor: group, template: '/admin/organization/[companyId]', path: organisation,
@@ -276,6 +307,7 @@ async function organisationLifecycleRoutes(db, fixture) {
       exactHeading: 'Statutory Payment Setup', content: record.legal_name,
       witness: `form[data-statutory-form]:has(input[name="companyId"][value="${record.id}"]) input[name="epfEmployerNo"]`,
     },
+    ...lifecycleRoutes.flatMap(route => [group, company].map(actor => ({ ...route, actor }))),
     ...[group, company].map(actor => ({
       actor, template: '/lifecycle/onboarding/cases/[id]', path: `/lifecycle/onboarding/cases/${cases[0].id}`,
       exactHeading: ownJoiner, witness: '.onb-workspace a[href="/lifecycle/onboarding"]',

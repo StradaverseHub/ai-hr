@@ -47,5 +47,26 @@ try{
  assert(drafts.every(draft=>rows.some(row=>row.case.sourceDraftId===draft.id)),
   'The normal draft owner did not create both New Joiners rows');
  fixture.joiners=drafts.map(draft=>draft.name);
+ if(env.PERF_LIFECYCLE_RECORDS==='true'){
+  const lifecycle=await source('packs/lifecycle/service.ts');
+  const companyId=company.companyId;
+  const joiner='Fictional Lifecycle Legacy Joiner';
+  const leaver='Fictional Lifecycle Legacy Leaver';
+  const model='Fictional Lifecycle Browser Laptop';
+  const justification='Fictional Lifecycle Browser Request';
+  await lifecycle.loadHandoverDefaults(ctx);
+  const onboarding=await lifecycle.createOnboardingCase(ctx,{
+   companyId,fullName:joiner,employeeNo:'PERF-LEGACY-ONB',joinDate:fixture.today,
+  });
+  const offboarding=await lifecycle.createOffboardingCase(ctx,{
+   companyId,fullName:leaver,employeeNo:'PERF-LEGACY-OFB',
+   resignationDate:fixture.today,lastWorkingDay:fixture.today,
+  });
+  const asset=await lifecycle.registerAsset(ctx,{companyId,assetType:'laptop',model});
+  const catalogue=(await lifecycle.listCatalogue(ctx)).find(item=>item.itemCode==='HW-001'&&item.active);
+  assert(catalogue,'Expected the standard active Laptop catalogue item');
+  const request=await lifecycle.createAssetRequest(ctx,{companyId,catalogueId:catalogue.id,justification});
+  fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
+ }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
 }finally{await Promise.all([owner.client.end(),client.end()]);}
