@@ -446,19 +446,15 @@ export default async function BatchPage({
                 ⬇ {t('transactionDetail')}
               </ExportDownloadLink>
             )}
-            {batch.status === 'draft' && !retiredFormulaInputs && (
-              <form action={generateAction}>
-                <input type="hidden" name="batchId" value={batch.id} />
-                {/* r253 — THE SELECTION SURVIVES THE BUTTON, not just the Back link. This action
-                    redirects to this same screen, and until now it redirected to a HARDCODED
-                    `/payroll/<id>?toast=…` with no `from` — so pressing Generate silently reset the
-                    operator's filter selection to the current period. Posts the already-whitelisted
-                    `backHref`, exactly as the reset form below does. */}
-                <input type="hidden" name="from" value={backHref} />
-                <PayrollProcessingReceipt
-                  key={processingJob?.finishedAt ?? batch.id}
-                  unavailable={actionFeedback('uncertain')}
-                >
+            <PayrollProcessingReceipt
+              key={batch.id}
+              unavailable={actionFeedback('uncertain')}
+              finishedAt={processingJob?.finishedAt ?? null}
+            >
+              {batch.status === 'draft' && !retiredFormulaInputs && (
+                <form action={generateAction}>
+                  <input type="hidden" name="batchId" value={batch.id} />
+                  <input type="hidden" name="from" value={backHref} />
                   {preBlockers > 0 ? (
                     // The checks below identify the actual blocker. The write path rechecks all of them.
                     <Button type="submit" disabled title={t('preChecksNotReady')}>
@@ -480,9 +476,9 @@ export default async function BatchPage({
                   ) : (
                     <Button type="submit">{t('generatePayslips')}</Button>
                   )}
-                </PayrollProcessingReceipt>
-              </form>
-            )}
+                </form>
+              )}
+            </PayrollProcessingReceipt>
             {/* e440991b — REPROCESS, at the TOP of the run screen. It used to be a panel at the very
                 bottom of this page, below the Recalculation History card, on a screen this long; the
                 reporter's rejection was about exactly that. The panel is gone and this is the way in.
