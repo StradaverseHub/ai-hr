@@ -1,0 +1,128 @@
+import { z } from 'zod';
+import { AGENT_MODULE_CODES } from '../../lib/ai/module-agents';
+import { routingDigest } from '../../lib/ai/module-agent-routing';
+import { SPECIALIST_HOLDOUTS } from '../../lib/ai/module-specialist-holdouts';
+import { SPECIALIST_FINDINGS } from '../../lib/ai/module-specialists';
+import type { PilotModel } from '../teras/leave-improvement';
+import {
+  choose, EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, observeModel, type ExplanationCase,
+} from './protected-explanation-priority';
+import { readFrozenHoldoutJson } from './protected-work-summary-holdout';
+
+const digest = z.string().regex(/^[a-f0-9]{64}$/);
+const finding = z.enum(SPECIALIST_FINDINGS).refine(value => value !== 'scope_current_caller');
+const holdout = z.strictObject({
+  version: z.literal(1),
+  modelDigest: digest,
+  developmentReportDigest: digest,
+  minimumGain: z.number().int().min(1),
+  cases: z.array(z.strictObject({
+    module: z.enum(AGENT_MODULE_CODES),
+    choices: z.array(finding).min(2).max(8),
+    focus: z.string().min(8).max(180).regex(/^[\p{L}\p{M} '?.,’\-]+$/u),
+    expected: finding,
+  })).min(4).max(32),
+});
+
+const score = z.strictObject({ correct: z.number().int().min(0), rejected: z.number().int().min(0) });
+const developmentReportSchema = z.object({
+  evidence: z.literal('offline_explanation_revision_development'),
+  releaseAuthorized: z.literal(false),
+  modelDigest: digest,
+  answerFormatDigest: digest,
+  generationOptions: z.strictObject({ temperature: z.literal(0), seed: z.literal(42), num_predict: z.literal(512) }),
+  developmentDigest: digest,
+  validationDigest: digest,
+  validationCases: z.number().int().min(1),
+  revision: z.literal('include_source_focus'),
+  advanced: z.literal(true),
+  baseline: score,
+  candidate: score,
+  regressions: z.literal(0),
+});
+
+const normalize = (text: string) => text.normalize('NFKC').toLowerCase().match(/[\p{L}\p{M}]+/gu) ?? [];
+const catalogue = ({ module, choices }: ExplanationCase) => routingDigest([module, [...choices].sort()]);
+
+function deterministicChoice({ choices, focus }: ExplanationCase) {
+  const words = new Set(normalize(focus));
+  const ignored = new Set(['not', 'recorded', 'status', 'own', 'is', 'in']);
+  const ranked = choices.map(choice => ({
+    choice,
+    overlap: normalize(choice.slice('specialist_finding:'.length)).filter(word => words.has(word) && !ignored.has(word)).length,
+  })).sort((a, b) => b.overlap - a.overlap);
+  return ranked[0].overlap > ranked[1].overlap ? ranked[0].choice : null;
+}
+
+/** Evaluator-owned fictional cases, scored against both the original model
+ * contract and a fixed lexical selector that receives the same focus. */
+export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSha: string, developmentReport: Buffer,
+  modelDigest: string, model: PilotModel) {
+  const parsedSpec = holdout.safeParse(readFrozenHoldoutJson(bytes, expectedSha));
+  if (!parsedSpec.success) throw Error('Invalid frozen explanation holdout.');
+  const spec = parsedSpec.data;
+  const parsedReport = developmentReportSchema.safeParse(readFrozenHoldoutJson(developmentReport, spec.developmentReportDigest));
+  if (!parsedReport.success) throw Error('Invalid frozen explanation development report.');
+  const report = parsedReport.data;
+  const publicCases = explanationCases();
+  const development = publicCases.filter(row => row.module !== 'toil');
+  const validation = publicCases.filter(row => row.module === 'toil');
+  if (spec.modelDigest !== modelDigest || report.modelDigest !== modelDigest ||
+      report.answerFormatDigest !== routingDigest(EXPLANATION_ANSWER_FORMAT) ||
+      routingDigest(report.generationOptions) !== routingDigest(EXPLANATION_GENERATION_OPTIONS) ||
+      report.developmentDigest !== routingDigest(development) || report.validationDigest !== routingDigest(validation) ||
+      report.validationCases !== validation.length || report.baseline.correct + report.baseline.rejected > validation.length ||
+      report.candidate.correct > validation.length || report.candidate.rejected !== 0 ||
+      report.candidate.correct <= report.baseline.correct || spec.minimumGain > spec.cases.length)
+    throw Error('The frozen explanation report does not bind a winning revision for this evaluator.');
+
+  const exposed = new Set(publicCases.map(catalogue));
+  const freshCatalogues = new Set<string>();
+  const seen = new Set<string>();
+  const cases: ExplanationCase[] = spec.cases.map(row => {
+    const allowed = new Set(SPECIALIST_HOLDOUTS.filter(fixture => fixture.module === row.module).flatMap(fixture => fixture.expected));
+    if (new Set(row.choices).size !== row.choices.length || !row.choices.includes(row.expected) ||
+        row.choices.some(choice => !allowed.has(choice))) throw Error('Invalid specialist selection catalogue.');
+    const fixture = {
+      ...row,
+      choices: row.choices.map(choice => `specialist_finding:${choice}` as const),
+      expected: `specialist_finding:${row.expected}` as const,
+    };
+    const key = catalogue(fixture);
+    const caseKey = routingDigest([key, normalize(fixture.focus)]);
+    if (exposed.has(key) || seen.has(caseKey)) throw Error('Explanation holdout reuses an exposed catalogue or repeated case.');
+    freshCatalogues.add(key);
+    seen.add(caseKey);
+    return fixture;
+  });
+  if (freshCatalogues.size < 2) throw Error('Use at least two distinct fresh explanation catalogues.');
+
+  const { call, budget } = observeModel(model);
+  const original = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
+  const deterministic = { correct: 0, abstained: 0, gains: 0, regressions: 0 };
+  const candidate = { correct: 0, rejected: 0 };
+  for (const fixture of cases) {
+    const past = await choose(call, fixture, false);
+    const next = await choose(call, fixture, true);
+    const fixed = deterministicChoice(fixture);
+    if (past === 'correct') original.correct++;
+    if (past === 'rejected') original.rejected++;
+    if (next === 'correct') candidate.correct++;
+    if (next === 'rejected') candidate.rejected++;
+    if (fixed === fixture.expected) deterministic.correct++;
+    if (fixed === null) deterministic.abstained++;
+    if (next === 'correct' && past !== 'correct') original.gains++;
+    if (next !== 'correct' && past === 'correct') original.regressions++;
+    if (next === 'correct' && fixed !== fixture.expected) deterministic.gains++;
+    if (next !== 'correct' && fixed === fixture.expected) deterministic.regressions++;
+  }
+  const confirmedGain = candidate.rejected === 0 && original.gains >= spec.minimumGain && original.regressions === 0;
+  return {
+    evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
+    holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
+    comparator: 'canonical_code_word_overlap_v1', cases: cases.length, minimumGain: spec.minimumGain,
+    original, deterministic, candidate, confirmedGain,
+    beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
+    budget,
+  };
+}

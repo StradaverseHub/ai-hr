@@ -11,7 +11,7 @@ import { isGuidance, protectedStrategyDigest, withProtectedGuidance } from './pr
 export const PROTECTED_HOLDOUT_LIMIT_BYTES = 1024 * 1024;
 const fail = (): never => { throw Error('Invalid frozen protected holdout.'); };
 
-function frozenJson(bytes: Buffer, digest: unknown) {
+export function readFrozenHoldoutJson(bytes: Buffer, digest: unknown) {
   if (!bytes.length || bytes.length > PROTECTED_HOLDOUT_LIMIT_BYTES ||
       createHash('sha256').update(bytes).digest('hex') !== digest) return fail();
   try { return JSON.parse(bytes.toString('utf8')); }
@@ -44,7 +44,7 @@ function caseShape(local: ReturnType<typeof projection>) {
  * metadata reaches the model. The result reports aggregate comparisons only. */
 export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSha256: string,
   developmentReport: Buffer, modelDigest: string, model: PilotModel) {
-  const spec = frozenJson(bytes, expectedSha256);
+  const spec = readFrozenHoldoutJson(bytes, expectedSha256);
   if (!spec || Object.keys(spec).sort().join(',') !==
       'candidateDigest,candidateRules,cases,developmentReportDigest,minimumGain,modelDigest,parentDigest,parentRules,version' ||
       spec.version !== 2 || !/^[a-f0-9]{64}$/.test(modelDigest) || spec.modelDigest !== modelDigest ||
@@ -58,7 +58,7 @@ export async function scoreProtectedWorkSummaryHoldout(bytes: Buffer, expectedSh
       protectedStrategyDigest(candidateRules) !== spec.candidateDigest) return fail();
 
   const { development, validation } = protectedWorkSummarySplits();
-  requireProtectedDevelopmentWinner(frozenJson(developmentReport, spec.developmentReportDigest), {
+  requireProtectedDevelopmentWinner(readFrozenHoldoutJson(developmentReport, spec.developmentReportDigest), {
     modelDigest, parentRules, candidateRules, validationCases: validation.length,
     developmentCasesDigest: routingDigest(development), validationCasesDigest: routingDigest(validation),
   });

@@ -1,6 +1,6 @@
 import { assistantAnswerExplanationAvailability, specialistAnswerExplanations } from '../../lib/ai/assistant-answer-explanations';
 import type { AssistantExplanationCode } from '../../lib/ai/assistant-answer-plan';
-import { MODULE_AGENT_CAPABILITIES } from '../../lib/ai/module-agents';
+import { MODULE_AGENT_CAPABILITIES, type AgentModuleCode } from '../../lib/ai/module-agents';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { SPECIALIST_HOLDOUTS } from '../../lib/ai/module-specialist-holdouts';
 import { executeCanonicalSpecialist } from '../../lib/ai/module-specialists';
@@ -24,7 +24,7 @@ const priorities = [
 
 const system = 'Choose one canonical explanation from the available codes. When a focus is supplied, choose the code addressing that focus. Return exactly {"choice":"the supplied code"} with no other fields. Never infer records, values, access, money or effects.';
 
-function explanationCases() {
+export function explanationCases() {
   return priorities.flatMap(({ module, sources, questions }) => {
     const capability = MODULE_AGENT_CAPABILITIES.find(row => row[0] === module)?.[1];
     if (!capability) throw Error('Missing explanation benchmark capability.');
@@ -45,10 +45,18 @@ function explanationCases() {
   });
 }
 
-type ExplanationCase = ReturnType<typeof explanationCases>[number];
+export type ExplanationCase = Readonly<{
+  module: AgentModuleCode;
+  choices: readonly AssistantExplanationCode[];
+  focus: string;
+  expected: AssistantExplanationCode;
+}>;
 type Outcome = 'correct' | 'incorrect' | 'rejected';
 
-function observeModel(model: PilotModel) {
+export const EXPLANATION_ANSWER_FORMAT = 'protected_explanation_priority_v1';
+export const EXPLANATION_GENERATION_OPTIONS = Object.freeze({ temperature: 0, seed: 42, num_predict: 512 });
+
+export function observeModel(model: PilotModel) {
   const budget = { calls: 0, inputTokens: 0, outputTokens: 0, elapsedMs: 0 };
   const started = performance.now();
   const call: PilotModel = async request => {
@@ -71,7 +79,7 @@ function readChoice(text: string, key: string): unknown {
   } catch { /* Invalid replies are rejected without retaining their text. */ }
 }
 
-async function choose(model: PilotModel, { module, choices, focus, expected }: ExplanationCase,
+export async function choose(model: PilotModel, { module, choices, focus, expected }: ExplanationCase,
   includeFocus: boolean, instruction = system): Promise<Outcome> {
   const response = await model({ mode: 'answer', system: instruction,
     prompt: JSON.stringify({ module, choices, ...(includeFocus ? { focus } : {}) }) });

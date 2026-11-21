@@ -6,7 +6,10 @@ import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
-import { runProtectedExplanationImprovement, runProtectedExplanationPriority } from '../scripts/experiments/protected-explanation-priority';
+import { scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
+import {
+  EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, runProtectedExplanationImprovement, runProtectedExplanationPriority,
+} from '../scripts/experiments/protected-explanation-priority';
 import type { ProtectedAnswerFixture } from '../scripts/experiments/protected-answer-comparison';
 import { guidanceContractDigest, guidanceOptions, protectedStrategyDigest } from '../scripts/experiments/protected-work-summary-guidance';
 import { leaveAnswerFormat } from '../scripts/experiments/leave-answer-format';
@@ -57,6 +60,66 @@ it('compares one model-proposed explanation revision on an unseen development mo
     validationCases: 2, baseline: { correct: 1 }, candidate: { correct: 2, rejected: 0 },
     revision: 'include_source_focus', regressions: 0, advanced: true, releaseAuthorized: false,
     budget: { calls: 9, inputTokens: 18, outputTokens: 9 },
+  });
+});
+
+describe('evaluator-held explanation choices', () => {
+  const modelDigest = '1'.repeat(64);
+  const publicCases = explanationCases();
+  const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex');
+  const report = {
+    evidence: 'offline_explanation_revision_development', releaseAuthorized: false,
+    modelDigest, answerFormatDigest: routingDigest(EXPLANATION_ANSWER_FORMAT), generationOptions: EXPLANATION_GENERATION_OPTIONS,
+    developmentDigest: routingDigest(publicCases.filter(row => row.module !== 'toil')),
+    validationDigest: routingDigest(publicCases.filter(row => row.module === 'toil')), validationCases: 2,
+    revision: 'include_source_focus', advanced: true,
+    baseline: { correct: 1, rejected: 0 }, candidate: { correct: 2, rejected: 0 }, regressions: 0,
+  };
+  const drafts = ['claim_draft_not_submitted', 'claim_approved_not_paid'];
+  const credits = ['credit_recorded_not_new_eligibility', 'credit_pay_conversion_not_payslip'];
+  const cases = [
+    { module: 'claims', choices: drafts, focus: 'Still a draft in the system?', expected: drafts[0] },
+    { module: 'claims', choices: drafts, focus: 'Approved but still unpaid?', expected: drafts[1] },
+    { module: 'toil', choices: credits, focus: 'A new eligibility decision?', expected: credits[0] },
+    { module: 'toil', choices: credits, focus: 'What was sent to wages?', expected: credits[1] },
+  ];
+  const bytes = (value: unknown) => Buffer.from(JSON.stringify(value));
+  const spec = (development: Buffer, fixtures = cases) => bytes({
+    version: 1, modelDigest, developmentReportDigest: sha(development), minimumGain: 2, cases: fixtures,
+  });
+
+  it('compares both model arms with a deterministic selector on the same cases', async () => {
+    const savedReport = bytes(report);
+    const input = spec(savedReport);
+    const result = await scoreProtectedExplanationHoldout(input, sha(input), savedReport, modelDigest, async ({ mode, prompt }) => {
+      expect(mode).toBe('answer');
+      const received = JSON.parse(prompt);
+      expect(Object.keys(received).sort()).toEqual(received.focus ? ['choices', 'focus', 'module'] : ['choices', 'module']);
+      const fixture = cases.find(row => row.focus === received.focus);
+      const choice = fixture ? 'specialist_finding:' + fixture.expected : received.choices[0];
+      return { text: JSON.stringify({ choice }), inputTokens: 1, outputTokens: 1 };
+    });
+    expect(result).toMatchObject({
+      candidate: { correct: 4, rejected: 0 }, original: { correct: 2, gains: 2, regressions: 0 },
+      deterministic: { correct: 3, abstained: 1, gains: 1, regressions: 0 },
+      confirmedGain: true, beatsDeterministic: false, releaseAuthorized: false, budget: { calls: 8 },
+    });
+    expect(JSON.stringify(result)).not.toContain(cases[0].focus);
+  });
+
+  it('rejects exposed catalogues and substituted development bytes before inference', async () => {
+    const savedReport = bytes(report);
+    const input = spec(savedReport);
+    const noCall: PilotModel = async () => { throw Error('Unexpected model call'); };
+    await expect(scoreProtectedExplanationHoldout(input, sha(input), bytes({ ...report, advanced: false }), modelDigest, noCall))
+      .rejects.toThrow('Invalid frozen protected holdout');
+    const exposed = {
+      module: 'toil', choices: ['credit_pay_conversion_not_payslip', 'credit_expired_not_available'],
+      focus: 'A new wording for an exposed catalogue', expected: 'credit_expired_not_available',
+    };
+    const mixed = spec(savedReport, [exposed, ...cases.slice(1)]);
+    await expect(scoreProtectedExplanationHoldout(mixed, sha(mixed), savedReport, modelDigest, noCall))
+      .rejects.toThrow('reuses an exposed catalogue');
   });
 });
 

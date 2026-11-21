@@ -8,19 +8,24 @@ import { leaveAnswerJsonSchema } from './leave-answer-format';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from './protected-catalogue-answer-format';
 import { PROTECTED_INDEXED_FORMAT, protectedIndexedAnswer } from './protected-indexed-answer-format';
 import { PROTECTED_HOLDOUT_LIMIT_BYTES, scoreProtectedWorkSummaryHoldout } from './protected-work-summary-holdout';
-import { explanationRevisionSchema, runProtectedExplanationImprovement, runProtectedExplanationPriority } from './protected-explanation-priority';
+import { scoreProtectedExplanationHoldout } from './protected-explanation-holdout';
+import {
+  EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationRevisionSchema,
+  runProtectedExplanationImprovement, runProtectedExplanationPriority,
+} from './protected-explanation-priority';
 import { runLeaveImprovement, type PilotModel } from '../teras/leave-improvement';
 import { localOutputPath, REPO_ROOT, writeLocalOutput } from '../teras/output';
 
 const baseUrl = 'http://127.0.0.1:11434';
-const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
+const generationOptions = EXPLANATION_GENERATION_OPTIONS;
 
 async function main() {
   const [model, outfile, ...args] = process.argv.slice(2);
-  const holdoutMode = args[0] === '--protected-holdout';
+  const explanationHoldout = args[0] === '--protected-explanation-holdout';
+  const holdoutMode = explanationHoldout || args[0] === '--protected-holdout';
   const [, holdoutPath, holdoutSha, developmentReportPath] = args;
   if (holdoutMode && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
-    throw Error('Use --protected-holdout FILE SHA256 DEVELOPMENT_REPORT with an evaluator-held fictional case file.');
+    throw Error('Use the holdout flag with FILE SHA256 DEVELOPMENT_REPORT and an evaluator-held fictional case file.');
   const flags = holdoutMode ? [] : args;
   const runners = {
     '--protected': runProtectedLeaveComparison,
@@ -32,11 +37,11 @@ async function main() {
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
   const [benchmark] = benchmarks;
-  const useCatalogueFormat = holdoutMode || flags.includes('--catalogue-schema');
+  const useCatalogueFormat = (holdoutMode && !explanationHoldout) || flags.includes('--catalogue-schema');
   const useStaticSchema = flags.includes('--schema');
   const useIndexedFormat = flags.includes('--indexed-catalogue');
   const improveExplanation = benchmark === '--improve-protected-explanation';
-  const explanationPriority = benchmark === '--protected-explanation-priority' || improveExplanation;
+  const explanationPriority = explanationHoldout || benchmark === '--protected-explanation-priority' || improveExplanation;
   // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
   if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile ||
       flags.some(flag => !['--schema', '--catalogue-schema', '--indexed-catalogue'].includes(flag) && !isBenchmark(flag)) ||
@@ -94,9 +99,10 @@ async function main() {
     return { text: indexed ? indexed.decode(result.response) : result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
-  const report = holdout ? await scoreProtectedWorkSummaryHoldout(holdout.cases, holdoutSha, holdout.developmentReport, modelDigest, generate) : await run(generate);
+  const scoreHoldout = explanationHoldout ? scoreProtectedExplanationHoldout : scoreProtectedWorkSummaryHoldout;
+  const report = holdout ? await scoreHoldout(holdout.cases, holdoutSha, holdout.developmentReport, modelDigest, generate) : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
-  const answerFormatDigest = routingDigest(explanationPriority ? 'protected_explanation_priority_v1' :
+  const answerFormatDigest = routingDigest(explanationPriority ? EXPLANATION_ANSWER_FORMAT :
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
 }
