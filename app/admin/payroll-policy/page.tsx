@@ -1,3 +1,4 @@
+import { todayInKualaLumpur } from '@/lib/hr-date';
 import { ActionButton } from '@/components/ui/action-button';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -162,7 +163,7 @@ export default async function PayrollPolicyPage({
                         <Badge variant={p.status === 'active' ? 'success' : p.status === 'draft' ? 'warning' : 'default'}>{t(`status.${p.status}`)}</Badge>
                       </td>
                       <td className="px-4 py-2.5 text-center tabular-nums">{p.assignedCount}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground tabular-nums">{new Date(p.updatedAt).toISOString().slice(0, 10)}</td>
+                      <td className="px-4 py-2.5 text-muted-foreground tabular-nums">{todayInKualaLumpur(new Date(p.updatedAt))}</td>
                       <td className="px-4 py-2.5">
                         <div className="flex items-center justify-end gap-3">
                           <Link href={`${PAGE}?edit=${p.id}`} className="text-xs font-medium text-primary hover:underline">

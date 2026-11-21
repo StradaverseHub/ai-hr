@@ -116,14 +116,14 @@ export class AssignmentBeforeCurrentStartError extends Error {
   constructor(readonly currentStart: string, readonly effectiveDate?: string) {
     // Board 2026-11-14 (production DB-V-55964A / 079831 / D6EDA6): the screen showed only a database reference
     // when a termination predated the record in force. Name both dates, as the date pickers show them.
-    super(`${effectiveDate ? `The date ${displayCalendarDate(effectiveDate)} is` : 'This date is'} before the current assignment record, which starts on ${displayCalendarDate(currentStart)}. Use a date on or after ${displayCalendarDate(currentStart)}, or correct the later record in Employment History first.`);
+    super(`${effectiveDate ? `The date ${displayCalendarDate(effectiveDate)} is` : 'This date is'} before the current assignment record, which starts on ${displayCalendarDate(currentStart)}. Check the effective date against your HR records. If it is correct, review and correct the later assignment in Employment History before retrying.`);
     this.name = 'AssignmentBeforeCurrentStartError';
   }
 }
 /** A termination dated before a reporting line (as manager or subordinate) that is still open began. */
 export class ReportingLineAfterTerminationError extends Error {
   constructor(readonly lineStart: string, readonly terminationDate: string) {
-    super(`The date ${displayCalendarDate(terminationDate)} is before a reporting line for this employee, which starts on ${displayCalendarDate(lineStart)}. Use a date on or after ${displayCalendarDate(lineStart)}, or correct that reporting line first.`);
+    super(`The date ${displayCalendarDate(terminationDate)} is before a reporting line for this employee, which starts on ${displayCalendarDate(lineStart)}. Verify the termination date. If it is correct, review and correct the later reporting line before recording the termination.`);
     this.name = 'ReportingLineAfterTerminationError';
   }
 }
