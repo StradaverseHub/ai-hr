@@ -1,7 +1,9 @@
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { isAbsolute, join, relative, sep } from 'node:path';
 import { routingDigest } from '../../lib/ai/module-agent-routing';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from './protected-leave-comparison';
+import { scorePairedLeaveRoutingHoldout } from './protected-leave-routing-holdout';
 import { runProtectedWorkSummaryComparison } from './protected-work-summary-comparison';
 import { protectedGuidanceProposalSchema, runProtectedWorkSummaryImprovement } from './protected-work-summary-improvement';
 import { leaveAnswerJsonSchema } from './leave-answer-format';
@@ -31,11 +33,14 @@ function readHoldoutInput(filename: string, outsideCheckout: boolean) {
 
 async function main() {
   const [model, outfile, ...args] = process.argv.slice(2);
+  const pairedLeave = args[0] === '--paired-leave-routing';
   const freshRouting = args[0] === '--fresh-explanation-routing';
   const explanationHoldout = freshRouting || args[0] === '--protected-explanation-holdout';
-  const holdoutMode = explanationHoldout || args[0] === '--protected-holdout';
+  const holdoutMode = pairedLeave || explanationHoldout || args[0] === '--protected-holdout';
   const [, holdoutPath, holdoutSha, developmentReportPath] = args;
-  if (holdoutMode && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
+  if (pairedLeave && (args.length !== 3 || !holdoutPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
+    throw Error('Supply evaluator-owned CASE_FILE SHA256 for paired leave routing.');
+  if (holdoutMode && !pairedLeave && (args.length !== 4 || !holdoutPath || !developmentReportPath || !/^[a-f0-9]{64}$/.test(holdoutSha ?? '')))
     throw Error('Supply FILE SHA256 DEVELOPMENT_REPORT for a holdout or DIRECTORY PLAN_SHA256 DEVELOPMENT_REPORT for fresh routing.');
   const flags = holdoutMode ? [] : args;
   const runners = {
@@ -49,7 +54,7 @@ async function main() {
   const isBenchmark = (flag: string): flag is keyof typeof runners => Object.hasOwn(runners, flag);
   const benchmarks = flags.filter(isBenchmark);
   const [benchmark] = benchmarks;
-  const useCatalogueFormat = (holdoutMode && !explanationHoldout) || flags.includes('--catalogue-schema');
+  const useCatalogueFormat = (holdoutMode && !pairedLeave && !explanationHoldout) || flags.includes('--catalogue-schema');
   const useStaticSchema = flags.includes('--schema');
   const useIndexedFormat = flags.includes('--indexed-catalogue');
   const improveExplanation = benchmark === '--improve-protected-explanation';
@@ -64,7 +69,10 @@ async function main() {
   const answerFormat = useStaticSchema ? leaveAnswerJsonSchema : 'json';
   const target = localOutputPath(outfile);
   if (holdoutMode && existsSync(target)) throw Error('Use a new report path.');
-  const developmentReport = holdoutMode ? readHoldoutInput(developmentReportPath, false) : null;
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+  if (pairedLeave && git('status', '--porcelain', '--untracked-files=no')) throw Error('Use the clean frozen candidate checkout.');
+  const candidateSha = pairedLeave ? git('rev-parse', 'HEAD') : null;
+  const developmentReport = holdoutMode && !pairedLeave ? readHoldoutInput(developmentReportPath, false) : null;
   const cases = holdoutMode && !freshRouting ? readHoldoutInput(holdoutPath, true) : null;
   const freshInput = freshRouting && developmentReport ? {
     plan: readHoldoutInput(join(holdoutPath, 'plan.json'), true), planSha256: holdoutSha, developmentReport,
@@ -112,13 +120,17 @@ async function main() {
   };
   const run = benchmark ? runners[benchmark] : runLeaveImprovement;
   const scoreHoldout = explanationHoldout ? scoreProtectedExplanationHoldout : scoreProtectedWorkSummaryHoldout;
-  const report = freshInput ? await scoreFreshExplanationRouting(freshInput, modelDigest, generate)
+  const report = candidateSha && cases ? await scorePairedLeaveRoutingHoldout(cases, holdoutSha, candidateSha, modelDigest, generate)
+    : freshInput ? await scoreFreshExplanationRouting(freshInput, modelDigest, generate)
     : cases && developmentReport ? await scoreHoldout(cases, holdoutSha, developmentReport, modelDigest, generate)
     : await run(generate);
   if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
+  if (candidateSha && (git('rev-parse', 'HEAD') !== candidateSha || git('status', '--porcelain', '--untracked-files=no')))
+    throw Error('The candidate checkout changed during scoring.');
   const answerFormatDigest = routingDigest(explanationPriority ? EXPLANATION_ANSWER_FORMAT :
     useIndexedFormat ? PROTECTED_INDEXED_FORMAT : useCatalogueFormat ? PROTECTED_CATALOGUE_FORMAT : answerFormat);
   writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions, answerFormatDigest }, null, 2));
+  if (pairedLeave && 'meetsThreshold' in report && !report.meetsThreshold) process.exitCode = 2;
 }
 
 main().catch(error => {

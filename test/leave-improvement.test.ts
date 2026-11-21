@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting, selectProtectedLeaveCount } from '../scripts/experiments/protected-leave-comparison';
-import { scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
@@ -517,6 +517,48 @@ describe('evaluator-owned leave routing suite', () => {
       const input = frozen(rows);
       expect(() => scoreProtectedLeaveRoutingHoldout(input.bytes, input.digest, candidateSha)).toThrow('Use distinct fictional scenarios');
     }
+  });
+
+  const modelDigest = 'f'.repeat(64);
+  function pair(rows: readonly unknown[] = cases, minimumSavedCalls = 2) {
+    const bytes = Buffer.from(JSON.stringify({ version: 2, candidateSha, modelDigest, minimumSavedCalls, cases: rows }));
+    return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
+  }
+  function baseline(fieldForAvailable = 'available') {
+    return async ({ mode, prompt }: Parameters<PilotModel>[0]) => {
+      expect(mode).toBe('answer');
+      expect(prompt).not.toMatch(/Fictional|17\.25|leave balance|employmentId/);
+      const { local } = capturePrivateAssistantTask(JSON.parse(prompt));
+      if (local.operation !== 'conversation') throw Error('Expected a protected catalogue.');
+      const [read] = local.reads, [card] = read.cards;
+      const fact = card.facts.find(row => row.field === (local.intent === 'leave_taken' ? 'taken' : fieldForAvailable));
+      if (!fact) throw Error('Expected a fictional recorded fact.');
+      return { text: JSON.stringify({ version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: read.read, card: card.card, fact: fact.fact }] }), inputTokens: 9, outputTokens: 4 };
+    };
+  }
+
+  it('measures avoided model calls even when baseline quality is already perfect', async () => {
+    const { bytes, digest } = pair();
+    const score = await scorePairedLeaveRoutingHoldout(bytes, digest, candidateSha, modelDigest, baseline());
+    expect(score).toMatchObject({ meetsThreshold: true, releaseAuthorized: false, baselineCalls: 2, baselineCorrect: 2,
+      candidateFallbackCalls: 0, candidateCorrect: 2, gains: 0, regressions: 0, savedCalls: 2,
+      baselineInputTokens: 18, baselineOutputTokens: 8, correctDeferrals: 3 });
+    expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
+  });
+
+  it('blocks a paired regression and preflights source and budget mismatches before transport', async () => {
+    const regressed = pair(cases.map((item, index) => index === 0 ? { ...item,
+      expected: { kind: 'direct', employment: 0, balance: 0, field: 'pending', value: 1 } } : item));
+    await expect(scorePairedLeaveRoutingHoldout(regressed.bytes, regressed.digest, candidateSha, modelDigest, baseline('pending')))
+      .resolves.toMatchObject({ meetsThreshold: false, regressions: 1, savedCalls: 1 });
+    let calls = 0;
+    const guard: PilotModel = async input => { calls++; return baseline()(input); };
+    const missing = pair(cases.map((item, index) => index === 1 ? { ...item, expected: { ...item.expected, value: 99 } } : item));
+    await expect(scorePairedLeaveRoutingHoldout(missing.bytes, missing.digest, candidateSha, modelDigest, guard)).rejects.toThrow('no verified source');
+    const excessive = pair(cases, 3);
+    await expect(scorePairedLeaveRoutingHoldout(excessive.bytes, excessive.digest, candidateSha, modelDigest, guard)).rejects.toThrow('Saved-call target');
+    await expect(scorePairedLeaveRoutingHoldout(regressed.bytes, regressed.digest, candidateSha, 'a'.repeat(64), guard)).rejects.toThrow('Invalid frozen paired leave suite');
+    expect(calls).toBe(0);
   });
 });
 

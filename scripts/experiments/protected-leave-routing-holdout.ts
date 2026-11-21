@@ -8,6 +8,8 @@ import {
 } from '../../lib/ai/provider-assistant-policy';
 import { selectProtectedLeaveCount } from './protected-leave-comparison';
 import { readFrozenHoldoutJson } from './protected-work-summary-holdout';
+import { evaluateProtectedAnswer } from './protected-answer-comparison';
+import type { PilotModel } from '../teras/leave-improvement';
 
 const label = z.string().trim().min(1).max(160);
 const wording = z.string().trim().min(1).max(300);
@@ -29,31 +31,39 @@ const expected = z.discriminatedUnion('kind', [
     balance: z.number().int().min(0).max(5), field, value: count }).strict(),
   z.object({ kind: z.literal('defer') }).strict(),
 ]);
-const holdout = z.object({
-  version: z.literal(1), candidateSha: sha,
-  cases: z.array(z.object({ scenario, expected }).strict()).min(4).max(32),
+const casesSchema = z.array(z.object({ scenario, expected }).strict()).min(4).max(32);
+const holdout = z.object({ version: z.literal(1), candidateSha: sha, cases: casesSchema }).strict();
+const pairedHoldout = z.object({
+  version: z.literal(2), candidateSha: sha, cases: casesSchema,
+  modelDigest: z.string().regex(/^[a-f0-9]{64}$/), minimumSavedCalls: z.number().int().min(1).max(32),
 }).strict();
 
-function observe(input: z.infer<typeof scenario>): z.infer<typeof expected> {
-  const defer = { kind: 'defer' } as const;
+function project(input: z.infer<typeof scenario>) {
   const clarification: PrivateAssistantClarification | null = input.clarification
     ? { ...input.clarification, originalQuestion: input.question, earlier: [] } : null;
-  if (resolvePrivateAssistantProposal(clarification?.answer ?? input.question)) return defer;
+  if (resolvePrivateAssistantProposal(clarification?.answer ?? input.question)) return null;
   const { intent } = clarification ? resolvePrivateAssistantClarifiedIntent(clarification)
     : resolvePrivateAssistantContextualIntent(input.question, []);
-  if (intent !== 'leave_available' && intent !== 'leave_taken' && intent !== 'leave_pending') return defer;
+  if (intent !== 'leave_available' && intent !== 'leave_taken' && intent !== 'leave_pending') return null;
 
   const employments = input.employments.map((row, index) => ({ ...row, employmentId: `fixture-own-${index}` }));
   const presentation = presentGroundedToolOutcome('my_leave_balances', { ok: true, employments });
-  if (!presentation) return defer;
+  if (!presentation) return null;
   const cards = employments.flatMap((row, employment) => row.balances.map((_, balance) => ({
     employment, balance, key: row.employmentId, labels: [row.company],
   })));
   if (presentation.cards.length !== cards.length) throw Error('Unexpected canonical fixture projection.');
   const reads = [{ read: 0, presentation, explanations: [] }];
   const selection = selectPrivateAssistantCards(intent, reads, clarification, cards.map((row, card) => ({ ...row, read: 0, card })));
-  if (selection.slot) return defer;
+  if (selection.slot) return null;
   const catalogue = privateAssistantCatalogue(intent, reads, 'baseline_v1', selection.selection);
+  return { intent, reads, selected: selection, catalogue, cards, presentation };
+}
+
+function observe(source: ReturnType<typeof project>): z.infer<typeof expected> {
+  const defer = { kind: 'defer' } as const;
+  if (!source) return defer;
+  const { catalogue, reads, cards, presentation } = source;
   const block = selectProtectedLeaveCount(catalogue);
   if (!block) return defer;
   adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify({
@@ -65,25 +75,75 @@ function observe(input: z.infer<typeof scenario>): z.infer<typeof expected> {
 }
 
 /** Score a precommitted fictional suite. The report carries neither individual results nor case contents. */
-export function scoreProtectedLeaveRoutingHoldout(bytes: Buffer, holdoutDigest: string, candidateSha: string) {
-  const parsed = holdout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
-  if (!parsed.success || parsed.data.candidateSha !== candidateSha) throw Error('Invalid frozen leave routing suite.');
-  const cases = parsed.data.cases;
+function scoreCases(cases: z.infer<typeof casesSchema>) {
   const expectedDirect = cases.filter(row => row.expected.kind === 'direct').length;
   if (expectedDirect < 2 || cases.length - expectedDirect < 2 ||
       new Set(cases.map(row => routingDigest(row.scenario))).size !== cases.length)
     throw Error('Use distinct fictional scenarios covering direct answers and deferrals.');
 
   const scores = { correctDirect: 0, correctDeferrals: 0, wrongDirect: 0, unexpectedDirect: 0, missedDirect: 0 };
-  for (const item of cases) {
-    const observed = observe(item.scenario);
+  const paired = cases.map(item => {
+    const source = project(item.scenario);
+    const observed = observe(source);
+    const correct = routingDigest(item.expected) === routingDigest(observed);
     if (item.expected.kind === 'defer') {
       if (observed.kind === 'defer') scores.correctDeferrals++;
       else scores.unexpectedDirect++;
     } else if (observed.kind === 'defer') scores.missedDirect++;
-    else if (routingDigest(item.expected) === routingDigest(observed)) scores.correctDirect++;
+    else if (correct) scores.correctDirect++;
     else scores.wrongDirect++;
+    return { ...item, source, observed, correct };
+  });
+  return { paired, result: { cases: cases.length, expectedDirect,
+    ...scores, meetsThreshold: scores.correctDirect + scores.correctDeferrals === cases.length } };
+}
+
+export function scoreProtectedLeaveRoutingHoldout(bytes: Buffer, holdoutDigest: string, candidateSha: string) {
+  const parsed = holdout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  if (!parsed.success || parsed.data.candidateSha !== candidateSha) throw Error('Invalid frozen leave routing suite.');
+  return { evidence: 'offline_leave_routing_holdout', candidateSha, holdoutDigest,
+    ...scoreCases(parsed.data.cases).result, releaseAuthorized: false };
+}
+
+/** Compare actual masked baseline calls on direct cases. Deferral cases are evaluated locally and continue
+ * through the same baseline by design. Validate all expected answer references before starting transport. */
+export async function scorePairedLeaveRoutingHoldout(bytes: Buffer, holdoutDigest: string, candidateSha: string,
+  modelDigest: string, model: PilotModel) {
+  const parsed = pairedHoldout.safeParse(readFrozenHoldoutJson(bytes, holdoutDigest));
+  if (!parsed.success || parsed.data.candidateSha !== candidateSha || parsed.data.modelDigest !== modelDigest)
+    throw Error('Invalid frozen paired leave suite.');
+  const { paired, result } = scoreCases(parsed.data.cases);
+  const { minimumSavedCalls } = parsed.data;
+  if (minimumSavedCalls > result.expectedDirect) throw Error('Saved-call target exceeds the direct case count.');
+  const comparisons = paired.flatMap(({ expected, source, observed, correct }, index) => {
+    if (expected.kind !== 'direct') return [];
+    if (!source) throw Error('Expected direct answer has no verified source.');
+    const card = source.cards.findIndex(row => row.employment === expected.employment && row.balance === expected.balance);
+    const fact = card < 0 ? -1 : source.presentation.cards[card].facts.findIndex(row => row.field === expected.field && row.value === expected.value);
+    if (fact < 0) throw Error('Expected direct answer has no verified source.');
+    const plan = { version: 1, mode: 'answer', blocks: [{ kind: 'fact', read: 0, card, fact }] };
+    adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(plan), source.catalogue), source.reads);
+    return [{ fixture: { id: String(index), intent: source.intent, reads: source.reads, selected: source.selected, expected: plan }, observed, correct }];
+  });
+  const comparison = { baselineCalls: 0, baselineCorrect: 0, baselineRejected: 0, candidateFallbackCalls: 0,
+    candidateCorrect: 0, gains: 0, regressions: 0, savedCalls: 0, baselineInputTokens: 0, baselineOutputTokens: 0 };
+  for (const { fixture, observed, correct } of comparisons) {
+    const baseline = await evaluateProtectedAnswer(fixture, 'baseline_v1', model);
+    const baselineCorrect = baseline.diagnostic.outcome === 'correct';
+    const defers = observed.kind === 'defer';
+    const candidateCorrect = defers ? baselineCorrect : correct;
+    comparison.baselineCalls++;
+    comparison.baselineInputTokens += baseline.inputTokens;
+    comparison.baselineOutputTokens += baseline.outputTokens;
+    if (baselineCorrect) comparison.baselineCorrect++;
+    if (baseline.diagnostic.outcome === 'rejected') comparison.baselineRejected++;
+    if (defers) comparison.candidateFallbackCalls++;
+    if (candidateCorrect) comparison.candidateCorrect++;
+    if (!baselineCorrect && candidateCorrect) comparison.gains++;
+    if (baselineCorrect && !candidateCorrect) comparison.regressions++;
+    if (!defers && correct) comparison.savedCalls++;
   }
-  return { evidence: 'offline_leave_routing_holdout', candidateSha, holdoutDigest, cases: cases.length, expectedDirect,
-    ...scores, meetsThreshold: scores.correctDirect + scores.correctDeferrals === cases.length, releaseAuthorized: false };
+  return { evidence: 'offline_paired_leave_routing_holdout', candidateSha, holdoutDigest, modelDigest, minimumSavedCalls,
+    ...result, ...comparison, meetsThreshold: result.meetsThreshold && comparison.regressions === 0 && comparison.savedCalls >= minimumSavedCalls,
+    releaseAuthorized: false };
 }
