@@ -56,6 +56,8 @@ assert(!env.AIHR_EVAL_MODEL&&!env.AIHR_EVAL_OPENROUTER_KEY,'Browser fixtures can
 assert(!Object.keys(env).some(key=>key.startsWith('WORKOS_')&&env[key]),'External auth configuration refused');
 const git=(...args)=>execFileSync('git',args,{encoding:'utf8'}).trim();
 const sha=git('rev-parse','HEAD');
+const detachedShellSource='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
+const shellPreviewPath='/api/notifications/shell-tasks';
 assert(sha===env.AIHR_CI_HEAD&&/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD??''));
 assert.equal(git('status','--porcelain'),'');
 
@@ -1745,6 +1747,16 @@ async function measurePublicLogin(){
 }
 
 async function measureShellBellReadiness({page,user,report,save}){
+ const previewResponses=[];
+ const observe=response=>{
+  const url=new URL(response.url());
+  if(url.origin===origin&&url.pathname===shellPreviewPath){
+   previewResponses.push({status:response.status(),method:response.request().method(),
+    privateNoStore:response.headers()['cache-control']==='private, no-store',query:!!url.search});
+  }
+ };
+ page.on('response',observe);
+ try{
  const started=performance.now();
  const timeout=()=>Math.max(1,15000-Math.round(performance.now()-started));
  const elapsed=()=>Math.round(performance.now()-started);
@@ -1781,6 +1793,41 @@ async function measureShellBellReadiness({page,user,report,save}){
    record('task-count-available');
   })(),
  ]);
+ if(sha===detachedShellSource){
+  assert.deepEqual(previewResponses,[{status:200,method:'GET',privateNoStore:true,query:false}]);
+  record('private-preview-response',{requests:previewResponses.length});
+ }else assert.equal(previewResponses.length,0,'The control unexpectedly fetched the detached shell preview');
+ }finally{page.off('response',observe);}
+}
+
+async function measureAutomaticShellPreview({page,user,report,save}){
+ const started=performance.now(),path='/me/cases';
+ const budget=()=>Math.max(1,15000-Math.round(performance.now()-started));
+ report.actionStage='shell-preview-document-start';
+ const response=await page.goto(origin+path,{waitUntil:'commit',timeout:budget()});
+ assert.equal(response?.status(),200);
+ assert.equal(new URL(page.url()).pathname,path);
+ assert.equal(await readyContent(page,user,path,budget),'usable-content');
+ report.actionStage='shell-preview-automatic-task-count';
+ await page.getByRole('button',{name:/^Notifications, .* open tasks$/}).waitFor({state:'visible',timeout:budget()});
+ const timing=await page.evaluate(path=>{
+  const nav=performance.getEntriesByType('navigation')[0];
+  const previews=performance.getEntriesByName(location.origin+path,'resource');
+  return {loadStart:nav?.loadEventStart,documentEnd:nav?.responseEnd,requests:previews.length,
+   previewStart:previews[0]?.startTime,previewEnd:previews[0]?.responseEnd};
+ },shellPreviewPath);
+ assert.equal(timing.requests,1);
+ assert(timing.loadStart>0&&timing.documentEnd>0);
+ assert(timing.previewStart>=timing.documentEnd&&timing.previewStart>=timing.loadStart,
+  'Automatic preview must follow the initial document');
+ assert(timing.previewEnd>=timing.previewStart);
+ report.automaticShellPreview=[
+  {step:'document-complete',elapsedMs:Math.round(timing.documentEnd)},
+  {step:'document-load',elapsedMs:Math.round(timing.loadStart)},
+  {step:'preview-start',elapsedMs:Math.round(timing.previewStart)},
+  {step:'preview-complete',elapsedMs:Math.round(timing.previewEnd)},
+ ];
+ save();
 }
 
 async function measureShellPopovers({page,user,report,save}){
@@ -2042,7 +2089,7 @@ async function measureLifecycleMenu({page,user,fixture,report,save}){
 }
 
 const actionLaneByJourney={
- 'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
+ 'personal-calendar-month':'shell','shell-popovers':'shell','shell-bell-readiness':'shell','shell-preview-automatic':'shell','welcome-tour':'shell','assistant-saved-history':'shell','notification-read':'shell',
  'group-company-scope':'workforce','group-lifecycle-menu':'workforce','roster-exceptions':'workforce','daily-attendance-filters':'workforce',
  'job-description-editor-open':'workforce','personnel-switcher':'workforce','org-explorer':'workforce','personnel-movement':'workforce','new-joiners-search':'workforce',
  'own-released-payslip-detail':'payroll','payroll-history-breakdown':'payroll','payroll-wizard':'payroll','payroll-register-pager':'payroll','payroll-register-boundary':'payroll','payroll-scope-denial':'payroll',
@@ -2073,6 +2120,8 @@ async function measureActions(fixture){
   ...[0,1].map(actorIndex=>({name:'roster-exceptions',actorIndex,run:measureRosterExceptions,timings:result=>result.rosterExceptionSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-popovers',actorIndex,run:measureShellPopovers,timings:result=>result.shellPopoverSteps})),
   ...[0,4].map(actorIndex=>({name:'shell-bell-readiness',actorIndex,run:measureShellBellReadiness,timings:result=>result.shellBellReadiness})),
+  ...(sha===detachedShellSource?[0,4].map(actorIndex=>({name:'shell-preview-automatic',actorIndex,
+   run:measureAutomaticShellPreview,timings:result=>result.automaticShellPreview})):[]),
   {name:'welcome-tour',actorIndex:4,run:measureWalkthrough,timings:result=>result.walkthroughSteps},
   ...[0,1].map(actorIndex=>({name:'daily-attendance-filters',actorIndex,run:measureDailyAttendanceFilters,
    timings:result=>result.attendanceFilterSteps})),
