@@ -315,25 +315,47 @@ async function organisationLifecycleRoutes(db, fixture) {
   ];
 }
 
-function payrollCorrectionRoutes(fixture) {
-  const actor = fixture.users[0];
+async function payrollCorrectionRoutes(db, fixture) {
+  const [group, company] = fixture.users;
   const subject = fixture.users[4];
-  const { batchId } = fixture.tenants[0].companies[0];
-  assert.equal(actor.role, 'groupHR');
-  assert.equal(subject.companyId, actor.companyId);
+  const { batchId, historicalBatchId } = fixture.tenants[0].companies[0];
+  assert.equal(group.role, 'groupHR');
+  assert.equal(company.role, 'companyHR');
+  assert.equal(subject.companyId, group.companyId);
+  assert.equal(subject.companyId, company.companyId);
+  const [history] = await db`
+    select a.pay_period, c.legal_name as company_name
+    from payroll_batch a
+    join payslip p on p.batch_id = a.id and p.tenant_id = a.tenant_id
+    join company c on c.id = a.company_id and c.tenant_id = a.tenant_id
+    where a.id = ${historicalBatchId}::uuid and a.tenant_id = ${company.tenantId}::uuid
+      and a.company_id = ${company.companyId}::uuid and a.status = 'closed'
+      and p.employment_id = ${subject.employmentId}::uuid
+  `;
+  assert.match(history?.pay_period ?? '', /^\d{4}-\d{2}$/);
+  const year = history.pay_period.slice(0, 4);
   return [
-    ['remove', 'Remove Employee Payroll'],
-    ['reprocess', 'Reprocess selected employees'],
-  ].map(([operation, exactHeading]) => ({
-    actor, exactHeading, template: '/payroll/[batchId]/' + operation, path: '/payroll/' + batchId + '/' + operation,
-    content: subject.name,
-    witness: `form:has(input[name="batchId"][value="${batchId}"]) textarea[name="reason"]`,
-  }));
+    ...[
+      ['remove', 'Remove Employee Payroll', subject.name],
+      ['reprocess', 'Reprocess selected employees', subject.name],
+      ['reset', 'Reset Payroll Process', history.company_name],
+    ].map(([operation, exactHeading, content]) => ({
+      actor: group, exactHeading, template: '/payroll/[batchId]/' + operation,
+      path: '/payroll/' + batchId + '/' + operation, content,
+      witness: `form:has(input[name="batchId"][value="${batchId}"]) textarea[name="reason"]`,
+    })),
+    ...[group, company].map(actor => ({
+      actor, template: '/payroll/statutory-forms/[formId]',
+      path: `/payroll/statutory-forms/my.cp8d?companyId=${company.companyId}&year=${year}`,
+      exactHeading: 'Form E / CP8D — annual (LHDN)', content: subject.name, exactContent: true,
+      witness: `table tbody a[href="/payroll/reports/ea/${subject.employmentId}?year=${year}"]`,
+    })),
+  ];
 }
 
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
-  const cases = payrollCorrections ? payrollCorrectionRoutes(fixture)
+  const cases = payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
     : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture), ...await organisationLifecycleRoutes(db, fixture)];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };

@@ -137,7 +137,7 @@ jobs:
             exit 2
           fi
           if [[ "$REUSE_CENSUS_BUILD" == true ]]; then
-            [[ "$BROWSER_STATIC_SHARD" == fixture-records && "$RUN_BUILD" != true ]]
+            [[ "$BROWSER_STATIC_SHARD" =~ ^(fixture-records|payroll-corrections)$ && "$RUN_BUILD" != true ]]
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/fixture-record-builds.json > /dev/null
           fi
           if [[ "$BROWSER_STATIC_SHARD" == all ]]; then
