@@ -47,3 +47,25 @@ remains. Never erase ledger entries or restore an old database over live stage
 data. If the canonical source and committed ledger differ, keep the lease and
 resume the exact staged upgrade. Record commit, CI proof, warmup, claim, database
 commit, observed ingress, signed-in verification and handback.
+
+## Reuse the application build for a schema-only index
+
+A release with one rehearsed, compatible index can retain the exact authenticated
+canonical build already serving staging. The submission client requires a clean
+candidate, an exact successful GitHub rehearsal, and an unchanged Git tree except
+for the new migration, appended journal and reviewed proof files. Application,
+configuration and dependency edits require a new build. This path transfers the
+verified source changes only and skips the second application runtime.
+
+`commission-schema-only.py` installs a staging user timer alongside the existing
+queue. `submit-schema-only.mjs` prepares a private packet through the existing SSH
+operator identity. The timer picks up only that authorized packet when it is first
+in the shared queue and no other release holds the lease. It persists the private
+credential before committing its claim. A resume can verify the same completed
+migration and reconcile partial source updates. The previous runtime serves
+throughout. The arrival receipt records its original source and retained build ID.
+
+After signed-in acceptance, pass a reason on standard input to `schema-only.py
+finish <ticket>` on the staging host. The existing lease returns only after the
+canonical source, exact unchanged build and ledger are verified. Production
+package qualification stays separate.

@@ -1,0 +1,36 @@
+name: Staging schema-only qualification
+on:
+  push:
+    branches: ['codex/staging-additive-upgrade-20261121', 'codex/staging-schema-only-*']
+permissions:
+  contents: read
+jobs:
+  expansion-and-rollback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: upgrade_fixture
+          POSTGRES_PASSWORD: fixture-admin
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      AIHR_UPGRADE_FIXTURE_URL: postgresql://postgres:fixture-admin@127.0.0.1:5432/upgrade_fixture
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Install the locked database client
+        run: |
+          npm install --no-package-lock --ignore-scripts --prefix "$RUNNER_TEMP/upgrade-deps" postgres@3.4.9
+          patch -d "$RUNNER_TEMP/upgrade-deps/node_modules/postgres" -p1 < patches/postgres@3.4.9.patch
+          ln -s "$RUNNER_TEMP/upgrade-deps/node_modules" node_modules
+      - name: Test the populated restricted-role upgrade and rollback
+        run: node --test deploy/upgrade/schema-only.test.mjs
+      - name: Qualify pickup fencing and deferred claim
+        if: ${{ github.ref_name == 'codex/staging-additive-upgrade-20261121' }}
+        run: PYTHONPATH=scripts/staging:deploy/cutover python3 -B -m unittest discover -s deploy/upgrade -p 'test_schema_only.py' -v
