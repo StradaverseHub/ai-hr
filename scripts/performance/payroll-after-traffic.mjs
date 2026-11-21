@@ -8,8 +8,9 @@ export async function readPayrollAfterTraffic(db,attemptedPayroll){
    left join public.payroll_batch batch on batch.id=target.batch_id and batch.tenant_id=target.tenant_id
    cross join lateral (select count(*)::int as count,min(job.state) as state from public.bulk_job job
     where job.tenant_id=target.tenant_id and job.created_by=target.user_id and job.kind='payroll_process'
-     and job.input->>'batchId'=target.batch_id::text) jobs
+     and (job.id=batch.processing_job_id or job.input->>'batchId'=target.batch_id::text
+      or job.result->>'batchId'=target.batch_id::text)) jobs
    cross join lateral (select count(*)::int as count from public.payslip slip
     where slip.tenant_id=target.tenant_id and slip.batch_id=target.batch_id) slips
    order by target.tenant`;
- }
+}
