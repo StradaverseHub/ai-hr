@@ -34,52 +34,41 @@ async function clarify(ctx:SessionContext,question='My leave balance',slot:'leav
 async function recorded(ctx:SessionContext,id:string){const [row]=await owner.db.select().from(s.assistantExchange).where(eq(s.assistantExchange.id,id));expect(row).toBeTruthy();const proof=openAssistantAnswerDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:id,question:row.question,answer:row.answer??''},row.disclosureReceipt);expect(proof).toBeTruthy();return{row,proof:proof!};}
 const usage={inputTokens:7,outputTokens:11,cachedInputTokens:0};
 describe('private conversational native Assistant integration',()=>{
- it('accepts an authenticated Annual Leave answer, uses fresh native own facts and sends neither labels nor question/history/values',async()=>{
-  const {ctx,mine}=await fixture(),prior=await clarify(ctx);
-  const native=await ASSISTANT_TOOLS.find(tool=>tool.spec.name==='my_leave_balances')!.run(ctx,{});expect(native.ok).toBe(true);expect(JSON.stringify(native)).toContain('113.75');
-  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
-   expect(args.turns).toHaveLength(1);const turn=args.turns[0];if(turn.role!=='user')throw Error('Expected closed metadata');
-   const parsed=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(parsed.operation!=='conversation')throw Error('Expected conversation');
-   const read=parsed.reads.find(read=>read.module==='leave'),card=read?.cards.find(card=>card.facts.some(fact=>fact.field==='available'&&fact.available)),fact=card?.facts.find(fact=>fact.field==='available'&&fact.available);
-   expect(read).toBeTruthy();expect(card).toBeTruthy();expect(fact).toBeTruthy();
-   const text=JSON.stringify(args);for(const secret of ['Annual Leave','My leave balance','PRIVATE','113.75',mine.personId,mine.employmentId,base.companyId,'Acme Sdn Bhd'])expect(text).not.toContain(secret);
-   return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read!.read,card:card!.card,fact:fact!.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};
-  });
-  const result=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:prior});expect(transport).toHaveBeenCalledOnce();expect(result.toolsUsed).toEqual(['my_leave_balances']);expect(result.stop).toBe('end');
-  const {row,proof}=await recorded(ctx,result.exchangeId);expect(row.question).toBe('Annual Leave');expect(row.continuesExchangeId).toBe(prior);expect(proof.plan).toMatchObject({mode:'answer',blocks:[{kind:'fact',read:0}]});
+ it('accepts a bound leave-type choice and selects the authorized available balance locally',async()=>{
+  const {ctx}=await fixture(),prior=await clarify(ctx);
+  const native=await ASSISTANT_TOOLS.find(tool=>tool.spec.name==='my_leave_balances')!.run(ctx,{});
+  expect(native.ok).toBe(true);expect(JSON.stringify(native)).toContain('113.75');
+  const transport=vi.spyOn(openaiAdapter,'converse');
+  const result=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:prior});
+  expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual(['my_leave_balances']);expect(result.stop).toBe('end');
+  const {row,proof}=await recorded(ctx,result.exchangeId);
+  expect(row).toMatchObject({question:'Annual Leave',continuesExchangeId:prior,turnCount:0,inputTokens:0,outputTokens:0});
+  expect(proof.plan).toEqual({version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:1}]});
  });
  it.each(['Alice Annual Leave','not Annual Leave','Annual Leave and Sick Leave','Unknown Leave'])('keeps invalid slot answer %s at leave_type without calling a provider',async question=>{
   const {ctx}=await fixture(),prior=await clarify(ctx),transport=vi.spyOn(openaiAdapter,'converse');
   const result=await askAssistant(ctx,{question,clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'leave_type'});
  });
  it('accepts a corrected leave-type reply after an earlier invalid answer',async()=>{
-  const {ctx}=await fixture(),prior=await clarify(ctx);const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
-   const turn=args.turns[0];if(turn.role!=='user')throw Error('Expected metadata');const parsed=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(parsed.operation!=='conversation')throw Error('Expected conversation');const read=parsed.reads.find(read=>read.module==='leave')!,card=read.cards.find(card=>card.facts.some(fact=>fact.field==='available'&&fact.available))!,fact=card.facts.find(fact=>fact.field==='available'&&fact.available)!;return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};
-  });
+  const {ctx}=await fixture(),prior=await clarify(ctx),transport=vi.spyOn(openaiAdapter,'converse');
   const invalid=await askAssistant(ctx,{question:'Unknown Leave',clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();
-  const corrected=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:invalid.exchangeId});expect(transport).toHaveBeenCalledOnce();expect((await recorded(ctx,corrected.exchangeId)).proof.plan).toMatchObject({mode:'answer'});
+  const corrected=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:invalid.exchangeId});expect(transport).not.toHaveBeenCalled();expect((await recorded(ctx,corrected.exchangeId)).proof.plan).toMatchObject({mode:'answer'});
  });
  it.each([false,true])('continues an authenticated slot-completed task into ordinary pending follow-up (invalid correction: %s)',async invalidFirst=>{
-  const {ctx,mine}=await fixture(),prior=await clarify(ctx,'My leave balance','leave_type',true),intents:string[]=[];
-  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
-   const turn=args.turns[0];if(turn.role!=='user')throw Error('Expected closed metadata');const local=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(local.operation!=='conversation')throw Error('Expected conversation');intents.push(local.intent);
-   for(const forbidden of ['Annual Leave','My leave balance','Unknown Leave','And pending?',mine.personId,mine.employmentId,base.companyId,'113.75'])expect(JSON.stringify(args)).not.toContain(forbidden);
-   const read=local.reads.find(read=>read.module==='leave')!,card=read.cards.find(card=>card.facts.some(fact=>fact.available))!,fact=card.facts.find(fact=>fact.available)!;
-   return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};
-  });
+  const {ctx}=await fixture(),prior=await clarify(ctx,'My leave balance','leave_type',true),transport=vi.spyOn(openaiAdapter,'converse');
   const target=invalidFirst?(await askAssistant(ctx,{question:'Unknown Leave',clarificationExchangeId:prior})).exchangeId:prior;
-  const answered=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:target});expect(transport).toHaveBeenCalledTimes(1);
+  const answered=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:target});expect(transport).not.toHaveBeenCalled();
   const pending=await askAssistant(ctx,{question:'And pending?',previousExchangeId:answered.exchangeId,previousConversationToken:answered.conversationToken});
-  expect(transport).toHaveBeenCalledTimes(2);expect(intents).toEqual(['leave_available','leave_pending']);expect(pending.toolsUsed).toEqual(['my_leave_balances']);expect((await recorded(ctx,pending.exchangeId)).proof.plan).toMatchObject({mode:'answer'});
+  expect(transport).not.toHaveBeenCalled();expect(pending.toolsUsed).toEqual(['my_leave_balances']);expect((await recorded(ctx,pending.exchangeId)).proof.plan).toEqual({version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:0,fact:3}]});
   await expect(askAssistant({...ctx,grants:[{role:'employee',companyId:base.companyId}]},{question:'And pending?',previousExchangeId:answered.exchangeId,previousConversationToken:answered.conversationToken})).rejects.toMatchObject({code:'invalid_question'});
   await expect(askAssistant(ctx,{question:'And pending?',previousExchangeId:answered.exchangeId,previousConversationToken:answered.conversationToken,conversationScope:'other-company'})).rejects.toMatchObject({code:'invalid_question'});
  });
  it.each(['Alice leave balance','Unknown private request','My leave balance and Alice salary'])('does not scan past ordinary interruption %s to revive an older slot task',async interruption=>{
   const {ctx}=await fixture(),prior=await clarify(ctx,'My leave balance','leave_type',true);
-  const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{const turn=args.turns[0];if(turn.role!=='user')throw Error();const local=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(local.operation!=='conversation')throw Error();const read=local.reads[0],card=read.cards.find(card=>card.facts.some(fact=>fact.available))!,fact=card.facts.find(fact=>fact.available)!;return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};});
+  const transport=vi.spyOn(openaiAdapter,'converse');
   const answered=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:prior}),unknown=await askAssistant(ctx,{question:interruption,previousExchangeId:answered.exchangeId,previousConversationToken:answered.conversationToken});
   expect((await recorded(ctx,unknown.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
-  const next=await askAssistant(ctx,{question:'And pending?',previousExchangeId:unknown.exchangeId,previousConversationToken:unknown.conversationToken});expect(transport).toHaveBeenCalledTimes(1);expect(next.toolsUsed).toEqual([]);expect((await recorded(ctx,next.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
+  const next=await askAssistant(ctx,{question:'And pending?',previousExchangeId:unknown.exchangeId,previousConversationToken:unknown.conversationToken});expect(transport).not.toHaveBeenCalled();expect(next.toolsUsed).toEqual([]);expect((await recorded(ctx,next.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
  });
  it('keeps a named module clarification and bare module reply closed across an ordinary relative follow-up',async()=>{
   const {ctx}=await fixture(),prior=await clarify(ctx,'Alice leave balance','module',true),transport=vi.spyOn(openaiAdapter,'converse');
@@ -91,8 +80,8 @@ describe('private conversational native Assistant integration',()=>{
   const result=await askAssistant(ctx,{question:'leave',clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual([]);expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
  });
  it.each(['refusal','max_tokens','other'] as const)('retains truthful %s stop and observed usage rather than hiding terminal feedback',async stop=>{
-  const {ctx}=await fixture(),prior=await clarify(ctx),transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({text:'PRIVATE UNDISPLAYABLE TERMINAL',stop,toolCalls:[],usage,usageReported:true});
-  const result=await askAssistant(ctx,{question:'Annual Leave',clarificationExchangeId:prior});expect(transport).toHaveBeenCalledOnce();expect(result.stop).toBe(stop);const {row,proof}=await recorded(ctx,result.exchangeId);expect(row.stop).toBe(stop);expect(proof.plan).toBeNull();
+  const {ctx}=await fixture(),transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({text:'PRIVATE UNDISPLAYABLE TERMINAL',stop,toolCalls:[],usage,usageReported:true});
+  const result=await askAssistant(ctx,{question:'My work profile'});expect(transport).toHaveBeenCalledOnce();expect(result.stop).toBe(stop);const {row,proof}=await recorded(ctx,result.exchangeId);expect(row.stop).toBe(stop);expect(proof.plan).toBeNull();
   const rows=await owner.db.select().from(s.assistantUsage).where(eq(s.assistantUsage.tenantId,ctx.tenantId));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({inputTokens:7,outputTokens:11});
  });
  it('retains local action proposal and the existing separate human confirmation boundary',async()=>{

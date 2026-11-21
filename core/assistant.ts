@@ -45,6 +45,7 @@ import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateA
 import {preparePrivateAiTask} from './ai-governance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
+import {isOwnLeaveBalanceIntent,selectOwnLeaveBalance} from '../lib/ai/assistant-owned-leave-balance';
 import {withAssistantAdmissionReadsTx} from './assistant-read-session';
 import {assistantSourceReplay} from './assistant-disclosure-read';
 import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability,readGovernedSpecialistToolResultTx,type AssistantConversationStrategyCapability} from './module-agent-releases';
@@ -245,6 +246,18 @@ async function askAssistantActivity(
   let hitTurnCap = false;
   const spend: AiUsage = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
   let failure: string | null = null;
+  let replayBeforeRetention: ((tx:Tx)=>Promise<void>) | undefined;
+  const checkCurrentSources = async (tx:Tx,current:SessionContext) => {
+    if(Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+    const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};
+    if(JSON.stringify(specsFor(fresh))!==JSON.stringify(tools))throw new AiGatewayError('The current Assistant tools changed.');
+    const valid=await withAssistantAdmissionReadsTx(fresh,tx,session=>assistantSourceReplay(fresh,session,async source=>{
+      const input=source.input&&typeof source.input==='object'&&!Array.isArray(source.input)?source.input as Record<string,unknown>:null;
+      if(source.name!=='my_module_work'||!source.moduleJobId||!input||Object.keys(input).length!==1||!isAgentModuleCode(input.module))throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+      return(await readGovernedSpecialistToolResultTx(tx,fresh,source.moduleJobId,input.module)).outcome;
+    })(sourceReads));
+    if(!valid||Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+  };
 
   try {
     if(Date.now()>=deadline)throw new AssistantError('provider_error');
@@ -256,7 +269,8 @@ async function askAssistantActivity(
       // These server-owned own-subject calls are the only local read plan for the recognized intent.
       // No model-supplied argument, person identity, tool name or output can nominate another read.
       const module=intent.module;if(!module)throw new AssistantError('invalid_question');
-      const selected:readonly {name:string;input:Record<string,unknown>}[]=intent.intent==='leave_available'||intent.intent==='leave_pending'||intent.intent==='leave_taken'?[{name:'my_leave_balances',input:{}}]:
+      const ownLeaveBalance=isOwnLeaveBalanceIntent(intent.intent);
+      const selected:readonly {name:string;input:Record<string,unknown>}[]=ownLeaveBalance?[{name:'my_leave_balances',input:{}}]:
         intent.intent==='leave_requests'?[{name:'my_leave_requests',input:{limit:10}}]:intent.intent==='claim_statuses'?[{name:'my_claim_statuses',input:{limit:10}}]:
         intent.intent==='holidays'?[{name:'upcoming_holidays',input:{from:intent.fromDate??todayInKualaLumpur(),limit:10}}]:intent.intent==='reporting_line'?[{name:'my_reporting_line',input:{}}]:
         intent.intent==='payslip'?[{name:'my_payslip_summary',input:{limit:clarification?.slot==='period'||clarification?.earlier.some(step=>step.slot==='period')?12:1}}]:[{name:'my_module_work',input:{module}}];
@@ -276,17 +290,19 @@ async function askAssistantActivity(
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
       else if(!hasReferences){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'no_verified_facts'},answerReads,{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
+      else if(ownLeaveBalance){
+        const selectedBalance=selectOwnLeaveBalance(catalogue);
+        if(selectedBalance){
+          answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(JSON.stringify(selectedBalance),catalogue),answerReads);
+          replayBeforeRetention=tx=>checkCurrentSources(tx,ctx);
+          stop='end';answer=JSON.stringify(answerPlan);
+        }
+        // There is other verified data, but none for this question. Keep the
+        // ordinary unavailable answer without displaying another field.
+      }
       else{
         const prepared=await preparePrivateAiTask(cfg,ASSISTANT_PRIVATE_CONTRACT,async(tx,current)=>{
-          if(Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
-          const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId),entitlementsExempt:undefined,entitlementsError:undefined};
-          if(JSON.stringify(specsFor(fresh))!==JSON.stringify(tools))throw new AiGatewayError('The current Assistant tools changed.');
-          const valid=await withAssistantAdmissionReadsTx(fresh,tx,session=>assistantSourceReplay(fresh,session,async source=>{
-            const input=source.input&&typeof source.input==='object'&&!Array.isArray(source.input)?source.input as Record<string,unknown>:null;
-            if(source.name!=='my_module_work'||!source.moduleJobId||!input||Object.keys(input).length!==1||!isAgentModuleCode(input.module))throw new AiGatewayError('The current Assistant source access could not be confirmed.');
-            return(await readGovernedSpecialistToolResultTx(tx,fresh,source.moduleJobId,input.module)).outcome;
-          })(sourceReads));
-          if(!valid||Date.now()>=deadline)throw new AiGatewayError('The current Assistant source access could not be confirmed.');
+          await checkCurrentSources(tx,current);
           // Full canonical fingerprints above replay even if masked reference metadata is equal.
           return catalogue;
         });
@@ -347,6 +363,7 @@ async function askAssistantActivity(
     period,
     error: failure,
     sourceReads: sourcesComplete ? sourceReads : undefined,
+    replayBeforeRetention,
     answerPlan,
   });
   // Content withdrawn mid-flight (history cleared, erasure, access change): accounting was recorded, the
@@ -412,6 +429,7 @@ type PersistInput = {
   error: string | null;
   sourceReads?: readonly AssistantSourceRead[];
   answerPlan?: AssistantAnswerPlan;
+  replayBeforeRetention?: (tx:Tx)=>Promise<void>;
   /** The own exchange this one answered (0658); the guard refuses anything else. */
   continuesExchangeId?: string | null;
 };
@@ -462,6 +480,7 @@ async function persistWithContent(ctx: SessionContext, id: string, p: PersistInp
     // Keep the owner Access interval through INSERT + marker completion + accounting COMMIT.
     // A source erased during the sole provider call must never acquire fresh retained content.
     if(p.continuationCheck)await p.continuationCheck(tx);
+    if(p.replayBeforeRetention)await p.replayBeforeRetention(tx);
     const [row] = await tx
       .insert(assistantExchange)
       .values({
