@@ -62,7 +62,7 @@ export type AiInventoryView=
  | Readonly<{scope:'full';rows:readonly AiInventoryFullRow[];alerts:readonly AiAlert[];
    register:readonly {featureId:AiFeatureId;entry:(typeof AI_DATA_REGISTER)[AiFeatureId]}[];provider:{provider:string;model:string}|null}>;
 
-type FeatureUse={feature_id:string;runs:string;failed:string;blocked:string;tokens:string;credits:string|null;last_run:string|Date|null};
+type FeatureUse={feature_id:string;runs:string;failed:string;blocked:string;tokens:string;credits:string|null};
 type Outcome={action_kind:string;prepared:number;completed:number;refused:number;discarded:number;expired:number;reversed:number|null};
 type AuditRow={key:string;count:string;latest:string|Date|null};
 
@@ -104,9 +104,10 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
   const use=new Map(Array.from(await tx.execute<FeatureUse>(sql`select feature_id,
     count(*) filter(where state<>'blocked') as runs,count(*) filter(where state='failed') as failed,count(*) filter(where state='blocked') as blocked,
     coalesce(sum(actual_tokens),0) as tokens,
-    sum(openrouter_account_cost_credits)::text as credits,max(started_at) as last_run
+    sum(openrouter_account_cost_credits)::text as credits
    from ai_model_run where operation<>'probe' and started_at>=${from}::timestamptz group by feature_id`)).map(r=>[r.feature_id,r]));
-  const lastEver=new Map(Array.from(await tx.execute<{feature_id:string;last_run:string|Date}>(sql`select feature_id,max(started_at) as last_run from ai_model_run where operation<>'probe' group by feature_id`)).map(r=>[r.feature_id,new Date(r.last_run)]));
+  const lastAdmitted=new Map(Array.from(await tx.execute<{feature_id:string;last_run:string|Date}>(sql`select feature_id,max(started_at) as last_run
+   from ai_model_run where operation<>'probe' and state<>'blocked' group by feature_id`)).map(r=>[r.feature_id,new Date(r.last_run)]));
   const outcomes=new Map(Array.from(await tx.execute<Outcome>(sql`select * from app.assistant_action_outcome_summary(${from}::timestamptz)`)).map(r=>[r.action_kind,r]));
   // ai-control.* events keyed by what they changed, plus the tenant-setting changes that ARE the switch of a
   // setting-backed feature (one switch owner, 0692).
@@ -130,7 +131,7 @@ export async function aiInventoryView(supplied:SessionContext,view:ManagementVie
    const auditKey=c.kind==='action'?c.id:defn?.setting?`setting:${defn.setting}`:c.featureId??'';
    const auditOwn=audit.get(auditKey),auditFeature=c.kind!=='action'&&defn&&!defn.setting?audit.get(defn.id):undefined;
    const shownUse=c.kind==='action'||c.kind==='read_binding'?null:u?{runs:Number(u.runs),failed:Number(u.failed),blocked:Number(u.blocked),tokens:Number(u.tokens),reportedCredits:u.credits==null?null:Number(u.credits)}:c.featureId?{runs:0,failed:0,blocked:0,tokens:0,reportedCredits:null}:null;
-   const lastRun=c.kind==='scheduled_job'&&c.jobKey?(jobs.get(c.jobKey)??null):c.kind==='orchestrator_step'?(pass?.at?new Date(pass.at):null):c.kind==='action'||!c.featureId?null:lastEver.get(c.featureId)??null;
+   const lastRun=c.kind==='scheduled_job'&&c.jobKey?(jobs.get(c.jobKey)??null):c.kind==='orchestrator_step'?(pass?.at?new Date(pass.at):null):c.kind==='action'||c.kind==='read_binding'||!c.featureId?null:lastAdmitted.get(c.featureId)??null;
    return {...c,runtime:{
     switch:{kind:switchKind,on:f?f.enabled:null,state:f?f.state:null},
     actionPaused:paused(c),

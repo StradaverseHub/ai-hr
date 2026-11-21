@@ -99,6 +99,27 @@ describe('AI inventory access (ADR-0151 §4.7)', () => {
     await expect(aiRunHistory(employee, {})).rejects.toBeInstanceOf(AiControlError);
   });
 
+  it('keeps blocked attempts and shared Assistant usage out of individual last-run dates', async () => {
+    await runs(base.tenantId, [
+      { minutesAgo: 10 }, { minutesAgo: 2, state: 'blocked' },
+      { minutesAgo: 1, state: 'blocked', feature: 'payroll_explanation' },
+    ]);
+    const [inventory, history] = await Promise.all([
+      aiManagementView(group).then(view => aiInventoryView(group, view)), aiRunHistory(group, {}),
+    ]);
+    if (inventory.scope !== 'full') throw Error('Expected group inventory');
+    expect(history.rows.map(row => row.state)).toEqual(['blocked', 'blocked', 'completed']);
+    const chat = inventory.rows.find(row => row.key === 'chat:hr_assistant')!;
+    expect(chat.runtime.lastRun).toEqual(history.rows[2].startedAt);
+    expect(chat.runtime.use30).toMatchObject({runs: 1, blocked: 1});
+    const blockedOnly = inventory.rows.find(row => row.key === 'embedded_feature:payroll_explanation')!;
+    expect(blockedOnly.runtime.lastRun).toBeNull();
+    expect(blockedOnly.runtime.use30).toMatchObject({runs: 0, blocked: 1});
+    const reads = inventory.rows.filter(row => row.kind === 'read_binding');
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every(row => row.runtime.lastRun === null && row.runtime.use30 === null)).toBe(true);
+  });
+
   it('never shows another tenant’s runs or pauses', async () => {
     const other = await foreignTenant();
     await owner.db.execute(sql`insert into app.ai_agent_action_pause(tenant_id,action_id,paused) values(${other}::uuid,'leave.edit',true)`);
