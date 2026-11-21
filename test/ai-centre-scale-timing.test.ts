@@ -9,7 +9,8 @@
  * Output: ai-centre-scale-timing.json in the evidence folder, and one AIHR_AI_CENTRE_SCALE line per page and persona.
  * It asserts the owner's bar on the CI runner: every page's reads within PAGE_BUDGET_MS for every persona, and Record
  * readiness within STATEMENT_BOUND statements (test/ai-centre-scale-equivalence.test.ts pins the per-company and per-month
- * reads that no longer grow). It does not time session resolution, React rendering, serialisation or the network. */
+ * reads that no longer grow). The populated Workers check pins the reminder count, the pre-existing
+ * inventory projection and the scoped views for the same three personas. It does not time session resolution, React rendering, serialisation or the network. */
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
@@ -80,12 +81,30 @@ const exceptions:Page={id:'control-tower.exceptions',reads:[
   return companies.length?acknowledgedBlocksForPeriods(ctx,{companyIds:companies,payPeriods:periods}):[];}},
 ]};
 type View=Awaited<ReturnType<typeof aiManagementPageView>>;
+type Inventory=Awaited<ReturnType<typeof aiInventoryView>>;
+const PERSONAS=['group','single','multi'] as const satisfies readonly Persona[];
+const REMINDER_ACTION='attendance.missing_clock.remind';
+const REMINDER_COUNT=500;
+function withoutReminderCounts(inventory:Inventory){
+ if(inventory.scope==='registry')return inventory;
+ return {...inventory,rows:inventory.rows.map(row=>{
+  const {reminders30:_,...runtime}=row.runtime;
+  return {...row,runtime};
+ })};
+}
+function reminderCount(inventory:Inventory){
+ if(inventory.scope!=='full')throw Error('Group inventory was unavailable');
+ return inventory.rows.find(row=>row.kind==='action'&&row.id===REMINDER_ACTION)?.runtime.reminders30;
+}
+async function inventoryFor(ctx:SessionContext){
+ return aiInventoryView(ctx,await aiManagementPageView(ctx,'features','',{}));
+}
 /** AiManagementScreen (app/control-tower/agents/screen.tsx): its reads in order for one section, after the page's own. */
 const screen=(section:'overview'|'features'|'runs'|'allowances'|'spending'|'assistant'|'provider',before:readonly Read[]=[]):Page=>{
  const at=before.length?Math.max(...before.map(r=>r.stage))+1:0;
  return{id:`control-tower.agents.${section}`,reads:[...before,
   {label:'aiManagementPageView',stage:at,run:ctx=>aiManagementPageView(ctx,section,'',{})},
-  ...(section==='features'?[{label:'aiInventoryView',stage:at+1,run:(ctx:SessionContext,got:Map<string,unknown>)=>aiInventoryView(ctx,got.get('aiManagementPageView') as View).catch(()=>null)}]:[]),
+  ...(section==='features'?[{label:'aiInventoryView',stage:at+1,run:(ctx:SessionContext,got:Map<string,unknown>)=>aiInventoryView(ctx,got.get('aiManagementPageView') as View)}]:[]),
   {label:'aiManagementAlerts',stage:at+2,run:(ctx,got)=>aiManagementAlerts(ctx,got.get('aiManagementPageView') as View)},
   ...(section==='runs'?[{label:'aiRunHistory',stage:at+3,run:(ctx:SessionContext)=>isGroupAdmin(ctx)?aiRunHistory(ctx,{}, {}):Promise.resolve(null)}]:[]),
   ...(section==='allowances'?[{label:'bulkAssistantDepartments',stage:at+3,run:(ctx:SessionContext,got:Map<string,unknown>)=>(got.get('aiManagementPageView') as View).mayWriteUsers?bulkAssistantDepartments(ctx).catch(()=>[]):Promise.resolve([])}]:[]),
@@ -101,16 +120,19 @@ const agents:Page[]=[screen('overview'),screen('runs'),screen('allowances'),scre
 ];
 const PAGES:readonly Page[]=[readiness,loops,...loopPages,exceptions,...agents];
 
-let fixture:ScaleFixture;
+let fixture:ScaleFixture,firstInventory:Inventory[];
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();
  const b=await seedBase();
  for(const code of ['assistant','claims','notifications','attendance','lifecycle','payroll'])await setModule(b.tenantId,code,'active');
  fixture=await buildScaleFixture(b);
- await owner.db.insert(domainEvent).values(fixture.activeEmploymentIds.slice(0,500).map(employmentId=>({
+ firstInventory=await Promise.all(PERSONAS.map(persona=>inventoryFor(fixture.personas[persona])));
+ const employments=fixture.activeEmploymentIds.slice(0,REMINDER_COUNT);
+ if(employments.length!==REMINDER_COUNT)throw Error('Scale fixture has too few active employments');
+ await owner.db.insert(domainEvent).values(employments.map(employmentId=>({
   tenantId:b.tenantId,aggregateType:'automatic-chase',aggregateId:employmentId,
   eventType:'automatic-chase.followup-raised',actorType:'agent' as const,subjectEmploymentId:employmentId,
-  payload:{action:'attendance.missing_clock.remind',stage:'2026-01-05'},
+  payload:{action:REMINDER_ACTION,stage:'2026-01-05'},
  })));
 },300_000);
 afterAll(closeAll);
@@ -150,9 +172,16 @@ function write(report:Record<string,unknown>,failures:readonly string[]){
 }
 
 describe('AI Centre pages at group scale (71 companies, ~1,000 employments)',()=>{
+ it('adds reminder activity to the group inventory and preserves the other projections',async()=>{
+  const populated=await Promise.all(PERSONAS.map(persona=>inventoryFor(fixture.personas[persona])));
+  expect(firstInventory.map(view=>view.scope)).toEqual(['full','registry','registry']);
+  expect(reminderCount(firstInventory[0])).toBe(0);
+  expect(reminderCount(populated[0])).toBe(REMINDER_COUNT);
+  expect(populated.map(withoutReminderCounts)).toEqual(firstInventory.map(withoutReminderCounts));
+ });
  it('times each page read, counts its statements and names the slowest statements',async()=>{
   const report:Record<string,unknown>={};const lines:string[]=[];const failures:string[]=[];
-  for(const persona of ['group','single','multi'] as Persona[]){
+  for(const persona of PERSONAS){
    const ctx=fixture.personas[persona];
    for(const page of PAGES){
     const samples:Record<string,ReadResult>={};const pageMs:number[]=[];let explained:Record<string,ExplainedStatement[]>={};
