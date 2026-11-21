@@ -11,7 +11,7 @@ import uuid
 
 from controller import Release, UnixHTTPConnection, get_bytes, write_json
 from staging import Coordinator, NextStaging, activate, promote, recover
-from coordinator import PROTOCOL
+from coordinator import PROTOCOL, check_operation_route
 
 
 class App(BaseHTTPRequestHandler):
@@ -160,6 +160,15 @@ class QueueCutoverTest(TestCase):
             with self.assertRaises(ValueError):
                 activate(self.queue, self.cutover, lease, self.candidate.artifact)
         self.assertEqual("old", self.cutover.queue_state()["build_id"])
+
+    def test_legacy_install_cannot_act_on_default_cutover_batch(self):
+        self.installing()
+        held, plan = self.queue.lease(self.lease)
+        with self.assertRaisesRegex(ValueError, "shared cutover controller"):
+            check_operation_route(held, plan, {})
+        activate(self.queue, self.cutover, self.lease, self.candidate.artifact)
+        held, plan = self.queue.lease(self.lease)
+        check_operation_route(held, plan, {"AIHR_STAGING_CUTOVER_CANONICAL": "1"})
 
     def test_busy_operation_cannot_be_overtaken(self):
         self.installing()

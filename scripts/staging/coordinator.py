@@ -267,6 +267,12 @@ def canonical_live_state():
     return dict(line.split('=', 1) for line in out.splitlines() if '=' in line)
 
 
+def check_operation_route(held, plan, environment):
+    if plan_is_cutover(plan) and held['phase'] not in ('accepting', 'capturing'):
+        require(held['phase'] == 'arrived' and environment.get('AIHR_STAGING_CUTOVER_CANONICAL') == '1',
+                'Use the shared cutover controller for this staging batch')
+
+
 def environment_request(action='assert'):
     return {'protocol': PROTOCOL, 'action': action, 'actor': 'guard', 'batch': os.environ.get('AIHR_STAGING_BATCH'), 'epoch': int(os.environ.get('AIHR_STAGING_EPOCH', '0')), 'token': os.environ.get('AIHR_STAGING_TOKEN', ''), 'candidate': os.environ.get('AIHR_STAGING_CANDIDATE')}
 
@@ -284,7 +290,9 @@ def main(root=ROOT):
         if sys.argv[1] == 'guard':
             require(sys.argv[2:3] == ['--'] and len(sys.argv) > 3, 'Guard requires command after --')
             with c.operations() as operation_fd:
-                with c.transaction(): c.lease(r)
+                with c.transaction():
+                    held, plan = c.lease(r)
+                    check_operation_route(held, plan, os.environ)
                 # The command inherits the lock: even SIGKILL of this guard cannot make a still
                 # running child disappear from admission. Detached deploys also acquire their own lock.
                 raise SystemExit(subprocess.call(sys.argv[3:], pass_fds=(operation_fd,)))

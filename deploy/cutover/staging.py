@@ -220,7 +220,7 @@ def promote(queue, cutover, lease, digest):
                 "Canonical rollback baseline was not pinned")
         env = dict(os.environ, AIHR_STAGING_BATCH=held["batch"],
                    AIHR_STAGING_EPOCH=str(held["epoch"]), AIHR_STAGING_TOKEN=lease["token"],
-                   AIHR_STAGING_CANDIDATE=candidate.source)
+                   AIHR_STAGING_CANDIDATE=candidate.source, AIHR_STAGING_CUTOVER_CANONICAL="1")
         subprocess.run(
             ["/bin/bash", str(Path(__file__).with_name("canonical-deploy.sh")),
              digest, baseline.source, plan["baselineBuild"], build],
