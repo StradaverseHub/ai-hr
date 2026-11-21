@@ -27,10 +27,15 @@ printf '%s  %s\n' "$digest" build.tar.gz "$manifest" build-manifest.json "$sourc
 test "$(sha256sum "$canonical/pnpm-lock.yaml" | cut -d' ' -f1)" = "$lock"
 test "$(sha256sum "$canonical/package.json" | cut -d' ' -f1)" = "$package"
 test "$("$node" -v)" = "v$(reader .runtime.node)"
+# Keep the temporary runtime under its own hard cap with room for the
+# unpacker and host services. MemAvailable accounts for reclaimable cache.
+worker_limit_mib=768
+host_reserve_mib=192
+minimum_kib=$(( (worker_limit_mib + host_reserve_mib) * 1024 ))
 deadline=$((SECONDS + 60))
-while (( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) < 1048576 )); do
+while (( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) < minimum_kib )); do
   if (( SECONDS >= deadline )); then
-    echo 'Staging needs 1 GiB of available memory before warming the second runtime.' >&2
+    printf 'Staging needs %s MiB available before warming the second runtime.\n' "$((minimum_kib / 1024))" >&2
     exit 1
   fi
   sleep 2
@@ -93,7 +98,7 @@ ExecStart=$node $target/node_modules/next/dist/bin/next start -H 127.0.0.1 -p $p
 Restart=on-failure
 RestartSec=3
 MemoryHigh=640M
-MemoryMax=768M
+MemoryMax=${worker_limit_mib}M
 NoNewPrivileges=true
 [Install]
 WantedBy=default.target
