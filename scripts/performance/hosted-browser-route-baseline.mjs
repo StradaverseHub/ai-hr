@@ -36,9 +36,10 @@ const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusPersonnelMovement=shardInput==='personnel-movement';
 const censusPayrollFormulaEvaluation=shardInput==='payroll-formula-evaluation';
 const censusFullFixtureRecords=shardInput==='fixture-records';
+const rewardsUpload=shardInput==='rewards-upload';
 const censusFixtureRecords=censusFullFixtureRecords||censusPayrollCorrections||censusPersonnelMovement||censusPayrollFormulaEvaluation;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||rewardsUpload)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -705,6 +706,67 @@ const censusTimeoutPaths=[
  '/admin/rewards/bonus-matrices','/admin/rewards/salary-structures','/admin/rewards/uploaded',
  '/admin/users/access','/assistant/rewards/calendar','/mobile-preview',
 ];
+
+async function seedRewardsUploadOptions(owner,fixture){
+ const [group,company]=fixture.users;
+ assert.equal(group.role,'groupHR');
+ assert.equal(company.role,'companyHR');
+ assert.equal(group.tenantId,company.tenantId);
+ const grants=await owner`
+  insert into reward_setup_grant (tenant_id,user_id,company_id,role,valid_from,created_by,reason)
+  values (${group.tenantId}::uuid,${group.userId}::uuid,null,'gr',date '2000-01-01',${group.userId}::uuid,'Fictional upload timing'),
+   (${company.tenantId}::uuid,${company.userId}::uuid,${company.companyId}::uuid,'gr',date '2000-01-01',
+    ${group.userId}::uuid,'Fictional upload timing')
+  returning id
+ `;
+ assert.equal(grants.length,2);
+ const companies=await owner`select id from company where tenant_id=${group.tenantId}::uuid and archived_at is null order by legal_name,id`;
+ const units=await owner`
+  insert into business_unit (tenant_id,company_id,code,name)
+  select ${group.tenantId}::uuid,c.id,'FIC-UP-'||row_number() over(order by c.id,n), 'Fictional upload unit'
+  from company c cross join generate_series(1,2) as copies(n)
+  where c.tenant_id=${group.tenantId}::uuid and c.archived_at is null
+  returning id,company_id as "companyId"
+ `;
+ assert.equal(companies.length,70);
+ assert.equal(units.length,140);
+ return {companies,units};
+}
+
+async function measureRewardsUpload(fixture){
+ const require=createRequire(join(process.cwd(),'package.json'));
+ browser=await require('playwright').chromium.launch();
+ report.rewardsUpload=[];
+ for(const actor of fixture.users.slice(0,2)){
+  const {companies,units}=fixture.rewardsUpload;
+  const companyIds=companies.map(company=>company.id).filter(id=>actor.role==='groupHR'||id===actor.companyId);
+  const unitIds=units.filter(unit=>companyIds.includes(unit.companyId)).map(unit=>unit.id).sort();
+  assert.equal(companyIds.length,actor.role==='groupHR'?70:1);
+  assert.equal(unitIds.length,actor.role==='groupHR'?140:2);
+  const context=await signedInContext(actor);
+  try{
+   const page=await context.newPage();
+   await page.addInitScript(observeStartup);
+   for(const pass of ['first','repeat']){
+    const row={role:actor.role,pass,ready:false};
+    report.rewardsUpload.push(row);save();
+    const start=performance.now();
+    const response=await page.goto(origin+'/admin/rewards/uploaded',{waitUntil:'commit',timeout:15000});
+    row.responseMs=Math.round(performance.now()-start);
+    row.status=response?.status();save();
+    assert.equal(row.status,200);
+    const form=page.locator('main form').filter({has:page.locator('select[name="businessUnitId"]')});
+    await form.locator('button[type="submit"]').waitFor({state:'visible',timeout:15000});
+    const optionValues=async name=>form.locator('select[name="'+name+'"] option').evaluateAll(options=>options.map(option=>option.value));
+    assert.deepEqual(await optionValues('companyId'),companyIds);
+    assert.deepEqual((await optionValues('businessUnitId')).sort(),unitIds);
+    assert.equal((await optionValues('cycleId')).includes(''),actor.role==='groupHR');
+    Object.assign(row,{ready:true,readyMs:Math.round(performance.now()-start),companies:companyIds.length,units:unitIds.length});
+    save();
+   }
+  }finally{await context.close();}
+ }
+}
 
 async function measureCensusTimeoutFollowUp(fixture){
  const routes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
@@ -1554,6 +1616,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
+   if(rewardsUpload)fixture.rewardsUpload=await seedRewardsUploadOptions(owner,fixture);
    if(censusFullFixtureRecords){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
@@ -1602,7 +1665,7 @@ try{
  report.fixture.joinersSeeded=true;
  report.fixtureVerified=true;
  if(!fixtureOnly){
-  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords)await seedNotificationReads(fixture);
+  if(staticShard===null&&!retryCensusTimeouts&&!censusFixtureRecords&&!rewardsUpload)await seedNotificationReads(fixture);
   app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',AIHR_ASSISTANT_OPEN_PROFILE:'true',AIHR_SHELL_OPEN_PROFILE:'true',AIHR_MOBILE_PREVIEW_READ_TRACE:'true'});
   await waitForApp();
@@ -1619,7 +1682,8 @@ try{
     if(censusFullFixtureRecords)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
    }
    finally{await db.end({timeout:5});}
-  }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
+  }else if(rewardsUpload)await measureRewardsUpload(fixture);
+  else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
   else if(staticShard!==null)await measureStaticPageCensus(fixture,staticShard);
   else{
    await measureRoutes(fixture);
