@@ -315,6 +315,47 @@ async function organisationLifecycleRoutes(db, fixture) {
   ];
 }
 
+async function performanceRoutes(db, fixture) {
+  const [group, company, manager, , employee] = fixture.users;
+  assert.deepEqual([group.role, company.role, manager.role, employee.role], ['groupHR', 'companyHR', 'manager', 'employee']);
+  const { cycleId, name } = fixture.performanceRecords;
+  const [subject] = await db`
+    select r.id, r.reviewer_employment_id
+    from performance_review r join review_cycle c on c.id = r.cycle_id and c.tenant_id = r.tenant_id
+    where c.id = ${cycleId}::uuid and c.tenant_id = ${employee.tenantId}::uuid and c.status = 'open'
+      and c.company_id = ${employee.companyId}::uuid and r.employment_id = ${employee.employmentId}::uuid
+  `;
+  assert.equal(subject?.reviewer_employment_id, manager.employmentId, 'Expected the seeded subject-to-manager review');
+  const cycle = '/performance/' + cycleId;
+  const reviewHeading = `${employee.name} · ${name}`;
+  return [
+    ...[group, company].flatMap(actor => [
+      {
+        actor, template: '/performance/[cycleId]', path: cycle, exactHeading: name,
+        witness: `a[href="${cycle}/cycle/calendar"]`,
+      },
+      {
+        actor, template: '/performance/[cycleId]/[section]/[tab]', path: cycle + '/cycle/calendar',
+        exactHeading: 'Cycle', content: name, exactContent: true,
+        witness: `form:has(input[name="cycleId"][value="${cycleId}"]) button[type="submit"]`,
+      },
+      {
+        actor, template: '/performance/[cycleId]/release', path: cycle + '/release',
+        exactHeading: 'Release results', content: name, exactContent: true,
+        witness: 'form select[name="companyId"]',
+      },
+    ]),
+    {
+      actor: employee, template: '/performance/review/[reviewId]', path: '/performance/review/' + subject.id,
+      exactHeading: reviewHeading, content: 'KPI scorecard', exactContent: true,
+    },
+    {
+      actor: manager, template: '/performance/team/[reviewId]', path: '/performance/team/' + subject.id,
+      exactHeading: reviewHeading, content: 'KPI scorecard', exactContent: true,
+    },
+  ];
+}
+
 async function payrollCorrectionRoutes(db, fixture) {
   const [group, company] = fixture.users;
   const subject = fixture.users[4];
@@ -356,7 +397,10 @@ async function payrollCorrectionRoutes(db, fixture) {
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections }) {
   const before = payrollCorrections ? await payrollCorrectionState(db, fixture) : null;
   const cases = payrollCorrections ? await payrollCorrectionRoutes(db, fixture)
-    : [...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture), ...await organisationLifecycleRoutes(db, fixture)];
+    : [
+      ...await fixtureRoutes(db, fixture), ...await workLocationRoutes(db, fixture),
+      ...await organisationLifecycleRoutes(db, fixture), ...await performanceRoutes(db, fixture),
+    ];
   assert(cases.every(row => compiledPages.has(row.template)), 'A planned record route is absent from the measured build');
   report.fixtureRecordCensus = { plannedTemplates: new Set(cases.map(row => row.template)).size, plannedJourneys: cases.length, observations: [] };
   const rows = report.fixtureRecordCensus.observations;

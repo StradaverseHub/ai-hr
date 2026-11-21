@@ -68,5 +68,17 @@ try{
   const request=await lifecycle.createAssetRequest(ctx,{companyId,catalogueId:catalogue.id,justification});
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
+ if(env.PERF_LIFECYCLE_RECORDS==='true'){
+  const {createCycle,configureOnehrCycle,openCycle}=await source('packs/performance/service.ts');
+  const year=fixture.today.slice(0,4);
+  const name='Fictional Browser Performance Cycle';
+  const {cycleId}=await createCycle(ctx,{
+   companyId:company.companyId,name,periodStart:year+'-01-01',periodEnd:year+'-12-31',
+  });
+  await configureOnehrCycle(ctx,cycleId,null);
+  const opened=await openCycle(ctx,{cycleId});
+  assert(opened.reviewsSpawned>0,'Expected a populated OneHR cycle');
+  fixture.performanceRecords={cycleId,name};
+ }
  writeFileSync(path,JSON.stringify(fixture),{mode:0o600});
 }finally{await Promise.all([owner.client.end(),client.end()]);}
