@@ -1127,15 +1127,21 @@ async function measureTp3Catalogue(fixture){
    await readyContent(page,actor,path,()=>timeout,undefined,fixture);
    const form=page.locator('form:has(input[name="tp3Form"])');
    await form.getByRole('button',{name:copies.en.saveDraft,exact:true}).waitFor({state:'visible',timeout});
+   row.initialContentVisibleMs=Math.round(performance.now()-openStarted);
+   row.step='form-interactive';
+   const localeButton=page.locator('button[aria-label="Change language"]:enabled');
+   await localeButton.waitFor({state:'visible',timeout});
    const month=form.locator('select[name="deductionMonth"]:enabled');
    await month.waitFor({state:'visible',timeout});
    row.initialFormReadyMs=Math.round(performance.now()-openStarted);
    await month.selectOption('3',{timeout});
+   assert.equal(await month.locator('option[value="3"]').evaluate(option=>option.defaultSelected),true,
+    'The client form did not retain the deduction month as its native default');
    row.initial=(await documentTiming(page))?.appScripts;
    assert(row.initial?.decodedBodyBytes>0);
    row.step='language-switch';
    const started=performance.now();
-   await page.getByRole('button',{name:'Change language',exact:true}).click({timeout});
+   await localeButton.click({timeout});
    await page.locator('button[name="locale"][value="ms"]:visible').click({timeout});
    await form.getByRole('button',{name:copies.ms.saveDraft,exact:true}).waitFor({state:'visible',timeout});
    assert.equal(await page.locator('html').getAttribute('lang'),'ms');
