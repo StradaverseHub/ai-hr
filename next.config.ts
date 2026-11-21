@@ -120,7 +120,7 @@ export default (phase: string) => {
     ...(building && {
       turbopack: {
         resolveAlias: {
-          '@/i18n/catalogs': { browser: './i18n/premerged-client-catalogs.ts' },
+          '@/i18n/client-catalogue': { browser: './i18n/premerged-client-catalogs.ts' },
         },
       },
     }),
