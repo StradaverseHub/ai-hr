@@ -134,7 +134,7 @@ jobs:
           fi
           if [[ "$REUSE_BUILD" == true ]] && {
             [[ "$BROWSER_MIXED_LOAD" != true || "$ESTABLISHED_ATTENDANCE" != true || "$BROWSER_FIXTURE_ONLY" == true || "$RUN_BUILD" == true ]] ||
-            [[ "$EXPECTED_SHA" != a00a15863ecfcd98962573ecd9f63f4cf9997df4 ]];
+            [[ "$EXPECTED_SHA" != 9bbb0ad9a6011f7ea3d2b56e02fbab53bf906323 ]];
           }; then exit 2; fi
           node .github/ci/focused-checks.mjs selection
         env:
@@ -234,8 +234,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           build_source=a00a15863ecfcd98962573ecd9f63f4cf9997df4
-          test "$AIHR_CI_HEAD" = "$build_source"
+          test "$AIHR_CI_HEAD" = 9bbb0ad9a6011f7ea3d2b56e02fbab53bf906323
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
+          git merge-base --is-ancestor "$build_source" "$AIHR_CI_HEAD"
+          harness_diff="$(printf 'M\t%s\n' scripts/performance/mixed-workflows.mjs scripts/performance/mixed-workflows.test.mjs)"
+          test "$(git diff --name-status "$build_source" "$AIHR_CI_HEAD")" = "$harness_diff"
           archive="$(mktemp "$RUNNER_TEMP/shell-readiness-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136639790563 --jq '
