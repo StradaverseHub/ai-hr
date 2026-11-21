@@ -48,7 +48,8 @@ const combinedGroupArtifacts=new Map([
  ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
 ]);
 const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
-const combinedGroupBuild=Boolean(combinedGroupArtifact)&&groupScale&&establishedAttendance
+const detachedShellBuild='5542ba9a2d2cbe6fa7c3918f342f3936cb3e61e4';
+const combinedGroupBuild=(Boolean(combinedGroupArtifact)||env.AIHR_CI_HEAD===detachedShellBuild)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
@@ -757,6 +758,17 @@ async function measureMixedLoad(command,fixture){
    const steady=data.steady;
    const roles=['employee','manager','companyHR','groupHR'];
    const kinds=['navigation','read','write'];
+   const preview=data.shellPreviewReplay;
+   if(sha===detachedShellBuild){
+    const outcomes=['ready','unavailable','failed','navigationCancelled'];
+    const rows=roles.map(role=>({role,...counts(preview?.roles?.[role],['started',...outcomes]),
+     readyLatency:counts(preview?.roles?.[role]?.readyLatency,sampleMetrics)}));
+    const complete=preview?.protocol==='after-document-complete-v1'&&rows.every(row=>
+     Number.isSafeInteger(row.started)&&row.started>0&&outcomes.every(key=>Number.isSafeInteger(row[key]))
+     &&row.started===outcomes.reduce((total,key)=>total+row[key],0)&&row.ready===row.readyLatency.samples);
+    report.shellPreviewReplay={protocol:complete?preview.protocol:null,accountingComplete:complete,rows};
+   }
+
    const knownRoutes=new Set([...Object.values(routePools).flat(),'/payroll/[batchId]',
     '/attendance/my-records/[date]','/attendance/application-history/[id]','/api/personnel/search']);
    const samplesPath=join(driverEvidence,'http-samples.json');
