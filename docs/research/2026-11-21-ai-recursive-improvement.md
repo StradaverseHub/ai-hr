@@ -138,3 +138,16 @@ An evaluator can score a frozen candidate and its parent with the existing catal
 The version 1 case file carries `modelDigest`, `parentRules`, `candidateRules`, `parentDigest`, `candidateDigest`, `minimumGain` and 2–32 `cases`. The strategy digests use the existing guidance contract and can be taken from the frozen improvement report. The candidate adds one approved guidance rule to its parent. Each case uses the `ProtectedAnswerFixture` shape with an ID, intent, canonical read presentation and explanations, selected card references, and an independently authored expected plan. Use fictional content only. Supported intents are attendance, onboarding, replacement credits and notifications. Preflight rejects case IDs and answer-catalogue shapes that repeat within the file, and shapes already exposed to the current development loop, even with different identifiers or numeric references.
 
 Both arms use the same model and answer format. The report contains only digests, the predefined gain threshold, total cases, paired gains and regressions, rejected replies and token counts. The candidate must meet the threshold with zero regressions and zero rejected replies. The tooling tests use fictional test doubles. A successful tool test supplies no independent quality result or release approval.
+
+### Choosing an explanation when multiple findings apply
+
+Seven of the eight original development and validation cases had exactly one substantive source finding after the generic scope statement was removed. The application could select that finding directly. To make the model decision meaningful, the next experiment used attendance, replacement credits and notifications with two canonical findings on each source. Each source was paired with two different fictional user goals. The benchmark measured only which explanation would accompany application-supplied facts. It kept fact accuracy outside the score.
+
+At source `7f8709ddaf88b82a087886a52bd56d79b91afb1c`, run `node --import tsx scripts/experiments/leave-improvement-cli.ts qwen2.5:3b NEW_REPORT.json --protected-explanation-priority`. The experiment used the same Qwen 2.5 3B digest `357c53fb659c5076de1d65ccb0b397446227b71a42be9d1603d46168015c9e4b` and six fictional cases with digest `d0a7308f2636542ca8de8b044c1fc4d81b03c2a4e8ecb5ded1a138fc55c11c7c`. Both arms received the same closed explanation codes in the same order. The second arm also received a source-authored focus describing the fictional request. The prompts contained only the module, the available codes and the second arm’s authored focus.
+
+| Model input | Correct explanation | Rejected replies |
+| --- | ---: | ---: |
+| Available explanations only | 3/6 | 0/6 |
+| Available explanations and explicit focus | 6/6 | 0/6 |
+
+The 12 calls used 1,136 reported input tokens and 173 output tokens. The result shows that this model can use a supplied goal to choose among competing findings on these development cases. The goal labels were authored in advance. Serving intent recognition, autonomous revision, independent holdout performance and comparison with a deterministic mapping each need separate evidence. [Benchmark checks](https://github.com/StradaverseHub/ai-hr/actions/runs/44902210540)
