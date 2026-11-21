@@ -172,7 +172,8 @@ jobs:
             [[ "$REPLACEMENT_CATALOGUE" != present || "$LOCK_LOG_CALIBRATION_ONLY" == true || "$LOCK_LOG_SHORT_WINDOW" == true ]];
           }; then exit 2; fi
           combined_group_build=false
-          if [[ "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 && "$MIXED_GROUP_SCALE" == true &&
+          if [[ ( "$EXPECTED_SHA" == 5175d387846c18fcc83ef96091cb1b4e1b538241 ||
+                  "$EXPECTED_SHA" == 71e0dceb1a393817f3040518e82dc845a27700b0 ) && "$MIXED_GROUP_SCALE" == true &&
                 "$BROWSER_MIXED_LOAD" == true && "$ESTABLISHED_ATTENDANCE" == true &&
                 "$REPLACEMENT_CATALOGUE" == present && "$MIXED_DATABASE_TOPOLOGY" == transaction-pool &&
                 "$SHELL_PERMISSION_VARIANT" == contract-optimized ]]; then

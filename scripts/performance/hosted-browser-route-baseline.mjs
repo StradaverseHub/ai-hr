@@ -42,8 +42,11 @@ assert(['none','contract-control','contract-optimized'].includes(shellPermission
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
-const combinedGroupCandidate='5175d387846c18fcc83ef96091cb1b4e1b538241';
-const combinedGroupBuild=env.AIHR_CI_HEAD===combinedGroupCandidate&&groupScale&&establishedAttendance
+const combinedGroupCandidates=new Set([
+ '5175d387846c18fcc83ef96091cb1b4e1b538241',
+ '71e0dceb1a393817f3040518e82dc845a27700b0',
+]);
+const combinedGroupBuild=combinedGroupCandidates.has(env.AIHR_CI_HEAD)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
@@ -591,7 +594,7 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
 
 async function withMixedContractNavigationComparison(work){
  if(shellPermissionVariant==='none')return work();
- assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||(combinedGroupBuild&&sha===combinedGroupCandidate));
+ assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||combinedGroupBuild);
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
