@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting, selectProtectedLeaveCount } from '../scripts/experiments/protected-leave-comparison';
+import { scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
@@ -465,6 +466,57 @@ describe('protected leave comparison', () => {
       {...request,reads:[{...read,cards:[{...card,facts:[fact,{...fact,fact:3}]}]}]},
       {...request,reads:[{...read,cards:[card,{...card,card:1}]}]},
     ]) expect(select(input)).toBeNull();
+  });
+});
+
+describe('evaluator-owned leave routing suite', () => {
+  const candidateSha = 'a'.repeat(40);
+  const balance = { leaveType: 'Fictional vacation', available: -0.75, taken: 2.5, pending: 1, withheld: false };
+  const company = { company: 'Fictional primary company', balances: [balance] };
+  const otherCompany = { company: 'Fictional second company', balances: [{ ...balance, taken: 17.25 }] };
+  const question = 'My leave balance';
+  const defer = { kind: 'defer' };
+  const cases = [
+    { scenario: { question, employments: [company] },
+      expected: { kind: 'direct', employment: 0, balance: 0, field: 'available', value: -0.75 } },
+    { scenario: { question: 'How much leave have I taken?', employments: [company, otherCompany],
+      clarification: { slot: 'employment', answer: otherCompany.company } },
+      expected: { kind: 'direct', employment: 1, balance: 0, field: 'taken', value: 17.25 } },
+    { scenario: { question, employments: [company, otherCompany] }, expected: defer },
+    { scenario: { question, employments: [{ ...company, balances: [{ ...balance, available: null, withheld: true }] }] }, expected: defer },
+    { scenario: { question: 'Show me Mina Fictional’s balance', employments: [company] }, expected: defer },
+  ];
+  function frozen(rows = cases) {
+    const bytes = Buffer.from(JSON.stringify({ version: 1, candidateSha, cases: rows }));
+    return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
+  }
+
+  it('validates the selected employment, field and value, and returns aggregate results only', () => {
+    const { bytes, digest } = frozen();
+    const score = scoreProtectedLeaveRoutingHoldout(bytes, digest, candidateSha);
+    expect(score).toEqual({ evidence: 'offline_leave_routing_holdout', candidateSha, holdoutDigest: digest,
+      cases: 5, expectedDirect: 2, correctDirect: 2, correctDeferrals: 3, wrongDirect: 0,
+      unexpectedDirect: 0, missedDirect: 0, meetsThreshold: true, releaseAuthorized: false });
+    expect(JSON.stringify(score)).not.toMatch(/Fictional|17\.25|leave balance/);
+  });
+
+  it('fails an incorrect count or subject and an answer where the evaluator requires deferral', () => {
+    const rows = cases.map((item, index) => index === 0 ? { ...item, expected: { ...item.expected, value: 0 } }
+      : index === 1 ? { ...item, expected: defer }
+      : index === 2 ? { ...item, expected: { kind: 'direct', employment: 0, balance: 0, field: 'available', value: -0.75 } } : item);
+    const { bytes, digest } = frozen(rows);
+    expect(scoreProtectedLeaveRoutingHoldout(bytes, digest, candidateSha)).toMatchObject({
+      meetsThreshold: false, wrongDirect: 1, unexpectedDirect: 1, missedDirect: 1, correctDeferrals: 2 });
+  });
+
+  it('refuses a mismatched commit or digest, a repeated scenario and a one-sided suite', () => {
+    const { bytes, digest } = frozen();
+    expect(() => scoreProtectedLeaveRoutingHoldout(bytes, digest, 'b'.repeat(40))).toThrow('Invalid frozen leave routing suite');
+    expect(() => scoreProtectedLeaveRoutingHoldout(bytes, 'b'.repeat(64), candidateSha)).toThrow('Invalid frozen protected holdout');
+    for (const rows of [[...cases, cases[0]], cases.map(item => ({ ...item, expected: defer }))]) {
+      const input = frozen(rows);
+      expect(() => scoreProtectedLeaveRoutingHoldout(input.bytes, input.digest, candidateSha)).toThrow('Use distinct fictional scenarios');
+    }
   });
 });
 
