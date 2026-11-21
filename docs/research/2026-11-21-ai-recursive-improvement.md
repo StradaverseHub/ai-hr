@@ -255,3 +255,12 @@ The paired version 2 suite adds `modelDigest` and `minimumSavedCalls` to the sam
 ```sh
 node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG NEW_REPORT.json --paired-leave-routing /path/to/private/cases.json SHA256
 ```
+
+Two evaluators can sign their aggregate reports after the coordinator freezes a shared plan. Each evaluator keeps their own suite and private signing key. The coordinator records the plan's SHA-256 independently before evaluation. The plan names `version: 1`, `trialId`, `tenantId`, `authorId`, `approverId`, `candidateSha`, `candidateDigest`, `baselineDigest`, `modelDigest`, `answerFormatDigest`, `generationOptionsDigest`, `committedAt`, `expiresAt` and two `evaluators`. Each evaluator entry contains `id`, the Ed25519 public key's base64url JWK `x` value as `publicKey`, `holdoutDigest` and `minimumSavedCalls`. The four participant IDs, both keys and both suite digests must be distinct. The plan expires within 72 hours.
+
+```sh
+node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts sign PLAN.json PLAN_SHA256 EVALUATOR_UUID REPORT.json PRIVATE.pem RECEIPT.json
+node --import tsx scripts/experiments/protected-leave-routing-receipt-cli.ts verify PLAN.json PLAN_SHA256 RECEIPT_ONE.json RECEIPT_TWO.json
+```
+
+Keep these files outside the checkout. The private key must have owner-only access, and the signing command creates a new receipt. Verification uses the plan digest from the coordinator's records and checks both signatures, scope, model and decoding settings, arithmetic and thresholds. It verifies what the enrolled evaluators attested. The coordinator establishes their identities and independence, and the release owner still decides whether evidence is acceptable for a bounded trial. No case contents or deployment authority appear in the receipts. [Receipt verifier](../../scripts/experiments/protected-leave-routing-receipt.ts)

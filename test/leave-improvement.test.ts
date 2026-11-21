@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
 import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
 import { scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
+import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../scripts/experiments/protected-leave-routing-receipt';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
@@ -560,6 +561,52 @@ describe('evaluator-owned leave routing suite', () => {
     await expect(scorePairedLeaveRoutingHoldout(excessive.bytes, excessive.digest, candidateSha, modelDigest, guard)).rejects.toThrow('Saved-call target');
     await expect(scorePairedLeaveRoutingHoldout(regressed.bytes, regressed.digest, candidateSha, 'a'.repeat(64), guard)).rejects.toThrow('Invalid frozen paired leave suite');
     expect(calls).toBe(0);
+  });
+
+  it('authenticates two independently enrolled fictional scorers without exposing the held cases', async () => {
+    const id = (suffix: string) => `11111111-1111-4111-8111-${suffix.padStart(12, '0')}`;
+    const keys = [generateKeyPairSync('ed25519'), generateKeyPairSync('ed25519')];
+    const inputs = [pair(), pair([{ ...cases[0], scenario: { ...cases[0].scenario, question: 'How much leave do I have?' } }, ...cases.slice(1)])];
+    const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
+    const answerFormatDigest = routingDigest('json');
+    const plan = {
+      version: 1, trialId: id('1'), tenantId: id('2'), authorId: id('3'), approverId: id('4'),
+      candidateSha, candidateDigest: 'c'.repeat(64), baselineDigest: 'b'.repeat(64),
+      modelDigest, generationOptionsDigest: routingDigest(generationOptions), answerFormatDigest,
+      committedAt: '2026-11-21T00:00:00Z', expiresAt: '2026-11-22T00:00:00Z',
+      evaluators: inputs.map((input, index) => ({ id: id(String(index + 5)), publicKey: keys[index].publicKey.export({format:'jwk'}).x,
+        holdoutDigest: input.digest, minimumSavedCalls: 2 })),
+    };
+    const freezePlan = (value: unknown) => {
+      const bytes = Buffer.from(JSON.stringify(value));
+      return { bytes, digest: createHash('sha256').update(bytes).digest('hex') };
+    };
+    const committed = freezePlan(plan), now = new Date('2026-11-21T06:00:00Z');
+    const reports = await Promise.all(inputs.map(async input => ({
+      ...await scorePairedLeaveRoutingHoldout(input.bytes, input.digest, candidateSha, modelDigest, baseline()),
+      answerFormatDigest, generationOptions, model:'fictional:fixture',
+    })));
+    const receipts = reports.map((report, index) => signPairedLeaveEvaluation(committed.bytes, committed.digest,
+      plan.evaluators[index].id, report, keys[index].privateKey, now));
+    expect(verifyPairedLeaveEvaluations(committed.bytes, committed.digest, receipts, now))
+      .toMatchObject({ candidateSha, trialId:plan.trialId, tenantId:plan.tenantId, evaluatorCount:2, savedCalls:4, releaseAuthorized:false });
+    expect(JSON.stringify(receipts)).not.toMatch(/Fictional|17\.25|leave balance/);
+
+    const refused = 'Frozen paired leave evidence could not be confirmed';
+    const [first, second] = receipts;
+    expect(() => verifyPairedLeaveEvaluations(committed.bytes, committed.digest, [first, first], now)).toThrow(refused);
+    expect(() => verifyPairedLeaveEvaluations(committed.bytes, committed.digest, [{ ...first,
+      report:{ ...first.report, baselineInputTokens: first.report.baselineInputTokens + 1 } }, second], now)).toThrow(refused);
+    expect(() => verifyPairedLeaveEvaluations(committed.bytes, committed.digest, receipts, new Date(plan.expiresAt))).toThrow(refused);
+    expect(() => signPairedLeaveEvaluation(committed.bytes, committed.digest, plan.evaluators[0].id,
+      reports[0], keys[1].privateKey, now)).toThrow(refused);
+    expect(() => signPairedLeaveEvaluation(committed.bytes, committed.digest, plan.evaluators[0].id,
+      { ...reports[0], regressions:1 }, keys[0].privateKey, now)).toThrow(refused);
+    const conflicted = freezePlan({ ...plan, approverId: plan.evaluators[0].id });
+    expect(() => signPairedLeaveEvaluation(conflicted.bytes, conflicted.digest, plan.evaluators[0].id,
+      reports[0], keys[0].privateKey, now)).toThrow(refused);
+    const replay = freezePlan({ ...plan, tenantId:id('8') });
+    expect(() => verifyPairedLeaveEvaluations(replay.bytes, replay.digest, receipts, now)).toThrow(refused);
   });
 });
 
