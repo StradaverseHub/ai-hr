@@ -575,7 +575,7 @@ async function calibrateAccessServerLog({containerId,dockerConfig,fixture}){
 
 async function withMixedContractNavigationComparison(work){
  if(shellPermissionVariant==='none')return work();
- assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||(freshCombinedGroup&&sha===combinedGroupCandidate));
+ assert(sha==='cddd7cebf757d0392ed06bead78300732fd54256'||(combinedGroupBuild&&sha===combinedGroupCandidate));
  assert.equal(dbEnv.MIGRATION_DATABASE_URL,'postgres://postgres@127.0.0.1:5433/ai_hr_dev');
  const name=`aihr-ci-${pgEnv.GITHUB_RUN_ID}-${pgEnv.GITHUB_RUN_ATTEMPT}-${pgEnv.AIHR_CI_UNIT}`;
  assert(/^aihr-ci-\d+-\d+-db-1$/.test(name));
