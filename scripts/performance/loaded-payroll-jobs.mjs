@@ -38,3 +38,25 @@ export function projectLoadedPayrollJobs(input) {
     job[field]?.active === 500 && job[field].inSteadyWindow);
   return { state: jobs.length === 2 && jobs.every(verifiedAtFullLoad) ? 'verified-at-steady-load' : 'incomplete', jobs };
 }
+
+/** A snapshot after client traffic settled. It cannot establish in-window acknowledgement. */
+export function projectPayrollAfterTraffic(input) {
+  if (input?.status === 'unavailable') return { status: 'unavailable', rows: [] };
+  if (input?.status !== 'checked') return null;
+  const invalid = { status: 'invalid', rows: [] };
+  if (!Array.isArray(input.rows) || input.rows.length > 2) return invalid;
+
+  const batchStates = new Set(['draft', 'processing', 'processed', 'closed']);
+  const jobStates = new Set(['queued', 'preparing', 'running', 'finalizing', 'discarding', 'completed', 'failed', 'cancelled']);
+  const count = value => Number.isInteger(value) && value >= 0 && value <= 1000;
+  const rows = [];
+  for (const row of input.rows) {
+    if (!row) return invalid;
+    const {tenant, batchState, jobCount, jobState, payslipCount} = row;
+    if (![0, 1].includes(tenant) || rows.some(observed => observed.tenant === tenant) ||
+        !(batchStates.has(batchState) || batchState === null) || !count(jobCount) || !count(payslipCount) ||
+        (jobCount === 1 ? !jobStates.has(jobState) : jobState !== null)) return invalid;
+    rows.push({tenant, batchState, jobCount, jobState, payslipCount});
+  }
+  return { status: 'checked', rows };
+}
