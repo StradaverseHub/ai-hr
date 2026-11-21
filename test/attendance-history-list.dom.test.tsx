@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const { list, options, cookie } = vi.hoisted(() => ({ list: vi.fn(), options: vi.fn(), cookie: vi.fn() }));
@@ -9,7 +9,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['company'] }) }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: cookie }) }));
-vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
+vi.mock('next-intl/server', () => ({ getTranslations: async (namespace:string) =>
+  createTranslator({ locale: 'en', messages: en, namespace, onError: error => { throw error; } }) }));
+vi.mock('../db/client', () => ({ withBackgroundReadWork: (_tenant:unknown, read:()=>unknown) => read() }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceApplicationHistory: list, attendanceApplicationFilterOptions: options }));
 vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTable: ({ returnTo }: { returnTo: string }) => <a href={`/detail?returnTo=${encodeURIComponent(returnTo)}`}>Saved context</a> }));
 // The Offline punches tab (draft 0647) reads the database; without the draft it is absent, which this suite pins.
@@ -24,7 +26,10 @@ beforeEach(() => {
   options.mockResolvedValue({ employees: [{ id: 'employee', name: 'Fictional worker', employeeCode: '0007', companyId: 'company', company: 'Fictional company', departmentId: null, department: null, businessUnitId: null, businessUnit: null, terminatedOn: null }], companies: [], departments: [], businessUnits: [], grades: [], divisions: [] });
 });
 afterEach(cleanup);
-async function show(query: Record<string, string> = {}) { render(<NextIntlClientProvider locale="en" messages={en}>{await Page({ searchParams: Promise.resolve(query) })}</NextIntlClientProvider>); }
+async function show(query: Record<string, string> = {}) {
+  const page = await Page({ searchParams: Promise.resolve(query) });
+  await act(async () => { render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>); });
+}
 it('defaults to Pending and All Employees, with extra filters hidden and counts on every requested tab', async () => {
   await show();
   expect(list).toHaveBeenCalledWith({}, ['company'], expect.objectContaining({ status: 'pending' }));
@@ -77,4 +82,22 @@ it('shows no Offline punches tab without draft 0647, and the tab with its count 
   expect(tab).not.toHaveAttribute('aria-current');
   // The status tabs never carry the offline view's own keys.
   expect(new URL(screen.getByRole('link', { name: 'Pending 3' }).getAttribute('href')!, 'http://localhost').searchParams.get('view')).toBeNull();
+});
+
+
+it('shows the History list while the optional controls wait and prevents a partial form submit', async () => {
+  const ready = await options();
+  options.mockClear();
+  let finish!: (value: typeof ready) => void;
+  options.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  await show({ employmentId: 'employee', query: 'keep this filter', status: 'approved' });
+  expect(screen.getByRole('link', { name: 'Approved 5' })).toHaveAttribute('aria-current', 'page');
+  expect(screen.getByRole('link', { name: 'Saved context' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: en.attendanceHistory.filter })).toBeNull();
+  await act(async () => { finish(ready); });
+  expect(options).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: en.attendanceHistory.filter })).toBeEnabled();
+  const form = document.querySelector('form')!;
+  expect(new FormData(form).get('query')).toBe('keep this filter');
+  expect(new FormData(form).get('employmentId')).toBe('employee');
 });
