@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),claimCount:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),identityEnrollment:undefined as boolean|undefined,tasks:vi.fn(),claimCount:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -21,7 +21,7 @@ vi.mock('../core/assistant-launcher',()=>({assistantShellFor:async()=>({allowed:
 // New capability owners are independent of SMTP installation enrollment and the legacy rail.
 // This shell test controls those boundaries; their actual permission algebra is covered by DB cases.
 vi.mock('../core/shell-navigation-access',()=>({readShellNavigationAccess:async()=>({
- accessConfigurationAvailable:false,workforceAvailable:false,onboarded:m.onboarded,
+ accessConfigurationAvailable:false,workforceAvailable:false,onboarded:m.onboarded,identityEmailOperator:m.identityEnrollment,
 })}));
 vi.mock('../packs/claims/service',()=>({countPendingClaimTasks:m.claimCount}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
@@ -49,7 +49,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.claimCount.mockReset();m.claimCount.mockResolvedValue(0);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.operator.mockReset();m.identityEnrollment=undefined;m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.claimCount.mockReset();m.claimCount.mockResolvedValue(0);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -127,6 +127,20 @@ describe('root layout SMTP preview authority',()=>{
  ])('keeps preview eligibility separate from the broader rail for $roles',async({roles,preview,rail})=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles,grants:roles.map(role=>({role,companyId:null}))});m.operator.mockResolvedValue(false);
   const props=sidebarProps(await Layout({children:<span>Fixture content</span>}));expect(props).toBeDefined();expect(props!.isAdmin).toBe(rail);expect(props!.canPreviewIdentityEmail).toBe(preview);expect(props!.canReviewProfileChanges).toBe(preview);expect(props!.canConfigureIdentityEmail).toBe(false);
+ });
+ it('skips a second authentication read after the native shell rules out enrolment',async()=>{
+  m.session.mockResolvedValue({tenantId:'tenant',userId:'ordinary',roles:['employee'],grants:[]});
+  m.identityEnrollment=false;
+  const props=sidebarProps(await Layout({children:null}));
+  expect(props!.canConfigureIdentityEmail).toBe(false);
+  expect(m.operator).not.toHaveBeenCalled();
+ });
+ it('still verifies the provider identity for an enrolled installation operator',async()=>{
+  const session={tenantId:'tenant',userId:'operator',roles:['employee'],grants:[]};
+  m.session.mockResolvedValue(session);m.identityEnrollment=true;m.operator.mockResolvedValue(false);
+  const props=sidebarProps(await Layout({children:null}));
+  expect(props!.canConfigureIdentityEmail).toBe(false);
+  expect(m.operator).toHaveBeenCalledExactlyOnceWith(session);
  });
  it('passes enrolled installation authority independently of HR role',async()=>{
   m.session.mockResolvedValue({tenantId:'tenant',userId:'operator',roles:['employee'],grants:[]});m.operator.mockResolvedValue(true);

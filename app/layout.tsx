@@ -191,7 +191,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // with no employment (an admin never hired, or a leaver), or a login attached to no person at all.
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
   const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
-    await readSignedInShellNavigation(session);
+    await readSignedInShellNavigation(session, internalSelected());
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
     letters: letterDestinations,
@@ -242,7 +242,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
-  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  // The enrolment predicate is a necessary condition for the internal-auth
+  // operator check. Ordinary requests can skip resolving the provider session again.
+  const [identityEmailAvailable,performanceAdminPath]=await Promise.all([
+    navigationAccess.identityEmailOperator===false ? false : canConfigureIdentityEmail(session),
+    performanceAdminHref,
+  ]);
   // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
   const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
     const [onboardingQueue, inbox] = await Promise.all([

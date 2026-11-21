@@ -8,19 +8,21 @@ import {workforceNavigationAllowedSql} from './workforce-access';
  * 82748f92: `includePeopleGeneral` adds the People › Settings General hint (app.people_general_can_configure(), the
  * same function the General page and its card use) to the SAME statement, so the command bar never offers General
  * to an administrator its page would send home. No extra round trip and no Access lock (plain catalogue read). */
-export function readShellNavigationAccess(ctx:SessionContext,includeWorkforce:boolean,includePeopleGeneral=false){
+export function readShellNavigationAccess(ctx:SessionContext,includeWorkforce:boolean,includePeopleGeneral=false,includeIdentityEmailOperator=false){
  if(!ctx.userId)throw new AuthRequiredError();
  return withTenant(ctx,async tx=>{
-  const [row]=await tx.execute<{access_configuration:boolean;workforce:boolean;onboarded:boolean;people_general:boolean}>(sql`select
+  const [row]=await tx.execute<{access_configuration:boolean;workforce:boolean;onboarded:boolean;people_general:boolean;identity_email_operator:boolean}>(sql`select
    ${accessConfigurationNavigationAllowedSql} as access_configuration,
    ${includeWorkforce?workforceNavigationAllowedSql:sql`false`} as workforce,
    app.onboarding_status() as onboarded,
-   ${includePeopleGeneral?sql`app.people_general_can_configure()`:sql`false`} as people_general`);
+   ${includePeopleGeneral?sql`app.people_general_can_configure()`:sql`false`} as people_general,
+   ${includeIdentityEmailOperator?sql`app.is_identity_email_operator()`:sql`false`} as identity_email_operator`);
   return {
    accessConfigurationAvailable:row?.access_configuration===true,
    workforceAvailable:row?.workforce===true,
    onboarded:row?.onboarded===true,
    ...(includePeopleGeneral?{peopleGeneralConfigurable:row?.people_general===true}:{}),
+   ...(includeIdentityEmailOperator?{identityEmailOperator:row?.identity_email_operator===true}:{}),
   };
  });
 }

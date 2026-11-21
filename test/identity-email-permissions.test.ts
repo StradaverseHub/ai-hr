@@ -6,12 +6,25 @@ import { emailServiceDatabaseGrants,recordEmailAudit } from '../deploy/identity-
 import { client,withTenant } from '../db/client';
 import { adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base } from './harness';
 import * as schema from '../db/schema';
+import { readShellNavigationAccess } from '../core/shell-navigation-access';
 let base:Base;const issuer='https://hr.test/identity/realms/ai-hr';
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(closeAll);
 const allowed=()=>withTenant(adminCtx(base),async tx=>(await tx.execute(sql`select app.is_identity_email_operator() allowed`) as unknown as {allowed:boolean}[])[0].allowed);
 async function enroll(){await owner.db.insert(schema.appExternalIdentity).values({issuer,subject:'owner',appUserId:base.adminUserId});await owner.db.insert(schema.deploymentIdentityOperator).values({issuer,subject:'owner',testEmail:'owner@example.test'});}
 describe('private identity email authority in the actual database',()=>{
  it('does not grant an HR administrator deployment mail authority implicitly',async()=>{expect(await allowed()).toBe(false);await enroll();expect(await allowed()).toBe(true);});
+ it('reports the current installation grant as a shell hint under the signed-in principal',async()=>{
+  const context=adminCtx(base);
+  const hint=async()=>(await readShellNavigationAccess(context,false,false,true)).identityEmailOperator;
+  expect(await hint()).toBe(false);
+  await enroll();
+  expect(await hint()).toBe(true);
+  const other=await seedBase();
+  expect((await readShellNavigationAccess(adminCtx(other),false,false,true)).identityEmailOperator).toBe(false);
+  await owner.db.update(schema.deploymentIdentityOperator).set({revokedAt:new Date()});
+  expect(await hint()).toBe(false);
+  expect((await readShellNavigationAccess(context,false,false)).identityEmailOperator).toBeUndefined();
+ });
  it('rechecks revocation and archived users',async()=>{
   await enroll();await owner.db.update(schema.deploymentIdentityOperator).set({revokedAt:new Date()});expect(await allowed()).toBe(false);
   await owner.db.update(schema.deploymentIdentityOperator).set({revokedAt:null});await owner.db.update(schema.appExternalIdentity).set({revokedAt:new Date()});expect(await allowed()).toBe(false);
