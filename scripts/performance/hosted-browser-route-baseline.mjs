@@ -58,7 +58,7 @@ mkdirSync(focusedEvidence,{mode:0o700});
 const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const report={kind:surfaceProbe?'FICTIONAL_BROWSER_SURFACE_PROBE':mobileTaskTrace?'FICTIONAL_MOBILE_TASK_OWNER_TRACE':payrollReadTrace?'FICTIONAL_PAYROLL_TRANSACTION_READ_TRACE':staticShard!==null?'FICTIONAL_STATIC_PAGE_CENSUS':fixtureOnly?'FICTIONAL_BROWSER_FIXTURE_CHECK':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
- ...(env.AIHR_BROWSER_COMBINED_REWARDS_BUILD==='true'&&{
+ ...(env.AIHR_BROWSER_PINNED_BUILD==='true'&&{
   verifiedBuildArtifact:{runId:44836726517,artifactId:14680025921,sourceSha:'399ff167b7a9be7c8a023d345aab5705cd547f14'},
  }),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false},
@@ -998,10 +998,10 @@ async function measureMobileTaskTrace(fixture){
  report.mobileTaskVisits=[];
  try{
   const page=await context.newPage();
-  for(const view of ['builder','live']){
+  for(const [view,pass] of [['builder','first'],['builder','repeat'],['live','first'],['live','repeat']]){
    const started=performance.now(),url=origin+'/mobile-preview'+(view==='live'?'?live=1':'');
    const elapsed=()=>Math.round(performance.now()-started);
-   const row={view,status:'incomplete'};
+   const row={view,pass,status:'incomplete'};
    report.mobileTaskVisits.push(row);
    try{
     row.step='document';

@@ -72,8 +72,8 @@ on:
         description: Isolated Insights, Recruitment or Attendance browser measurement (including workflow editor), Access editor or Rewards setup browser measurement
         default: ''
         type: string
-      reuse_combined_rewards_build:
-        description: Use the pinned combined performance build for the populated Rewards browser probe
+      reuse_pinned_browser_build:
+        description: Reuse the verified route-sweep build for a targeted Rewards or Mobile Preview probe
         default: false
         type: boolean
       browser_static_shard:
@@ -99,7 +99,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_rewards_build && '-rewards-surface' || '' }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_pinned_browser_build && '-pinned-browser' || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -153,8 +153,9 @@ jobs:
           }; then
             exit 2
           fi
-          if [[ "$REUSE_COMBINED_REWARDS" == true ]] && {
-            [[ "$BROWSER_SURFACE_PROBE" != rewards || "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+          if [[ "$REUSE_PINNED_BROWSER_BUILD" == true ]] && {
+            [[ "$BROWSER_GROUP_SHAPE" != true || "$RUN_BUILD" == true ]] ||
+            [[ "$BROWSER_SURFACE_PROBE" != rewards && "$BROWSER_MOBILE_TASK_TRACE" != true ]] ||
             [[ "$EXPECTED_SHA" != 399ff167b7a9be7c8a023d345aab5705cd547f14 ]];
           }; then
             exit 2
@@ -172,7 +173,7 @@ jobs:
           BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
           BROWSER_GROUP_SHAPE: ${{ inputs.browser_group_shape }}
-          REUSE_COMBINED_REWARDS: ${{ inputs.reuse_combined_rewards_build }}
+          REUSE_PINNED_BROWSER_BUILD: ${{ inputs.reuse_pinned_browser_build }}
           RUN_BUILD: ${{ inputs.run_build }}
           EXPECTED_SHA: ${{ inputs.expected_sha }}
           BROWSER_BASELINE: ${{ inputs.browser_route_baseline }}
@@ -190,7 +191,7 @@ jobs:
       max-parallel: 4
       matrix:
         static_shard: ${{ fromJSON(needs.resolve.outputs.static_shards || '[""]') }}
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_combined_rewards_build || needs.linux-build.result == 'success') }}
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && (!inputs.browser_route_baseline || inputs.browser_fixture_only || inputs.reuse_pinned_browser_build || needs.linux-build.result == 'success') }}
     runs-on: ubuntu-24.04
     # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
     # protected environment and its secret attach here only when model_eval names a model.
@@ -252,12 +253,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
         if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_combined_rewards_build }}
+        if: ${{ inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_pinned_browser_build }}
         with:
           name: fictional-browser-build
           path: ${{ runner.temp }}/fictional-browser-build
-      - name: Retrieve the pinned combined Rewards build
-        if: ${{ inputs.reuse_combined_rewards_build }}
+      - name: Retrieve the pinned route-sweep build
+        if: ${{ inputs.reuse_pinned_browser_build }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -266,7 +267,7 @@ jobs:
           gh api repos/StradaverseHub/ai-hr/actions/jobs/136635082065 --jq '
             .conclusion == "success" and .run_attempt == 1 and .name == "linux-build" and
             .run_id == 44836726517 and .head_sha == "5653dd03515c2c5f5a1208881f2b919bba5f917b"' | grep -qx true
-          archive="$(mktemp "$RUNNER_TEMP/combined-rewards-build.XXXXXX")"
+          archive="$(mktemp "$RUNNER_TEMP/pinned-browser-build.XXXXXX")"
           trap 'rm -f "$archive"' EXIT
           gh api repos/StradaverseHub/ai-hr/actions/artifacts/14680025921/zip > "$archive"
           printf '%s  %s\n' 'fcc17157cf4e229ef94379e03774f66c6eb3c577716fcd4d0d462eff5cd81d3a' "$archive" | sha256sum -c -
@@ -291,7 +292,7 @@ jobs:
           AIHR_BROWSER_PAYROLL_READ_TRACE: ${{ inputs.browser_payroll_read_trace }}
           AIHR_BROWSER_MOBILE_TASK_TRACE: ${{ inputs.browser_mobile_task_trace }}
           AIHR_BROWSER_SURFACE_PROBE: ${{ inputs.browser_surface_probe }}
-          AIHR_BROWSER_COMBINED_REWARDS_BUILD: ${{ inputs.reuse_combined_rewards_build }}
+          AIHR_BROWSER_PINNED_BUILD: ${{ inputs.reuse_pinned_browser_build }}
           AUTH_PROVIDER: internal
           AUTH_PUBLIC_ORIGIN: https://localhost:3443
       - name: Retain route timings without fixture sessions or raw logs
@@ -351,7 +352,7 @@ jobs:
       - run: pnpm exec next typegen
       - run: bash ../automation/.github/ci/typecheck.sh
   linux-build:
-    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_combined_rewards_build) }}
+    if: ${{ inputs.run_build || (inputs.browser_route_baseline && !inputs.browser_fixture_only && !inputs.reuse_pinned_browser_build) }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.browser_route_baseline && 40 || 30 }}
