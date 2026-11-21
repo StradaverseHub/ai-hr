@@ -1553,7 +1553,8 @@ try{
   if(existsSync(stagePath)){
    const stage=readFileSync(stagePath,'utf8');
    if(['fixture','onboarding-config','draft-joiners','lifecycle-defaults','legacy-onboarding','legacy-offboarding',
-    'lifecycle-asset','lifecycle-asset-request','performance-cycle-create','performance-cycle-participants','performance-cycle-open','complete'].includes(stage)){
+    'lifecycle-asset','lifecycle-asset-request','performance-cycle-grades','performance-cycle-create',
+    'performance-cycle-participants','performance-cycle-open','complete'].includes(stage)){
     report.recordFixtureStage=stage;
    }
   }

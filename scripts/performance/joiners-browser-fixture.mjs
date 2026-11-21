@@ -34,7 +34,7 @@ const [group,company]=fixture.users;
 assert(fixture.users.length===500&&fixture.tenants.length===2&&group.tenant===0&&company.tenant===0);
 assert(group.role==='groupHR'&&company.role==='companyHR'&&group.companyId===company.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
-const [{client,createDb},{resolveEntitlementsTx}]=await Promise.all([
+const [{client,createDb,withTenant},{resolveEntitlementsTx}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
@@ -93,6 +93,16 @@ try{
   fixture.lifecycleRecords={onboarding,offboarding,asset,request,joiner,leaver,model,justification};
  }
  if(env.PERF_LIFECYCLE_RECORDS==='true')try{
+  setStage('performance-cycle-grades');
+  const [{createJobGrade},{setEmploymentGrade}]=await Promise.all([source('core/admin.ts'),source('core/org.ts')]);
+  const [existingGrade]=await owner.client`select id from job_grade where tenant_id=${group.tenantId}::uuid
+   and archived_at is null and app.architecture_grade_code(code)='12' order by id limit 1`;
+  const grade=existingGrade??await createJobGrade(ctx,{code:'JG12',name:'Fictional Grade 12',rank:12});
+  const members=fixture.users.filter(actor=>actor.tenantId===group.tenantId&&actor.companyId===company.companyId);
+  assert.equal(members.length,50,'Expected the fictional company roster for the Performance cycle');
+  await withTenant(ctx,async tx=>{
+   for(const member of members)await setEmploymentGrade(ctx,{employmentId:member.employmentId,gradeId:grade.id},tx);
+  });
   const {createCycle,openCycle,previewEligibleCount}=await source('packs/performance/service.ts');
   const year=fixture.today.slice(0,4);
   const name='Fictional Browser Performance Cycle';
