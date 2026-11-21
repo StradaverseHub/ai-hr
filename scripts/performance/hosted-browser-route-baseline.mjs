@@ -36,9 +36,10 @@ const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
 const censusRewards=shardInput==='rewards-records';
 const censusLifecycle=shardInput==='fixture-records';
+const censusShellStartup=shardInput==='shell-startup';
 const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
-assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
+assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords||censusShellStartup)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
 const staticPart=shardMatch?.[2]===undefined?undefined:Number(shardMatch[2]);
 assert(env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
@@ -576,13 +577,19 @@ async function measureShellLinks(fixture){
  }finally{await context.close();}
 }
 async function measureRoutes(fixture){
- const plan=[...nativePreflightRoutePlan()];
+ let plan=[...nativePreflightRoutePlan()];
  for(const [role,actorIndex] of [['companyHR',1],['groupHR',0]]){
   for(const path of [payrollHistoryPath,'/recruitment','/lifecycle/v9','/approvals']){
    plan.push({role,actorIndex,requested:path,final:path});
   }
  }
  plan.push({role:'employee',actorIndex:4,requested:'/me/cases',final:'/me/cases'});
+ if(censusShellStartup){
+  const surfaces=new Set(['/','/admin/personnel','/payroll','/tasks','/lifecycle/v9','/approvals','/recruitment']);
+  const matched=plan.filter(route=>surfaces.has(route.requested));
+  plan=[...new Map(matched.map(route=>[route.actorIndex+':'+route.requested,route])).values()];
+  assert(new Set(plan.map(route=>route.role)).size===4,'Expected all four shell audiences');
+ }
  report.plannedRoleRoutes=plan.length;
  const appPathRoutes=JSON.parse(readFileSync('.next/app-path-routes-manifest.json','utf8'));
  report.builtPageCoverage=builtPageCoverage(appPathRoutes,plan,[]);
@@ -1643,8 +1650,10 @@ try{
   else{
    await measureRoutes(fixture);
    await measureShellLinks(fixture);
-   await measureActions(fixture);
-   await measurePublicLogin();
+   if(!censusShellStartup){
+    await measureActions(fixture);
+    await measurePublicLogin();
+   }
    const routesObserved=report.observations.length===2*report.plannedRoleRoutes
     &&report.observations.every(row=>row.status==='observed');
    const journeysObserved=report.journeys.length>0&&report.journeys.every(row=>row.status==='observed');
