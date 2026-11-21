@@ -24,7 +24,7 @@
  * section with its owner for each fixture person. Read only; never cached beyond one Home response. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {sql,type SQL} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {readPreparedTenantRows,type SessionContext,type Tx} from '../db/client';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {assertModuleGate} from './module-gate';
@@ -132,12 +132,8 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  const {performance,rewards,lifecycle}=sectionGates(ctx);
  let row:Record<string,unknown>|undefined;
  try{
-  row=await withTenant(ctx,async tx=>{
-   // The Claims and Attendance owners scope this setting to their read for the same reason: JIT compile time.
-   await tx.execute(sql`set local jit=off`);
-   const [result]=await tx.execute<Record<string,unknown>>(accountTaskStatement(accountTaskStatementSections(tx,ctx,modules,read),ctx));
-   return result;
-  },{readOnlySnapshot:true});
+  [row]=await readPreparedTenantRows(ctx,tx=>accountTaskStatement(
+   accountTaskStatementSections(tx,ctx,modules,{...read,companyIds}),ctx));
  }catch{
   // The owners report their own failures (or succeed) exactly as before.
   return null;

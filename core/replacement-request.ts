@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import {createHash} from 'node:crypto';
 import {leaveCreditClaimReviewTx} from './toil';
 /**
@@ -1402,7 +1403,7 @@ function pendingReplacementLeaveCandidatesSql(ctx:SessionContext,opts:{companyId
     select label.* from batches
     cross join lateral app.delegated_approval_subjects(batches.ids,'leave','leave.replacement') label
     where not app.is_self_person(label.person_id)
-      and ${opts.companyIds===undefined?sql`true`:sql`label.company_id=ANY(ARRAY[${sql.join(opts.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+      and ${opts.companyIds===undefined?sql`true`:sql`label.company_id=ANY(${uuidArrayParam(opts.companyIds)})`}
    )
    select headers.id,headers.employment_id as "employmentId",labels.person_id as "personId",
     labels.employee,headers.created_at as "createdAt"

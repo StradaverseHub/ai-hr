@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Offboarding — employee-initiated resignation (ADR-0042, #29). The employee submits a resignation; HR
@@ -369,7 +370,7 @@ function pendingResignationHeadersQuery(tx:Tx,ctx:SessionContext,companyIds?:str
       .innerJoin(employment,and(eq(employment.id,resignationRequest.employmentId),eq(employment.tenantId,resignationRequest.tenantId)))
       .leftJoin(person,and(eq(person.id,resignationRequest.personId),eq(person.tenantId,resignationRequest.tenantId)))
       .where(and(sql`not app.resignation_request_is_managed(${resignationRequest.id})`,eq(resignationRequest.tenantId,ctx.tenantId),eq(resignationRequest.status,'pending'),
-        sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+        sql`NOT app.is_self_person(${resignationRequest.personId})`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:sql`${employment.companyId}=any(${uuidArrayParam(companyIds)})`))
       .orderBy(desc(resignationRequest.createdAt),resignationRequest.id);
 }
 

@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import {splitProfileSubmission} from '../lib/profile-submission-policy';
 import {validateProfileAttachments,saveProfileAttachmentsTx} from './profile-attachments';
 import {profileFieldApproval} from '../lib/profile-edit-policy-value';
@@ -952,7 +953,7 @@ export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:
 }
 function pendingProfileProbeWhere(ctx:SessionContext,companyIds?:string[]){
  return and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),
-  companyIds===undefined?undefined:sql`array[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[] is not null`);
+  companyIds===undefined?undefined:sql`${uuidArrayParam(companyIds)} is not null`);
 }
 function pendingProfileCandidatesQuery(tx:Tx,ctx:SessionContext,companyIds?:string[]){
  return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
@@ -960,7 +961,7 @@ function pendingProfileCandidatesQuery(tx:Tx,ctx:SessionContext,companyIds?:stri
    .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
    .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
    .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
-    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:companyIds.length===0?sql`false`:sql`${employment.companyId}=any(${uuidArrayParam(companyIds)})`))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
 }
 /** pendingProfileTaskMetadata's second, locked step for the candidates its first transaction (or the account task

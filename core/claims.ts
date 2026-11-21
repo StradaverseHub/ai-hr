@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import {parsePageQuery, pageState} from '../lib/pagination';
 import {type ApprovalSort} from '../lib/approvals-sort';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
@@ -4187,7 +4188,7 @@ function pendingClaimSubjectsSql(ctx:SessionContext,companyIds:string[]|undefine
    from subject_batches batch
    cross join lateral app.delegated_approval_subjects(batch.ids,'claims','claims.claim') approval_subject
    where not app.is_self_person(approval_subject.person_id)
-    and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}`;
+    and ${companyIds===undefined?sql`true`:sql`approval_subject.company_id = ANY(${uuidArrayParam(companyIds)})`}`;
 }
 
 /** readPendingClaimTasks(ctx, companyIds, limit) in one statement (core/account-task-bundle.ts): the same subjects

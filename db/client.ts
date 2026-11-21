@@ -7,6 +7,7 @@
  * isolation and ABAC are enforced by the database, not by app code.
  */
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { sql, type SQL } from 'drizzle-orm';
 import postgres from 'postgres';
 import {createDatabaseAdmission,type DatabaseWorkload} from './admission';
@@ -18,10 +19,11 @@ import {applicationDatabaseBudget,databaseAdmissionShares} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
-import {SharedReadSession,currentSharedRead,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+import {SharedReadSession,currentSharedRead,independentTransactionsRequired,isSharedCarrierTransaction,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
 export {declareSharedReadWindow,declareSharedReadPreamble,withOwnerPreambleReads} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
+const preparedReadDialect = new PgDialect();
 /** The tenant whose transaction this code runs inside; a nested acquire must not wait on that tenant's own share. */
 const transactionTenant = new AsyncLocalStorage<string>();
 /** The tenant whose shared read snapshot (db/shared-read.ts) this request runs inside, and whether one of its carrier
@@ -348,6 +350,22 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     return ownTransaction();
   }
 
+  /** The pinned Drizzle postgres.js adapter uses unnamed execution for raw SQL.
+   * Prepare on that same transaction client so its authenticated snapshot, admission,
+   * cancellation and PgBouncer transaction ownership all still apply. */
+  async function readPreparedTenantRows<Row extends Record<string, unknown>>(
+    ctx: SessionContext, build: (tx: Tx) => SQL,
+  ): Promise<Row[]> {
+    return withTenant(ctx, async tx => {
+      // Sibling reads on a shared carrier retain the carrier's planning settings.
+      if (isSharedCarrierTransaction(tx)) await tx.execute(sql`set local jit=off`);
+      else await tx.execute(sql`select set_config('jit','off',true), set_config('plan_cache_mode','force_generic_plan',true)`);
+      const query = preparedReadDialect.sqlToQuery(build(tx));
+      const { session } = tx as unknown as { session: { client: postgres.TransactionSql } };
+      return await session.client.unsafe<Row[]>(query.sql, query.params as postgres.ParameterOrJSON<never>[], { prepare: true });
+    }, { readOnlySnapshot: true });
+  }
+
   /** A carrier's request preamble as columns of its identity statement (db/shared-read.ts, decision 12). The
    * preamble's owner statements are evaluated only inside a sub-select whose one-time filter requires every identity
    * setting this statement sets to hold already: if PostgreSQL ever evaluated it before the settings, the column is
@@ -480,7 +498,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     return session;
   }
 
-  return { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
+  return { db, client, withTenant, readPreparedTenantRows, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork };
 }
 
 export type Db = ReturnType<typeof createDb>['db'];
@@ -592,4 +610,4 @@ if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role). Keep the default for deployments that do
 // not explicitly divide a connection budget among application workers.
-export const { db, client, withTenant, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});
+export const { db, client, withTenant, readPreparedTenantRows, withSharedReadSnapshot, requestScopedReadStats, withPoolWork, withSystemWork, withBackgroundReadWork, withTenantWriteWork } = createDb(applicationDatabaseUrl(process.env).url, {max: applicationBudget.poolMax});

@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import {withBackgroundDatabaseWork} from '../db/workload';
 import {createDatabaseAdmission} from '../db/admission';
 import {applicationDatabaseBudget} from '../db/capacity';
@@ -8320,7 +8321,7 @@ export function pendingAttendanceTaskBundleSql(ctx:SessionContext,companyIds?:st
   if(companyIds?.length===0)return sql`jsonb_build_object('possible',false,'section',null)`;
   const {source,otherPerson}=pendingAttendanceCandidateSource(ctx);
   const scoped=companyIds===undefined?sql`true`:
-    sql`(pending_attendance.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`;
+    sql`(pending_attendance.company_id = ANY(${uuidArrayParam(companyIds)}) OR app.attendance_workflow_v3_decision_slot(pending_attendance.id) IS NOT NULL)`;
   const decision=sql`case
     when attendance_flow.id is null or attendance_flow.routing_version not in (2,3,4)
      then case when ${decisionEmploymentAuthoritySql(ctx,sql`pending_attendance.employment_id`,scopeOf('attendance.correction'),own)} then 'allow' else 'refuse' end

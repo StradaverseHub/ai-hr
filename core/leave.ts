@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../db/uuid-array';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 /**
  * Leave services. Balance is the signed sum of the append-only leave_ledger
@@ -8318,7 +8319,17 @@ export async function cancelOwnLeave(
   /** D5(a): a caller's transaction (the mobile command receipt). Omitted ⇒ its own, as before. */
   existingTx?: Tx,
 ): Promise<{ previousStatus: 'pending'; restoredDays: number }> {
-  const { previousStatus, restoredDays } = await withLeaveTx(ctx, existingTx, (tx) => cancelOwnLeaveTx(tx, ctx, p));
+  const { previousStatus, restoredDays } = await withLeaveTx(ctx, existingTx, async tx => {
+    if (existingTx || !ctx.userId || !ctx.personId || ctx.agent || isAdmin(ctx)) return cancelOwnLeaveTx(tx, ctx, p);
+    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    const [principal] = await tx.execute<{ current: boolean }>(sql`
+      select app.principal_snapshot_current() and app.is_self_person(${ctx.personId}::uuid) as current
+    `);
+    if (principal?.current !== true) {
+      throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
+    }
+    return cancelOwnLeaveInTransaction(tx, ctx, p, true);
+  });
   return { previousStatus, restoredDays };
 }
 
@@ -8329,10 +8340,18 @@ export async function cancelOwnLeaveTx(
   ctx: SessionContext,
   p: { leaveRequestId: string },
 ): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
+  return cancelOwnLeaveInTransaction(tx, ctx, p, false);
+}
+
+async function cancelOwnLeaveInTransaction(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { leaveRequestId: string },
+  sharedAccessHeld: boolean,
+): Promise<{ previousStatus: 'pending'; restoredDays: number; eventId: string }> {
   {
-    await lockLeaveRequestDependenciesTx(tx, ctx, p.leaveRequestId);
-    const [req] = await tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
-    if (!req) throw new Error('leave request not found (or not visible)');
+    const readRequest = () => tx.select().from(leaveRequest).where(eq(leaveRequest.id, p.leaveRequestId)).limit(1);
+    const req = await readLeaveRequestWithDependenciesTx(tx, ctx, p.leaveRequestId, readRequest, sharedAccessHeld);
 
     // Subject-only (creator). Enforced in code (RLS is symmetric).
     const subjectPersonId = await personIdForEmployment(tx, req.employmentId);
@@ -12623,7 +12642,7 @@ export function pendingLeaveDecisionCandidatesSql(tx:Tx,ctx:SessionContext,compa
      left join lateral (select step.id,step.approver_kind,step.approver_employment_id,step.approver_alternates from public.leave_approval_step step
        where step.leave_request_id=pending_leave.id and step.status='pending' order by step.step_index,step.id limit 1) leave_current on true
      where not app.is_self_person(pending_leave.person_id)
-      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`}
+      ${companyIds===undefined?sql``:sql`and pending_leave.company_id=ANY(${uuidArrayParam(companyIds)})`}
     union all
     select 'cancellations'::text,cancel_header.id,cancel_header.employment_id,cancel_header.person_id,cancel_header.employee,cancel_header.created_at,
       'leave.cancellation'::text,cancel_chain.present,cancel_current.id,cancel_current.approver_kind,cancel_current.approver_employment_id,cancel_current.approver_alternates
@@ -12657,7 +12676,7 @@ function pendingLeaveCancellationHeadersQuery(tx:Tx,ctx:SessionContext,companyId
    employee:sql<string>`approval_subject.employee`,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
    .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(${uuidArrayParam(companyIds)})`))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
 }
 

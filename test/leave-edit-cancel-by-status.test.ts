@@ -14,6 +14,9 @@ import { eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
+import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
+import { assignRole, revokeRole } from '../core/admin';
+import { lockLeaveDependenciesTx } from '../core/leave-dependency-lock';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
 import {
@@ -27,7 +30,7 @@ import {
 } from '../core/leave';
 import { dispatchNotifications } from '../core/notifications';
 import { leaveRequestsFor } from '../core/read';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
@@ -280,6 +283,45 @@ describe('cancelOwnLeave — pending withdraw', () => {
     void ev;
   });
 
+  it('withdraws while a different employment still holds shared Access and its own Leave lock', async () => {
+    const id = await pendingThreeDay();
+    await withTenant(otherCtx, async holder => {
+      await lockAccessConfigurationReadTx(holder, b.tenantId);
+      await lockLeaveDependenciesTx(holder, b.tenantId, [other.employmentId]);
+      await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).resolves.toEqual({
+        previousStatus: 'pending', restoredDays: 0,
+      });
+    });
+    expect((await rowOf(id)).status).toBe('cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === 'leave-request.self-cancelled'))
+      .toEqual(['leave-request.self-cancelled']);
+  });
+
+  it('refuses stale authority before changing the pending request, balance or history', async () => {
+    const id = await pendingThreeDay();
+    const administrator = adminCtx(b);
+    const { userId } = subjectCtx;
+    if (!userId) throw new Error('The employee fixture needs a persisted account');
+    const grant = await assignRole(administrator, { appUserId: userId, role: 'manager' });
+    const stale: SessionContext = {
+      ...subjectCtx,
+      roles: ['employee', 'manager'],
+      grants: [{ role: 'employee', companyId: null }, { role: 'manager', companyId: null }],
+    };
+    const [before] = await withTenant(stale, tx =>
+      tx.execute<{ valid: boolean }>(sql`select app.principal_snapshot_current() as valid`));
+    expect(before.valid).toBe(true);
+    await revokeRole(administrator, { roleAssignmentId: grant.id });
+    await expect(cancelOwnLeave(stale, { leaveRequestId: id })).rejects.toMatchObject({ refusal: 'not_yours' });
+    expect((await rowOf(id)).status).toBe('pending');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect(await eventTypesFor(b.tenantId, id)).not.toContain('leave-request.self-cancelled');
+    await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).resolves.toEqual({
+      previousStatus: 'pending', restoredDays: 0,
+    });
+  });
+
   it('refuses to self-cancel an APPROVED leave (routed to the give-back flow instead)', async () => {
     const id = await pendingThreeDay();
     await decideLeave(adminCtx(b), { leaveRequestId: id, decision: 'approved' });
@@ -291,6 +333,46 @@ describe('cancelOwnLeave — pending withdraw', () => {
     // The give-back path (manager-approved) is still open for the approved leave — subject can request it.
     const gb = await requestLeaveCancellation(subjectCtx, { today: '2026-08-01', leaveRequestId: id, cancelDates: ['2026-08-11'] });
     expect(gb.cancellationRequestId).toBeTruthy();
+  });
+
+  it('commits exactly one outcome when approval and pending self-withdrawal race', async () => {
+    const id = await pendingThreeDay();
+    const [approval, withdrawal] = await Promise.allSettled([
+      decideLeave(adminCtx(b), { leaveRequestId: id, decision: 'approved' }),
+      cancelOwnLeave(subjectCtx, { leaveRequestId: id }),
+    ]);
+    expect([approval, withdrawal].filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    const approved = approval.status === 'fulfilled';
+    const approvalEvent = 'leave-request.approved';
+    const withdrawalEvent = 'leave-request.self-cancelled';
+    expect((await rowOf(id)).status).toBe(approved ? 'approved' : 'cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(approved ? 17 : 20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === approvalEvent || type === withdrawalEvent))
+      .toEqual([approved ? approvalEvent : withdrawalEvent]);
+  });
+
+  it('restores the net debit on an existing pending request exactly once', async () => {
+    const id = await pendingThreeDay();
+    // A historical debit is possible even though current pending submissions do not debit the balance.
+    await owner.db.insert(schema.leaveLedger).values({
+      tenantId: b.tenantId,
+      employmentId: subject.employmentId,
+      leaveTypeId: b.annualLeaveTypeId,
+      entryType: 'debit',
+      days: '-1.00',
+      sourceRequestId: id,
+      effectiveOn: '2026-08-10',
+    });
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(19);
+    expect(await cancelOwnLeave(subjectCtx, { leaveRequestId: id })).toEqual({
+      previousStatus: 'pending',
+      restoredDays: 1,
+    });
+    await expect(cancelOwnLeave(subjectCtx, { leaveRequestId: id })).rejects.toBeInstanceOf(LeaveCancellationNotAllowedError);
+    expect((await rowOf(id)).status).toBe('cancelled');
+    expect(await ledgerBalance(subject.employmentId, b.annualLeaveTypeId)).toBe(20);
+    expect((await eventTypesFor(b.tenantId, id)).filter(type => type === 'leave-request.self-cancelled'))
+      .toEqual(['leave-request.self-cancelled']);
   });
 
   it('subject-only: a manager who can SEE the leave cannot self-cancel it', async () => {

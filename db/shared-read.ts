@@ -171,6 +171,7 @@ export class SharedReadSession<Tx>{
 /** The carrier transactions of shared sessions: one REPEATABLE READ READ ONLY snapshot each, for one identity. */
 const carrierTransactions=new WeakSet<object>();
 export function markSharedCarrierTransaction(tx:object){carrierTransactions.add(tx);}
+export function isSharedCarrierTransaction(tx:object){return carrierTransactions.has(tx);}
 const derived=new WeakMap<object,Map<string,Promise<unknown>>>();
 const windows=new WeakMap<SharedReadSession<unknown>,Map<string,{from:string;to:string}>>();
 

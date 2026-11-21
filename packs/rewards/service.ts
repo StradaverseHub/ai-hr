@@ -1,3 +1,4 @@
+import { uuidArrayParam } from '../../db/uuid-array';
 import { lockAccessConfigurationReadTx } from '../../core/access-configuration-lock';
 // Kernel and physical worker consumers enter Rewards through its public boundary.
 export {rewardPlanReviewsJobHandler} from './review-plans-job';
@@ -1722,7 +1723,7 @@ function rewardTaskUnitWhere() {
  * it and with the owner's predicates and order. The owner's TypeScript combines them (combineRewardTasks). With an
  * observation due the owner runs itself, its write first (decision 4). */
 export function pendingRewardTasksBundleSql(scopeIds?: readonly string[]) {
-  const scope = scopeIds === undefined ? null : sql`array[${sql.join(scopeIds.map((id) => sql`${id}::uuid`), sql`, `)}]::uuid[]`;
+  const scope = scopeIds === undefined ? null : uuidArrayParam(scopeIds);
   const queueCompanies = scope ?? sql`array(select queue_unit.company_id from ${rewardUnit} queue_unit where queue_unit.id=any(reward_readable.approval_ids))`;
   const queue = sql`(select coalesce(jsonb_agg(jsonb_build_object('id',${rewardUnit.id},'name',${businessUnitDisplayName},'cycle',${rewardCycle.name}) order by ${rewardUnit.createdAt},${rewardUnit.id}),'[]'::jsonb)
     from ${rewardUnit} inner join ${rewardCycle} on ${eq(rewardCycle.id, rewardUnit.cycleId)} inner join ${businessUnit} on ${eq(businessUnit.id, rewardUnit.businessUnitId)}
