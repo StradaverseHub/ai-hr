@@ -7,6 +7,7 @@ import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
 import { scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
+import { historicalExplanationCases } from '../scripts/experiments/write-historical-explanation-cases';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, runProtectedExplanationImprovement, runProtectedExplanationPriority,
 } from '../scripts/experiments/protected-explanation-priority';
@@ -121,6 +122,22 @@ describe('evaluator-held explanation choices', () => {
     await expect(scoreProtectedExplanationHoldout(mixed, sha(mixed), savedReport, modelDigest, noCall))
       .rejects.toThrow('reuses an exposed catalogue');
   });
+});
+
+it('reuses only earlier fictional business questions and labels on unexposed modules', () => {
+  const cases = historicalExplanationCases();
+  expect(cases.length).toBeGreaterThanOrEqual(4);
+  expect(new Set(cases.map(row => row.module)).size).toBe(cases.length);
+  for (const row of cases) {
+    expect(explanationCases().some(exposed => exposed.module === row.module)).toBe(false);
+    expect(['claims', 'rewards']).not.toContain(row.module);
+    const source = ASSISTANT_CONVERSATION_HOLDOUTS.find(item => item.locale === 'en' && item.category === 'domain' &&
+      item.module === row.module && item.question === row.focus);
+    expect(source?.expected).toMatchObject({mode: 'answer',
+      blocks: expect.arrayContaining([expect.objectContaining({kind: 'explanation', card: null, code: 'specialist_finding:' + row.expected})])});
+    expect(row.choices).toContain(row.expected);
+    expect(row.choices.length).toBeGreaterThan(1);
+  }
 });
 
 describe('evaluator-held protected answer cases', () => {
