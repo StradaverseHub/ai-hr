@@ -543,7 +543,9 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   assert(startedWith.active===500&&startedWith.inSteadyWindow,'Payroll processing did not start at steady 500-user load');
   attemptedPayroll.push(user);
   const elapsed=()=>Math.round(performance.now()-started);
-  const response=await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
+  const template={...templates.payrollProcess,path:'/payroll/'+user.batchId,
+   headers:{...templates.payrollProcess.headers,'x-aihr-payroll-probe':'steady-'+user.tenant}};
+  const response=await send(user,template,formFields(template,{batchId:user.batchId}));
   row.responseMs=elapsed();row.receiptHeadersMs=Math.round(response.ttfbMs);row.receiptConfirmed=true;save();
   await assertProcessed(user.batchId,()=>{row.acknowledgmentMs=elapsed();save();});
   row.verifiedCompletionMs=elapsed();row.verifiedWith=loadState();

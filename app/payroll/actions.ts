@@ -4,6 +4,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import {requestSelectiveReprocess} from '@/core/payroll-reprocess-job';
 import {reviewReprocessTaxReadiness} from '@/packs/payroll/service';
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { payrollNonCashErrorMessage } from '@/lib/payroll-noncash-error';
 import { payrollTaxSchemeErrorMessage } from '@/lib/payroll-tax-scheme-error';
 import { redirect } from 'next/navigation';
@@ -104,16 +105,37 @@ export async function generateAction(formData: FormData) {
 
 /** The hydrated form confirms the durable job before requesting an updated register. */
 export async function requestPayrollProcessingReceipt(formData: FormData) {
-  return admitPayrollProcessing(String(formData.get('batchId')), formData);
+  const batchId = String(formData.get('batchId'));
+  if (process.env.AIHR_PAYROLL_RECEIPT_PROFILE !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
+    return admitPayrollProcessing(batchId, formData);
+  }
+  const started = performance.now();
+  const marker = (await headers()).get('x-aihr-payroll-probe');
+  const sample = marker === 'steady-0' || marker === 'steady-1' ? marker : 'preflight';
+  const elapsed = () => Math.round(performance.now() - started);
+  const phases: Partial<Record<PayrollAdmissionPhase, number>> = {};
+  let outcome: 'queued' | 'refused' | 'error' = 'error';
+  try {
+    const receipt = await admitPayrollProcessing(batchId, formData, phase => { phases[phase] = elapsed(); });
+    outcome = receipt.status;
+    return receipt;
+  } finally {
+    console.info('PERF_PAYROLL_RECEIPT ' + JSON.stringify({ sample, outcome, phases, handlerMs: elapsed() }));
+  }
 }
 
-async function admitPayrollProcessing(batchId: string, formData: FormData) {
+type PayrollAdmissionPhase = 'session' | 'translations' | 'prechecks' | 'enqueue';
+
+async function admitPayrollProcessing(batchId: string, formData: FormData, mark?: (phase: PayrollAdmissionPhase) => void) {
   const s = await getSession();
+  mark?.('session');
   const acknowledged = String(formData.get('ackWarnings') ?? '') === '1';
   const t = await getTranslations('payroll.batch');
+  mark?.('translations');
   let errMsg: string | null = null;
   try {
     const checks = await preProcessAdvisory(s, batchId);
+    mark?.('prechecks');
     // BLOCKER count: no compensation row covering the period OR a zero basic/rate (feedback 64fb5e48) —
     // both stop generation (server re-asserts via PreProcessBlockedError). The old BASIC-pay-item
     // existence blocker is gone: the Personnel Basic Salary record is the authoritative pay source.
@@ -158,6 +180,7 @@ async function admitPayrollProcessing(batchId: string, formData: FormData) {
       // admits it and moves the run to 'processing'. The run screen shows its progress; who was skipped is on the
       // run once it is processed, and the operator gets the completion notice.
       await requestPayrollProcessing(s, { batchId });
+      mark?.('enqueue');
       return { status: 'queued' as const, message: t('processingStarted') };
     }
   } catch (e) {
