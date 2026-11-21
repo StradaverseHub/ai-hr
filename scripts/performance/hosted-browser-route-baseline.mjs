@@ -792,6 +792,15 @@ async function measureMixedLoad(command,fixture){
      targetMet:row.targetMet===true,sparseSample:row.sparseSample===true}));
    const navigationFailure=projectMixedNavigationPreflightFailure(data.mixedNavigationPreflightFailure);
    if(navigationFailure)report.mixedNavigationPreflightFailure=navigationFailure;
+   const orgJourney=data.orgExplorerJourneys?.find(row=>row.phase==='baseline'&&row.role==='groupHR');
+   if(orgJourney){
+    const stages=['navigation','open-explorer','all-people-first-page','all-people-next-page','focus-and-reports',
+     'report-focus','manager-navigation','typed-connections','literal-person-search','rewards-member-search',
+     'selected-company','selected-company-people','other-company-search','rewards-member-outside-company',
+     'restore-all-companies','language-switch','translated-search-usable'];
+    report.mixedOrgExplorerPreflight={passed:orgJourney.status==='passed',
+     failureStage:stages.includes(orgJourney.failure?.stage)?orgJourney.failure.stage:null};
+   }
    const mutation=data.mixedWorkflows?.error;
    const mutationStages=['leaveCreate','leaveEdit','leaveCancel','personnelCreate','personnelEdit','personnelDelete',
     'attendanceCreate','attendanceApprove','payrollProcess','payrollPublicationProcess','payrollClose','importValidate','importCommit'];
@@ -1886,7 +1895,6 @@ try{
    assert(defaults.every(row=>row.status==='passed'),'Both fictional default Attendance rules must exist before traffic');
   }
  }
- if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
  if(groupScale){
   const postgres=createRequire(join(process.cwd(),'package.json'))('postgres');
   const owner=postgres(dbEnv.MIGRATION_DATABASE_URL,{max:1});
@@ -1899,6 +1907,7 @@ try{
    save();
   }finally{await owner.end({timeout:5});}
  }
+ if(driverCommand)await verifyMixedFixtureBinding(driverCommand);
  report.fixtureVerified=true;
  save();
  if(!fixtureOnly){

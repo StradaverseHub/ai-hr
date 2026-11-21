@@ -173,7 +173,7 @@ jobs:
           }; then exit 2; fi
           if [[ "$REUSE_BUILD" == true ]]; then
             case "$MIXED_GROUP_SCALE:$EXPECTED_SHA" in
-              false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:2c321b0cd89d80ff9071e1553671c7ad8079b2d9) ;;
+              false:b00e2b2738312d87d5bea6f0ac7c877517d0b75d|false:a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55|true:cddd7cebf757d0392ed06bead78300732fd54256) ;;
               *) exit 2 ;;
             esac
           fi
@@ -297,11 +297,13 @@ jobs:
           build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
           test "$(git rev-parse HEAD)" = "$AIHR_CI_HEAD"
           harness_head="$AIHR_CI_HEAD"
-          if [[ "$AIHR_CI_HEAD" == 2c321b0cd89d80ff9071e1553671c7ad8079b2d9 ]]; then
+          if [[ "$AIHR_CI_HEAD" == cddd7cebf757d0392ed06bead78300732fd54256 ]]; then
             test "$MIXED_GROUP_SCALE" = true
             harness_head=a5ac5bcda1f67cdaf5b61ed37b70f52c54c66d55
-            test "$(git rev-parse HEAD~2)" = "$harness_head"
-            workforce_diff="$(printf '%s\t%s\n' M scripts/performance/navigation-fixture-bindings.ts M scripts/performance/system-load-owner.mjs)"
+            test "$(git rev-parse HEAD~3)" = "$harness_head"
+            workforce_diff="$(printf '%s\t%s\n' M scripts/performance/fixture-workload.mjs \
+              M scripts/performance/navigation-fixture-bindings.ts M scripts/performance/org-explorer-browser.mjs \
+              M scripts/performance/system-load-owner.mjs)"
             test "$(git diff --name-status "$harness_head" HEAD)" = "$workforce_diff"
           fi
           case "$harness_head" in
