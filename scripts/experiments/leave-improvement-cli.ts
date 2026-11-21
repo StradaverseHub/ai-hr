@@ -1,0 +1,46 @@
+import { runLeaveImprovement } from '../teras/leave-improvement';
+import { localOutputPath, writeLocalOutput } from '../teras/output';
+
+const baseUrl = 'http://127.0.0.1:11434';
+const generationOptions = { temperature: 0, seed: 42, num_predict: 512 };
+
+async function main() {
+  const [model, outfile, ...rest] = process.argv.slice(2);
+  // An exact locally installed tag keeps this experiment independent of cloud-provider credentials.
+  if (!model || !/^[a-z0-9_.\/-]+:[a-z0-9_.-]+$/.test(model) || !outfile || rest.length)
+    throw Error('Usage: node --import tsx scripts/experiments/leave-improvement-cli.ts MODEL:TAG REPORT.json');
+  localOutputPath(outfile);
+  const deadline = AbortSignal.timeout(30 * 60_000);
+  const request = async (path: string, init?: RequestInit) => {
+    const response = await fetch(baseUrl + path, { ...init, redirect: 'error', signal: AbortSignal.any([deadline, AbortSignal.timeout(90_000)]) });
+    if (!response.ok) throw Error('Local model service returned HTTP ' + response.status);
+    return response.json();
+  };
+  const models = async () => {
+    const list = await request('/api/tags');
+    const entry = Array.isArray(list?.models) ? list.models.find((row: { name?: unknown }) => row.name === model) : null;
+    if (!entry || typeof entry.digest !== 'string' || !/^[a-f0-9]{64}$/.test(entry.digest) ||
+        !Number.isSafeInteger(entry.size) || entry.size <= 0 || entry.details?.format !== 'gguf')
+      throw Error('Supply an installed local GGUF model with an explicit tag.');
+    return entry.digest as string;
+  };
+  const modelDigest = await models();
+  const report = await runLeaveImprovement(async ({ system, prompt }) => {
+    if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
+    const result = await request('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, system, prompt, stream: false, format: 'json', options: generationOptions }),
+    });
+    if (result?.done !== true || result.model !== model || typeof result.response !== 'string')
+      throw Error('Local model returned an incomplete response.');
+    return { text: result.response, inputTokens: result.prompt_eval_count, outputTokens: result.eval_count };
+  });
+  if (await models() !== modelDigest) throw Error('Local model changed during the experiment.');
+  writeLocalOutput(outfile, JSON.stringify({ ...report, model, modelDigest, generationOptions }, null, 2));
+}
+
+main().catch(error => {
+  console.error(error instanceof Error ? error.message : 'Leave experiment unavailable.');
+  process.exitCode = 1;
+});
