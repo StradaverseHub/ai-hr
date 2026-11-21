@@ -116,6 +116,18 @@ export const explanationRevisionSchema = {
   properties: { change: { type: 'string', enum: Object.keys(revisions) } },
 };
 
+function maximumCorrectWithCurrentInputs(cases: readonly ExplanationCase[]) {
+  const groups = new Map<string, Map<string, number>>();
+  for (const { module, choices, expected } of cases) {
+    const input = routingDigest({ module, choices });
+    const counts = groups.get(input) ?? new Map();
+    counts.set(expected, (counts.get(expected) ?? 0) + 1);
+    groups.set(input, counts);
+  }
+  // A deterministic selector has just one answer for a byte-identical input.
+  return [...groups.values()].reduce((sum, group) => sum + Math.max(...group.values()), 0);
+}
+
 /** One offline proposal. The optimizer receives diagnostics from two modules;
  * the third module supplies paired development scores after the proposal. */
 export async function runProtectedExplanationImprovement(model: PilotModel) {
@@ -135,10 +147,14 @@ export async function runProtectedExplanationImprovement(model: PilotModel) {
     rejected: rows.filter(outcome => outcome === 'rejected').length,
   });
   const discovery = await score(development);
+  const diagnostics = {
+    cases: development.length, ...summarize(discovery),
+    maximumCorrectWithCurrentInputs: maximumCorrectWithCurrentInputs(development),
+  };
   const proposal = await call({
     mode: 'revise',
-    system: 'Choose one listed change to address the development results. The same catalogue can have different intended explanations depending on the request. Return only an object with the change key.',
-    prompt: JSON.stringify({ options: revisions, development: { cases: development.length, ...summarize(discovery) } }),
+    system: 'Choose one listed change to address the development results. maximumCorrectWithCurrentInputs measures the ceiling caused by identical prompts with different expected answers. Prefer a change that addresses any measured ceiling. Return only an object with the change key.',
+    prompt: JSON.stringify({ options: revisions, development: diagnostics }),
   });
   const change = readChoice(proposal.text, 'change');
   const revision = typeof change === 'string' && Object.hasOwn(revisions, change) ? change as Revision : null;
@@ -151,7 +167,7 @@ export async function runProtectedExplanationImprovement(model: PilotModel) {
   return {
     evidence: 'offline_explanation_revision_development', releaseAuthorized: false,
     developmentDigest: routingDigest(development), validationDigest: routingDigest(validation),
-    validationCases: validation.length, baseline, revision, candidate: revised, regressions: regressions ?? null,
+    development: diagnostics, validationCases: validation.length, baseline, revision, candidate: revised, regressions: regressions ?? null,
     advanced, budget,
   };
 }

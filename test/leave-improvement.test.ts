@@ -37,7 +37,7 @@ it('compares one model-proposed explanation revision on an unseen development mo
     const request = JSON.parse(prompt);
     let reply;
     if (mode === 'revise') {
-      expect(request.development).toEqual({ cases: 4, correct: 2, rejected: 0 });
+      expect(request.development).toEqual({ cases: 4, correct: 2, rejected: 0, maximumCorrectWithCurrentInputs: 2 });
       expect(prompt).not.toMatch(/toil|attendance|notifications|expired|payslip|expected/);
       proposed = true;
       reply = { change: 'include_source_focus' };
