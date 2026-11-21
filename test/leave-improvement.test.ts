@@ -7,6 +7,7 @@ import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed
 import { runProtectedWorkSummaryImprovement } from '../scripts/experiments/protected-work-summary-improvement';
 import { scoreProtectedWorkSummaryHoldout } from '../scripts/experiments/protected-work-summary-holdout';
 import { scoreProtectedExplanationHoldout } from '../scripts/experiments/protected-explanation-holdout';
+import { assessExplanationRouting } from '../scripts/experiments/assess-explanation-routing';
 import { historicalExplanationCases } from '../scripts/experiments/write-historical-explanation-cases';
 import {
   EXPLANATION_ANSWER_FORMAT, EXPLANATION_GENERATION_OPTIONS, explanationCases, runProtectedExplanationImprovement, runProtectedExplanationPriority,
@@ -143,6 +144,41 @@ describe('evaluator-held explanation choices', () => {
     expect(result).toMatchObject({locale: 'ms', comparator: 'canonical_malay_explanation_retrieval_v1'});
     expect(result.deterministic.correct).toBeGreaterThan(0);
     expect(result.retrievalFirst.modelCalls).toBeLessThan(localized.length);
+  });
+});
+
+describe('paired English and Malay routing evidence', () => {
+  const languageReport = (locale: 'en' | 'ms', gains: number, regressions: number, modelDigest = 'a'.repeat(64)) => ({
+    evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false, locale,
+    comparator: locale === 'en' ? 'canonical_english_explanation_retrieval_v2' : 'canonical_malay_explanation_retrieval_v1',
+    cases: 5, candidate: {correct: 3, rejected: 0}, modelDigest,
+    developmentReportDigest: 'b'.repeat(64), holdoutDigest: (locale === 'en' ? 'c' : 'd').repeat(64),
+    answerFormatDigest: routingDigest(EXPLANATION_ANSWER_FORMAT), generationOptions: EXPLANATION_GENERATION_OPTIONS,
+    retrievalMargins: [{minimumMargin: 4, correct: 3 + gains - regressions, rejected: 0, modelCalls: 3,
+      versusFocused: {gains, regressions}}],
+  });
+  const bind = (value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {bytes, sha256: createHash('sha256').update(bytes).digest('hex')};
+  };
+
+  it('requires paired quality in each language even when the combined score improves', () => {
+    const english = bind(languageReport('en', 1, 0));
+    const regressed = assessExplanationRouting(4, english, bind(languageReport('ms', 1, 1)));
+    expect(regressed).toMatchObject({eligibleForFreshEvaluation: false, preservesQuality: false, hasGain: true, savesCalls: true});
+    expect(assessExplanationRouting(4, english, bind(languageReport('ms', 0, 0)))).toMatchObject({
+      eligibleForFreshEvaluation: true, releaseAuthorized: false,
+    });
+  });
+
+  it('refuses missing margins, duplicated locales, altered bytes and mismatched model identities', () => {
+    const english = bind(languageReport('en', 1, 0));
+    const malay = bind(languageReport('ms', 0, 0));
+    expect(() => assessExplanationRouting(8, english, malay)).toThrow('not evaluated');
+    expect(() => assessExplanationRouting(4, english, english)).toThrow('Distinct English and Malay');
+    expect(() => assessExplanationRouting(4, english, {...malay, sha256: english.sha256})).toThrow();
+    expect(() => assessExplanationRouting(4, english, bind(languageReport('ms', 0, 0, 'e'.repeat(64))))
+      .toThrow('share a model and parent');
   });
 });
 
