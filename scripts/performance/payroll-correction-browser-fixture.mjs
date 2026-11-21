@@ -17,7 +17,7 @@ const company=fixture.tenants[0]?.companies[0];
 assert.equal(fixture.users.length,500);
 assert(group.role==='groupHR'&&group.tenantId===fixture.tenants[0].tenantId&&group.companyId===company.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
-const [{client,createDb},{resolveEntitlementsTx},{generatePayslips},{setTenantSetting}]=await Promise.all([
+const [{client,createDb},{resolveEntitlementsTx},{generatePayslips,savePayFormula,setEmploymentPayComponent,upsertPayComponent},{setTenantSetting}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),source('packs/payroll/service.ts'),source('core/tenant-settings.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
@@ -38,6 +38,25 @@ try{
   entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId))};
  mark('reset-setting');
  await setTenantSetting(ctx,{key:'payroll.reset_enabled',value:true});
+ mark('payroll-records');
+ const employee=fixture.users[4];
+ assert(employee.role==='employee'&&employee.tenantId===group.tenantId&&employee.companyId===company.companyId);
+ await owner.client`insert into tenant_module (tenant_id,module_code,status)
+  values (${group.tenantId}::uuid,'typed_pay_components','active')
+  on conflict (tenant_id,module_code,coalesce(company_id,'00000000-0000-0000-0000-000000000000'::uuid))
+  do update set status=excluded.status,expires_at=null`;
+ ctx.entitlements=await owner.db.transaction(tx=>resolveEntitlementsTx(tx,group.tenantId));
+ const component=await upsertPayComponent(ctx,{
+  code:'PERF_FIXED_ITEM',name:'Fictional fixed pay item',label:'Fixture item',kind:'allowance',
+  includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,
+ });
+ await setEmploymentPayComponent(ctx,{
+  employmentId:employee.employmentId,componentId:component.id,amount:123.45,
+  effectiveFrom:fixture.today.slice(0,7)+'-01',
+ });
+ await savePayFormula(ctx,{
+  formulaId:'BROWSER_FIXED',description:'Fictional browser formula',method:'write',source:'Return 1',
+ });
  mark('calculate');
  await generatePayslips(ctx,{batchId:company.batchId});
  mark('complete');

@@ -1567,7 +1567,7 @@ try{
    const path=join(privateDir,'payroll-correction-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['module','principal','reset-setting','calculate','complete'].includes(stage)){
+    if(['module','principal','reset-setting','payroll-records','calculate','complete'].includes(stage)){
      report.payrollCorrectionSeedStage=stage;
     }
    }

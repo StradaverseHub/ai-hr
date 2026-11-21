@@ -334,7 +334,30 @@ async function payrollCorrectionRoutes(db, fixture) {
   `;
   assert.match(history?.pay_period ?? '', /^\d{4}-\d{2}$/);
   const year = history.pay_period.slice(0, 4);
+  const [fixed] = await db`
+    select r.id, r.amount::text, c.name
+    from employment_pay_component r
+    join pay_component c on c.id = r.component_id and c.tenant_id = r.tenant_id
+    where r.tenant_id = ${subject.tenantId}::uuid and r.employment_id = ${subject.employmentId}::uuid
+      and c.code = 'PERF_FIXED_ITEM' and r.superseded_at is null
+  `;
+  assert.equal(fixed?.amount, '123.45');
+  const [formula] = await db`
+    select id from pay_formula where tenant_id = ${group.tenantId}::uuid and formula_id = 'BROWSER_FIXED'
+  `;
+  assert(formula, 'Expected a saved fictional formula');
   return [
+    ...[group, company].map(actor => ({
+      actor, template: '/payroll/transactions/fixed/[id]',
+      path: `/payroll/transactions/fixed/${fixed.id}?employmentId=${subject.employmentId}`,
+      exactHeading: 'PERF_FIXED_ITEM — ' + fixed.name, content: subject.name,
+      witness: `form:has(input[name="id"][value="${fixed.id}"]):has(input[name="employmentId"][value="${subject.employmentId}"]) input[name="amount"][value="${fixed.amount}"]`,
+    })),
+    {
+      actor: group, template: '/payroll/formula-builder/[id]', path: '/payroll/formula-builder/' + formula.id,
+      exactHeading: 'BROWSER_FIXED', content: 'Fictional browser formula',
+      witness: '[data-formula-source-panel] textarea',
+    },
     ...[
       ['remove', 'Remove Employee Payroll', subject.name],
       ['reprocess', 'Reprocess selected employees', subject.name],
