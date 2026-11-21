@@ -7,8 +7,9 @@ import {applyIndexExpansion, parseIndex} from './index-expansion.mjs';
 const fixture = 'CREATE INDEX job_run_key_ran_at_id_idx ON public.job_run USING btree (job_key, ran_at DESC, id DESC);\n';
 const index = parseIndex(process.env.AIHR_UPGRADE_SQL ? readFileSync(process.env.AIHR_UPGRADE_SQL) : Buffer.from(fixture));
 assert.equal(index.sql, fixture.trim(), 'The pilot rehearsal must execute the same reviewed index');
-const original = [{tag: '0280_job_run', created_at: '1720000000000', hash: 'a'.repeat(64)}];
-const row = {tag: 'fixture_order_index', created_at: '1720000000001', hash: index.digest};
+const original = Array.from({length:12}, (_, i) =>
+  ({tag: 'old_' + i, created_at: String(1720000000000 + i), hash: 'a'.repeat(64)}));
+const row = {tag: 'fixture_order_index', created_at: '1720000000012', hash: index.digest};
 const plan = {index, original, row, expanded: [...original, row]};
 
 test('only a plain non-unique B-tree index is eligible', () => {
@@ -45,7 +46,7 @@ test('populated restricted-role upgrade proves lock refusal, rollback, RLS and q
     AS $$ SELECT current_setting('app.fixture_group_admin', true) = 'yes' $$;
     GRANT USAGE ON SCHEMA app TO ai_hr_app;
     CREATE TABLE drizzle.__drizzle_migrations (id serial PRIMARY KEY, hash text NOT NULL, created_at bigint);
-    INSERT INTO drizzle.__drizzle_migrations (hash,created_at) VALUES ('${original[0].hash}',${original[0].created_at});
+    INSERT INTO drizzle.__drizzle_migrations (hash,created_at) SELECT '${original[0].hash}',1720000000000::bigint + n FROM generate_series(0,11) n ORDER BY n;
   `);
   for (const statement of readFileSync('db/migrations/0280_job_run.sql','utf8').split('--> statement-breakpoint')) {
     await owner.unsafe(statement);
@@ -85,7 +86,7 @@ test('populated restricted-role upgrade proves lock refusal, rollback, RLS and q
 
   const applied = await applyIndexExpansion(owner, plan);
   assert.equal(applied.applied, true);
-  assert.equal(applied.rows, 2);
+  assert.equal(applied.rows, 13);
   assert.deepEqual(await readAsAdmin(), before.rows);
   assert.equal((await read(app)).length, 0);
   assert.deepEqual(await acl(), before.acl);
