@@ -12,6 +12,7 @@ import {readRouteForMeasurement} from './system-route-manifest.mjs';
 
 const attendanceFingerprint=/^[a-f0-9]{64}$/;
 const attendanceApprovalMarker='PERF_ATTENDANCE_BROWSER_APPROVAL';
+const payrollQueuedMessage='Payroll processing started. This page shows its progress.';
 
 export function isNativeAttendanceApprovalPost(request,url){
  return request.method()==='POST'&&request.url()===url&&request.isNavigationRequest()
@@ -137,6 +138,20 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   };
   if(target){const url=new URL(String(target).split(';')[0],base);if(url.searchParams.has('error'))fail('business refusal: '+url.searchParams.get('error'));}
   if(/(?:^|\n)[0-9a-f]+:E\{/.test(response.content))fail('server action returned an exception record');
+  if(template.kind==='payrollProcess'){
+   if(target)fail('Payroll receipt action unexpectedly redirected');
+   const receipts=response.content.split('\n').flatMap(line=>{
+    const match=/^[0-9a-f]+:(\{.*\})$/.exec(line);
+    if(!match)return [];
+    try{
+     const value=JSON.parse(match[1]);
+     return ['queued','refused'].includes(value?.status)&&typeof value.message==='string'?[value]:[];
+    }catch{return [];}
+   });
+   if(receipts.length!==1||receipts[0].status!=='queued'||receipts[0].message!==payrollQueuedMessage){
+    fail('Payroll did not return exactly one positive typed queue receipt');
+   }
+  }
   if(template.kind==='attendanceCreate'){
    const outcome=attendanceCorrectionOutcome(response,new URL(template.path,base));
    if(outcome==='routeChanged')fail('routeChanged','WORKFLOW_ROUTE_CHANGED');
@@ -334,10 +349,20 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
    const page=await ctx.newPage();
    await visit(page,actor,'/payroll/'+batchId);
    await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
-   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');
+   const queueFeedback=page.getByRole('status').filter({hasText:payrollQueuedMessage});
+   const receiptStart=performance.now();
+   const feedback=queueFeedback.waitFor({state:'visible',timeout:90000}).then(()=>Math.round(performance.now()-receiptStart));
+   const [,browserReceiptMs]=await Promise.all([
+    capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess'),
+    feedback,
+   ]);
+   report.mixedWorkflows.payrollUiPreflight={browserReceiptMs};save();
    let stage='job-completion';
    try{
     const completionObservedMs=await assertProcessed(batchId);
+    stage='register-readiness';
+    await page.getByRole('button',{name:'Close batch',exact:true}).waitFor({state:'visible',timeout:90000});
+    report.mixedWorkflows.payrollUiPreflight.registerReadyMs=Math.round(performance.now()-receiptStart);save();
     stage='scoped-export';await exportPayroll(actor,batchId,1);
     stage='database-observation';
     const rows=await readPayrollAfterTraffic(db,[{...actor,batchId}]);
@@ -491,8 +516,8 @@ export async function prepareMixedWorkflows({context,withContext,closeContext,no
   assert(startedWith.active===500&&startedWith.inSteadyWindow,'Payroll processing did not start at steady 500-user load');
   attemptedPayroll.push(user);
   const elapsed=()=>Math.round(performance.now()-started);
-  await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
-  row.responseMs=elapsed();save();
+  const response=await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
+  row.responseMs=elapsed();row.receiptHeadersMs=Math.round(response.ttfbMs);row.receiptConfirmed=true;save();
   await assertProcessed(user.batchId,()=>{row.acknowledgmentMs=elapsed();save();});
   row.verifiedCompletionMs=elapsed();row.verifiedWith=loadState();
   report.mixedWorkflows.completed.payroll++;save();
