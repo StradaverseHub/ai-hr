@@ -2,7 +2,7 @@
 export function projectPayrollAdmissionPhases(log) {
   const phaseNames = ['session', 'translations', 'prechecks', 'enqueue'];
   const samples = [];
-  for (const [, line] of log.matchAll(/^PERF_PAYROLL_RECEIPT (.{1,350})$/gm)) {
+  for (const [, line] of log.matchAll(/^PERF_PAYROLL_RECEIPT (.{1,2200})$/gm)) {
     let entry;
     try { entry = JSON.parse(line); } catch { continue; }
     if (!['steady-0', 'steady-1', 'preflight'].includes(entry?.sample) ||
@@ -14,7 +14,20 @@ export function projectPayrollAdmissionPhases(log) {
     if (Object.keys(phases).some((name, index) => name !== phaseNames[index]) ||
         values.some((ms, index) => !Number.isSafeInteger(ms) || ms < (values[index - 1] ?? 0) || ms > entry.handlerMs) ||
         (entry.outcome === 'queued' && values.length !== phaseNames.length)) continue;
-    samples.push({ sample: entry.sample, outcome: entry.outcome, phases, handlerMs: entry.handlerMs });
+    const database = {};
+    for (const phase of phaseNames) {
+      for (const kind of ['raw', 'transaction']) {
+        const row = entry.database?.[phase]?.[kind];
+        if (!row) continue;
+        const keys = ['started', 'acquired', 'completed', 'startDelayMs', 'afterStartMs'];
+        if (!keys.every(key => Number.isSafeInteger(row[key]) && row[key] >= 0)
+          || row.started < 1 || row.started > 128 || row.acquired > row.started || row.completed > row.acquired
+          || row.startDelayMs > 300000 || row.afterStartMs > 300000) continue;
+        (database[phase] ??= {})[kind] = Object.fromEntries(keys.map(key => [key, row[key]]));
+      }
+    }
+    samples.push({ sample: entry.sample, outcome: entry.outcome, phases, handlerMs: entry.handlerMs,
+      ...(Object.keys(database).length ? { database } : {}) });
     if (samples.length === 8) break;
   }
   return samples;

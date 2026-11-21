@@ -1783,7 +1783,8 @@ try{
  save();
  if(!fixtureOnly){
   if(!mixedLoad)await seedNotificationReads(fixture);
-  app=start('application',process.execPath,['node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
+  const databaseProfile=mixedLoad?['--import',new URL('./payroll-db-admission-profile.mjs',import.meta.url).href]:[];
+  app=start('application',process.execPath,[...databaseProfile,'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1',
    '--port',String(appPort)],{...dbEnv,NODE_ENV:'production',AIHR_DB_POOL_MAX:'8',
     ...(mixedLoad&&{DATABASE_URL:namedDatabase(dbEnv.DATABASE_URL,'aihr-fixture-mixed-web'),AIHR_PAYROLL_RECEIPT_PROFILE:'true'})});
   try{

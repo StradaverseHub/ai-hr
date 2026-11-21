@@ -14,6 +14,20 @@ test('projects ordered Payroll phase durations without carrying raw log fields o
   ]);
 });
 
+test('separates raw admission delay from transaction start delay inside a Payroll phase', () => {
+  const sample = { sample:'steady-1',outcome:'queued',handlerMs:50,phases:{session:15,translations:16,prechecks:35,enqueue:49} };
+  const raw = { started:3,acquired:3,completed:3,startDelayMs:12,afterStartMs:2 };
+  const transaction = { started:1,acquired:1,completed:1,startDelayMs:10,afterStartMs:3 };
+  const record={...sample,database:{
+    session:{raw:{...raw,sql:'private'},unknown:raw},
+    enqueue:{transaction,raw:{...raw,acquired:4}},
+    extra: {raw},
+  }};
+  assert.deepEqual(projectPayrollAdmissionPhases('PERF_PAYROLL_RECEIPT '+JSON.stringify(record)), [
+    {...sample,database:{session:{raw},enqueue:{transaction}}},
+  ]);
+});
+
 const job = tenant => ({
   tenant, startedWith: atSteady, responseMs: 241, acknowledgmentMs: 267,
   verifiedCompletionMs: 7300, verifiedWith: atSteady,
