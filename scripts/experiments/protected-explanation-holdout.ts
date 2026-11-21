@@ -60,7 +60,8 @@ function deterministicChoice({ choices, focus }: ExplanationCase) {
     choice,
     overlap: [...words].reduce((sum, word) => document.has(word) ? sum + documents.length + 1 - frequencies.get(word)! : sum, 0),
   })).sort((a, b) => b.overlap - a.overlap);
-  return ranked[0].overlap > ranked[1].overlap ? ranked[0].choice : null;
+  const margin = ranked[0].overlap - ranked[1].overlap;
+  return {choice: margin > 0 ? ranked[0].choice : null, margin};
 }
 
 /** Evaluator-owned fictional cases, scored against both the original model
@@ -110,22 +111,26 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
   const original = { correct: 0, rejected: 0, gains: 0, regressions: 0 };
   const deterministic = { correct: 0, abstained: 0, gains: 0, regressions: 0 };
   const candidate = { correct: 0, rejected: 0 };
-  const retrievalFirst = {
+  const retrievalMargins = [1, 2, 3, 4, 5, 6, 8].map(minimumMargin => ({
+    minimumMargin,
     correct: 0, rejected: 0, modelCalls: 0,
     versusFocused: { gains: 0, regressions: 0 },
-  };
+  }));
   for (const fixture of cases) {
     const past = await choose(call, fixture, false);
     const next = await choose(call, fixture, true);
-    const fixed = deterministicChoice(fixture);
+    const {choice: fixed, margin} = deterministicChoice(fixture);
     // Both policies would send the identical focused request on a retrieval abstention.
     // Reuse that observed response to attribute accuracy and calls without extra sampling.
-    const routed = fixed === null ? next : fixed === fixture.expected ? 'correct' : 'incorrect';
-    if (fixed === null) retrievalFirst.modelCalls++;
-    if (routed === 'correct') retrievalFirst.correct++;
-    if (routed === 'rejected') retrievalFirst.rejected++;
-    if (routed === 'correct' && next !== 'correct') retrievalFirst.versusFocused.gains++;
-    if (routed !== 'correct' && next === 'correct') retrievalFirst.versusFocused.regressions++;
+    for (const policy of retrievalMargins) {
+      const usesModel = margin < policy.minimumMargin;
+      const routed = usesModel ? next : fixed === fixture.expected ? 'correct' : 'incorrect';
+      if (usesModel) policy.modelCalls++;
+      if (routed === 'correct') policy.correct++;
+      if (routed === 'rejected') policy.rejected++;
+      if (routed === 'correct' && next !== 'correct') policy.versusFocused.gains++;
+      if (routed !== 'correct' && next === 'correct') policy.versusFocused.regressions++;
+    }
     if (past === 'correct') original.correct++;
     if (past === 'rejected') original.rejected++;
     if (next === 'correct') candidate.correct++;
@@ -138,11 +143,12 @@ export async function scoreProtectedExplanationHoldout(bytes: Buffer, expectedSh
     if (next !== 'correct' && fixed === fixture.expected) deterministic.regressions++;
   }
   const confirmedGain = candidate.rejected === 0 && original.gains >= spec.minimumGain && original.regressions === 0;
+  const {minimumMargin: _, ...retrievalFirst} = retrievalMargins[0];
   return {
     evidence: 'offline_explanation_revision_holdout', releaseAuthorized: false,
     holdoutDigest: expectedSha, developmentReportDigest: spec.developmentReportDigest,
     comparator: 'canonical_english_explanation_retrieval_v2', cases: cases.length, minimumGain: spec.minimumGain,
-    original, deterministic, candidate, retrievalFirst, confirmedGain,
+    original, deterministic, candidate, retrievalFirst, retrievalMargins, confirmedGain,
     beatsDeterministic: candidate.rejected === 0 && deterministic.gains >= spec.minimumGain && deterministic.regressions === 0,
     budget,
   };

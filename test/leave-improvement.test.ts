@@ -104,6 +104,10 @@ describe('evaluator-held explanation choices', () => {
       candidate: { correct: 4, rejected: 0 }, original: { correct: 2, gains: 2, regressions: 0 },
       deterministic: { correct: 3, abstained: 1, gains: 1, regressions: 0 },
       retrievalFirst: { correct: 4, rejected: 0, modelCalls: 1, versusFocused: { gains: 0, regressions: 0 } },
+      retrievalMargins: expect.arrayContaining([
+        expect.objectContaining({ minimumMargin: 1, correct: 4, modelCalls: 1 }),
+        expect.objectContaining({ minimumMargin: 8, correct: 4, modelCalls: 4 }),
+      ]),
       confirmedGain: true, beatsDeterministic: false, releaseAuthorized: false, budget: { calls: 8 },
     });
     expect(JSON.stringify(result)).not.toContain(cases[0].focus);
