@@ -22,7 +22,7 @@ import {assertAiCentreRunningTx} from '../core/ai-centre-control';
 import {lockLeaveDependenciesTx,lockLeaveDependencyReadConfigurationTx} from '../core/leave-dependency-lock';
 import {applyLeaveAdjustmentBatch} from '../packs/leave/service';
 import {assistantQuestionBudgetBinding,completeAssistantQuestionBudgetTx} from '../core/assistant-question-budget';
-import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
+import {prepareAssistantConversationStrategyTx,completeAssistantConversationStrategyTx,recheckAssistantConversationStrategyTx,retireAssistantConversationStrategyCapability} from '../core/module-agent-releases';
 import {createConversationAgentCandidate,promoteConversationAgentCandidate,rollbackAssistantPromotion} from '../core/module-agent-releases';
 import {signPairedLeaveEvaluation} from '../lib/ai/assistant-leave-evaluation-receipt';
 import {routingDigest} from '../lib/ai/module-agent-routing';
@@ -89,7 +89,7 @@ describe('actual Mine flags bind current provider input and historical source di
    const [legacy]=await owner.db.execute(sql`select candidate_digest from public.ai_agent_candidate where id=${old.candidateId}::uuid`);
    expect(legacy.candidate_digest).toBe(old.candidateDigest);
 
-   const request={candidateId:created.candidateId,maxJobs:2,hours:1};
+   const request={candidateId:created.candidateId,maxJobs:3,hours:1};
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
    vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
    await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
@@ -120,7 +120,7 @@ describe('actual Mine flags bind current provider input and historical source di
    await expect(promoteConversationAgentCandidate(ctx,request)).rejects.toThrow();
    await expect(promoteConversationAgentCandidate(reviewer,request)).rejects.toThrow();
    const promotion=await promoteConversationAgentCandidate(promoter,request);
-   expect(promotion).toMatchObject({coverage:'paired-offline-leave-routing',maxJobs:2});
+   expect(promotion).toMatchObject({coverage:'paired-offline-leave-routing',maxJobs:3});
    expect(Date.parse(promotion.expiresAt)).toBe(Date.parse(expiresAt));
 
    const transport=vi.spyOn(openaiAdapter,'converse').mockRejectedValue(Error('Unexpected provider call.'));
@@ -138,9 +138,19 @@ describe('actual Mine flags bind current provider input and historical source di
    expect(history.history[0].grounded?.mode).toBe('grounded');
    expect(JSON.stringify(history.history[0].grounded)).toContain('113.75');
 
-   await rollbackAssistantPromotion(promoter,{promotionId:promotion.promotionId,reason:'human'});
-   await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
-   transport.mockImplementationOnce(async(_config,args)=>{
+   // Capture a native capability before withdrawing the pinned evidence.
+   const inflight=await withTenant(ctx,async tx=>{
+    const configuration=await resolveActiveAiConfig(tx,ctx,'hr_assistant');
+    if(!configuration)throw Error('Expected the fictional Assistant provider.');
+    const rooted=await bindAiSpendTaskTx(tx,ctx,configuration,{kind:'assistant_question'});
+    return prepareAssistantConversationStrategyTx(tx,ctx,rooted,'My leave balance');
+   });
+   expect(inflight.provenance.mode).toBe('promoted');
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE','');
+   try{
+    await expect(withTenant(ctx,tx=>recheckAssistantConversationStrategyTx(tx,ctx,inflight.capability))).rejects.toThrow();
+   }finally{retireAssistantConversationStrategyCapability(inflight.capability);}
+   transport.mockImplementation(async(_config,args)=>{
     const turn=args.turns[0];
     if(turn?.role!=='user')throw Error('Expected a protected fallback catalogue.');
     const {local}=capturePrivateAssistantTask(JSON.parse(turn.content));
@@ -150,9 +160,13 @@ describe('actual Mine flags bind current provider input and historical source di
     return {...response,text:JSON.stringify({version:1,mode:'answer',blocks:[selection]})};
    });
    await expect(ask()).resolves.toMatchObject({turns:1});
-   expect(transport).toHaveBeenCalledOnce();
+   vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE',bundle);
+   await rollbackAssistantPromotion(promoter,{promotionId:promotion.promotionId,reason:'human'});
+   await expect(promoteConversationAgentCandidate(promoter,request)).rejects.toThrow();
+   await expect(ask()).resolves.toMatchObject({turns:1});
+   expect(transport).toHaveBeenCalledTimes(2);
    const [used]=await owner.db.execute(sql`select used_jobs::int as used from public.ai_agent_promotion where id=${promotion.promotionId}::uuid`);
-   expect(used).toEqual({used:1});
+   expect(used).toEqual({used:2});
   }finally{
    // Vitest can reuse this worker's database. Remove the local candidate and restore the exact original CHECK.
    await resetDb();

@@ -1133,13 +1133,13 @@ async function conversationPromotionEvidenceTx(tx:Tx,ctx:SessionContext,candidat
  }
  const pairedEvidence=installedLocalLeaveEvidence({tenantId:ctx.tenantId,authorId:candidate.author_user_id,
   candidateDigest:candidate.candidate_digest,baselineDigest:candidate.baseline_digest,sourceDigest:candidate.source_digest});
- if(!pairedEvidence||pairedEvidence.approverId!==approverId)return fail();
+ if(!pairedEvidence||pairedEvidence.approverId!==approverId)return null;
  return {pairedEvidence};
 }
 export async function promoteConversationAgentCandidate(ctx:SessionContext,input:{candidateId:string;maxJobs:number;hours:number}){
  const current=capture(ctx),p={...input};if(!exact(p,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>100||!Number.isSafeInteger(p.hours)||p.hours<1||p.hours>24)return fail();
  return withTenant(current,async tx=>{const fresh=await guard(tx,current,true),nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.kind!=='assistant_answer_prompt_v1'||candidate.author_user_id===current.userId||candidate.owner_user_id!==nominated.owner_user_id)return fail();const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
-  const evidence=await conversationPromotionEvidenceTx(tx,current,candidate,snapshot.fingerprint,current.userId!);
+  const evidence=await conversationPromotionEvidenceTx(tx,current,candidate,snapshot.fingerprint,current.userId!);if(!evidence)return fail();
   const pairedExpiry=evidence.pairedEvidence?.expiresAt??null;
   const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and c.kind='assistant_answer_prompt_v1' and (
    (${pairedExpiry!==null} and p.candidate_id=${candidate.id}::uuid) or
@@ -1155,6 +1155,7 @@ async function currentConversationPromotionTx(tx:Tx,ctx:SessionContext,promotion
  const [row]=await tx.execute<ConversationPromotion>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text,p.created_at::text,p.approver_user_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.id=${promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<=p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);if(!row)return fail();
  const candidate=await candidateTx(tx,ctx,row.candidate_id),proof=open('conversation-promotion',ctx.tenantId,row.id,row.receipt);
  const evidence=await conversationPromotionEvidenceTx(tx,ctx,candidate,providerFingerprint,row.approver_user_id);
+ if(!evidence)return null;
  const evidenceKey=evidence.pairedEvidence?'pairedEvidence':'evaluations';
  if(!exact(proof,['version','candidateDigest','binding','approverId',evidenceKey,'providerFingerprint','maxJobs','createdAt','expiresAt'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.providerFingerprint!==providerFingerprint||routingDigest(proof[evidenceKey])!==routingDigest(evidence[evidenceKey])||proof.maxJobs!==row.max_jobs||proof.approverId!==row.approver_user_id||new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();return{row,candidate};
 }
@@ -1177,7 +1178,16 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  // the person gets the standard strategy rather than a refused question; it stays retained for audit and rollback.
  const [selected]=await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and c.source_digest=${MODULE_AGENT_SOURCE_DIGEST} and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
  let strategy:AssistantConversationCandidate=ASSISTANT_CONVERSATION_BASELINE,promotionId:string|null=null,version=0,candidateDigest=conversationBaselineDigest;
- if(selected){const selectedPromotion=await currentConversationPromotionTx(tx,ctx,selected.id,snapshot.fingerprint);strategy=captureAssistantConversationCandidate(selectedPromotion.candidate.configuration);promotionId=selected.id;version=selectedPromotion.candidate.version;candidateDigest=selectedPromotion.candidate.candidate_digest;await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${selected.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);}
+ if(selected){
+  // A withdrawn installation bundle defers new questions to baseline. An already-issued trial
+  // capability still requires the original evidence through completion.
+  const current=await currentConversationPromotionTx(tx,ctx,selected.id,snapshot.fingerprint);
+  if(current){
+   strategy=captureAssistantConversationCandidate(current.candidate.configuration);
+   promotionId=selected.id;version=current.candidate.version;candidateDigest=current.candidate.candidate_digest;
+   await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${selected.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  }
+ }
  const id=randomUUID(),provenance=Object.freeze({mode:promotionId?'promoted' as const:'baseline' as const,version,configurationDigest:routingDigest(strategy)}),capability=Object.freeze({});
  const receipt=seal('conversation-use',ctx.tenantId,id,{version:1,userId:ctx.userId,personId:ctx.personId??null,promotionId,candidateDigest,providerFingerprint:snapshot.fingerprint,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,questionDigest,provenance});
  const [created]=await tx.execute<{incarnation:string}>(sql`insert into public.ai_assistant_answer_strategy_use(id,tenant_id,user_id,person_id,promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${ctx.personId??null}::uuid,${promotionId}::uuid,${candidateDigest},${snapshot.fingerprint},${MODULE_AGENT_SOURCE_DIGEST},${receipt}) returning incarnation::text as incarnation`);if(!created||!/^\d+$/.test(created.incarnation))return fail();
@@ -1190,7 +1200,7 @@ export async function prepareAssistantConversationStrategyTx(tx:Tx,supplied:Sess
  * erased metadata is recreated, no used-job count/native spend is refunded after uncertainty. */
 export async function recheckAssistantConversationStrategyTx(tx:Tx,supplied:SessionContext,capability:AssistantConversationStrategyCapability){
  const use=conversationStrategyUses.get(capability);if(!use||strategyPrincipal(use.ctx)!==strategyPrincipal(supplied))return fail();const ctx=use.ctx,fresh=await guard(tx,ctx,false);await agentReleaseIntervalTx(tx,ctx,ctx.userId!,false);await signalIntervalTx(tx,ctx,ctx.userId!);const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(snapshot?.fingerprint!==use.providerFingerprint)return fail();
- if(use.promotionId){const current=await currentConversationPromotionTx(tx,ctx,use.promotionId,use.providerFingerprint);if(current.candidate.candidate_digest!==use.candidateDigest)return fail();}
+ if(use.promotionId){const current=await currentConversationPromotionTx(tx,ctx,use.promotionId,use.providerFingerprint);if(current?.candidate.candidate_digest!==use.candidateDigest)return fail();}
  const [row]=await tx.execute<{receipt:string;incarnation:string}>(sql`select receipt,incarnation::text as incarnation from public.ai_assistant_answer_strategy_use where id=${use.id}::uuid and tenant_id=${ctx.tenantId}::uuid and user_id=${ctx.userId}::uuid and person_id is not distinct from ${ctx.personId??null}::uuid and state='pending' and source_digest=${MODULE_AGENT_SOURCE_DIGEST} and expires_at>clock_timestamp() for share nowait`);if(!row||row.incarnation!==use.incarnation)return fail();const proof=open('conversation-use',ctx.tenantId,use.id,row.receipt);
  if(!exact(proof,['version','userId','personId','promotionId','candidateDigest','providerFingerprint','sourceDigest','questionDigest','provenance'])||proof.version!==1||proof.userId!==ctx.userId||proof.personId!==(ctx.personId??null)||proof.promotionId!==use.promotionId||proof.candidateDigest!==use.candidateDigest||proof.providerFingerprint!==use.providerFingerprint||proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||proof.questionDigest!==use.questionDigest||routingDigest(proof.provenance)!==routingDigest(use.provenance))return fail();return use.provenance;
 }
