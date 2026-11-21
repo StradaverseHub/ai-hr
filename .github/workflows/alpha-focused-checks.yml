@@ -73,7 +73,7 @@ on:
         default: ''
         type: string
       reuse_combined_action_build:
-        description: Reuse a pinned production archive for browser actions or the static page census
+        description: Reuse a pinned production archive for browser actions, the static page census, Attendance, or Rewards
         type: boolean
         default: false
       browser_static_shard:
@@ -99,7 +99,7 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_action_build && (inputs.browser_surface_probe == 'actions' && '-actions' || format('-static-{0}', inputs.browser_static_shard)) || '' }}
+  group: alpha-focused-${{ inputs.candidate_ref }}${{ inputs.reuse_combined_action_build && (inputs.browser_surface_probe != '' && format('-{0}', inputs.browser_surface_probe) || format('-static-{0}', inputs.browser_static_shard)) || '' }}
   cancel-in-progress: false
 env:
   TZ: Asia/Kuala_Lumpur
@@ -161,9 +161,11 @@ jobs:
           fi
           if [[ "$REUSE_ACTION_BUILD" == true ]]; then
             [[ "$BROWSER_BASELINE" == true && "$BROWSER_FIXTURE_ONLY" != true && "$RUN_BUILD" != true ]] || exit 2
-            if [[ "$BROWSER_SURFACE_PROBE" != actions ]]; then
-              [[ -z "$BROWSER_SURFACE_PROBE" && "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2
-            fi
+            case "$BROWSER_SURFACE_PROBE" in
+              actions|attendance|rewards) ;;
+              '') [[ "$BROWSER_STATIC_SHARD" =~ ^([0-7]|all)$ ]] || exit 2 ;;
+              *) exit 2 ;;
+            esac
             jq -e --arg source "$EXPECTED_SHA" 'has($source)' scripts/performance/browser-action-builds.json > /dev/null
           fi
           if [[ "$BROWSER_SURFACE_PROBE" == actions && -n "$BROWSER_STATIC_SHARD" ]]; then
