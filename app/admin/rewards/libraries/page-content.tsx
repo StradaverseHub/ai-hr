@@ -1,29 +1,92 @@
 import Link from 'next/link';
+import {cache,Suspense} from 'react';
 import {getLocale,getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
+import type {SessionContext} from '@/db/client';
 import {rewardSetupPlanChoices} from '@/packs/rewards/plan-configuration';
-import {legacyLibraryDraft} from '@/packs/rewards/setup-model';
-import {rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardLibraryPageAccess,previewRewardLibraryActivation} from '@/packs/rewards/libraries';
+import {legacyLibraryDraft,RewardSetupError} from '@/packs/rewards/setup-model';
+import {rewardLibraries,rewardLibraryGradeChoices,rewardLibraryHistory,rewardLibraryPageAccess,previewRewardLibraryActivation,type RewardLibraryVersion} from '@/packs/rewards/libraries';
 import {ReviewBeforeSaving} from '../review-before-saving';
 import {Card,Button,Field,PageHeader,inputCls,tableWrapCls,theadCls,thCls,tbodyCls,ErrorBanner} from '@/components/ui';
+import RouteLoading from '@/components/route-loading';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {LibraryEditor} from './editor';
 import {decideLibraryAction,restoreLibraryAction} from './actions';
-export async function RewardLibraryPage({kind,params}:{kind:'salary'|'bonus';params:{year?:string;version?:string;copy?:string;compare?:string;error?:string;next?:string;legacy?:string}}){
- const s=await getSession(),t=await getTranslations('rewardSetup'),nav=await getTranslations('nav'),year=Number(params.year)||Number(todayInKualaLumpur().slice(0,4));let canManage=false;
- try{({canManage}=await rewardLibraryPageAccess(s,kind));}catch{return <div className="space-y-3"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')}/><p>{t('noAccess')}</p></div>;}
- const versions=await rewardLibraries(s,kind),selected=params.version?versions.find(v=>v.id===params.version)??null:null,copy=params.copy==='1',grades=await rewardLibraryGradeChoices(s),compare=versions.find(v=>v.id===params.compare);
- const legacyPlans=canManage?(await rewardSetupPlanChoices(s)).filter(p=>!p.setup&&p.source.policy.year<=year):[],legacy=legacyPlans.find(p=>p.source.versionId===params.legacy)?.source;
+type Kind='salary'|'bonus';
+type LibraryParams={year?:string;version?:string;copy?:string;compare?:string;error?:string;next?:string;legacy?:string};
+type LibraryContext={s:SessionContext;kind:Kind;params:LibraryParams;year:number;base:string;canManage:boolean};
+
+const legacyLibrarySources=cache(async(s:SessionContext,year:number)=>{
+ try{
+  const plans=await rewardSetupPlanChoices(s);
+  return plans.filter(plan=>!plan.setup&&plan.source.policy.year<=year);
+ }catch(error){
+  // Library editors and plan editors have different native grants.
+  if(error instanceof RewardSetupError&&error.code==='forbidden')return [];
+  throw error;
+ }
+});
+
+export async function RewardLibraryPage({kind,params}:{kind:Kind;params:LibraryParams}){
+ const [s,t,nav]=await Promise.all([getSession(),getTranslations('rewardSetup'),getTranslations('nav')]);
+ const title=nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices');
+ const year=Number(params.year)||Number(todayInKualaLumpur().slice(0,4));
+ const base='/admin/rewards/'+(kind==='salary'?'salary-structures':'bonus-matrices');
+ let canManage:boolean;
+ try{
+  ({canManage}=await rewardLibraryPageAccess(s,kind));
+ }catch{
+  return <div className="space-y-3"><PageHeader title={title}/><p>{t('noAccess')}</p></div>;
+ }
+ return <div className="space-y-6">
+  <PageHeader title={title} description={t('libraryHelp')} actions={canManage?<Button asChild><Link href={base+'?year='+year}>{t('new')}</Link></Button>:undefined}/>
+  <ErrorBanner message={params.error}/>
+  <form className="flex flex-wrap items-end gap-3">
+   <Field label={t('year')}><input type="number" name="year" defaultValue={year} min="2000" max="2200" className={inputCls}/></Field>
+   <Button variant="outline">{t('filter')}</Button>
+   <Link className="text-sm text-primary underline" href={`/admin/rewards/libraries/export?kind=${kind}&year=${year}`}>{t('downloadTemplate')}</Link>
+  </form>
+  <Suspense fallback={<RouteLoading/>}>
+   <LibraryContents {...{s,kind,params,year,base,canManage}}/>
+  </Suspense>
+ </div>;
+}
+
+async function LegacyLibraryPicker({s,year,base}:{s:SessionContext;year:number;base:string}){
+ const legacyPlans=await legacyLibrarySources(s,year);
+ if(!legacyPlans.length)return null;
+ const t=await getTranslations('rewardSetup');
+ return <details className="rounded-md border p-4"><summary className="cursor-pointer font-medium">{t('fromShared')}</summary><p className="mt-2 text-sm text-muted-foreground">{t('fromSharedHelp')}</p><ul className="divide-y">{legacyPlans.map(p=><li className="py-3 text-sm" key={p.source.versionId}><Link className="text-primary underline" href={`${base}?year=${year}&legacy=${p.source.versionId}`}>{p.source.name} · {p.source.policy.year} · v{p.source.revision}</Link></li>)}</ul></details>;
+}
+
+async function LibraryContents(context:LibraryContext){
+ const {s,kind,params,base,year,canManage}=context;
+ const versions=await rewardLibraries(s,kind);
+ const selected=params.version?versions.find(v=>v.id===params.version)??null:null;
+ const shown=versions.filter(v=>v.year===year||v.id===selected?.id);
+ const t=await getTranslations('rewardSetup');
+ const status=(v:{state:string;locked:boolean})=>t(v.locked?'locked':v.state==='confirmed'?'active':'draft');
+ return <>
+ {canManage&&<details className="rounded-md border p-4"><summary className="cursor-pointer font-medium">{t('copyPriorLibrary')}</summary>{versions.some(v=>v.year===year-1&&v.state==='confirmed')?<ul className="divide-y">{versions.filter(v=>v.year===year-1&&v.state==='confirmed'&&!versions.some(next=>next.libraryId===v.libraryId&&next.state==='confirmed'&&next.version>v.version)).map(v=><li className="py-3 text-sm" key={v.id}><Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}&copy=1`}>{v.name} · {v.year} · v{v.version}</Link></li>)}</ul>:<p className="mt-2 text-sm text-muted-foreground">{t('noPriorLibrary')}</p>}</details>}
+ {canManage&&<Suspense fallback={null}><LegacyLibraryPicker {...{s,year,base}}/></Suspense>}
+ <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['name','year','version','status','usedBy','actions'].map(k=><th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{shown.map(v=><tr key={v.id}><td className="px-3 py-3"><Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}`}>{v.name}</Link></td><td className="px-3 py-3">{v.year}</td><td className="px-3 py-3">{v.version}</td><td className="px-3 py-3">{status(v)}</td><td className="px-3 py-3">{v.usedBy.length}</td><td className="px-3 py-3">{canManage&&<Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}&copy=1`}>{t('duplicate')}</Link>}</td></tr>)}</tbody></table>{!shown.length&&<p className="p-6 text-sm text-muted-foreground">{t('emptyLibraries')}</p>}</div>
+ {(selected||canManage)&&<Suspense fallback={<RouteLoading/>}><LibraryDetails {...context} {...{selected,versions}}/></Suspense>}
+ </>;
+}
+
+async function LibraryDetails({s,kind,params,year,base,canManage,selected,versions}:LibraryContext&{
+ selected:RewardLibraryVersion|null;versions:RewardLibraryVersion[];
+}){
+ const t=await getTranslations('rewardSetup');
+ const copy=params.copy==='1';
+ const grades=await rewardLibraryGradeChoices(s);
+ const legacy=canManage&&params.legacy?(await legacyLibrarySources(s,year)).find(plan=>plan.source.versionId===params.legacy)?.source:undefined;
+ const compare=versions.find(v=>v.id===params.compare);
  const activation=selected&&canManage&&!copy&&selected.state!=='confirmed'?await previewRewardLibraryActivation(s,selected.id):null;
  const latestActive=selected?versions.filter(v=>v.libraryId===selected.libraryId&&v.state==='confirmed').sort((a,b)=>b.version-a.version)[0]:undefined;
  const status=(v:{state:string;locked:boolean})=>t(v.locked?'locked':v.state==='confirmed'?'active':'draft');
  const history=selected&&!copy?await rewardLibraryHistory(s,selected.id):[],locale=await getLocale(),formatTime=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'});
- const base='/admin/rewards/'+(kind==='salary'?'salary-structures':'bonus-matrices'),shown=versions.filter(v=>v.year===year||v.id===selected?.id);
- return<div className="space-y-6"><PageHeader title={nav(kind==='salary'?'rewardsSalaryStructures':'rewardsBonusMatrices')} description={t('libraryHelp')} actions={canManage?<Button asChild><Link href={base+'?year='+year}>{t('new')}</Link></Button>:undefined}/><ErrorBanner message={params.error}/>
- <form className="flex flex-wrap items-end gap-3"><Field label={t('year')}><input type="number" name="year" defaultValue={year} min="2000" max="2200" className={inputCls}/></Field><Button variant="outline">{t('filter')}</Button><Link className="text-sm text-primary underline" href={`/admin/rewards/libraries/export?kind=${kind}&year=${year}`}>{t('downloadTemplate')}</Link></form>
- {canManage&&<details className="rounded-md border p-4"><summary className="cursor-pointer font-medium">{t('copyPriorLibrary')}</summary>{versions.some(v=>v.year===year-1&&v.state==='confirmed')?<ul className="divide-y">{versions.filter(v=>v.year===year-1&&v.state==='confirmed'&&!versions.some(next=>next.libraryId===v.libraryId&&next.state==='confirmed'&&next.version>v.version)).map(v=><li className="py-3 text-sm" key={v.id}><Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}&copy=1`}>{v.name} · {v.year} · v{v.version}</Link></li>)}</ul>:<p className="mt-2 text-sm text-muted-foreground">{t('noPriorLibrary')}</p>}</details>}
- {canManage&&legacyPlans.length>0&&<details className="rounded-md border p-4"><summary className="cursor-pointer font-medium">{t('fromShared')}</summary><p className="mt-2 text-sm text-muted-foreground">{t('fromSharedHelp')}</p><ul className="divide-y">{legacyPlans.map(p=><li className="py-3 text-sm" key={p.source.versionId}><Link className="text-primary underline" href={`${base}?year=${year}&legacy=${p.source.versionId}`}>{p.source.name} · {p.source.policy.year} · v{p.source.revision}</Link></li>)}</ul></details>}
- <div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr>{['name','year','version','status','usedBy','actions'].map(k=><th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{shown.map(v=><tr key={v.id}><td className="px-3 py-3"><Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}`}>{v.name}</Link></td><td className="px-3 py-3">{v.year}</td><td className="px-3 py-3">{v.version}</td><td className="px-3 py-3">{status(v)}</td><td className="px-3 py-3">{v.usedBy.length}</td><td className="px-3 py-3">{canManage&&<Link className="text-primary underline" href={`${base}?year=${year}&version=${v.id}&copy=1`}>{t('duplicate')}</Link>}</td></tr>)}</tbody></table>{!shown.length&&<p className="p-6 text-sm text-muted-foreground">{t('emptyLibraries')}</p>}</div>
+ return <>
  {(selected||canManage)&&<Card className="space-y-4 p-5"><h2 className="font-semibold">{selected&&!copy?selected.name:t('new')}</h2>{selected&&<div className="flex flex-wrap gap-4 text-sm"><Link className="text-primary underline" href={`/admin/rewards/libraries/export?version=${selected.id}`}>{t('exportExcel')}</Link><Link className="text-primary underline" href={`/admin/rewards/libraries/export?version=${selected.id}&format=pdf`}>{t('exportPdf')}</Link>{canManage&&selected.state==='confirmed'&&<Link className="text-primary underline" href={`${base}?year=${year}&version=${selected.id}&next=1`}>{t('newVersion')}</Link>}</div>}{legacy&&!selected&&<p role="status" className="text-sm">{t('fromSharedHelp')} {legacy.name} v{legacy.revision}</p>}<LibraryEditor key={`${selected?.id??legacy?.versionId??'new'}:${params.next??''}:${copy}:${year}`} legacySeed={legacy&&!selected?legacyLibraryDraft(kind,legacy.policy,grades):undefined} legacyName={legacy?.name} legacyVersionId={legacy&&!selected?legacy.versionId:undefined} kind={kind} grades={grades} version={selected} copy={copy} year={year} canManage={canManage} successor={params.next==='1'}/>{selected&&canManage&&!copy&&selected.state!=='confirmed'&&activation&&(()=>{const fields=<><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="kind" value={kind}/><input type="hidden" name="year" value={selected.year}/><input type="hidden" name="lockVersion" value={selected.lockVersion}/></>;
   return activation.summary.highImpact.length?<ReviewBeforeSaving summary={activation.summary} digest={activation.digest} action={decideLibraryAction} triggerLabel={t('makeActive')} submitLabel={t('makeActive')}>{fields}</ReviewBeforeSaving>
    :<form action={decideLibraryAction} className="flex flex-wrap items-center gap-3">{fields}<Button>{t('makeActive')}</Button><span className="text-sm text-muted-foreground">{t('makeActiveHelp')}</span></form>;})()}
@@ -40,5 +103,5 @@ export async function RewardLibraryPage({kind,params}:{kind:'salary'|'bonus';par
  return <li key={event.lockVersion} className="space-y-2 py-3 text-sm"><p>{formatTime.format(new Date(event.occurredAt))} · {event.beforeState&&event.beforeState!==event.afterState?status({state:event.beforeState,locked:false})+' → ':''}{status({state:event.afterState,locked:false})}</p><p>{event.reason}</p>{changes.length>0&&<details><summary>{t('libraryChangedValues')}</summary><div className={tableWrapCls}><table className="w-full"><thead className={theadCls}><tr><th className={thCls}>{t('name')}</th><th className={thCls}>{t('libraryBefore')}</th><th className={thCls}>{t('libraryAfter')}</th></tr></thead><tbody className={tbodyCls}>{changes.map((change,i)=><tr key={i}><th scope="row" className="px-3 py-2 text-left">{change.label}</th><td className="px-3 py-2 tabular-nums">{numbers(change.before)}</td><td className="px-3 py-2 tabular-nums">{numbers(change.after)}</td></tr>)}</tbody></table></div></details>}</li>;
  })}</ol></Card>}
  {selected&&<Card className="space-y-3 p-5"><h2 className="font-semibold">{t('compare')}</h2><form className="flex flex-wrap items-end gap-3"><input type="hidden" name="version" value={selected.id}/><input type="hidden" name="year" value={year}/><Field label={t('compareVersion')}><select name="compare" defaultValue={params.compare??''} className={inputCls}><option value="">{t('choose')}</option>{versions.filter(v=>v.id!==selected.id).map(v=><option key={v.id} value={v.id}>{v.name} · {v.year} · v{v.version}</option>)}</select></Field><Button variant="outline">{t('compare')}</Button></form>{compare&&<div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr><th className={thCls}>{t('grade')}</th><th className={thCls}>{selected.name} v{selected.version}</th><th className={thCls}>{compare.name} v{compare.version}</th></tr></thead><tbody className={tbodyCls}>{selected.data.rows.map(r=>{const other=compare.data.rows.find(o=>o.grade===r.grade),values='months'in r?r.months:[r.minimumCents,r.midpointCents,r.maximumCents],before=other&&'months'in other?other.months:other?[other.minimumCents,other.midpointCents,other.maximumCents]:[];return<tr key={r.grade} className={JSON.stringify(values)===JSON.stringify(before)?'':'bg-accent/30'}><th className="px-3 py-3 text-left">JG {r.grade}</th><td className="px-3 py-3 tabular-nums">{values.map(v=>v===null?t('noRange'):(v/(kind==='salary'?100:10000)).toFixed(2)).join(' / ')}</td><td className="px-3 py-3 tabular-nums">{before.map(v=>v===null?t('noRange'):(v/(kind==='salary'?100:10000)).toFixed(2)).join(' / ')}</td></tr>;})}</tbody></table></div>}{compare&&selected.data.kind==='bonus'&&compare.data.kind==='bonus'&&(selected.data.segments.length>0||compare.data.segments.length>0)&&<div className={tableWrapCls}><table className="w-full text-sm"><thead className={theadCls}><tr><th className={thCls}>{t('segment')}</th><th className={thCls}>{selected.name} v{selected.version}</th><th className={thCls}>{compare.name} v{compare.version}</th></tr></thead><tbody className={tbodyCls}>{[...new Set([...selected.data.segments,...compare.data.segments].map(s=>s.name))].sort().map(name=>{const current=selected.data.kind==='bonus'?selected.data.segments.find(r=>r.name===name)?.factors:undefined,previous=compare.data.kind==='bonus'?compare.data.segments.find(r=>r.name===name)?.factors:undefined;return<tr key={name} className={JSON.stringify(current)===JSON.stringify(previous)?'':'bg-accent/30'}><th className="px-3 py-3 text-left">{name}</th><td className="px-3 py-3 tabular-nums">{current?.map(v=>(v/10000).toFixed(2)).join(' / ')??'—'}</td><td className="px-3 py-3 tabular-nums">{previous?.map(v=>(v/10000).toFixed(2)).join(' / ')??'—'}</td></tr>;})}</tbody></table></div>}</Card>}
- </div>;
+ </>;
 }
