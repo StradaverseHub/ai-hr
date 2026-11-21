@@ -109,7 +109,7 @@ beforeAll(async()=>{
  fixture=await buildScaleFixture(b);
  await owner.db.insert(domainEvent).values(fixture.activeEmploymentIds.slice(0,500).map(employmentId=>({
   tenantId:b.tenantId,aggregateType:'automatic-chase',aggregateId:employmentId,
-  eventType:'automatic-chase.followup-raised',actorType:'agent',subjectEmploymentId:employmentId,
+  eventType:'automatic-chase.followup-raised',actorType:'agent' as const,subjectEmploymentId:employmentId,
   payload:{action:'attendance.missing_clock.remind',stage:'2026-01-05'},
  })));
 },300_000);
