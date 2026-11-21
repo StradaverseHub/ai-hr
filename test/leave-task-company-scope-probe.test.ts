@@ -1,4 +1,4 @@
-/** Compare the exact Leave decision query with subject scope applied inside its native owner. */
+/** Compare aggregating the exact Leave decisions after evaluating each candidate once. */
 import { sql, type SQL } from 'drizzle-orm';
 import { afterAll, expect, it } from 'vitest';
 import { accountTaskCallerSql } from '../core/account-task-bundle';
@@ -6,33 +6,42 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { leaveType, reportingLine } from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { assertAssignedWorkPrincipalTx } from '../core/approvals';
-import { pendingLeaveDecisionTasksBundleSql } from '../packs/leave/service';
+import { pendingLeaveDecisionCandidatesSql, pendingLeaveDecisionTasksBundleSql } from '../packs/leave/service';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
 import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
 
 afterAll(closeAll);
 
-type Explain = { 'Planning Time': number; 'Execution Time': number };
-const median = (values: number[]) => values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
-
-async function profile(tx: Tx, statement: SQL, samples: number) {
-  const plans: Explain[] = [];
-  for (let sample = 0; sample < samples; sample++) {
-    const [row] = await tx.execute<{ 'QUERY PLAN': Explain[] }>(
-      sql`explain (analyze, timing off, summary, format json) ${statement}`,
-    );
-    const plan = row['QUERY PLAN'][0];
-    expect(Number.isFinite(plan['Planning Time']) && Number.isFinite(plan['Execution Time'])).toBe(true);
-    plans.push(plan);
-  }
-  return {
-    samples,
-    planningMs: median(plans.map(plan => plan['Planning Time'])),
-    executionMs: median(plans.map(plan => plan['Execution Time'])),
-  };
+type Explain = { 'Execution Time': number };
+const own = sql`cast((select task_caller.own_ids from task_caller) as uuid[])`;
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return (sorted[Math.floor((sorted.length - 1) / 2)] + sorted[Math.floor(sorted.length / 2)]) / 2;
+}
+async function executionMs(tx: Tx, statement: SQL) {
+  const [row] = await tx.execute<{ 'QUERY PLAN': Explain[] }>(
+    sql`explain (analyze, timing off, summary, format json) ${statement}`,
+  );
+  const ms = row['QUERY PLAN'][0]['Execution Time'];
+  expect(Number.isFinite(ms)).toBe(true);
+  return ms;
+}
+function once(tx: Tx, session: SessionContext, companyIds?: string[]) {
+  const owner = (section: 'leave' | 'cancellations') => sql`jsonb_build_object(
+    'defer',coalesce(bool_or(d.decision in ('defer','error')) filter(where d.section=${section}),false),
+    'rows',coalesce(jsonb_agg(jsonb_build_object(
+      'id',d.id,'employmentId',d.employment_id,'personId',d.person_id,'employee',d.employee,'createdAt',d.created_at
+    ) order by d.created_at desc,d.id) filter(where d.section=${section} and d.decision='allow'),'[]'::jsonb)
+  )`;
+  return sql`with ${accountTaskCallerSql(session)}, decision_once as materialized (
+    select decision_candidate.section,decision_candidate.id,decision_candidate.employment_id,
+      decision_candidate.person_id,decision_candidate.employee,decision_candidate.created_at,decided.decision
+    ${pendingLeaveDecisionCandidatesSql(tx, session, companyIds, own)}
+  ) select jsonb_build_object('leave',${owner('leave')},'cancellations',${owner('cancellations')}) as value
+  from decision_once d`;
 }
 
-it('scopes Leave subjects before authorization while preserving the live decisions', async () => {
+it('evaluates each Leave decision once with identical authorized rows and fallback flags', async () => {
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
@@ -115,49 +124,30 @@ it('scopes Leave subjects before authorization while preserving the live decisio
   ];
   expect(fixture.singleCompanyId).not.toBe(base.companyId);
   type ApprovalSection = { leave: { defer: boolean; rows: { id: string }[] } };
-  async function measure() {
-    const results = [];
-    for (const { role, session, companyIds } of cases) {
-      results.push(await withTenant(session, async tx => {
-        await assertAssignedWorkPrincipalTx(tx, session);
-        await tx.execute(sql`select set_config('aihr_fixture.leave_company_ids',
-          ${companyIds ? '{' + companyIds.join(',') + '}' : ''},true), set_config('jit','off',true)`);
-        const statement = sql`with ${accountTaskCallerSql(session)}
-          select ${pendingLeaveDecisionTasksBundleSql(tx, session, companyIds)} as value`;
-        const [row] = await tx.execute<{ value: ApprovalSection }>(statement);
-        return { role, value: row.value, ...await profile(tx, statement, 5) };
-      }, { readOnlySnapshot: true }));
-    }
-    return results;
-  }
-  const readDefinition = async () => (await owner.client<{ definition: string; source: string }[]>`
-    select pg_get_functiondef(oid) as definition, prosrc as source from pg_proc
-    where oid='app.delegated_approval_subjects(uuid[],text,text)'::regprocedure
-  `)[0];
-  const original = await readDefinition();
-  const guard = 'WHERE e.tenant_id=app.current_tenant_id() AND e.id=ANY(subject_ids)';
-  expect(original.source.split(guard)).toHaveLength(2);
-  // Add only the selected company predicate inside the existing native subject
-  // owner. The outer list filter, delegation, RLS and step checks still run.
-  const replacement = original.definition.replace(guard, guard + `
-    AND (wanted_module <> 'leave' OR wanted_task <> 'leave.application'
-      OR nullif(current_setting('aihr_fixture.leave_company_ids',true),'') IS NULL
-      OR e.company_id=ANY(nullif(current_setting('aihr_fixture.leave_company_ids',true),'')::uuid[]))`);
-  const baseline = await measure();
-  try {
-    await owner.client.unsafe(replacement);
-    expect((await readDefinition()).source).not.toBe(original.source);
-    const candidate = await measure();
-    expect(candidate.map(row => row.value)).toEqual(baseline.map(row => row.value));
-    expect(candidate.find(row => row.role === 'delegate own scope')?.value.leave.rows)
-      .toContainEqual(expect.objectContaining({ id: named.leave_request_id }));
-    expect(candidate.find(row => row.role === 'delegate excluded scope')?.value.leave.rows).toEqual([]);
-    expect(candidate.find(row => row.role === 'group empty')?.value.leave.rows).toEqual([]);
-    console.info('LEAVE_APPROVAL_SCOPE_PROFILE ' + JSON.stringify(candidate.map(({ role, executionMs, value }, index) => ({
-      role, controlMs: baseline[index].executionMs, candidateMs: executionMs, matchedRows: value.leave.rows.length,
-    }))));
-  } finally {
-    await owner.client.unsafe(original.definition);
-    expect((await readDefinition()).definition).toBe(original.definition);
+  for (const { role, session, companyIds } of cases) {
+    const result = await withTenant(session, async tx => {
+      await assertAssignedWorkPrincipalTx(tx, session);
+      await tx.execute(sql`set local jit=off`);
+      const control = sql`with ${accountTaskCallerSql(session)}
+        select ${pendingLeaveDecisionTasksBundleSql(tx, session, companyIds, own)} as value`;
+      const candidate = once(tx, session, companyIds);
+      const [before] = await tx.execute<{ value: ApprovalSection }>(control);
+      const [after] = await tx.execute<{ value: ApprovalSection }>(candidate);
+      expect(after.value, role).toEqual(before.value);
+      if (role === 'delegate own scope') {
+        expect(after.value.leave.rows).toContainEqual(expect.objectContaining({ id: named.leave_request_id }));
+      }
+      if (role === 'delegate excluded scope' || role === 'group empty') {
+        expect(after.value.leave.rows).toEqual([]);
+      }
+      const samples = { control: [] as number[], candidate: [] as number[] };
+      for (let run = 0; run < 6; run++) {
+        const order = run % 2 === 0 ? ['control', 'candidate'] as const : ['candidate', 'control'] as const;
+        for (const arm of order) samples[arm].push(await executionMs(tx, arm === 'control' ? control : candidate));
+      }
+      return { matchedRows: after.value.leave.rows.length, sampleCount: samples.control.length,
+        controlMs: median(samples.control), candidateMs: median(samples.candidate) };
+    }, { readOnlySnapshot: true });
+    console.info('LEAVE_DECISION_ONCE_PROFILE '+JSON.stringify({ role, ...result }));
   }
 }, 240_000);
