@@ -1,4 +1,5 @@
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {renderToString} from 'react-dom/server';
 import {beforeEach,expect,it,vi} from 'vitest';
 import {Tp3DeclarationFields} from '../components/tp3-declaration-fields';
 import {MyTp3EditableForm} from '../app/me/tp3/form-client';
@@ -18,6 +19,16 @@ vi.mock('../packs/payroll/service',async()=>{
 const identity={employee:{name:'Fictional TP3 employee',idNumber:null,tin:null},stored:{tp3Year:null,netRemuneration:null,epfClaimed:null,pcbPaid:null,zakatPaid:null,lp:null}};
 const named=(name:string)=>document.querySelector(`[name="${name}"]`) as HTMLInputElement;
 beforeEach(()=>{action.mockReset();action.mockResolvedValue({error:'Fictional server validation refusal'});});
+
+it('keeps the server-rendered form disabled until the client can retain edits',()=>{
+ const form=<MyTp3EditableForm><select name="deductionMonth"><option value="3">March</option></select></MyTp3EditableForm>;
+ const server=document.createElement('div');
+ server.innerHTML=renderToString(form);
+ expect(server.querySelector('fieldset')?.disabled).toBe(true);
+ render(form);
+ expect(screen.getByRole('combobox')).toBeEnabled();
+ expect(screen.getByRole('button',{name:'saveDraft'})).toBeEnabled();
+});
 
 it('retains the actual shared personal TP3 fields through refusal and submits the corrected declaration',async()=>{
  const fields=await Tp3DeclarationFields({record:null,identity,selectedYear:Number(todayInKualaLumpur().slice(0,4)),mode:'personal'});
