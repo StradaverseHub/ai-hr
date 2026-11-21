@@ -1,0 +1,8 @@
+{
+  "en": {"dispatch": "Latest legacy cron dispatch", "detail": "Cron sent the payroll check to run. The outcome is recorded separately."},
+  "ms": {"dispatch": "Pelancaran terkini oleh cron lama", "detail": "Cron melancarkan semakan penggajian. Hasil pelaksanaan direkodkan secara berasingan."},
+  "zh": {"dispatch": "旧版 cron 最近一次启动", "detail": "cron 启动了工资检查。运行结果单独记录。"},
+  "vi": {"dispatch": "Lần khởi chạy gần nhất từ cron cũ", "detail": "Cron đã khởi chạy kiểm tra bảng lương. Kết quả chạy được ghi riêng."},
+  "ta": {"dispatch": "பழைய cron தொடங்கிய சமீபத்திய நேரம்", "detail": "cron ஊதியச் சரிபார்ப்பைத் தொடங்கியது. இயக்கத்தின் முடிவு தனியாகப் பதிவாகும்."},
+  "th": {"dispatch": "การเริ่มงานล่าสุดจาก cron เดิม", "detail": "cron เริ่มการตรวจสอบเงินเดือน ผลการทำงานจะบันทึกแยกต่างหาก"}
+}

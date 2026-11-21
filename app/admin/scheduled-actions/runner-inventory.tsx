@@ -1,11 +1,15 @@
 import Link from 'next/link';
-import {getTranslations} from 'next-intl/server';
+import {getLocale,getTranslations} from 'next-intl/server';
 import {Card} from '@/components/ui';
 import {Badge} from '@/components/ui/badge';
 import {RUNNERS,type RunnerSnapshot} from '@/lib/runner-control-model';
+import {isLocale} from '@/i18n/config';
 import {RunnerControls,RefreshRunnerStatus} from './runner-controls';
+import cronMessages from './runner-cron-messages.json';
 export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnapshot|null;canControl:boolean}) {
- const t=await getTranslations('runnerControl');
+ const [t,locale]=await Promise.all([getTranslations('runnerControl'),getLocale()]);
+ const cron=cronMessages[isLocale(locale)?locale:'en'];
+ const date=new Intl.DateTimeFormat(locale,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'});
  const ordered=[...RUNNERS].sort((a,b)=>{const attention=(id:string)=>['failed','stale','stopped'].includes(snapshot?.runners.find(row=>row.id===id)?.health??'')?0:1;return attention(a.id)-attention(b.id);});
  return <section aria-labelledby="runner-control-title" className="space-y-3">
   <div><h2 id="runner-control-title" className="text-lg font-semibold">{t('title')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('description')}</p></div>
@@ -26,6 +30,10 @@ export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnap
       <div><dt className="text-muted-foreground">{t('lastRun')}</dt><dd className="mt-1">{status?.lastRun??t('noEvidence')}</dd></div>
       <div><dt className="text-muted-foreground">{t('nextRun')}</dt><dd className="mt-1">{status?.nextRun??t('noEvidence')}</dd></div>
      </dl>
+     {status?.legacyCronDispatchedAt&&<p className="mt-3 text-sm">
+      <span className="font-medium">{cron.dispatch}</span> · <time dateTime={status.legacyCronDispatchedAt}>{date.format(new Date(status.legacyCronDispatchedAt))}</time>
+      <span className="block text-xs text-muted-foreground">{cron.detail}</span>
+     </p>}
      <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:canControl&&(entry.destination==='/admin/scheduled-actions'||entry.id==='ai-alerts')?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
      {status?.note&&<p className="mt-2 text-sm text-muted-foreground">{status.note}</p>}
      {status?.hold&&<p className="mt-2 text-sm">{t('holdNote')}</p>}

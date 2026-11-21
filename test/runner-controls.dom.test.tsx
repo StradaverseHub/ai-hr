@@ -3,12 +3,12 @@ import {afterEach,describe,it,expect,vi} from 'vitest';
 import {render,screen,cleanup,fireEvent,within} from '@testing-library/react';
 import {NextIntlClientProvider,createTranslator} from 'next-intl';
 import en from '../messages/en.json';
-import {RUNNERS,type RunnerSnapshot} from '../lib/runner-control-model';
+import {RUNNERS,runnerSnapshotSchema,type RunnerSnapshot} from '../lib/runner-control-model';
 import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const router=vi.hoisted(()=>({refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>router}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace})}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace})}));
 vi.mock('../app/admin/scheduled-actions/actions',()=>({configureRunnerAction:vi.fn(async()=>({ok:true,error:null}))}));
 import {RunnerInventory} from '../app/admin/scheduled-actions/runner-inventory';
 const snapshot=(environment:'staging'|'production'='staging'):RunnerSnapshot=>({environment,checkedAt:'2026-11-01T15:00:00Z',runners:RUNNERS.map(row=>({id:row.id,managed:true,installed:true,hold:environment==='production'&&['backups','replacement-holidays'].includes(row.id),note:'Synthetic acceptance fixture',enabled:row.id!=='reviews',running:false,health:row.id==='reviews'?'failed':'success',lastRun:'Sun 2026-11-01 03:00:00 +08',nextRun:'Mon 2026-11-02 03:00:00 +08',schedule:row.frequency==='interval'?'5min after completion':row.frequency==='continuous'?null:row.frequency==='monthly'?'*-*-01 02:00:00 Asia/Kuala_Lumpur':row.frequency==='yearly'?'*-04-01 03:00:00 Asia/Kuala_Lumpur':'*-*-* 03:00:00 Asia/Kuala_Lumpur',revision:'a'.repeat(64)}))});
@@ -56,5 +56,17 @@ describe('runner control inventory',()=>{
  it('reports an unavailable controller without pretending runners are disabled',async()=>{
   await view(null,true);
   expect(screen.getByText(en.runnerControl.controllerMissing)).toBeInTheDocument();expect(screen.queryByText('Disabled')).toBeNull();expect(screen.queryByText('Configure runner')).toBeNull();
+ });
+ it('shows a legacy payroll dispatch separately from completion and the managed schedule',async()=>{
+  const value=snapshot();
+  const payroll=value.runners.find(row=>row.id==='payroll-loops')!;
+  Object.assign(payroll,{managed:false,installed:false,enabled:false,health:'missing',lastRun:null,nextRun:null,schedule:null,legacyCronDispatchedAt:'2026-11-21T15:45:00Z'});
+  const rendered=await view(runnerSnapshotSchema.parse(value),true);
+  const row=within(rendered.container.querySelector('#runner-payroll-loops')!);
+  expect(row.getByText('Latest legacy cron dispatch').nextElementSibling).toHaveAttribute('datetime','2026-11-21T15:45:00Z');
+  expect(row.getByText('Cron sent the payroll check to run. The outcome is recorded separately.')).toBeInTheDocument();
+  expect(row.queryByText('Last run succeeded')).toBeNull();
+  expect(row.queryByText('Configure runner')).toBeNull();
+  expect(runnerSnapshotSchema.safeParse({...value,runners:value.runners.map(r=>r.id==='reviews'?{...r,legacyCronDispatchedAt:payroll.legacyCronDispatchedAt}:r)}).success).toBe(false);
  });
 });
