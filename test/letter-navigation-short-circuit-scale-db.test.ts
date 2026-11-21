@@ -4,7 +4,7 @@ import { letterNavigation } from '../core/letter-navigation';
 import { withTenant, type SessionContext } from '../db/client';
 import { LETTER_NAV_ITEMS } from '../lib/letter-navigation';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
-import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
+import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase } from './harness';
 
 const has = (capability: string) =>
   sql`app.letter_permission_for_user(app.current_user_id(), scoped.id, ${capability})`;
@@ -62,7 +62,6 @@ it('stops each Letter navigation search at a matching company without crossing s
   await migrateTestDb();
   await resetDb();
   const base = await seedBase();
-  await setModule(base.tenantId, 'employees', 'active');
   const group = await buildScaleFixture(base, { employments: 1025, events: 0 });
   expect(group.activeEmploymentIds.length).toBeGreaterThanOrEqual(1000);
   expect(group.companyIds.length).toBeGreaterThanOrEqual(70);
