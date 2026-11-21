@@ -6,7 +6,6 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Search, ArrowRight, Sparkles, UserCog } from 'lucide-react';
-import { DelegationManager } from '@/components/delegation-manager';
 import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
 import { OPEN_COMMAND_BAR_EVENT, askAiCentre, type OpenCommandBarDetail } from '@/lib/command-bar-events';
 import { resolvePageContext } from '@/lib/ai/page-context';
@@ -298,24 +297,24 @@ export function CommandBar() {
 function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack: () => void }) {
   const t = useTranslations('commandBar');
   const [state, setState] = useState<
-    { status: 'loading' } | { status: 'error' } | { status: 'ready'; ctx: DelegationContext }
+    { status: 'loading' } | { status: 'error' } |
+    { status: 'ready'; ctx: DelegationContext; Manager: typeof import('@/components/delegation-manager').DelegationManager }
   >({ status: 'loading' });
 
-  // The fetch itself never sets state synchronously (only in the promise callbacks), so the mount effect
-  // stays cascade-free; the retry handler flips back to 'loading' first — fine in an event handler.
-  const fetchCtx = useCallback(() => {
-    loadDelegationContextAction(false)
-      .then((ctx) => setState({ status: 'ready', ctx }))
+  // The optional editor and its authorized context start together when the panel opens.
+  const load = useCallback(() => {
+    Promise.all([import('@/components/delegation-manager'), loadDelegationContextAction(false)])
+      .then(([{ DelegationManager: Manager }, ctx]) => setState({ status: 'ready', ctx, Manager }))
       .catch(() => setState({ status: 'error' }));
   }, []);
 
   useEffect(() => {
-    fetchCtx();
-  }, [fetchCtx]);
+    load();
+  }, [load]);
 
   const retry = () => {
     setState({ status: 'loading' });
-    fetchCtx();
+    load();
   };
 
   return (
@@ -346,7 +345,7 @@ function DelegationQuickPanel({ onClose, onBack }: { onClose: () => void; onBack
           </button>
         </div>
       ) : (
-        <DelegationManager surface="popup" initialContext={state.ctx} />
+        <state.Manager surface="popup" initialContext={state.ctx} />
       )}
     </div>
   );
