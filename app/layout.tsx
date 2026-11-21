@@ -109,7 +109,29 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: { icon: presentation.iconUrl || '/login/favicon.svg' } };
 }
 
+const SHELL_PROFILE_ROUTES = new Set(['/', '/tasks', '/admin/personnel', '/approvals', '/payroll',
+  '/analytics', '/roster', '/recruitment', '/lifecycle/v9']);
+
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const profile = process.env.GITHUB_ACTIONS === 'true' && process.env.AIHR_SHELL_OPEN_PROFILE === 'true';
+  const timings: Record<string, number> = {};
+  const started = profile ? performance.now() : 0;
+  let previous = started;
+  function mark(phase: string) {
+    if (!profile) return;
+    const now = performance.now();
+    timings[phase] = Math.round(now - previous);
+    previous = now;
+  }
+  async function measureLifecycleRead<T>(phase: string, read: () => Promise<T>): Promise<T> {
+    if (!profile) return read();
+    const start = performance.now();
+    try {
+      return await read();
+    } finally {
+      timings[phase] = Math.round(performance.now() - start);
+    }
+  }
   // Auth routes (ADR-0072) render WITHOUT the app shell and WITHOUT the getSession gate — otherwise
   // the redirect-to-/login would loop on /login itself. The prefix list lives in lib/auth-routes.ts
   // because middleware.ts needs the same list; keeping two copies is what let them drift apart.
@@ -122,6 +144,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // r401 — read through lib/ui-theme-server.ts, the ONE reader, so a page that branches on the theme (the
   // Dashboard, My Profile) gets the very value written here.
   const uiTheme = await currentUiTheme();
+  mark('requestPreferences');
 
   if (isAuthRoute) {
     // Bare shell for the login flow: fonts + theme + intl, no sidebar / topbar / session.
@@ -150,6 +173,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
   }
+  mark('session');
   const usesOperatorShell = isOperator(session) && !isDemoDeployment();
   const welcomeSteps = tourSteps(WELCOME_TOUR_ID, session.roles);
   // These exact admin entry pages have loading boundaries. Refuse before rendering the shell so
@@ -162,6 +186,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
   const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
   const idleSessionChannel = idleTimeoutSeconds ? webSessionChannel((await cookies()).get(INTERNAL_SESSION_COOKIE)?.value) : undefined;
+  mark('entryAndIdlePolicy');
   if (usesOperatorShell) {
     if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
     const viewer = await viewerIdentity(session);
@@ -192,6 +217,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // Memoised, so the NoticePopupSlot below shares the employment row rather than re-reading it.
   const { context: [{ allowed, scopeIds }, viewer, navigationAccess], features } =
     await readSignedInShellNavigation(session);
+  mark('initialNavigation');
   const {accessConfigurationAvailable,workforceAvailable,onboarded,peopleGeneralConfigurable}=navigationAccess;
   const {
     letters: letterDestinations,
@@ -235,14 +261,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
   const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
-    lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
-    lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
+    measureLifecycleRead('onboardingNavigation', () => lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0})),
+    measureLifecycleRead('scopedLifecycleNavigation', () => lifecycleModuleNavigation(session)),
+    measureLifecycleRead('offboardingPostingAccess', () => lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false)),
   ]);
+  mark('lifecycle');
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
   const [identityEmailAvailable,performanceAdminPath]=await Promise.all([canConfigureIdentityEmail(session),performanceAdminHref]);
+  mark('identityEmailAndPerformance');
   // The rail needs lifecycle destinations now. The bell and task badges can stream their preview.
   const lifecyclePreview = withBackgroundReadWork(session.tenantId, async () => {
     const [onboardingQueue, inbox] = await Promise.all([
@@ -286,6 +314,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
   });
+  if (profile && SHELL_PROFILE_ROUTES.has(pathname)) {
+    mark('renderPreparation');
+    console.info('PERF_SHELL_OPEN ' + JSON.stringify({
+      route: pathname,
+      role: isGroupAdmin(session) ? 'group-admin' : isAdmin(session) ? 'company-admin'
+        : (session.roles ?? []).includes('manager') ? 'manager' : 'employee',
+      elapsedMs: Math.round(previous - started),
+      timings,
+    }));
+  }
   return (
     <html
       lang={locale}
