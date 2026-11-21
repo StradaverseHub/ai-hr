@@ -1,13 +1,14 @@
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { afterAll, expect, it } from 'vitest';
 import { accountTaskStatement, accountTaskStatementSections, readAccountTaskBundle } from '../core/account-task-bundle';
 import { createDb, type SessionContext, type Tx } from '../db/client';
 import { isSharedCarrierTransaction } from '../db/shared-read';
+import { employment } from '../db/schema';
 import { applicationDatabaseUrl } from '../db/pooling';
 import { createClaimType } from '../packs/claims/service';
 import { buildScaleFixture } from './helpers/ai-centre-scale-fixture';
-import { closeAll, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
+import { closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, setModule } from './harness';
 
 afterAll(closeAll);
 
@@ -123,6 +124,51 @@ it('uses the production prepared reader across company widths and retains transa
         carrierP95Ms: p95(shellTimes.carrier), standaloneP95Ms: p95(shellTimes.standalone) } }));
     } finally {
       await forced.client.end({ timeout: 5 });
+    }
+
+    const employees = await owner.db.select({ personId: employment.personId, companyId: employment.companyId })
+      .from(employment).where(inArray(employment.id, fixture.activeEmploymentIds.slice(0, 8)));
+    expect(employees).toHaveLength(8);
+    const employeeActors = await Promise.all(employees.map(async ({ personId, companyId }) => ({
+      context: { ...session, userId: await createAppUser(base.tenantId, personId, 'employee'), personId,
+        roles: ['employee'], grants: [{ role: 'employee', companyId: null }] }, companyId,
+    })));
+    const poolSize = 8;
+    const rounds = 12;
+    url.searchParams.set('application_name', 'aihr-account-shell-shared-pool-test');
+    const sharedPool = createDb(url.toString(), { max: poolSize, admissionWaitMs: 30_000 });
+    try {
+      // Use a new carrier per request, as the signed-in layout does. The first round
+      // includes the three HR scopes and all later requests exercise employee scope.
+      for (let round = 0; round < rounds; round++) {
+        await Promise.all(employeeActors.map(async ({ context, companyId }, lane) => {
+          const hrActor = round === 0 ? [session, fixture.personas.multi, fixture.personas.single][lane] : undefined;
+          const actor = hrActor ?? context;
+          const companyIds = hrActor ? fixture.companyIds : [companyId];
+          const rows = await sharedPool.withSharedReadSnapshot(actor, () =>
+            sharedPool.readPreparedTenantRows<Record<string, unknown>>(actor, tx => {
+              expect(isSharedCarrierTransaction(tx)).toBe(true);
+              return accountTaskStatement(accountTaskStatementSections(tx, actor, shellModules,
+                { companyIds, personal: false, notices: true }), actor);
+            }));
+          expect(rows).toMatchObject([{ principal: true, claims: null }]);
+        }));
+      }
+      const connections = await Promise.all(Array.from({ length: poolSize }, () => sharedPool.client.reserve()));
+      try {
+        const plans = await Promise.all(connections.map(async connection => (await connection<{
+          pid: number; generic: number; custom: number; shapes: number;
+        }[]>`select pg_backend_pid() as pid, coalesce(sum(generic_plans),0)::int as generic,
+          coalesce(sum(custom_plans),0)::int as custom, count(*)::int as shapes
+          from pg_prepared_statements where statement like 'with task_caller as materialized%'`)[0]));
+        expect(new Set(plans.map(plan => plan.pid)).size).toBe(poolSize);
+        expect(plans.reduce((sum, plan) => sum + plan.generic + plan.custom, 0)).toBe(poolSize * rounds);
+        console.info(JSON.stringify({ shellSharedPool: plans.map(({ generic, custom, shapes }) => ({ generic, custom, shapes })) }));
+      } finally {
+        for (const connection of connections) connection.release();
+      }
+    } finally {
+      await sharedPool.client.end({ timeout: 5 });
     }
 
     const readOptions = { personal: false, notices: true };
