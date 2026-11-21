@@ -61,6 +61,10 @@ export function compareAssistantConversationArms(cases:readonly ConversationCase
  const protectedIds=new Set(cases.filter(row=>row.protectedSelection).map(row=>row.id));
  const protectedBaseline=baseline.filter(row=>protectedIds.has(row.case.id));
  const protectedCandidate=candidate.filter(row=>protectedIds.has(row.case.id));
- const protectedSelection=Object.freeze({cases:protectedIds.size,baselineCorrect:correct(protectedBaseline),candidateCorrect:correct(protectedCandidate)});
+ const protectedSelection=Object.freeze({
+  cases:protectedIds.size,
+  baselineCases:protectedBaseline.length,baselineCorrect:correct(protectedBaseline),
+  candidateCases:protectedCandidate.length,candidateCorrect:correct(protectedCandidate),
+ });
  return Object.freeze({complete,baseline:summarize(baseline),candidate:summarize(candidate),protectedSelection,qualityImproved:complete&&security(candidate)===0&&correct(candidate)===cases.length&&correct(candidate)>correct(baseline)&&(protectedIds.size===0||protectedSelection.candidateCorrect>protectedSelection.baselineCorrect),resources:'observations-only' as const});
 }
