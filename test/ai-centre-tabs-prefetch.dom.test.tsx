@@ -28,10 +28,15 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   // AI v2 Phase 1: no Inbox tab, so an employee has three tabs; the touch case gets its own render below.
   const [ask,second]=tabs;
   fireEvent.focus(second);expect(second.getAttribute('data-prefetch')).toBe('true');
+  fireEvent.blur(second);expect(second.getAttribute('data-prefetch')).toBe('false');
   const last=tabs.at(-1)!;
   fireEvent.pointerEnter(last);expect(last.getAttribute('data-prefetch'),'not before the dwell').toBe('false');
   act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS);});
   expect(last.getAttribute('data-prefetch')).toBe('true');
+  fireEvent.focus(last);
+  fireEvent.pointerLeave(last);
+  expect(last.getAttribute('data-prefetch')).toBe('true');
+  fireEvent.blur(last);expect(last.getAttribute('data-prefetch')).toBe('false');
   // A pointer passing over without resting leaves the tab unfetched.
   fireEvent.pointerEnter(ask);act(()=>{vi.advanceTimersByTime(INTENT_DWELL_MS-30);});fireEvent.pointerLeave(ask);act(()=>{vi.advanceTimersByTime(1000);});
   expect(ask.getAttribute('data-prefetch')).toBe('false');
@@ -41,6 +46,9 @@ describe('AI Centre tabs prefetch the whole destination on intent',()=>{
   view.unmount();
   const again=links(wrap(<AiCentreTabs active="ask" isAdmin={isAdmin}/>).container).at(-1)!;
   fireEvent.touchStart(again);expect(again.getAttribute('data-prefetch')).toBe('true');
+  fireEvent.touchEnd(again);expect(again.getAttribute('data-prefetch')).toBe('false');
+  fireEvent.touchStart(again);expect(again.getAttribute('data-prefetch')).toBe('true');
+  fireEvent.touchCancel(again);expect(again.getAttribute('data-prefetch')).toBe('false');
  });
 
  it('administrator sub-navigation: the same intent prefetch on every section link',()=>{
