@@ -1,7 +1,7 @@
 import React, {isValidElement} from 'react';
 import {currentDatabaseWorkload} from '../db/workload';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),claimCount:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),claimCount:vi.fn(),pathname:'/admin/settings/email',theme:'monolith',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notificationBell:vi.fn(),dispatch:vi.fn(),privateCases:vi.fn(),lifecycleCount:0,lifecycleWait:vi.fn(),offboardingPostingAccess:vi.fn(),summaryOverride:null as null|{items:unknown[];total:number;approvalCount:number;claimTotal:number}}));
 
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
@@ -27,6 +27,7 @@ vi.mock('../packs/claims/service',()=>({countPendingClaimTasks:m.claimCount}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks,pendingTaskSummary:async(...args:unknown[])=>{
  const items=await m.tasks(...args);return m.summaryOverride??{items,total:items.length,approvalCount:items.filter((item:{linkPath:string})=>item.linkPath.split(/[?#]/,1)[0]==='/approvals').length,claimTotal:items.filter((item:{kind:string})=>item.kind==='claim').length};
 }}));
+vi.mock('../packs/personnel-postings/service',()=>({offboardingPostingAccess:m.offboardingPostingAccess}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({probation:{page:false,configure:false},contractStaff:{page:false,configure:false}})}));
 vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>{await m.lifecycleWait();return {count:m.lifecycleCount,myTasksCount:m.lifecycleCount,queueLinks:[],approvalCount:0,items:[]};}}));
 // AI v2 W11: the rail's "Private cases" row asks the private-case owner (a database read) on every page. Unmocked,
@@ -49,7 +50,7 @@ import {ShellApprovalFactsProvider,type ShellApprovalResult} from '../components
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.claimCount.mockReset();m.claimCount.mockResolvedValue(0);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.dispatch.mockReset();m.dispatch.mockResolvedValue(undefined);m.lifecycleCount=0;m.lifecycleWait.mockReset();m.offboardingPostingAccess.mockReset();m.offboardingPostingAccess.mockResolvedValue(false);m.summaryOverride=null;m.privateCases.mockReset();m.privateCases.mockResolvedValue(false);m.theme='monolith';m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notificationBell.mockReset();m.notificationBell.mockResolvedValue({unread:0,taskCount:0,items:[],tasks:[],read:[]});m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.claimCount.mockReset();m.claimCount.mockResolvedValue(0);m.pathname='/admin/settings/email';m.onboarded=true;});
 
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
@@ -223,6 +224,28 @@ it('renders the shell while the lifecycle queue is pending and streams the same 
  expect(facts).toMatchObject({state:'ready',lifecycleMyTasksCount:4});
  expect(propsOf(bell,NotificationCenter)?.taskCount).toBe(4);
  expect(m.lifecycleWait).toHaveBeenCalledOnce();
+});
+
+it('renders the authenticated shell while Offboarding Postings permission resolves in the background',async()=>{
+ m.session.mockResolvedValue({tenantId:'tenant',userId:'employee',roles:['employee'],grants:[]});
+ m.operator.mockResolvedValue(false);
+ m.module.mockImplementation((_session,code)=>code==='lifecycle');
+ let release!:(allowed:boolean)=>void;
+ const pending=new Promise<boolean>(resolve=>{release=resolve;});
+ m.offboardingPostingAccess.mockImplementation(()=>{
+  expect(currentDatabaseWorkload()).toBe('background');
+  return pending;
+ });
+ const rendered=vi.fn();
+ const layout=Layout({children:<main>Available before postings permission</main>}).then(tree=>{rendered();return tree;});
+ try{
+  await vi.waitFor(()=>expect(rendered).toHaveBeenCalledOnce());
+  await vi.waitFor(()=>expect(m.offboardingPostingAccess).toHaveBeenCalledOnce());
+ }finally{
+  release(true);
+ }
+ const tree=await layout;
+ await expect(sidebarProps(tree)?.offboardingPostingsSource).resolves.toBe(true);
 });
 
 it('returns the authenticated shell while the approval owner is still pending',async()=>{

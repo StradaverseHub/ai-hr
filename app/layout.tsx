@@ -234,10 +234,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // belongs to whichever surface calls it.
   const claimsEnabled = isModuleEnabledOrFalse(session, 'claims');
   const lifecycleEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingNav,scopedLifecycleNavigation,offboardingPostingsAccess]=await Promise.all([
+  // This permission only adds an optional link. The destination still checks
+  // access itself, so the page and the rest of the rail can render while it resolves.
+  const offboardingPostingsSource = lifecycleEnabled
+    ? withBackgroundReadWork(session.tenantId, () => offboardingPostingAccess(session)).catch(() => false)
+    : undefined;
+  const [onboardingNav,scopedLifecycleNavigation]=await Promise.all([
     lifecycleEnabled?onboardingNavigation(session):Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0}),
     lifecycleModuleNavigation(session),
-    lifecycleEnabled?offboardingPostingAccess(session).catch(()=>false):Promise.resolve(false),
   ]);
   const onboardingAccess=onboardingNav.module;
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
@@ -340,7 +344,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
-              offboardingPostingsAccess={offboardingPostingsAccess}
+              offboardingPostingsSource={offboardingPostingsSource}
               onboardingV9Access={onboardingNav.v9}
               onboardingV9Navigation={onboardingNav.v9Navigation}
               onboardingJoinerCount={onboardingNav.joiners}

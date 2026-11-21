@@ -78,7 +78,8 @@ export function Sidebar({
   taskCount:baseTaskCount = 0,
   probationAccess,
   contractStaffAccess,
-  offboardingPostingsAccess,
+  offboardingPostingsAccess:offboardingPostingsFromProps,
+  offboardingPostingsSource,
   onboardingAccess,
   onboardingV9Access,
   onboardingV9Navigation,
@@ -106,12 +107,26 @@ export function Sidebar({
   canConfigurePeopleGeneral?: boolean;
   onboardingJoinerCount?:number;
   onboardingChecklistCount?:number;
+  offboardingPostingsSource?: Promise<boolean>;
   defaultCollapsed: boolean;
   /** r398 — the Monolith rail's user line (README §3). Display only; Classic does not render it. */
   viewerName?: string | null;
   viewerCode?: string | null;
 }) {
   const interactive = useClientReady();
+  const [postings, setPostings] = useState<{ source: Promise<boolean>; allowed: boolean }>();
+  useEffect(() => {
+    if (!offboardingPostingsSource) return;
+    let current = true;
+    const publish = (allowed: boolean) => {
+      if (current) setPostings({ source: offboardingPostingsSource, allowed });
+    };
+    void offboardingPostingsSource.then(publish, () => publish(false));
+    return () => { current = false; };
+  }, [offboardingPostingsSource]);
+  const offboardingPostingsAccess = offboardingPostingsSource
+    ? interactive && postings?.source === offboardingPostingsSource && postings.allowed
+    : offboardingPostingsFromProps;
   const approvals=useShellApprovalFacts()?.result;
   const hasAssignedAttendanceApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedAttendanceApproval:assignedAttendanceFromProps;
   const hasAssignedApproval=approvals?approvals.state==='ready'&&approvals.hasAssignedApproval:assignedApprovalFromProps;

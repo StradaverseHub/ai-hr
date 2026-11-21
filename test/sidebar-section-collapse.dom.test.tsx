@@ -62,6 +62,37 @@ it('keeps the rail interactive while streaming and never republishes an old scop
  expect(screen.getByRole('link',{name:/My tasks.*4/})).toHaveAttribute('href','/tasks');
 });
 
+it('publishes the Offboarding Postings link only for the current resolved permission',async()=>{
+ const defer=()=>{
+  let resolve!:(allowed:boolean)=>void;
+  const source=new Promise<boolean>(done=>{resolve=done;});
+  return {source,resolve};
+ };
+ const first=defer(),oldScope=defer(),currentScope=defer();
+ function IndexWitness(){
+  const {entries}=useNavIndex();
+  return <output data-testid="offboarding-postings-index">{String(entries.some(entry=>entry.href==='/lifecycle/offboarding/postings'))}</output>;
+ }
+ const tree=(source:Promise<boolean>)=><NavIndexProvider>
+  {ui({enabledModules:['lifecycle','employees'],offboardingPostingsSource:source})}
+  <IndexWitness/>
+  <main>Available while permission resolves</main>
+ </NavIndexProvider>;
+ const view=render(tree(first.source));
+ expect(screen.getByText('Available while permission resolves')).toBeVisible();
+ expect(screen.getByTestId('offboarding-postings-index')).toHaveTextContent('false');
+ await act(async()=>first.resolve(true));
+ expect(screen.getByTestId('offboarding-postings-index')).toHaveTextContent('true');
+
+ view.rerender(tree(oldScope.source));
+ expect(screen.getByTestId('offboarding-postings-index')).toHaveTextContent('false');
+ view.rerender(tree(currentScope.source));
+ await act(async()=>oldScope.resolve(true));
+ expect(screen.getByTestId('offboarding-postings-index')).toHaveTextContent('false');
+ await act(async()=>currentScope.resolve(false));
+ expect(screen.getByTestId('offboarding-postings-index')).toHaveTextContent('false');
+});
+
 it('Atelier ignores the Classic collapsed preference for the Ops/Strat switch',()=>{
  document.documentElement.setAttribute('data-ui-theme','atelier');render(ui({defaultCollapsed:true}));
  expect(screen.getByRole('group',{name:messages.nav.workspaceSwitch})).not.toHaveClass('flex-col');
