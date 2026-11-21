@@ -306,6 +306,12 @@ jobs:
           pins=../automation/scripts/performance/pooled-candidate-builds.json
           if jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' "$pins" >/dev/null; then
             test "$MIXED_GROUP_SCALE" = false
+            build_source="$(jq -r --arg source "$AIHR_CI_HEAD" '.[$source].applicationSha // $source' "$pins")"
+            if [[ "$build_source" != "$AIHR_CI_HEAD" ]]; then
+              [[ "$build_source" =~ ^[a-f0-9]{40}$ ]]
+              test "$(git rev-parse HEAD^)" = "$build_source"
+              test "$(git diff --name-status "$build_source" HEAD)" = "$(printf '%s\t%s' M scripts/performance/mixed-workflows.mjs)"
+            fi
             IFS=$'\t' read -r run job artifact controller digest < <(jq -r --arg source "$AIHR_CI_HEAD" \
               '.[$source] | [.runId,.jobId,.artifactId,.controllerSha,.sha256] | @tsv' "$pins")
           else
@@ -358,9 +364,11 @@ jobs:
         run: |
           packet="$RUNNER_TEMP/fictional-browser-build"
           expected_build_source="$AIHR_CI_HEAD"
-          if [[ "$REUSE_BUILD" == true ]] &&
-              ! jq -e --arg source "$AIHR_CI_HEAD" 'has($source)' ../automation/scripts/performance/pooled-candidate-builds.json >/dev/null; then
-            expected_build_source=b00e2b2738312d87d5bea6f0ac7c877517d0b75d
+          if [[ "$REUSE_BUILD" == true ]]; then
+            expected_build_source="$(jq -r --arg source "$AIHR_CI_HEAD" '
+              if has($source) then (.[$source].applicationSha // $source)
+              else "b00e2b2738312d87d5bea6f0ac7c877517d0b75d" end
+            ' ../automation/scripts/performance/pooled-candidate-builds.json)"
           fi
           test "$(cat "$packet/source-sha")" = "$expected_build_source"
           chmod 700 "$PWD"

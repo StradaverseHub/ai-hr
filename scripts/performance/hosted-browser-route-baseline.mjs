@@ -72,7 +72,7 @@ const evidencePath=join(env.RUNNER_TEMP,'browser-route-baseline.json');
 const pinnedCandidates=JSON.parse(readFileSync(new URL('./pooled-candidate-builds.json',import.meta.url),'utf8'));
 const pinnedCandidate=pinnedCandidates[sha];
 const reusedBuild=pinnedCandidate
- ?{runId:pinnedCandidate.runId,artifactId:pinnedCandidate.artifactId,sourceSha:sha}
+ ?{runId:pinnedCandidate.runId,artifactId:pinnedCandidate.artifactId,sourceSha:pinnedCandidate.applicationSha??sha}
  :{runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'};
 const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'FICTIONAL_BROWSER_FIXTURE_CHECK'):
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
@@ -796,6 +796,10 @@ async function measureMixedLoad(command,fixture){
      tenant:row.user===4?0:1,
      startedDuringSteadyLoad:Number.isFinite(start)&&Number.isFinite(end)&&row.startedMs>=start&&row.startedMs<end,
      committedObserved:row.visible===true,observerError:row.observerError===true,
+     ...(typeof row.pendingVerifiedAfterResponse==='boolean'&&{
+      pendingVerifiedAfterResponse:row.pendingVerifiedAfterResponse,
+      ...counts(row,['checkedAfterResponseByMs']),
+     }),
      ...counts(row,['visibleByMs','headersMs','httpStatus','httpDurationMs','httpFinishedMs','polls']),
     }));
    }
