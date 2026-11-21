@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 
 const workSiteName = 'Fictional Census Work Site';
 const clockingPointName = 'Fictional Census Clocking Point';
@@ -512,7 +513,7 @@ async function verifyFormulaSample(page, main, source, value, row) {
 
 function importHistoryRoutes(fixture) {
   const [group, company] = fixture.users;
-  const { companyId, employeeCode, employeeName, personnel, payroll, fixed } = fixture.importHistory;
+  const { companyId, employeeCode, employeeName, personnel, payroll, fixed, individual } = fixture.importHistory;
   assert.equal(group.role, 'groupHR');
   assert.equal(company.role, 'companyHR');
   assert.equal(group.companyId, companyId);
@@ -525,6 +526,7 @@ function importHistoryRoutes(fixture) {
   const personnelRun = `${personnelBase}/runs/${personnel.runId}`;
   const payrollLog = `${payrollBase}/logs/${payroll.attemptId}`;
   const fixedBase = '/payroll/transactions/fixed/imports';
+  const individualBase = '/payroll/transactions/individual/imports';
   const fixedRead = actor => {
     const job = fixed[actor.role];
     const path = fixedBase + '/' + job.id;
@@ -543,11 +545,26 @@ function importHistoryRoutes(fixture) {
     { actor, template: payrollBase + '/records/[recordId]', path: payrollBase + '/records/' + payroll.recordId,
       exactHeading: `${employeeCode} · ${employeeName}`, witness: `a[href="${payrollLog}"]:text-is("${payroll.file}")` },
     fixedRead(actor),
+    ...individualImportRoutes(actor, individual[actor.role], individualBase),
   ]);
 }
 
+function individualImportRoutes(actor, job, base) {
+  assert.match(job.id, /^[0-9a-f-]{36}$/i);
+  assert.match(job.attemptId, /^[0-9a-f-]{36}$/i);
+  const batch = base + '/batches/' + job.id;
+  const attempt = base + '/' + job.attemptId;
+  return [
+    { actor, template: base + '/batches/[jobId]', path: batch, exactHeading: job.file,
+      witness: `a[href="${attempt}"]`,
+      download: { href: batch + '/workbook', filename: 'original-workbook.xlsx', hash: job.hash } },
+    { actor, template: base + '/[attemptId]', path: attempt, exactHeading: 'View Details',
+      content: job.file, witness: `a[href="${attempt}/errors"]` },
+  ];
+}
+
 async function verifyWorkbookDownload(page, main, expected, row) {
-  row.step = 'import-error-download';
+  row.step = expected.hash ? 'import-original-download' : 'import-error-download';
   const timeout = 15000;
   const started = performance.now();
   const pending = page.waitForEvent('download', { timeout }).catch(() => null);
@@ -558,8 +575,10 @@ async function verifyWorkbookDownload(page, main, expected, row) {
   assert(response, 'Expected a workbook download');
   const chunks = [];
   for await (const chunk of response) chunks.push(chunk);
-  assert.equal(Buffer.concat(chunks).subarray(0, 4).toString('hex'), '504b0304');
-  row.errorWorkbookMs = Math.round(performance.now() - started);
+  const workbook = Buffer.concat(chunks);
+  assert.equal(workbook.subarray(0, 4).toString('hex'), '504b0304');
+  if (expected.hash) assert.equal(createHash('sha256').update(workbook).digest('hex'), expected.hash);
+  row[expected.hash ? 'originalWorkbookMs' : 'errorWorkbookMs'] = Math.round(performance.now() - started);
 }
 
 export async function measureFixtureRecordCensus({ db, fixture, origin, compiledPages, signedInContext, report, save, payrollCorrections, personnelMovement, payrollFormulaEvaluation, importHistory }) {

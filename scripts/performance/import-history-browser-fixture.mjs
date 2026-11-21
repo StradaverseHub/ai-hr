@@ -1,6 +1,6 @@
 /** Seed retained Personnel and Payroll records through the real import owners. */
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -19,10 +19,13 @@ assert(fixture.users.length===500&&group.role==='groupHR'&&companyHr.role==='com
 assert.equal(companyHr.companyId,group.companyId);
 const source=file=>import(pathToFileURL(resolve(process.cwd(),file)).href);
 const [{client,createDb},{resolveEntitlementsTx},{commitEmployeeImport},{getImportAttempt,getImportRun},
- payroll,{parseCsvRecords,toCsv},{PAYROLL_HISTORY_HEADERS},fixedImports,{runBulkJobTick}]=await Promise.all([
+ payroll,{parseCsvRecords,toCsv},{PAYROLL_HISTORY_HEADERS},fixedImports,{runBulkJobTick},
+ individualJobs,{runIndividualImportTick},{buildXlsx},{INDIVIDUAL_IMPORT_HEADERS}]=await Promise.all([
  source('db/client.ts'),source('core/entitlements.ts'),source('core/import.ts'),source('core/import-history.ts'),
  source('packs/payroll/service.ts'),source('lib/csv.ts'),source('lib/payroll-history-import-schema.ts'),
  source('core/fixed-transaction-import-job.ts'),source('core/bulk-job-worker.ts'),
+ source('core/individual-import-job.ts'),source('core/individual-import-worker.ts'),
+ source('lib/spreadsheet.ts'),source('lib/payroll-txn-import-schema.ts'),
 ]);
 const owner=createDb(env.MIGRATION_DATABASE_URL,{max:1});
 const resultPath=name=>resolve(env.PERF_PRIVATE_DIR,name);
@@ -105,11 +108,29 @@ try{
   fixed[key]={id,file,missingEmployee};
  }
  await assert.rejects(fixedImports.readFixedTransactionImport(companyContext,fixed.groupHR.id,scope),/Job unavailable/);
+ mark('individual-transaction');
+ const individual={};
+ const unknownEmployee='PERF-UNKNOWN-INDIVIDUAL';
+ for(const {key,author} of [{key:'groupHR',author:ctx},{key:'companyHR',author:companyContext}]){
+  const id=randomUUID(),file='fictional-individual-'+key+'.xlsx';
+  const content=Buffer.from(await buildXlsx([...INDIVIDUAL_IMPORT_HEADERS.monthly],[
+   [unknownEmployee,'',fixture.month,'ME','BONUS',fixture.month+'-01','amount','','100','fictional row'],
+  ]));
+  await individualJobs.submitIndividualImportJob(author,{id,name:file,content,method:'monthly',scopeIds:scope});
+  assert(await runIndividualImportTick(owner.client,async session=>({...session,entitlements:author.entitlements})));
+  const job=await individualJobs.readIndividualImportJob(author,id,scope);
+  assert(job?.attempt_id&&job.state==='failed'&&job.error==='noValidRows');
+  const attempt=await payroll.readIndividualImport(author,job.attempt_id,scope);
+  assert.equal(attempt.written,0);
+  assert.equal(attempt.preview.invalid,1);
+  assert(attempt.preview.rows.some(row=>row.employeeId===unknownEmployee&&!row.ok));
+  individual[key]={id,attemptId:job.attempt_id,file,hash:createHash('sha256').update(content).digest('hex')};
+ }
  writeFileSync(resultPath('import-history-browser.json'),JSON.stringify({
   companyId:group.companyId,employeeName,employeeCode,
   personnel:{attemptId:imported.attemptId,runId:imported.runId,file:personnelFile},
   payroll:{attemptId:preview.attemptId,recordId:record.id,file:payrollFile},
-  fixed,
+  fixed,individual,
  }),{mode:0o600});
  mark('complete');
 }finally{await Promise.all([owner.client.end(),client.end()]);}
