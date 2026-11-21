@@ -80,6 +80,41 @@ def verify_payroll_cron_conflict(web_uid):
         run(*crontab,'-r')
     installer.validate_managed(fixture,web_uid)
 
+def verify_read_only_review_status():
+    _,initial=status()
+    assert initial['installed'] and not initial['enabled'] and not initial['managed']
+    assert configure(initial,True)[0]==409
+    assert configure(initial,True,{'minutes':1})[0]==409
+    assert not executions()
+    assert run('/usr/bin/systemctl','show',UNIT+'.timer','--property=ActiveState','--value').stdout.strip()=='inactive'
+
+    # The disposable VM has no application directory. Cron logs the genuine dispatch,
+    # but the failing cd prevents the fixture command from executing any worker.
+    assert not Path('/opt/ai-hr').exists()
+    run('/usr/bin/systemctl','start','cron.service')
+    crontab=('/usr/bin/crontab','-u',FIXTURE)
+    run(*crontab,'-',input=('* * * * * cd /opt/ai-hr && deploy/cron-alert.sh review-sweep '
+        '/var/lib/aihr-control-fixture/review-sweep.log /opt/node20/bin/node '
+        '--env-file=.env.production --import tsx scripts/review-sweep.ts\n'))
+    try:
+        def review_dispatch():
+            code,snapshot=request({'op':'status_with_review_cron'})
+            assert code==200 and all(not row['managed'] for row in snapshot['runners'])
+            return next(row for row in snapshot['runners'] if row['id']=='reviews').get('legacyCronDispatchedAt')
+        wait_until(review_dispatch,seconds=90)
+        code,snapshot=request({'op':'status_with_review_cron'})
+        assert code==200
+        review=next(row for row in snapshot['runners'] if row['id']=='reviews')
+        assert review.get('legacyCronDispatchedAt') and review['lastRun'] is None
+        assert not review['installed'] and not review['enabled'] and not review['running']
+        code,older=request({'op':'status_with_worker_cron'})
+        assert code==200 and not any(row.get('legacyCronDispatchedAt') for row in older['runners'] if row['id']=='reviews')
+        assert not (STATE/'review-sweep.log').exists()
+        assert not Path('/var/lib/aihr-runner-control/audit.jsonl').exists()
+        return review['legacyCronDispatchedAt']
+    finally:
+        run(*crontab,'-r')
+
 def main():
     assert os.geteuid()==0 and os.environ.get('GITHUB_ACTIONS')=='true','Disposable Actions root fixture only'
     assert Path('/proc/1/comm').read_text().strip()=='systemd','A real systemd VM is required'
@@ -120,7 +155,7 @@ WantedBy=timers.target
     run('/usr/bin/systemctl','daemon-reload')
     verify_payroll_cron_conflict(web.pw_uid)
     POLICY.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
-    policy={'environment':'staging','webUid':web.pw_uid,'jobs':{KEY:{'managed':True,'note':'Disposable CI fixture, no HR or DB.'}}}
+    policy={'environment':'staging','webUid':web.pw_uid,'jobs':{}}
     POLICY.write_text(json.dumps(policy));os.chmod(POLICY,0o600)
     run('/usr/bin/python3','-I','-B',str(REPO/'deploy/runner-control/install.py'),'--policy',str(POLICY),'--web-user',WEB)
     try:
@@ -130,6 +165,10 @@ WantedBy=timers.target
             assert root_request({'op':op})[0]==409
             code,extended=request({'op':op});assert code==200
             assert not any('legacyCronDispatchedAt' in row for row in extended['runners'])
+        review_dispatch=verify_read_only_review_status()
+        policy['jobs'][KEY]={'managed':True,'note':'Disposable CI fixture, no HR or DB.'}
+        POLICY.write_text(json.dumps(policy))
+        run('/usr/bin/python3','-I','-B',str(REPO/'deploy/runner-control/install.py'),'--policy',str(POLICY),'--web-user',WEB)
         print(run('/usr/bin/systemctl','show',UNIT+'.timer','--property=NextElapseUSecRealtime','--property=NextElapseUSecMonotonic','--property=TimersMonotonic').stdout)
         _,initial=status();assert initial['installed'] and not initial['enabled']
         code,_=configure(initial,True);assert code==200
@@ -156,7 +195,7 @@ WantedBy=timers.target
         audits=[json.loads(line) for line in Path('/var/lib/aihr-runner-control/audit.jsonl').read_text().splitlines()]
         assert any(row['outcome']=='applied' and row['enabled'] for row in audits)
         assert any(row['outcome']=='applied' and not row['enabled'] for row in audits)
-        proof={'kind':'DISPOSABLE_SYSTEMD_FIXTURE_NOT_STAGING_ACCEPTANCE','source':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'executions':actual,'dedicatedUid':identity.pw_uid,'activation':True,'intervalEdit':True,'stableRevision':True,'staleEditRefused':True,'disabled':True,'wrongUidRefused':True,'duplicatePayrollCronRefused':True,'simulatedProductionHoldsRefused':True,'auditOutcomes':[row['outcome'] for row in audits]}
+        proof={'kind':'DISPOSABLE_SYSTEMD_FIXTURE_NOT_STAGING_ACCEPTANCE','source':os.environ.get('GITHUB_SHA'),'runId':os.environ.get('GITHUB_RUN_ID'),'executions':actual,'dedicatedUid':identity.pw_uid,'activation':True,'intervalEdit':True,'stableRevision':True,'staleEditRefused':True,'disabled':True,'wrongUidRefused':True,'duplicatePayrollCronRefused':True,'readOnlyWritesRefused':True,'readOnlyReviewDispatchedAt':review_dispatch,'simulatedProductionHoldsRefused':True,'auditOutcomes':[row['outcome'] for row in audits]}
         output=Path(os.environ['RUNNER_TEMP'])/'runner-control-systemd-proof.json';output.write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
     finally:
         for unit in [UNIT+'.timer','aihr-runner-control.socket']:

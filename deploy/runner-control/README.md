@@ -31,6 +31,11 @@ Policy example (root-owned file, 0600; replace webUid with the actual verified U
 {"environment":"staging","webUid":1001,"jobs":{"reviews":{"managed":false,"note":"Pending accepted source and legacy cron migration."}}}
 ```
 
+For a status-only installation, use an empty `jobs` object. All catalogued jobs then default to
+unmanaged. The enrolled web account can read the catalogued status and legacy dispatch evidence.
+The broker refuses configuration requests under this policy, including requests from authenticated
+installation operators routed through the web app. The existing scheduler continues to own its jobs.
+
 From an exact reviewed accepted source package, root runs:
 
 ```sh
