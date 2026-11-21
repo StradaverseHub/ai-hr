@@ -6,6 +6,7 @@ import type {ResolvedAiConfig,GenerateArgs} from '../lib/ai/types';
 import {captureAssistantConversationCandidate,assistantConversationCandidateSystem,assistantConversationProviderVariant,nextAssistantConversationArms,ASSISTANT_CONVERSATION_BASELINE,ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,ASSISTANT_LOCAL_LEAVE_VARIANT,compareAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationCaseResult,type AssistantConversationCandidate} from '../lib/ai/assistant-conversation-candidate';
 import {ASSISTANT_CONVERSATION_HOLDOUTS,ASSISTANT_CONVERSATION_INPUT_DIGEST,ASSISTANT_CONVERSATION_SUITE_DIGEST} from '../lib/ai/assistant-conversation-holdouts';
 import {executeAssistantConversationHoldout} from './assistant-conversation-harness';
+import {installedLocalLeaveEvidence} from './assistant-local-leave-evidence';
 import type {NativeOutcomeServerContext} from './assistant-actions/completed-outcome-readers';
 import {captureNativeCandidateSignals,captureNativeCandidateSignalIds,type NativeCandidateSignal} from '../lib/ai/module-native-signals';
 import {nominateOwnNativeOutcomeJobTx,readVerifiedNativeOutcomeAssociationTx,ownNativeCandidateSignalChoicesTx,bindNativeOutcomeJobRecheckTx} from './module-native-outcome-references';
@@ -1124,21 +1125,38 @@ async function verifiedConversationEvaluationsTx(tx:Tx,ctx:SessionContext,candid
   checked.push({id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt)});
  }return checked;
 }
+async function conversationPromotionEvidenceTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,providerFingerprint:string,approverId:string){
+ if(captureAssistantConversationCandidate(candidate.configuration).variant!==ASSISTANT_LOCAL_LEAVE_VARIANT){
+  const evaluations=await verifiedConversationEvaluationsTx(tx,ctx,candidate,providerFingerprint);
+  if(evaluations.some(row=>row.evaluatorId===approverId))return fail();
+  return {evaluations};
+ }
+ const pairedEvidence=installedLocalLeaveEvidence({tenantId:ctx.tenantId,authorId:candidate.author_user_id,
+  candidateDigest:candidate.candidate_digest,baselineDigest:candidate.baseline_digest,sourceDigest:candidate.source_digest});
+ if(!pairedEvidence||pairedEvidence.approverId!==approverId)return fail();
+ return {pairedEvidence};
+}
 export async function promoteConversationAgentCandidate(ctx:SessionContext,input:{candidateId:string;maxJobs:number;hours:number}){
  const current=capture(ctx),p={...input};if(!exact(p,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>100||!Number.isSafeInteger(p.hours)||p.hours<1||p.hours>24)return fail();
- return withTenant(current,async tx=>{const fresh=await guard(tx,current,true),nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.kind!=='assistant_answer_prompt_v1'||candidate.author_user_id===current.userId||candidate.owner_user_id!==nominated.owner_user_id)return fail();const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();const evaluations=await verifiedConversationEvaluationsTx(tx,current,candidate,snapshot.fingerprint);
-  // S8: the promoter is independent of every counted evaluation, not only of the author.
-  if(evaluations.some(row=>row.evaluatorId===current.userId))return fail();
-  const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as present`);if(prior?.present)return fail();const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select clock_timestamp()::text as now,(clock_timestamp()+make_interval(hours=>${p.hours}))::text as expires`),receipt=seal('conversation-promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),approverId:current.userId,evaluations,providerFingerprint:snapshot.fingerprint,maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires});
-  await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,'assistant',${current.userId}::uuid,${receipt},${p.maxJobs},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);return{promotionId:id,maxJobs:p.maxJobs,expiresAt:clock.expires,coverage:'synthetic-canonical-terminal-plans-and-tool-minimality' as const};
+ return withTenant(current,async tx=>{const fresh=await guard(tx,current,true),nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.kind!=='assistant_answer_prompt_v1'||candidate.author_user_id===current.userId||candidate.owner_user_id!==nominated.owner_user_id)return fail();const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();
+  const evidence=await conversationPromotionEvidenceTx(tx,current,candidate,snapshot.fingerprint,current.userId!);
+  const pairedExpiry=evidence.pairedEvidence?.expiresAt??null;
+  const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and c.kind='assistant_answer_prompt_v1' and (
+   (${pairedExpiry!==null} and p.candidate_id=${candidate.id}::uuid) or
+   (p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)))) as present`);if(prior?.present)return fail();
+  const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select started::text as now,least(started+make_interval(hours=>${p.hours}),coalesce(${pairedExpiry}::timestamptz,'infinity'::timestamptz))::text as expires from (select clock_timestamp() as started) t`);
+  const receipt=seal('conversation-promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),approverId:current.userId,...evidence,providerFingerprint:snapshot.fingerprint,maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires});
+  await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,'assistant',${current.userId}::uuid,${receipt},${p.maxJobs},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);return{promotionId:id,maxJobs:p.maxJobs,expiresAt:clock.expires,coverage:evidence.pairedEvidence?'paired-offline-leave-routing' as const:'synthetic-canonical-terminal-plans-and-tool-minimality' as const};
  });
 }
 
 type ConversationPromotion={id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string;created_at:string;approver_user_id:string};
 async function currentConversationPromotionTx(tx:Tx,ctx:SessionContext,promotionId:string,providerFingerprint:string){
  const [row]=await tx.execute<ConversationPromotion>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text,p.created_at::text,p.approver_user_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.id=${promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<=p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);if(!row)return fail();
- const candidate=await candidateTx(tx,ctx,row.candidate_id),proof=open('conversation-promotion',ctx.tenantId,row.id,row.receipt),evaluations=await verifiedConversationEvaluationsTx(tx,ctx,candidate,providerFingerprint);
- if(!exact(proof,['version','candidateDigest','binding','approverId','evaluations','providerFingerprint','maxJobs','createdAt','expiresAt'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.providerFingerprint!==providerFingerprint||routingDigest(proof.evaluations)!==routingDigest(evaluations)||proof.maxJobs!==row.max_jobs||proof.approverId!==row.approver_user_id||new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();return{row,candidate};
+ const candidate=await candidateTx(tx,ctx,row.candidate_id),proof=open('conversation-promotion',ctx.tenantId,row.id,row.receipt);
+ const evidence=await conversationPromotionEvidenceTx(tx,ctx,candidate,providerFingerprint,row.approver_user_id);
+ const evidenceKey=evidence.pairedEvidence?'pairedEvidence':'evaluations';
+ if(!exact(proof,['version','candidateDigest','binding','approverId',evidenceKey,'providerFingerprint','maxJobs','createdAt','expiresAt'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.providerFingerprint!==providerFingerprint||routingDigest(proof[evidenceKey])!==routingDigest(evidence[evidenceKey])||proof.maxJobs!==row.max_jobs||proof.approverId!==row.approver_user_id||new Date(String(proof.createdAt)).getTime()!==new Date(row.created_at).getTime()||new Date(String(proof.expiresAt)).getTime()!==new Date(row.expires_at).getTime())return fail();return{row,candidate};
 }
 export type AssistantConversationStrategyCapability=Readonly<{readonly __assistantConversationStrategy?:never}>;
 type ConversationStrategyUse={ctx:SessionContext;id:string;incarnation:string;promotionId:string|null;candidateDigest:string;providerFingerprint:string;questionDigest:string;provenance:Readonly<{mode:'baseline'|'promoted';version:number;configurationDigest:string}>};

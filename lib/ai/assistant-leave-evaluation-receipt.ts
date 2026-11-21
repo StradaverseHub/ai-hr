@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, sign, verify, type KeyObject } from 'node:crypto';
 import { z } from 'zod';
-import { routingDigest } from '../../lib/ai/module-agent-routing';
+import { routingDigest } from './module-agent-routing';
 
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const count = z.number().int().min(0).max(32);
@@ -11,7 +11,7 @@ const evaluator = z.object({
 }).strict();
 const planSchema = z.object({
   version: z.literal(1), trialId: z.uuid(), tenantId: z.uuid(), authorId: z.uuid(), approverId: z.uuid(),
-  candidateSha: z.string().regex(/^[a-f0-9]{40}$/), candidateDigest: digest, baselineDigest: digest,
+  candidateSha: z.string().regex(/^[a-f0-9]{40}$/), candidateDigest: digest, baselineDigest: digest, sourceDigest: digest,
   modelDigest: digest, answerFormatDigest: digest, generationOptionsDigest: digest,
   committedAt: z.iso.datetime(), expiresAt: z.iso.datetime(), evaluators: z.tuple([evaluator, evaluator]),
 }).strict();
@@ -102,7 +102,9 @@ export function verifyPairedLeaveEvaluations(planBytes: Buffer, planDigest: stri
   });
   if (new Set(verified.map(row => row.evaluatorId)).size !== 2) return refused();
   return { evidence: 'verified_offline_paired_leave_evaluations', planDigest, trialId: plan.trialId, tenantId: plan.tenantId,
+    authorId: plan.authorId, approverId: plan.approverId, expiresAt: plan.expiresAt, sourceDigest: plan.sourceDigest,
     candidateSha: plan.candidateSha, candidateDigest: plan.candidateDigest, baselineDigest: plan.baselineDigest,
     modelDigest: plan.modelDigest, evaluatorCount: verified.length,
+    receiptSetDigest: routingDigest(verified.sort((a, b) => a.evaluatorId.localeCompare(b.evaluatorId))),
     savedCalls: verified.reduce((total, row) => total + row.report.savedCalls, 0), releaseAuthorized: false };
 }

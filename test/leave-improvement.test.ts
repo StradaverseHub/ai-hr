@@ -1,9 +1,10 @@
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { runProtectedLeaveComparison, runProtectedLeaveRouting } from '../scripts/experiments/protected-leave-comparison';
 import { selectProtectedLeaveCount } from '../lib/ai/assistant-leave-count';
 import { scorePairedLeaveRoutingHoldout, scoreProtectedLeaveRoutingHoldout } from '../scripts/experiments/protected-leave-routing-holdout';
-import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../scripts/experiments/protected-leave-routing-receipt';
+import { signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../lib/ai/assistant-leave-evaluation-receipt';
+import { installedLocalLeaveEvidence } from '../core/assistant-local-leave-evidence';
 import { protectedWorkSummarySplits, runProtectedWorkSummaryComparison } from '../scripts/experiments/protected-work-summary-comparison';
 import { PROTECTED_CATALOGUE_FORMAT, protectedCatalogueAnswerJsonSchema } from '../scripts/experiments/protected-catalogue-answer-format';
 import { protectedIndexedAnswer } from '../scripts/experiments/protected-indexed-answer-format';
@@ -576,7 +577,7 @@ describe('evaluator-owned leave routing suite', () => {
     const answerFormatDigest = routingDigest('json');
     const plan = {
       version: 1, trialId: id('1'), tenantId: id('2'), authorId: id('3'), approverId: id('4'),
-      candidateSha, candidateDigest: 'c'.repeat(64), baselineDigest: 'b'.repeat(64),
+      candidateSha, candidateDigest: 'c'.repeat(64), baselineDigest: 'b'.repeat(64), sourceDigest:'d'.repeat(64),
       modelDigest, generationOptionsDigest: routingDigest(generationOptions), answerFormatDigest,
       committedAt: '2026-11-21T00:00:00Z', expiresAt: '2026-11-22T00:00:00Z',
       evaluators: inputs.map((input, index) => ({ id: id(String(index + 5)), publicKey: keys[index].publicKey.export({format:'jwk'}).x,
@@ -612,6 +613,20 @@ describe('evaluator-owned leave routing suite', () => {
       reports[0], keys[0].privateKey, now)).toThrow(refused);
     const replay = freezePlan({ ...plan, tenantId:id('8') });
     expect(() => verifyPairedLeaveEvaluations(replay.bytes, replay.digest, receipts, now)).toThrow(refused);
+
+    const binding = { tenantId:plan.tenantId, authorId:plan.authorId, candidateDigest:plan.candidateDigest,
+      baselineDigest:plan.baselineDigest, sourceDigest:plan.sourceDigest };
+    try {
+      vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_BUNDLE',JSON.stringify({plan:committed.bytes.toString('base64url'),receipts}));
+      vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256','');
+      expect(installedLocalLeaveEvidence(binding,now)).toBeNull();
+      vi.stubEnv('AIHR_LOCAL_LEAVE_TRIAL_PLAN_SHA256',committed.digest);
+      expect(installedLocalLeaveEvidence(binding,now)).toMatchObject({kind:'paired_leave_offline_v1',planDigest:committed.digest,
+        approverId:plan.approverId,expiresAt:plan.expiresAt});
+      expect(installedLocalLeaveEvidence({...binding,sourceDigest:'a'.repeat(64)},now)).toBeNull();
+      expect(installedLocalLeaveEvidence({...binding,tenantId:id('8')},now)).toBeNull();
+      expect(installedLocalLeaveEvidence(binding,new Date(plan.expiresAt))).toBeNull();
+    } finally { vi.unstubAllEnvs(); }
   });
 });
 

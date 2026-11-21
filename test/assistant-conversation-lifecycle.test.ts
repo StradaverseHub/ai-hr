@@ -1,5 +1,5 @@
-/** Authored UNRUN. Requires the normally installed coordinated conversation draft after0642.
- * Only provider transport is fictional; actual app principal, root/admission, custody and DB run.
+/** Requires the normally installed conversation migrations.
+ * Provider transport and disclosure review are fictional; principal, root/admission and custody are native.
  * Deliberately wrong mocked baseline output exercises promotion rules, NOT real model quality. */
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -14,6 +14,8 @@ import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {resolveActiveAiConfig} from '../core/ai-config';
 import {bindAiSpendTaskTx} from '../core/ai-spend-task';
 import {openaiAdapter} from '../lib/ai/providers/openai';
+import * as reviews from '../lib/ai/provider-data-reviews';
+import {AiPrivacyGateError} from '../lib/ai/provider-privacy-error';
 import {defaultModelFor} from '../lib/ai/registry';
 import {decryptSecret} from '../lib/ai/crypto';
 import * as spend from '../lib/ai/spend-allocation';
@@ -25,7 +27,11 @@ import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});afterEach(()=>vi.restoreAllMocks());
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-conversation-secret');vi.stubEnv('OPENAI_API_KEY','fictional-conversation-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-conversation-secret');vi.stubEnv('OPENAI_API_KEY','fictional-conversation-key');vi.stubEnv('ANTHROPIC_API_KEY','');vi.stubEnv('GOOGLE_API_KEY','');vi.stubEnv('GEMINI_API_KEY','');
+ vi.spyOn(reviews,'assertProviderDataContractReviewed').mockImplementation(contract=>{
+  if(contract!==ASSISTANT_PRIVATE_CONTRACT&&contract!=='synthetic_assistant_conversation_v1')throw new AiPrivacyGateError('unreviewed');
+ });
+ await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 async function conversationActors(){const make=async(name:string)=>{const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(adminCtx(base),{appUserId:userId});return{...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}],employmentId:hired.employmentId} satisfies SessionContext&{employmentId:string};};return{author:await make('Fictional Conversation Author'),reviewer:await make('Fictional Conversation Reviewer'),second:await make('Fictional Conversation Second Reviewer'),promoter:await make('Fictional Conversation Independent Promoter')};}
 const consent=()=>({synthetic:true as const,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
 async function candidate(){const a=await conversationActors(),created=await createConversationAgentCandidate(a.author,{version:1,configuration:{kind:'assistant_answer_prompt_v1',variant:'focused_v1'}});return{...a,...created};}

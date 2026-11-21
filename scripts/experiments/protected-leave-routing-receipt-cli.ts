@@ -2,7 +2,7 @@ import { createPrivateKey } from 'node:crypto';
 import { readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import { REPO_ROOT } from '../teras/output';
-import { LEAVE_RECEIPT_INPUT_LIMIT, signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from './protected-leave-routing-receipt';
+import { LEAVE_RECEIPT_INPUT_LIMIT, signPairedLeaveEvaluation, verifyPairedLeaveEvaluations } from '../../lib/ai/assistant-leave-evaluation-receipt';
 
 function outside(path: string) {
   const location = relative(realpathSync(REPO_ROOT), path);
