@@ -71,7 +71,7 @@ async function createPerformance({base,page,user,target,tenantId,db,report,save}
  return {id,name};
 }
 
-async function createRewards({base,page,user,target,tenantId,db,report,save}){
+export async function createRewards({base,page,user,target,tenantId,db,report,save}){
  const {planVersionId,planName:name}=target;
  assert(uuid.test(planVersionId)&&name,'missing independently approved Rewards fixture plan');
  await open(page,base,rewardPlansPath);

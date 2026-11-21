@@ -1,3 +1,4 @@
+import {measureRewardsRecords} from './rewards-record-census.mjs';
 import {measureLifecycleRecordActions} from './lifecycle-record-actions.mjs';
 import {measureFixtureRecordCensus,seedStatutoryLeaver,seedWorkLocationRecords} from './fixture-record-census.mjs';
 /** Repeatable direct browser entry with the existing fictional system fixture. */
@@ -33,7 +34,9 @@ const groupShape=env.AIHR_BROWSER_GROUP_SHAPE==='true';
 const shardInput=env.AIHR_BROWSER_STATIC_SHARD??'';
 const retryCensusTimeouts=shardInput==='retry-timeouts';
 const censusPayrollCorrections=shardInput==='payroll-corrections';
-const censusFixtureRecords=shardInput==='fixture-records'||censusPayrollCorrections;
+const censusRewards=shardInput==='rewards-records';
+const censusLifecycle=shardInput==='fixture-records';
+const censusFixtureRecords=censusLifecycle||censusPayrollCorrections||censusRewards;
 const shardMatch=/^([0-7])(?:\.([0-3]))?$/.exec(shardInput);
 assert(!shardInput||(!fixtureOnly&&(shardMatch||(retryCensusTimeouts||censusFixtureRecords)&&groupShape)),'Invalid static census configuration');
 const staticShard=shardMatch?Number(shardMatch[1]):null;
@@ -69,7 +72,7 @@ const dbEnv={...env,NODE_ENV:'development',AUTH_PROVIDER:'internal',
  AUTH_SESSION_KEY:randomBytes(32).toString('hex'),AI_CONFIG_SECRET:randomBytes(32).toString('hex'),
  AUTH_PUBLIC_ORIGIN:origin,AUTH_DEFAULT_ORGANIZATION:'perf-a',ALLOW_DEMO_SESSION:'false',SHARE_PASSWORD:'',DEV_USER_ID:'',
  AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',
- AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
+ AUDIT_HASH_CHAIN_ENABLED:'true',PERF_HTTP_SUITE:censusRewards?'whole-system':'browser-route-baseline',PERF_ATTENDANCE_DAYS:'180',
  PERF_PRIVATE_DIR:privateDir,PERF_EVIDENCE_DIR:fixtureEvidenceDir,AIHR_FOCUSED_EVIDENCE_DIR:focusedEvidence,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',
  MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
@@ -1541,7 +1544,7 @@ try{
  }finally{retainSeedPhases();}
  await run('seed-visible-joiners',process.execPath,['--conditions=react-server','--import','tsx',
   '../automation/scripts/performance/joiners-browser-fixture.mjs'],{
-   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusFixtureRecords&&!censusPayrollCorrections),
+   ...dbEnv,PERF_LIFECYCLE_RECORDS:String(censusLifecycle),
   });
  const fixture=JSON.parse(readFileSync(join(privateDir,'fixture.json'),'utf8'));
  if(groupShape){
@@ -1551,7 +1554,7 @@ try{
    const {counts,company}=await seedBrowserGroupShape(owner,fixture);
    fixture.scaleCompany=company;
    report.fixture.groupShape=counts;
-   if(censusFixtureRecords&&!censusPayrollCorrections){
+   if(censusLifecycle){
     await seedStatutoryLeaver(owner,fixture);
     report.fixture.workLocationScale=await seedWorkLocationRecords(owner,fixture);
    }
@@ -1611,8 +1614,10 @@ try{
    const compiledPages=new Set(Object.entries(routes).filter(([entry])=>entry.endsWith('/page')).map(([,path])=>path));
    const db=require('postgres')(dbEnv.MIGRATION_DATABASE_URL,{max:1,connection:{default_transaction_read_only:'on'}});
    try{
-    await measureFixtureRecordCensus({db,fixture,origin,compiledPages,signedInContext,report,save,payrollCorrections:censusPayrollCorrections});
-    if(!censusPayrollCorrections)await measureLifecycleRecordActions({db,fixture,origin,signedInContext,report,save});
+    const options={db,fixture,origin,compiledPages,signedInContext,report,save};
+    if(censusRewards)await measureRewardsRecords(options);
+    else await measureFixtureRecordCensus({...options,payrollCorrections:censusPayrollCorrections});
+    if(censusLifecycle)await measureLifecycleRecordActions(options);
    }
    finally{await db.end({timeout:5});}
   }else if(retryCensusTimeouts)await measureCensusTimeoutFollowUp(fixture);
