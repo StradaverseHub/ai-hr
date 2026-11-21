@@ -28,3 +28,23 @@ export function summarizeMixedResponsePhases(samples,{steadyStartPerformanceMs:s
   afterHeadersP95Ms:p95(afterHeaders),completionP95Ms:p95(complete),
  })).sort((a,b)=>a.role.localeCompare(b.role)||a.route.localeCompare(b.route)||a.method.localeCompare(b.method));
 }
+
+/** Completed HTTP error responses are distinct from transport failures and may include expected denials. */
+export function summarizeMixedErrorStatuses(samples,{startPerformanceMs:start}={},knownRoutes){
+ if(!Array.isArray(samples)||!Number.isFinite(start))return null;
+ const buckets=new Map();
+ let total=0;
+ for(const row of samples){
+  const {role,route,method,status,startedMs}=row??{};
+  if(!Number.isFinite(startedMs)||startedMs<start||!roles.has(role)||!methods.has(method))continue;
+  if(!Number.isSafeInteger(status)||status<400||status>599)continue;
+  const routeTemplate=knownRoutes.has(route)?route:null;
+  const key=JSON.stringify([role,routeTemplate,method,status]);
+  const bucket=buckets.get(key)??{role,route:routeTemplate,method,status,count:0};
+  bucket.count++;
+  total++;
+  buckets.set(key,bucket);
+ }
+ const groups=[...buckets.values()].sort((a,b)=>b.count-a.count||a.status-b.status);
+ return {total,rows:groups.slice(0,40),omittedGroups:Math.max(0,groups.length-40)};
+}

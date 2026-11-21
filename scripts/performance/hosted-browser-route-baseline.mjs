@@ -16,7 +16,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {builtPageCoverage,nativePreflightRoutePlan,routePools} from './system-route-manifest.mjs';
 import {performanceFixtureCalendar} from './fixture-workload.mjs';
 import {projectLoadedAdvisoryDiagnostics,projectMixedBrowserVisitFailure} from './worker-comparison-failure.mjs';
-import {summarizeMixedResponsePhases} from './mixed-response-phases.mjs';
+import {summarizeMixedErrorStatuses,summarizeMixedResponsePhases} from './mixed-response-phases.mjs';
 import {mixedDriverPrimaryOrigin,projectMixedNavigationPreflightFailure} from './mixed-driver-primary-origin.mjs';
 import {projectMixedPreflightLockWaits} from './lock-sample-attribution.mjs';
 import {browserPreflightErrorFingerprint} from './browser-failure.ts';
@@ -779,6 +779,11 @@ async function measureMixedLoad(command,fixture){
     const metadata=statSync(samplesPath);
     if(metadata.isFile()&&metadata.size<=16*1024*1024){
      const samples=JSON.parse(readFileSync(samplesPath,'utf8'));
+     const statuses=summarizeMixedErrorStatuses(samples,data.measurementWindow,knownRoutes);
+     if(statuses)report.mixedCompletedErrorStatuses={
+      scope:'Completed HTTP 4xx/5xx responses recorded by the driver since load start. Expected denials may be included.',
+      ...statuses,
+     };
      const rows=summarizeMixedResponsePhases(samples,data.measurementWindow,knownRoutes);
      if(rows.length)report.mixedResponsePhases={
       available:true,driverAccountingComplete:data.functionalAccountingComplete===true,
