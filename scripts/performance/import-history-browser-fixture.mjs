@@ -79,6 +79,33 @@ try{
  const detail=await payroll.payrollHistoryMaintenanceRecord(ctx,record.id);
  assert(detail?.items.some(item=>item.code==='BASIC'&&Number(item.amount)===Number(amount)&&item.sourceAttemptId===preview.attemptId));
 
+ mark('tax-basis');
+ const year=Number(fixture.month.slice(0,4))-1;
+ const taxPeriod=year+'-02';
+ const componentCode='PERFHISTTRAVEL';
+ const [travel]=await owner.client`insert into pay_component
+  (tenant_id,code,name,kind,display_category,included_in_pcb,pcb_remuneration_type,pcb_exemption_code)
+  values (${group.tenantId}::uuid,${componentCode},'Fictional History Travel','allowance','allowance',false,'normal','PCB_TAXABLE')
+  returning id`;
+ const taxSource=toCsv([Array.from(PAYROLL_HISTORY_HEADERS),
+  ...[['BASIC',amount],[componentCode,'500.00'],['EEEPF','0.00'],['EESOCSO','0.00'],['EEEIS','0.00'],['PCB','0.00']]
+   .map(([code,value])=>[employeeCode,taxPeriod,'ME',code,companyLabel,value]),
+ ]);
+ const taxUpload=await payroll.previewPayrollHistoryUpload(ctx,{name:'fictional-tax-basis.csv',content:Buffer.from(taxSource)});
+ assert.equal(taxUpload.plan.counts.invalid,0);
+ await payroll.confirmPayrollHistoryUpload(ctx,{attemptId:taxUpload.attemptId,previewHash:taxUpload.plan.previewHash,confirmReplacement:true});
+ await owner.client`update pay_component set included_in_pcb=true where id=${travel.id}::uuid`;
+ const [employment]=await owner.client`select id from employment where tenant_id=${group.tenantId}::uuid
+  and company_id=${group.companyId}::uuid and employee_code=${employeeCode}`;
+ assert(employment,'Expected the fictional import employee for recalculation');
+ const taxPreview=await payroll.previewTaxBasisRecalculation(ctx,{companyId:group.companyId,year,upToMonth:2,employmentIds:[employment.id]});
+ assert.equal(taxPreview.eligibleCount,1);
+ assert.equal(taxPreview.recordCount,1);
+ assert.equal(taxPreview.employees[0].months[0].taxable,Number(amount)+500);
+ const taxRun=await payroll.confirmTaxBasisRecalculation(ctx,{previewId:taxPreview.previewId,previewHash:taxPreview.previewHash});
+ const taxBatch=await payroll.getTaxBasisBatch(ctx,taxRun.id);
+ assert(taxBatch?.status==='completed'&&taxBatch.completedCount===1&&taxBatch.recordCount===1);
+
  mark('fixed-transaction');
  const missingEmployee='PERF-UNKNOWN-FIXED';
  const scope=[group.companyId];
@@ -153,6 +180,7 @@ try{
   companyId:group.companyId,employeeName,employeeCode,
   personnel:{attemptId:imported.attemptId,runId:imported.runId,file:personnelFile},
   payroll:{attemptId:preview.attemptId,recordId:record.id,file:payrollFile},
+  taxBasis:{id:taxBatch.id,reference:taxBatch.reference},
   fixed,individual,
  }),{mode:0o600});
  mark('complete');

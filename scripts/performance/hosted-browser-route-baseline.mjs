@@ -1634,7 +1634,7 @@ try{
    const path=join(privateDir,'import-history-seed-stage');
    if(existsSync(path)){
     const stage=readFileSync(path,'utf8');
-    if(['principal','personnel','payroll','fixed-transaction','individual-workbook','individual-submit','individual-missing-column-grant-verified',
+    if(['principal','personnel','payroll','tax-basis','fixed-transaction','individual-workbook','individual-submit','individual-missing-column-grant-verified',
      'individual-worker','individual-job','individual-attempt','complete'].includes(stage))report.importHistorySeedStage=stage;
     const grantPath=join(privateDir,'individual-import-grant-probe');
     if(existsSync(grantPath)){

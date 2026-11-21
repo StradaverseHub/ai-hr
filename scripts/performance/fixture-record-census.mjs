@@ -513,12 +513,12 @@ async function verifyFormulaSample(page, main, source, value, row) {
 
 function importHistoryRoutes(fixture) {
   const [group, company] = fixture.users;
-  const { companyId, employeeCode, employeeName, personnel, payroll, fixed, individual } = fixture.importHistory;
+  const { companyId, employeeCode, employeeName, personnel, payroll, taxBasis, fixed, individual } = fixture.importHistory;
   assert.equal(group.role, 'groupHR');
   assert.equal(company.role, 'companyHR');
   assert.equal(group.companyId, companyId);
   assert.equal(company.companyId, companyId);
-  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId, fixed.groupHR.id, fixed.companyHR.id]) {
+  for (const id of [personnel.attemptId, personnel.runId, payroll.attemptId, payroll.recordId, taxBasis.id, fixed.groupHR.id, fixed.companyHR.id]) {
     assert.match(id, /^[0-9a-f-]{36}$/i);
   }
   const personnelBase = '/admin/personnel/import/history';
@@ -544,6 +544,8 @@ function importHistoryRoutes(fixture) {
       exactHeading: payroll.file, witness: `a[href="${payrollLog}/report"]` },
     { actor, template: payrollBase + '/records/[recordId]', path: payrollBase + '/records/' + payroll.recordId,
       exactHeading: `${employeeCode} · ${employeeName}`, witness: `a[href="${payrollLog}"]:text-is("${payroll.file}")` },
+    { actor, template: '/payroll/income-tax-recalculation/[id]', path: '/payroll/income-tax-recalculation/' + taxBasis.id,
+      exactHeading: 'Recalculation ' + taxBasis.reference, content: employeeName, witness: 'dd[role="status"]:text-is("Completed")' },
     fixedRead(actor),
     ...individualImportRoutes(actor, individual[actor.role], individualBase),
   ]);
