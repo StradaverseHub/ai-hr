@@ -24,6 +24,7 @@ import { terasPayrollLoopSetting } from '../db/teras-payroll-cycle-schema';
 import { netSwings } from '../core/loops/net-swing';
 import { swingRowsTx } from '../core/loops/swing-rows';
 import { withTenant, type SessionContext } from '../db/client';
+import { lockAccessConfigurationReadTx } from '../core/access-configuration-lock';
 import {
   evaluateBatchAnomalies,
   PayrollAnomalySourceUnavailableError,
@@ -173,6 +174,55 @@ beforeEach(async () => {
 
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 describe('ADR-0076 — the evaluator writes verdicts and never touches the money path', () => {
+  it('observes an anomaly evaluation queue ahead of a simultaneous shared Access read', async () => {
+    const { employmentId, personId } = await makeEmp('Access witness');
+    await giveProfile(personId);
+    const batchId = await makeBatch();
+    await addPayslip(batchId, employmentId);
+    const key = 'access-configuration:' + b.tenantId;
+
+    let evaluation: Promise<PromiseSettledResult<Awaited<ReturnType<typeof evaluateBatchAnomalies>>>[]> | undefined;
+    let otherRead: Promise<PromiseSettledResult<number>[]> | undefined;
+    try {
+      await owner.db.transaction(async tx => {
+        const [holder] = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${key},0))`);
+        const queuedBehind = (pid: number, mode: 'ExclusiveLock' | 'ShareLock') =>
+          tx.execute<{ pid: number }>(sql`
+            select l.pid from pg_locks l
+            cross join (select hashtextextended(${key},0) as k) target
+            where l.locktype='advisory' and l.objsubid=1 and not l.granted and l.mode=${mode}
+              and l.database=(select oid from pg_database where datname=current_database())
+              and l.classid::bigint=((target.k>>32)&4294967295) and l.objid::bigint=(target.k&4294967295)
+              and ${pid}::int=any(pg_blocking_pids(l.pid))
+          `);
+        evaluation = Promise.allSettled([evaluateBatchAnomalies(a, { batchId })]);
+        let evaluatorPid = 0;
+        await expect.poll(async () => {
+          const rows = await queuedBehind(holder.pid, 'ExclusiveLock');
+          evaluatorPid = rows[0]?.pid ?? 0;
+          return rows.length;
+        }, { timeout: 1200 }).toBe(1);
+
+        otherRead = Promise.allSettled([withTenant(a, async reader => {
+          await lockAccessConfigurationReadTx(reader, a.tenantId);
+          const [row] = await reader.execute<{ count: number }>(sql`
+            select count(*)::int as count from company where tenant_id=${a.tenantId}::uuid
+          `);
+          return row.count;
+        })]);
+        await expect.poll(async () => (await queuedBehind(evaluatorPid, 'ShareLock')).length,
+          { timeout: 1200 }).toBe(1);
+      });
+    } finally {
+      await Promise.all([evaluation, otherRead]);
+    }
+    expect(await evaluation).toEqual([{ status: 'fulfilled', value: expect.objectContaining({ total: 1 }) }]);
+    expect(await otherRead).toEqual([{ status: 'fulfilled', value: 1 }]);
+    expect(await liveVerdicts(batchId)).toHaveLength(1);
+  }, 15_000);
+
+
   it('a clean payslip auto-clears, and its payslip row is byte-identical afterwards', async () => {
     const { employmentId, personId } = await makeEmp('Clean');
     await giveProfile(personId);
