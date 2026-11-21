@@ -1722,10 +1722,10 @@ try{
      if(assistantOpens.length===128)break;
     }
     if(assistantOpens.length)report.assistantOpens=assistantOpens;
-    const shellRoutes=new Set(['/','/assistant','/admin/personnel','/approvals','/payroll',
-     '/payroll/transaction-view','/roster','/attendance','/recruitment']);
-    const shellPhases=new Set(['requestPreferences','session','entryAndIdlePolicy','initialNavigation','letters',
-     'rewards','lifecycle','moduleNavigation','identityEmailAndPerformance','renderPreparation']);
+    const shellRoutes=new Set(['/','/tasks','/admin/personnel','/approvals','/payroll',
+     '/analytics','/roster','/recruitment','/lifecycle/v9']);
+    const shellPhases=new Set(['requestPreferences','session','entryAndIdlePolicy','initialNavigation',
+     'lifecycle','identityEmailAndPerformance','renderPreparation']);
     const lifecycleOwnerPhases=new Set(['onboardingNavigation','scopedLifecycleNavigation','offboardingPostingAccess']);
     const shellOpens=[];
     for(const [,record] of log.matchAll(/^PERF_SHELL_OPEN (.{1,1000})$/gm)){
