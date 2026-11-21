@@ -319,7 +319,20 @@ async function sendRequestBody(attempt,user,path,fields,expectedStatus,record,ac
    return https.request(base+path,{agent,signal:attempt.deadline,method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
     Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}});
   },
-  onHeaders:(res,ttfbMs)=>{responseHeaders=attempt.headers={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(res.headers['x-action-redirect'])};},
+  onHeaders:(res,ttfbMs)=>{
+   const redirect=res.headers['x-action-redirect'];
+   responseHeaders=attempt.headers={status:res.statusCode,ttfbMs,hasActionRedirect:Boolean(redirect)};
+   if(action!=='payrollProcess')return;
+   responseHeaders.payrollRedirect='none';
+   if(typeof redirect!=='string')return;
+   responseHeaders.payrollRedirect='unexpected';
+   try{
+    const target=new URL(redirect.split(';',1)[0],base);
+    if(target.origin!==base||target.pathname!==new URL(path,base).pathname)return;
+    if(target.searchParams.has('error'))responseHeaders.payrollRedirect='refused';
+    else if(target.searchParams.has('toast'))responseHeaders.payrollRedirect='queued';
+   }catch{/* Only the bounded redirect classification is retained. */}
+  },
  });
  transports.run(()=>transport.terminal);
  const response=await transport.result.catch(error=>{
