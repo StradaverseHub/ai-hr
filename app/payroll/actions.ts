@@ -109,22 +109,33 @@ export async function requestPayrollProcessingReceipt(formData: FormData) {
   if (process.env.AIHR_PAYROLL_RECEIPT_PROFILE !== 'true' || process.env.GITHUB_ACTIONS !== 'true') {
     return admitPayrollProcessing(batchId, formData);
   }
-  const started = performance.now();
-  const marker = (await headers()).get('x-aihr-payroll-probe');
-  const sample = marker === 'steady-0' || marker === 'steady-1' ? marker : 'preflight';
-  const elapsed = () => Math.round(performance.now() - started);
-  const phases: Partial<Record<PayrollAdmissionPhase, number>> = {};
-  let outcome: 'queued' | 'refused' | 'error' = 'error';
-  try {
-    const receipt = await admitPayrollProcessing(batchId, formData, phase => { phases[phase] = elapsed(); });
-    outcome = receipt.status;
-    return receipt;
-  } finally {
-    console.info('PERF_PAYROLL_RECEIPT ' + JSON.stringify({ sample, outcome, phases, handlerMs: elapsed() }));
-  }
+  const trace = (globalThis as PayrollProbeRuntime).__aihrPerfPayrollAdmission;
+  const measure = async (database?: PayrollAdmissionTrace) => {
+    const started = performance.now();
+    const marker = (await headers()).get('x-aihr-payroll-probe');
+    const sample = marker === 'steady-0' || marker === 'steady-1' ? marker : 'preflight';
+    const elapsed = () => Math.round(performance.now() - started);
+    const phases: Partial<Record<PayrollAdmissionPhase, number>> = {};
+    let outcome: 'queued' | 'refused' | 'error' = 'error';
+    try {
+      const receipt = await admitPayrollProcessing(batchId, formData, phase => {
+        phases[phase] = elapsed();
+        database?.markComplete(phase);
+      });
+      outcome = receipt.status;
+      return receipt;
+    } finally {
+      console.info('PERF_PAYROLL_RECEIPT ' + JSON.stringify({ sample, outcome, phases, handlerMs: elapsed(), database: database?.snapshot() }));
+    }
+  };
+  return trace ? trace(measure) : measure();
 }
 
 type PayrollAdmissionPhase = 'session' | 'translations' | 'prechecks' | 'enqueue';
+type PayrollAdmissionTrace = { markComplete: (phase: PayrollAdmissionPhase) => void; snapshot: () => unknown };
+type PayrollProbeRuntime = typeof globalThis & {
+  __aihrPerfPayrollAdmission?: <T>(measure: (database: PayrollAdmissionTrace) => Promise<T>) => Promise<T>;
+};
 
 async function admitPayrollProcessing(batchId: string, formData: FormData, mark?: (phase: PayrollAdmissionPhase) => void) {
   const s = await getSession();
