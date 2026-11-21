@@ -80,6 +80,15 @@ it('leaves every attendance table, the import log, the pay-run marks and the aud
   expect(job.steps_total).toBeGreaterThan(3);
   expect(Number(job.metrics.chunks)).toBeGreaterThan(1);
   expect(Number(job.metrics.chunkHoldMs)).toBeGreaterThan(0);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.info('CLOCKING_IMPORT_CHUNK_TIMING', JSON.stringify({
+      employees: Number(job.counters.employees),
+      importedLines: jobOutcomes[0].imported,
+      chunks: Number(job.metrics.chunks),
+      maxChunkMs: Number(job.metrics.maxChunkMs),
+      maxPostLockToCommitMs: Number(job.metrics.chunkHoldMs),
+    }));
+  }
 }, 900_000);
 
 it('decides each employee against their day as it stands when the step runs, and leaves out an employee whose card changed', async () => {
