@@ -86,7 +86,7 @@ describe('a batch that keeps failing leaves only its employees unchanged; runnin
     try { expect(await runJob(e1.id)).toBe('completed'); } finally { await dropFailure(); }
     const e1Done = await readToilSweepJob(adminCtx(b), e1.id);
     expect(e1Done).toMatchObject({state: 'completed', failedEmployees: eVictim.payload.employmentIds.length});
-    expect(e1Done!.error).toMatch(/refused by a safeguard|injected failure|could not/i);
+    expect(e1Done!.error).toMatch(/A system rule prevented this change\..*DB-R-[0-9A-F]{6}|injected failure|could not complete/i);
     const others = f.people.map(p => p.employmentId).filter(id => !eVictim.payload.employmentIds.includes(id));
     // The refused batch's employees keep every credit they had; the others' due credits are settled.
     const dueActive = async (ids: readonly string[]) => (await owner.client<{n: number}[]>`select count(*)::int as n from toil_accrual

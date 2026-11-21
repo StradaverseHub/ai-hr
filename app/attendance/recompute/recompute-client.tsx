@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 
 import { Fragment, useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -512,7 +513,7 @@ export function RecomputeClient({
       {applied && (
         <div className="space-y-4">
           <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-            {t('finished')} — {new Date(applied.ranAt).toLocaleString('en-GB')}
+            {t('finished')} — {new Date(applied.ranAt).toLocaleString('en-GB', { timeZone: HR_LOCAL_TZ })}
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label={t('statChecked')} value={applied.checked} />
@@ -559,7 +560,7 @@ export function RecomputeClient({
                   <Fragment key={run.runId}>
                     <tr>
                       <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-muted-foreground">
-                        {new Date(run.occurredAt).toLocaleString('en-GB')}
+                        {new Date(run.occurredAt).toLocaleString('en-GB', { timeZone: HR_LOCAL_TZ })}
                       </td>
                       <td className="px-3 py-2.5">{run.actorName ?? t('runByUnknown')}</td>
                       <td className="px-3 py-2.5">

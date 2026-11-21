@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { getLocale, getTranslations } from 'next-intl/server';
+import { dateTimeFormatter } from '@/lib/date-time-formatter';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import { scopedAdmin } from '@/lib/scope';
 import { Badge, Card, ErrorBanner, EmployeeCode, PageHeader } from '@/components/ui';
 import { listEmployeesForPayrollRun } from '@/core/read';
@@ -82,6 +84,30 @@ export default async function PayrollProcessResultPage({
       ? t('payrollCycleMissingForCompanyType', { company: c.companyName, runType: t(`runType.${c.missingCycleRunType}`) })
       : t(`reason.${c.reason as RunGroupReasonCode}`);
 
+  const failureContent = (c: (typeof result.perCompany)[number]) => {
+    const isTaxHistory = c.reason === 'IMPORTED_TAX_HISTORY_REVIEW_REQUIRED';
+    const params = new URLSearchParams({
+      company: c.companyId,
+      year: result.payPeriod.slice(0, 4),
+      month: String(Number(result.payPeriod.slice(5, 7))),
+    });
+    return (
+      <div className="space-y-1">
+        <p>{isTaxHistory && c.historicalTaxPeriod
+          ? t('historicalTaxForPeriod', { period: c.historicalTaxPeriod })
+          : reasonDetail(c)}</p>
+        {isTaxHistory && (
+          <Link className="block font-medium text-primary hover:underline" href={`/payroll/income-tax-recalculation?${params}`}>
+            {t('openIncomeTaxRecalculation')}
+          </Link>
+        )}
+        {c.reason === 'SYSTEM_VALIDATION_ERROR' && group && (
+          <p className="break-all text-xs text-muted-foreground">{t('runSupportReference', { ref: group.id })}</p>
+        )}
+      </div>
+    );
+  };
+
   const overallVariant =
     result.overallStatus === 'succeeded' ? 'success' : result.overallStatus === 'partial' ? 'warning' : 'danger';
 
@@ -116,7 +142,7 @@ export default async function PayrollProcessResultPage({
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    {c.status === 'failed' && c.reason ? reasonDetail(c) : c.batchId ? (
+                    {c.status === 'failed' && c.reason ? failureContent(c) : c.batchId ? (
                       <Link className="font-medium text-primary hover:underline" href={`/payroll/${c.batchId}`}>
                         {t('viewBatch')}
                       </Link>
@@ -159,9 +185,13 @@ export default async function PayrollProcessResultPage({
         .sort((a, b) => a.companyName.localeCompare(b.companyName) || a.name.localeCompare(b.name))
     : [];
 
+  const timestampFormat = dateTimeFormatter(await getLocale(), {
+    timeZone: HR_LOCAL_TZ, day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  });
   const fmtTime = (iso: string) => {
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+    return Number.isNaN(d.getTime()) ? iso : `${timestampFormat.format(d)} MYT`;
   };
 
   return (
@@ -219,7 +249,7 @@ export default async function PayrollProcessResultPage({
                   </td>
                   <td className="px-4 py-2 text-muted-foreground">
                     {c.status === 'failed' && c.reason ? (
-                      <span className="text-amber-700 dark:text-amber-400">{reasonDetail(c)}</span>
+                      <div className="text-amber-700 dark:text-amber-400">{failureContent(c)}</div>
                     ) : c.batchId ? (
                       <Link href={`/payroll/${c.batchId}`} className="font-medium text-primary hover:underline">
                         {t('viewBatch')}

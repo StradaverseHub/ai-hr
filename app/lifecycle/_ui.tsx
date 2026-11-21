@@ -1,3 +1,4 @@
+import { kualaLumpurLocalInput } from '@/lib/hr-date';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { cn } from '@/lib/utils';
@@ -64,7 +65,7 @@ export async function LifecycleTabs({ level, active }: { level: number; active: 
 }
 
 export const fmt = (d: string | Date | null | undefined): string => (d == null || d === '' ? '—' : d instanceof Date ? d.toISOString().slice(0, 10) : String(d));
-export const fmtTime = (d: Date | string | null | undefined): string => (d == null ? '—' : new Date(d).toISOString().slice(0, 16).replace('T', ' '));
+export const fmtTime = (d: Date | string | null | undefined): string => (d == null ? '—' : kualaLumpurLocalInput(new Date(d)).replace('T', ' '));
 export const yesNo = (b: boolean, y: string, n: string): string => (b ? y : n);
 
 /** Every `action` the services write to lc_history. test/lifecycle-i18n.test.ts pins that each has a label. */

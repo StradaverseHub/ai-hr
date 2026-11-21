@@ -1,4 +1,5 @@
 'use client';
+import { HR_LOCAL_TZ } from '@/lib/hr-date';
 
 import { Fragment, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -101,7 +102,7 @@ export function ShellLiveClock() {
   }, [monolith]);
   if (!monolith) return null;
   const time = now
-    ? new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
+    ? new Intl.DateTimeFormat(locale, { timeZone: HR_LOCAL_TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(now)
     : '';
   return (
     <span className="ml-auto hidden shrink-0 items-center gap-2.5 whitespace-nowrap text-mid sm:inline-flex" data-shell-clock>

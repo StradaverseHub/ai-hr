@@ -1,3 +1,4 @@
+import { kualaLumpurLocalInput } from '@/lib/hr-date';
 import { notFound } from 'next/navigation';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -229,7 +230,7 @@ export default async function RemoveEmployeePayrollPage({
                   <span className="font-medium">{r.employeeName}</span>
                   <EmployeeCode code={r.employeeCode} />
                   <span className="text-xs text-muted-foreground">
-                    {r.at.toISOString().slice(0, 16).replace('T', ' ')}
+                    {kualaLumpurLocalInput(r.at).replace('T', ' ')}
                   </span>
                   {r.reason && <span className="text-xs text-muted-foreground">{r.reason}</span>}
                 </div>

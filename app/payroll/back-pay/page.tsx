@@ -204,7 +204,7 @@ export default async function BackPayPage({
                         </td>
                         <td className="px-3 py-2">{c.validFrom}</td>
                         <td className="px-3 py-2 tabular-nums">{money(c.newBasic)}</td>
-                        <td className="px-3 py-2 text-xs text-muted-foreground">{c.recordedAt.toISOString().slice(0, 10)}</td>
+                        <td className="px-3 py-2 text-xs text-muted-foreground">{todayInKualaLumpur(c.recordedAt)}</td>
                         <td className="px-3 py-2 text-xs">{c.affectedPeriods.join(', ')}</td>
                       </tr>
                     ))}
@@ -249,7 +249,7 @@ export default async function BackPayPage({
             </p>
             <p>
               <span className="text-muted-foreground">{t('calculatedBy')}: </span>
-              {detail.run.createdByName ?? '—'} · {detail.run.createdAt.toISOString().slice(0, 10)}
+              {detail.run.createdByName ?? '—'} · {todayInKualaLumpur(detail.run.createdAt)}
             </p>
             {detail.run.approvedAt && (
               <p>
@@ -405,7 +405,7 @@ export default async function BackPayPage({
                   <td className="px-3 py-2 text-right tabular-nums">{r.periodCount}</td>
                   <td className={`px-3 py-2 text-right tabular-nums ${amountTone(r.total)}`}>{signed(r.total)}</td>
                   <td className="px-3 py-2 text-xs text-muted-foreground">
-                    {r.createdByName ?? '—'} · {r.createdAt.toISOString().slice(0, 10)}
+                    {r.createdByName ?? '—'} · {todayInKualaLumpur(r.createdAt)}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <Link href={`/payroll/back-pay?run=${r.id}`} className="text-sm underline">
