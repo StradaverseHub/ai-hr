@@ -42,11 +42,12 @@ assert(['none','contract-control','contract-optimized'].includes(shellPermission
 const databaseTopology=env.AIHR_BROWSER_MIXED_DATABASE_TOPOLOGY??'direct';
 assert(['direct','transaction-pool'].includes(databaseTopology));
 const groupScale=env.AIHR_BROWSER_MIXED_GROUP_SCALE==='true';
-const combinedGroupCandidates=new Set([
- '5175d387846c18fcc83ef96091cb1b4e1b538241',
- '71e0dceb1a393817f3040518e82dc845a27700b0',
+const combinedGroupArtifacts=new Map([
+ ['5175d387846c18fcc83ef96091cb1b4e1b538241',{runId:44921616758,artifactId:14714382484}],
+ ['71e0dceb1a393817f3040518e82dc845a27700b0',{runId:44927404845,artifactId:14716484117}],
 ]);
-const combinedGroupBuild=combinedGroupCandidates.has(env.AIHR_CI_HEAD)&&groupScale&&establishedAttendance
+const combinedGroupArtifact=combinedGroupArtifacts.get(env.AIHR_CI_HEAD);
+const combinedGroupBuild=Boolean(combinedGroupArtifact)&&groupScale&&establishedAttendance
  &&databaseTopology==='transaction-pool'&&shellPermissionVariant==='contract-optimized';
 const reusedBuild=env.AIHR_BROWSER_REUSED_BUILD==='true';
 assert(databaseTopology==='direct'||(mixedLoad&&(reusedBuild||combinedGroupBuild)&&!fixtureOnly));
@@ -82,7 +83,7 @@ const report={kind:fixtureOnly?(mixedLoad?'FICTIONAL_MIXED_LOAD_FIXTURE_CHECK':'
   mixedLoad?'FICTIONAL_MIXED_LOAD_DIAGNOSTIC':'FICTIONAL_BROWSER_DOCUMENT_BASELINE',sourceSha:sha,
  controllerSha:env.AIHR_CI_CONTROL_HEAD,releaseEligible:false,
  ...(reusedBuild&&{buildArtifact:combinedGroupBuild
-  ? {runId:44921616758,artifactId:14714382484,sourceSha:combinedGroupCandidate}
+  ? {...combinedGroupArtifact,sourceSha:sha}
   : {runId:44897803593,artifactId:14705041556,sourceSha:'b00e2b2738312d87d5bea6f0ac7c877517d0b75d'}}),
  fixture:{tenants:2,companies:10,users:500,claimsPerEmployee:2000,rewardsDraftSeeded:false,
   ...(mixedLoad&&{attendanceProfile:establishedAttendance?'established-before-traffic':'first-use'})},
