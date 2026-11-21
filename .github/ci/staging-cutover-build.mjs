@@ -75,7 +75,8 @@ async function verifiedIndexUpgrade(source, baseline, candidate, qualificationRu
   assert(paths.includes(sqlPath) && paths.every(file => allowed.has(file)), 'Changes exceed the bounded index-upgrade path');
   const run = api(`actions/runs/${qualificationRun}`);
   assert(run.id === qualificationRun && run.head_sha === candidate && run.repository?.id === REPOSITORY_ID
-    && run.head_repository?.id === REPOSITORY_ID && run.path === upgradeWorkflow && run.event === 'push'
+    && run.head_repository?.id === REPOSITORY_ID && run.head_branch === git(source, 'branch', '--show-current')
+    && run.path === upgradeWorkflow && run.event === 'push'
     && run.run_attempt === 1 && run.status === 'completed' && run.conclusion === 'success',
   'Exact hosted upgrade rehearsal was not verified');
   const jobs = api(`actions/runs/${qualificationRun}/jobs?per_page=100`);
